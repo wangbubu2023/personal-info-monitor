@@ -81,17 +81,17 @@ async def test_login_and_capture_cookies_closes_context_and_browser_on_failure(m
     assert calls["browser_closed"] is True
 
 
-def test_maybe_refresh_auth_cookies_manual_mode_returns_stale_cookie_warning(monkeypatch):
+@pytest.mark.asyncio
+async def test_maybe_refresh_auth_cookies_manual_mode_returns_stale_cookie_warning(monkeypatch):
     source = _SourceWithAuthStub("https://example.com/article")
     creds = {"cookie_mode": "manual", "cookies": {"sid": "abc"}}
 
-    def _fake_asyncio_run(awaitable):
-        awaitable.close()
+    async def _fake_cookies_appear_valid(site_url, cookies):
         return False
 
-    monkeypatch.setattr(fetch_auth_helpers.asyncio, "run", _fake_asyncio_run)
+    monkeypatch.setattr(fetch_auth_helpers, "cookies_appear_valid", _fake_cookies_appear_valid)
 
-    updated, warning = fetch_auth_helpers.maybe_refresh_auth_cookies(db=object(), source=source, creds=creds)
+    updated, warning = await fetch_auth_helpers.maybe_refresh_auth_cookies(db=object(), source=source, creds=creds)
 
     assert updated == creds
     assert warning == "手动 Cookie 可能已失效，请更新后重试"

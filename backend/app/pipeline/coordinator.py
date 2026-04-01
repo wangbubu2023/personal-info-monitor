@@ -15,8 +15,6 @@ from app.utils.datetime import utcnow_naive
 from app.utils.text import strip_html_tags
 from app.utils.logger import get_logger
 
-import asyncio
-
 from app.pipeline.collector_stage import CollectorStage
 from app.pipeline.normalizer_stage import NormalizerStage
 from app.pipeline.storage_stage import StorageStage
@@ -25,7 +23,7 @@ from app.tasks.fetch_orchestrator import set_last_fetch_outcome
 logger = get_logger(__name__)
 
 
-def _build_raw_content_objects(raw_contents: List[dict], source: Source) -> List[Content]:
+async def _build_raw_content_objects(raw_contents: List[dict], source: Source) -> List[Content]:
     """Build Content ORM objects from raw dicts without any LLM calls.
 
     Only does local text extraction / cleanup so the fetch task stays fast.
@@ -44,7 +42,7 @@ def _build_raw_content_objects(raw_contents: List[dict], source: Source) -> List
             html = raw.get("html")
 
             if html and not main_text:
-                main_text = asyncio.run(extractor.extract(html, raw.get("url")))
+                main_text = await extractor.extract(html, raw.get("url"))
 
             main_text_clean = strip_html_tags(main_text) if main_text else ""
             title = strip_html_tags(raw.get("title", "Untitled"))
@@ -109,13 +107,13 @@ def _update_source_status(
         set_last_fetch_outcome(source, code, severity, message)
 
 
-def run_fetch_pipeline(db: Session, source: Source, manual_trigger: bool = False) -> Dict[str, Any]:
+async def run_fetch_pipeline(db: Session, source: Source, manual_trigger: bool = False) -> Dict[str, Any]:
     """Run the fetch pipeline for a source.
 
     Flow: Collect → Normalise → Store raw → dispatch post-processing tasks (async).
     """
     # 1. Collector Stage
-    raw_contents, merged_warning, primary_warning = CollectorStage.execute(db, source)
+    raw_contents, merged_warning, primary_warning = await CollectorStage.execute(db, source)
 
     if not raw_contents:
         logger.info(f"No new content from source: {source.name}")
@@ -128,7 +126,7 @@ def run_fetch_pipeline(db: Session, source: Source, manual_trigger: bool = False
         return {"status": "success", "message": "No new content", "count": 0}
 
     # 2. Normalizer Stage (freshness, semantic dedupe, backfill)
-    valid_raw_contents, stale_skipped = NormalizerStage.execute(db, source, raw_contents, manual_trigger)
+    valid_raw_contents, stale_skipped = await NormalizerStage.execute(db, source, raw_contents, manual_trigger)
 
     if not valid_raw_contents:
         logger.info(f"All content already fetched from: {source.name}")
@@ -141,7 +139,7 @@ def run_fetch_pipeline(db: Session, source: Source, manual_trigger: bool = False
         return {"status": "success", "message": "All content up to date", "count": 0}
 
     # 3. Build lightweight Content objects (no LLM) and persist
-    content_objects = _build_raw_content_objects(valid_raw_contents, source)
+    content_objects = await _build_raw_content_objects(valid_raw_contents, source)
     saved_count, latest_saved_marker = StorageStage.execute(db, content_objects)
 
     # 4. Update source metadata

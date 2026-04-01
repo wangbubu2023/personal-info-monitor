@@ -175,7 +175,7 @@ def test_website_content_gate_keeps_article_like_urls():
     )
 
 
-def test_normalizer_stage_filters_low_signal_website_contents_before_storage():
+async def test_normalizer_stage_filters_low_signal_website_contents_before_storage():
     db = _build_db_session()
     source = Source(
         name="HBR",
@@ -215,7 +215,7 @@ def test_normalizer_stage_filters_low_signal_website_contents_before_storage():
         },
     ]
 
-    valid_contents, stale_skipped = NormalizerStage.execute(
+    valid_contents, stale_skipped = await NormalizerStage.execute(
         db=db,
         source=source,
         raw_contents=raw_contents,
@@ -226,7 +226,7 @@ def test_normalizer_stage_filters_low_signal_website_contents_before_storage():
     assert [item["title"] for item in valid_contents] == ["How AI Changes Team Strategy"]
 
 
-def test_normalizer_stage_keeps_cross_source_external_id_matches():
+async def test_normalizer_stage_keeps_cross_source_external_id_matches():
     db = _build_db_session()
     source_a = Source(
         name="X Account A",
@@ -277,7 +277,7 @@ def test_normalizer_stage_keeps_cross_source_external_id_matches():
         },
     ]
 
-    valid_contents, stale_skipped = NormalizerStage.execute(
+    valid_contents, stale_skipped = await NormalizerStage.execute(
         db=db,
         source=source_b,
         raw_contents=raw_contents,

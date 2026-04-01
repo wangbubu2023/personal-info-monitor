@@ -4,7 +4,6 @@ import json
 from typing import List
 from uuid import UUID
 
-import asyncio
 from app.utils.cookies import normalize_cookie_dict
 from app.utils.datetime import utcnow_naive
 from app.utils.logger import get_logger
@@ -274,7 +273,7 @@ async def cookies_appear_valid(site_url: str, cookies: dict) -> bool:
         return True
 
 
-def maybe_refresh_auth_cookies(db, source, creds: dict) -> tuple[dict, str | None]:
+async def maybe_refresh_auth_cookies(db, source, creds: dict) -> tuple[dict, str | None]:
     if not source.auth_config:
         return creds, None
     auth_type = source.auth_config.auth_type.value if hasattr(source.auth_config.auth_type, "value") else str(source.auth_config.auth_type).lower()
@@ -286,7 +285,7 @@ def maybe_refresh_auth_cookies(db, source, creds: dict) -> tuple[dict, str | Non
     if cookies:
         cookies_valid = True
         try:
-            cookies_valid = bool(asyncio.run(cookies_appear_valid(source.url, cookies)))
+            cookies_valid = bool(await cookies_appear_valid(source.url, cookies))
         except Exception as e:
             logger.warning(f"Cookie precheck failed for source {source.id}: {e}")
         if cookies_valid:
@@ -311,14 +310,12 @@ def maybe_refresh_auth_cookies(db, source, creds: dict) -> tuple[dict, str | Non
             login_url = source.url if "://" in (source.url or "") else f"https://{source.url}"
 
     try:
-        cookie_dict = asyncio.run(
-            _login_and_capture_cookies(
-                site_url=source.url,
-                login_url=login_url,
-                username=str(username),
-                password=str(password),
-                login_selectors=source.auth_config.login_selectors if isinstance(source.auth_config.login_selectors, dict) else {},
-            )
+        cookie_dict = await _login_and_capture_cookies(
+            site_url=source.url,
+            login_url=login_url,
+            username=str(username),
+            password=str(password),
+            login_selectors=source.auth_config.login_selectors if isinstance(source.auth_config.login_selectors, dict) else {},
         )
     except Exception as e:
         reason = str(e)

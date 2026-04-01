@@ -6,7 +6,6 @@ from datetime import datetime
 from typing import List
 from urllib.parse import unquote, urlparse
 
-import asyncio
 from app.utils.logger import get_logger
 from app.utils.text import strip_html_tags
 
@@ -141,7 +140,7 @@ def get_source_urls(source) -> List[str]:
             urls = deduped_urls
     return urls
 
-def resolve_website_publish_time(raw_content: dict) -> datetime | None:
+async def resolve_website_publish_time(raw_content: dict) -> datetime | None:
     """Resolve publish_time for website content with fallback to article page extraction."""
     publish_time = raw_content.get("publish_time")
     if isinstance(publish_time, str):
@@ -159,17 +158,17 @@ def resolve_website_publish_time(raw_content: dict) -> datetime | None:
         if url:
             try:
                 from app.utils.publish_time import fetch_publish_time_from_url
-                resolved = asyncio.run(fetch_publish_time_from_url(url))
+                resolved = await fetch_publish_time_from_url(url)
                 if resolved:
                     return resolved
             except Exception:
                 return None
     return None
 
-def normalize_publish_time(raw_content: dict, source_type: str) -> datetime | None:
+async def normalize_publish_time(raw_content: dict, source_type: str) -> datetime | None:
     """Normalize publish_time from raw content for freshness checks."""
     if source_type == "website":
-        return resolve_website_publish_time(raw_content)
+        return await resolve_website_publish_time(raw_content)
 
     publish_time = raw_content.get("publish_time")
     if isinstance(publish_time, str):

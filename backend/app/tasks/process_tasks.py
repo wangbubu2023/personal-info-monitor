@@ -18,13 +18,13 @@ async def process_new_content(content_id: str):
     async with sem:
         await task_tracker.start_process()
         try:
-            await asyncio.to_thread(_process_new_content_sync, content_id)
+            await _process_new_content_async(content_id)
         finally:
             await task_tracker.end_process()
 
 
-def _process_new_content_sync(content_id: str):
-    """Synchronous implementation of content processing."""
+async def _process_new_content_async(content_id: str):
+    """Async implementation of content processing."""
     from sqlalchemy.orm import joinedload
 
     from app.database import SessionLocal
@@ -55,8 +55,8 @@ def _process_new_content_sync(content_id: str):
                 creds = try_parse_auth_credentials(source.auth_config)
                 cookies = normalize_cookie_dict(creds.get("cookies"))
                 if cookies and (not content.full_content or len(content.full_content) < 600):
-                    fetched = asyncio.run(
-                        processor._fetch_full_text_with_cookies(content.original_url, cookies)
+                    fetched = await processor._fetch_full_text_with_cookies(
+                        content.original_url, cookies
                     )
                     if fetched and len(fetched) > len(content.full_content or ""):
                         content.full_content = fetched[:50000]
@@ -114,14 +114,10 @@ async def process_content(content_id: str, regenerate_summary: bool = False, ret
     """Reprocess an existing content item (manual trigger from UI)."""
     sem = get_llm_semaphore()
     async with sem:
-        await asyncio.to_thread(
-            _process_content_sync, content_id, regenerate_summary, retranslate
-        )
+        await _process_content_async(content_id, regenerate_summary, retranslate)
 
 
-def _process_content_sync(content_id: str, regenerate_summary: bool, retranslate: bool):
-    import asyncio
-
+async def _process_content_async(content_id: str, regenerate_summary: bool, retranslate: bool):
     from app.database import SessionLocal
     from app.models import Content
     from app.processors import ContentProcessor
@@ -134,9 +130,9 @@ def _process_content_sync(content_id: str, regenerate_summary: bool, retranslate
             return
 
         processor = ContentProcessor()
-        content = asyncio.run(processor.reprocess_content(
+        content = await processor.reprocess_content(
             content, regenerate_summary=regenerate_summary, retranslate=retranslate
-        ))
+        )
         db.commit()
         logger.info(f"Processed content: {content.title[:50]}")
     finally:

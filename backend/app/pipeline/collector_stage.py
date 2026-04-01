@@ -8,7 +8,6 @@ from sqlalchemy.orm import Session
 from app.models import Source, AuthConfig
 import app.utils.url as url_utils
 from app.utils.logger import get_logger
-import asyncio
 from app.collectors import get_collector
 
 from app.tasks.fetch_auth_helpers import (
@@ -26,7 +25,7 @@ logger = get_logger(__name__)
 class CollectorStage:
     
     @staticmethod
-    def execute(db: Session, source: Source) -> Tuple[List[dict], Optional[str], Optional[Tuple[str, str, str]]]:
+    async def execute(db: Session, source: Source) -> Tuple[List[dict], Optional[str], Optional[Tuple[str, str, str]]]:
         """
         Execute the collection stage.
         Returns:
@@ -58,7 +57,7 @@ class CollectorStage:
         auth_warning = None
         if source.auth_config:
             creds = try_parse_auth_credentials(source.auth_config)
-            creds, auth_warning = maybe_refresh_auth_cookies(db, source, creds)
+            creds, auth_warning = await maybe_refresh_auth_cookies(db, source, creds)
             auth_type = source.auth_config.auth_type.value if hasattr(source.auth_config.auth_type, "value") else str(source.auth_config.auth_type).lower()
             runtime_auth.update({
                 "auth_type": auth_type,
@@ -90,12 +89,11 @@ class CollectorStage:
         raw_contents = []
         original_url = source.url
         
-        # Fixing V6-P2-3: try/finally to ensure source.url restores
         try:
             for fetch_url in source_urls:
                 try:
                     source.url = fetch_url
-                    fetched = asyncio.run(collector.fetch(source))
+                    fetched = await collector.fetch(source)
                     if fetched:
                         raw_contents.extend(fetched)
                 except Exception as e:
@@ -112,8 +110,6 @@ class CollectorStage:
         merged_warning = merge_warning_messages(*[item[2] for item in warning_entries])
         primary_warning = next((w for w in warning_entries if w[1] == "error"), warning_entries[0] if warning_entries else None)
         
-        # If all content already fetched, we can filter them here if the collector supports it
-        # However, website pages are often not strictly ordered
         if raw_contents and source.last_content_id and str(source_type).lower() != "website" and len(source_urls) == 1:
             raw_contents = collector.filter_new_content(raw_contents, source.last_content_id)
 

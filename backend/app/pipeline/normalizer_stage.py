@@ -18,7 +18,7 @@ logger = get_logger(__name__)
 class NormalizerStage:
     
     @staticmethod
-    def execute(db: Session, source: Source, raw_contents: List[dict], manual_trigger: bool) -> Tuple[List[dict], int]:
+    async def execute(db: Session, source: Source, raw_contents: List[dict], manual_trigger: bool) -> Tuple[List[dict], int]:
         """
         Execute the normalizer stage.
         Filters out contents that are duplicate in DB or too stale.
@@ -62,7 +62,7 @@ class NormalizerStage:
             else:
                 effective_max_lag_minutes = 60
                 
-            publish_time = normalize_publish_time(raw_content, str(source_type))
+            publish_time = await normalize_publish_time(raw_content, str(source_type))
             if publish_time:
                 raw_content["publish_time"] = publish_time
                 lag_minutes = (utcnow_naive() - publish_time).total_seconds() / 60

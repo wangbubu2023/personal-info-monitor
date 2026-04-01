@@ -74,7 +74,7 @@ async def _do_fetch(source_id: str, manual_trigger: bool):
                     lock_acquired = False
                     return {"status": "skipped", "message": "Domain rate limited"}
 
-                result = run_fetch_pipeline(db, source, manual_trigger)
+                result = asyncio.run(run_fetch_pipeline(db, source, manual_trigger))
 
                 # Collect new content IDs for AI processing
                 new_ids = []
