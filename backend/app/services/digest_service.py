@@ -1,11 +1,14 @@
 """Digest generation service."""
 
-from datetime import date, datetime
+from datetime import date, datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 from uuid import UUID
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import func
 from sqlalchemy.orm import Session
+
+_SYSTEM_TZ = ZoneInfo("Asia/Shanghai")
 
 from app.models import Content, Source
 from app.utils.logger import get_logger
@@ -42,11 +45,15 @@ class DigestService:
         """
         logger.info(f"Generating digest for {date}")
         
+        # Convert local date to UTC range to leverage ix_content_fetched_at index
+        day_start = datetime(date.year, date.month, date.day, tzinfo=_SYSTEM_TZ).astimezone(timezone.utc).replace(tzinfo=None)
+        day_end = day_start + timedelta(days=1)
+
         # Build query
         query = (
             self.db.query(Content)
             .join(Source)
-            .filter(func.date(Content.publish_time) == date)
+            .filter(Content.fetched_at >= day_start, Content.fetched_at < day_end)
         )
         
         # Apply filters
@@ -81,6 +88,7 @@ class DigestService:
             "total_items": len(contents),
             "categories": {
                 "websites": {"count": 0, "items": []},
+                "rss": {"count": 0, "items": []},
                 "x_accounts": {"count": 0, "items": []},
                 "youtube": {"count": 0, "items": []},
                 "podcasts": {"count": 0, "items": []}
@@ -100,6 +108,7 @@ class DigestService:
         """Map content type to category key."""
         mapping = {
             "website": "websites",
+            "rss": "rss",
             "x": "x_accounts",
             "youtube": "youtube",
             "podcast": "podcasts"
@@ -130,28 +139,34 @@ class DigestService:
             end_date = date.today()
         
         start_date = end_date - timedelta(days=6)
-        
+
+        # Convert local date range to UTC bounds for index-friendly filtering
+        week_start_utc = datetime(start_date.year, start_date.month, start_date.day, tzinfo=_SYSTEM_TZ).astimezone(timezone.utc).replace(tzinfo=None)
+        week_end_utc = datetime(end_date.year, end_date.month, end_date.day, tzinfo=_SYSTEM_TZ).astimezone(timezone.utc).replace(tzinfo=None) + timedelta(days=1)
+
         # Get content counts by day and type
         daily_counts = {}
         type_counts = {"website": 0, "x": 0, "youtube": 0, "podcast": 0}
-        
+
         current_date = start_date
         while current_date <= end_date:
+            day_start = datetime(current_date.year, current_date.month, current_date.day, tzinfo=_SYSTEM_TZ).astimezone(timezone.utc).replace(tzinfo=None)
+            day_end = day_start + timedelta(days=1)
             count = self.db.query(Content).filter(
-                func.date(Content.publish_time) == current_date
+                Content.fetched_at >= day_start, Content.fetched_at < day_end
             ).count()
             daily_counts[current_date.isoformat()] = count
             current_date += timedelta(days=1)
-        
+
         # Get type counts
         for content_type in type_counts:
             count = self.db.query(Content).filter(
                 Content.content_type == content_type,
-                func.date(Content.publish_time) >= start_date,
-                func.date(Content.publish_time) <= end_date
+                Content.fetched_at >= week_start_utc,
+                Content.fetched_at < week_end_utc,
             ).count()
             type_counts[content_type] = count
-        
+
         # Get top sources
         top_sources = (
             self.db.query(
@@ -160,8 +175,8 @@ class DigestService:
             )
             .join(Content)
             .filter(
-                func.date(Content.publish_time) >= start_date,
-                func.date(Content.publish_time) <= end_date
+                Content.fetched_at >= week_start_utc,
+                Content.fetched_at < week_end_utc,
             )
             .group_by(Source.id)
             .order_by(func.count(Content.id).desc())

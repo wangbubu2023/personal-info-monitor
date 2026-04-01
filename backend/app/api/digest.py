@@ -29,6 +29,7 @@ def get_category_key(content_type: str) -> str:
     """Map content type to category key."""
     mapping = {
         "website": "websites",
+        "rss": "rss",
         "x": "x_accounts",
         "youtube": "youtube",
         "podcast": "podcasts"
@@ -52,11 +53,15 @@ async def get_daily_digest(
     else:
         target_date = date.today()
     
+    # Convert local date to UTC range to leverage ix_content_fetched_at index
+    day_start = datetime(target_date.year, target_date.month, target_date.day, tzinfo=SYSTEM_TZ).astimezone(timezone.utc).replace(tzinfo=None)
+    day_end = day_start + timedelta(days=1)
+
     # Build query
     query = (
         select(Content)
         .options(selectinload(Content.source))
-        .filter(func.date(Content.fetched_at) == target_date)
+        .filter(Content.fetched_at >= day_start, Content.fetched_at < day_end)
     )
     
     # Apply filters
@@ -95,6 +100,7 @@ async def get_daily_digest(
         total_items=len(contents),
         categories={
             "websites": DigestCategory(count=0, items=[]),
+            "rss": DigestCategory(count=0, items=[]),
             "x_accounts": DigestCategory(count=0, items=[]),
             "youtube": DigestCategory(count=0, items=[]),
             "podcasts": DigestCategory(count=0, items=[])
@@ -136,28 +142,30 @@ async def get_digest_stats(
     
     end_date = date.today()
     start_date = end_date - timedelta(days=days - 1)
-    
+
+    # Convert local date range to UTC bounds for index-friendly filtering
+    stats_start_utc = datetime(start_date.year, start_date.month, start_date.day, tzinfo=SYSTEM_TZ).astimezone(timezone.utc).replace(tzinfo=None)
+    stats_end_utc = datetime(end_date.year, end_date.month, end_date.day, tzinfo=SYSTEM_TZ).astimezone(timezone.utc).replace(tzinfo=None) + timedelta(days=1)
+
     # Get content counts per day
     result = await db.execute(
         select(
-            func.date(Content.publish_time).label("date"),
+            func.date(Content.fetched_at).label("date"),
             func.count(Content.id).label("count")
         )
-        .filter(func.date(Content.fetched_at) >= start_date)
-        .filter(func.date(Content.fetched_at) <= end_date)
+        .filter(Content.fetched_at >= stats_start_utc, Content.fetched_at < stats_end_utc)
         .group_by(func.date(Content.fetched_at))
         .order_by(func.date(Content.fetched_at))
     )
     daily_counts = result.all()
-    
+
     # Get counts by content type
     result = await db.execute(
         select(
             Content.content_type,
             func.count(Content.id).label("count")
         )
-        .filter(func.date(Content.fetched_at) >= start_date)
-        .filter(func.date(Content.fetched_at) <= end_date)
+        .filter(Content.fetched_at >= stats_start_utc, Content.fetched_at < stats_end_utc)
         .group_by(Content.content_type)
     )
     type_counts = result.all()
@@ -196,6 +204,7 @@ def _map_source_type_key(content_type: str) -> str:
     """Map content_type to the frontend source key."""
     mapping = {
         "website": "websites",
+        "rss": "rss",
         "x": "x",
         "youtube": "youtube",
         "podcast": "podcasts",

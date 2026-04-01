@@ -2,6 +2,11 @@ import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
 
+vi.mock('../../config/features', () => ({
+  PODCAST_SOURCES_ENABLED: false,
+  KEYWORD_MONITORING_ENABLED: false,
+}))
+
 vi.mock('../SourceList/SourceManager', () => ({
   default: () => React.createElement('div', { 'data-testid': 'mock-source-manager' }, 'Source Manager'),
 }))

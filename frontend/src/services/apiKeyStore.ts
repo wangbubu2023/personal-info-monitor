@@ -29,10 +29,6 @@ function normalizeStoredKey(value: string | null): string | null {
   return trimmed || null
 }
 
-function getBundledApiKey(): string | null {
-  return normalizeStoredKey(import.meta.env.VITE_PIM_API_KEY ?? null)
-}
-
 export async function readApiKey(): Promise<string | null> {
   if (isTauriRuntime()) {
     try {
@@ -45,17 +41,6 @@ export async function readApiKey(): Promise<string | null> {
 
   const persistentStorage = getWebStorage('localStorage')
   const sessionStorageRef = getWebStorage('sessionStorage')
-  const bundledValue = getBundledApiKey()
-
-  if (bundledValue) {
-    if (persistentStorage?.getItem(WEB_LOCAL_KEY) !== bundledValue) {
-      persistentStorage?.setItem(WEB_LOCAL_KEY, bundledValue)
-    }
-    if (sessionStorageRef?.getItem(WEB_SESSION_KEY) !== bundledValue) {
-      sessionStorageRef?.setItem(WEB_SESSION_KEY, bundledValue)
-    }
-    return bundledValue
-  }
 
   const persistentValue = normalizeStoredKey(persistentStorage?.getItem(WEB_LOCAL_KEY) ?? null)
   if (persistentValue) {

@@ -360,8 +360,6 @@ def cmd_start():
             frontend_env = env.copy()
             frontend_env.setdefault("VITE_API_URL", "http://127.0.0.1:8000")
             frontend_env.setdefault("PIM_DEV_HOST", "127.0.0.1")
-            if api_key:
-                frontend_env.setdefault("VITE_PIM_API_KEY", api_key)
             procs.append(subprocess.Popen(
                 ["npm", "run", "dev"],
                 cwd=str(FRONTEND),
