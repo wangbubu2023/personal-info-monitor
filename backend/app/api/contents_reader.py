@@ -37,7 +37,7 @@ from app.processors.translator import Translator
 from app.tasks.fetch_auth_helpers import try_parse_auth_credentials
 from app.utils.cookies import normalize_cookie_dict
 from app.utils.datetime import utcnow_naive
-from app.utils.text import strip_html_tags
+from app.utils.text import strip_html_tags, truncate_content
 
 router = APIRouter()
 
@@ -197,7 +197,7 @@ async def _upgrade_x_reader_body(
     if not article_text or len(article_text) <= len(body_raw):
         return None, None
 
-    content.full_content = article_text[:50000]
+    content.full_content = truncate_content(article_text, url=article_url or "")
     preview = article_text[:500]
     content.summary = preview + ("..." if len(article_text) > 500 else "")
 
@@ -229,7 +229,7 @@ async def _clean_x_body_if_needed(
     if not cleaned_body or cleaned_body == body_raw:
         return body_raw, metadata
 
-    content.full_content = cleaned_body[:50000]
+    content.full_content = truncate_content(cleaned_body, url=content.original_url or "")
     preview = cleaned_body[:500]
     content.summary = preview + ("..." if len(cleaned_body) > 500 else "")
 
@@ -254,7 +254,7 @@ async def _backfill_website_reader_body(
     if not fetched_body:
         return body_raw, metadata
 
-    content.full_content = fetched_body[:50000]
+    content.full_content = truncate_content(fetched_body, url=resolved_url or content.original_url or "")
     if not (content.summary or "").strip():
         preview = fetched_body[:500]
         content.summary = preview + ("..." if len(fetched_body) > 500 else "")

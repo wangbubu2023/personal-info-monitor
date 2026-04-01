@@ -8,6 +8,7 @@ import asyncio
 from app.features import KEYWORD_MONITORING_ENABLED
 from app.background import get_llm_semaphore, task_tracker
 from app.utils.logger import get_logger
+from app.utils.text import truncate_content
 
 logger = get_logger(__name__)
 
@@ -59,7 +60,7 @@ async def _process_new_content_async(content_id: str):
                         content.original_url, cookies
                     )
                     if fetched and len(fetched) > len(content.full_content or ""):
-                        content.full_content = fetched[:50000]
+                        content.full_content = truncate_content(fetched, url=content.original_url or "")
             except Exception as exc:
                 logger.debug(f"Cookie enrichment skipped for {content_id}: {exc}")
 

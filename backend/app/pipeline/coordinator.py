@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.models import Content, Source
 from app.utils.datetime import utcnow_naive
-from app.utils.text import strip_html_tags
+from app.utils.text import strip_html_tags, truncate_content
 from app.utils.logger import get_logger
 
 from app.pipeline.collector_stage import CollectorStage
@@ -73,7 +73,7 @@ async def _build_raw_content_objects(raw_contents: List[dict], source: Source) -
                 original_url=raw.get("url", ""),
                 content_type=source_type,
                 publish_time=publish_time,
-                full_content=main_text_clean[:50000] if main_text_clean else None,
+                full_content=truncate_content(main_text_clean, url=raw.get("url", "")) if main_text_clean else None,
                 metadata_=metadata,
                 keyword_matches=[],
                 fetched_at=utcnow_naive(),

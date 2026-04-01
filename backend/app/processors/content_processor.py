@@ -17,7 +17,7 @@ from app.processors.extractor import ContentExtractor
 from app.processors.keyword_matcher import KeywordMatcher
 from app.utils.cookies import normalize_cookie_dict
 from app.utils.logger import get_logger
-from app.utils.text import strip_html_tags
+from app.utils.text import strip_html_tags, truncate_content
 
 logger = get_logger(__name__)
 
@@ -173,7 +173,7 @@ class ContentProcessor:
             original_url=raw_content.get("url", ""),
             content_type=source_type,
             publish_time=publish_time,
-            full_content=main_text_clean[:50000] if main_text_clean else None,  # Limit stored content
+            full_content=truncate_content(main_text_clean, url=article_url) if main_text_clean else None,
             metadata_=metadata,
             keyword_matches=keyword_matches,
             fetched_at=utcnow_naive()

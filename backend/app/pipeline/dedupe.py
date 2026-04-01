@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.models import Content, Source
 from app.utils.datetime import utcnow_naive
+from app.utils.text import truncate_content
 from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -60,7 +61,7 @@ def handle_external_id_duplicate(
     if article_fulltext and raw_text and len(raw_text) >= 280:
         should_upgrade = not existing.full_content or len(raw_text) > len(existing.full_content or "")
         if should_upgrade:
-            existing.full_content = raw_text[:50000]
+            existing.full_content = truncate_content(raw_text, url=str(raw_content.get("url") or ""))
             if not existing.summary:
                 existing.summary = raw_text[:300] + ("..." if len(raw_text) > 300 else "")
             if raw_content.get("url"):
