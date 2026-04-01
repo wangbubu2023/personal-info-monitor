@@ -15,11 +15,6 @@ from app.utils.datetime import utcnow_naive
 from app.utils.text import strip_html_tags, truncate_content
 from app.utils.logger import get_logger
 
-from app.pipeline.collector_stage import CollectorStage
-from app.pipeline.normalizer_stage import NormalizerStage
-from app.pipeline.storage_stage import StorageStage
-from app.tasks.fetch_orchestrator import set_last_fetch_outcome
-
 logger = get_logger(__name__)
 
 
@@ -94,6 +89,8 @@ def _update_source_status(
     message: str,
 ):
     """Centralised helper to update source metadata after a fetch attempt."""
+    from app.tasks.fetch_orchestrator import set_last_fetch_outcome
+
     source.last_fetched_at = utcnow_naive()
     source.last_error = merged_warning
     if primary_warning and primary_warning[1] == "error":
@@ -107,11 +104,45 @@ def _update_source_status(
         set_last_fetch_outcome(source, code, severity, message)
 
 
+def _apply_keyword_filter(db: Session, source: Source, content_objects: list[Content]) -> tuple[list[Content], int]:
+    """Filter content objects by enabled keywords. Returns (kept, filtered_count)."""
+    from app.models import Keyword
+    from app.processors.keyword_matcher import KeywordMatcher
+
+    keywords = db.query(Keyword).filter(Keyword.enabled == True).all()
+    if not keywords:
+        # No keywords configured = pass everything through
+        logger.warning("Source %s has keyword filter enabled but no keywords configured", source.name)
+        return content_objects, 0
+
+    matcher = KeywordMatcher()
+    kept = []
+    for content in content_objects:
+        search_text = f"{content.title or ''} {content.full_content or content.summary or ''}"
+        matches = matcher.match(search_text, keywords)
+        if matches:
+            content.keyword_matches = matches
+            kept.append(content)
+
+    filtered_count = len(content_objects) - len(kept)
+    if filtered_count > 0:
+        logger.info(
+            "Keyword filter for %s: %d/%d items passed (%d filtered)",
+            source.name, len(kept), len(content_objects), filtered_count,
+        )
+    return kept, filtered_count
+
+
 async def run_fetch_pipeline(db: Session, source: Source, manual_trigger: bool = False) -> Dict[str, Any]:
     """Run the fetch pipeline for a source.
 
     Flow: Collect → Normalise → Store raw → dispatch post-processing tasks (async).
     """
+    # Import stages lazily to avoid circular import (fetch_tasks → coordinator → collector → … → fetch_tasks).
+    from app.pipeline.collector_stage import CollectorStage
+    from app.pipeline.normalizer_stage import NormalizerStage
+    from app.pipeline.storage_stage import StorageStage
+
     # 1. Collector Stage
     raw_contents, merged_warning, primary_warning = await CollectorStage.execute(db, source)
 
@@ -140,6 +171,21 @@ async def run_fetch_pipeline(db: Session, source: Source, manual_trigger: bool =
 
     # 3. Build lightweight Content objects (no LLM) and persist
     content_objects = await _build_raw_content_objects(valid_raw_contents, source)
+    keyword_filtered_count = 0
+    if getattr(source, "use_keyword_filter", False):
+        content_objects, keyword_filtered_count = _apply_keyword_filter(db, source, content_objects)
+        if not content_objects:
+            logger.info(f"All {keyword_filtered_count} items filtered out by keywords for: {source.name}")
+            _update_source_status(source, merged_warning, primary_warning,
+                                  "keyword_filtered", "info", f"抓取到 {keyword_filtered_count} 条内容，均不匹配关键词")
+            db.commit()
+            return {
+                "status": "success",
+                "message": f"All {keyword_filtered_count} items filtered by keywords",
+                "count": 0,
+                "keyword_filtered": keyword_filtered_count,
+            }
+
     saved_count, latest_saved_marker = StorageStage.execute(db, content_objects)
 
     # 4. Update source metadata
@@ -165,5 +211,6 @@ async def run_fetch_pipeline(db: Session, source: Source, manual_trigger: bool =
         "count": len(raw_contents),
         "saved": saved_count,
         "stale_skipped": stale_skipped,
+        "keyword_filtered": keyword_filtered_count,
         "new_content_ids": new_content_ids,
     }
