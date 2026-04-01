@@ -1,7 +1,8 @@
 """Tasks for fetching content from sources — high-concurrency async engine."""
 
 import asyncio
-from datetime import timedelta
+
+from sqlalchemy import text
 
 from app.background import (
     domain_limiter,
@@ -113,7 +114,7 @@ async def fetch_all_sources(manual_trigger: bool = False):
     def _query_sources():
         db = SessionLocal()
         try:
-            query = db.query(Source).filter(Source.enabled == True)
+            query = db.query(Source).filter(Source.enabled.is_(True))
             if not PODCAST_SOURCES_ENABLED:
                 query = query.filter(Source.type != SourceType.PODCAST)
             sources = query.all()
@@ -145,22 +146,19 @@ async def check_and_fetch_due_sources():
         db = SessionLocal()
         try:
             now = utcnow_naive()
-            query = db.query(Source).filter(Source.enabled == True)
+            now_str = now.strftime("%Y-%m-%d %H:%M:%S")
+            query = db.query(Source).filter(Source.enabled.is_(True))
             if not PODCAST_SOURCES_ENABLED:
                 query = query.filter(Source.type != SourceType.PODCAST)
+            # Push "due" window to SQL: same formula as prior Python loop
+            # (interval minutes = fetch_interval * 2^min(error_count,5)).
+            due_sql = text(
+                "last_fetched_at IS NULL OR :now_str >= datetime(last_fetched_at, '+' || "
+                "CAST((COALESCE(fetch_interval, 60) * (1 << MIN(COALESCE(error_count, 0), 5))) AS TEXT) || ' minutes')"
+            ).bindparams(now_str=now_str)
+            query = query.filter(due_sql)
             sources = query.all()
-
-            due = []
-            for source in sources:
-                if not source.last_fetched_at:
-                    due.append(str(source.id))
-                else:
-                    multiplier = 2 ** min(source.error_count or 0, 5)
-                    interval = (source.fetch_interval or 60) * multiplier
-                    next_fetch = source.last_fetched_at + timedelta(minutes=interval)
-                    if now >= next_fetch:
-                        due.append(str(source.id))
-            return due
+            return [str(s.id) for s in sources]
         finally:
             db.close()
 

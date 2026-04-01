@@ -12,6 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Source
+from app.models.source import SourceType
 from app.models.auth_config import APIConfig, AuthConfig, AuthStatus
 from app.models.browser_session import BrowserSession, BrowserSessionStatus
 from app.utils.cookies import cookie_domains_for_host, normalize_cookie_dict
@@ -131,15 +132,17 @@ async def bind_auth_config_to_sources(db: AsyncSession, config: AuthConfig) -> i
     if not auth_host:
         return 0
 
-    result = await db.execute(select(Source))
+    like_host = f"%{auth_host}%"
+    result = await db.execute(
+        select(Source).where(
+            Source.type == SourceType.WEBSITE,
+            Source.url.ilike(like_host),
+        )
+    )
     sources = result.scalars().all()
     bound = 0
 
     for source in sources:
-        source_type = source.type.value if hasattr(source.type, "value") else str(source.type).lower()
-        if source_type != "website":
-            continue
-
         source_host = normalize_host(source.url)
         if not host_matches(source_host, auth_host):
             continue

@@ -19,6 +19,8 @@ class Content(Base):
         UniqueConstraint('source_id', 'external_id', name='uq_content_source_external_id'),
         Index('ix_content_source_external', 'source_id', 'external_id'),
         Index('ix_content_created_at', 'created_at'),
+        Index('ix_content_publish_time', 'publish_time'),
+        Index('ix_content_fetched_at', 'fetched_at'),
     )
 
     id = Column(UUIDString, primary_key=True, default=lambda: str(uuid.uuid4()))
@@ -35,6 +37,8 @@ class Content(Base):
     original_url = Column(Text, nullable=False)
 
     # Full content
+    # TODO(FTS5): Optional SQLite FTS5 virtual table + sync for title/summary/full_content search;
+    # btree indexes on publish_time/fetched_at address list ordering; FTS5 is follow-up work.
     full_content = Column(Text, nullable=True)
 
     # Content type inherited from source
