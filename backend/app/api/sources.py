@@ -26,6 +26,9 @@ from app.services.system_settings import get_system_settings_async
 from app.utils.datetime import to_iso_z, utcnow_naive
 from app.utils.ttl_cache import TTLCache
 from app.utils.url import host_matches, normalize_host
+from app.utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 router = APIRouter()
 _probe_service = ProbeService()
@@ -83,13 +86,15 @@ async def _ensure_source_quota(db: AsyncSession, incoming_count: int = 1) -> Non
     current_total = int(total_result.scalar() or 0)
     projected_total = current_total + incoming
     if projected_total > max_sources:
-        remaining = max(0, max_sources - current_total)
+        logger.warning(
+            "Source limit reached: current=%d, max=%d, attempted=%d",
+            current_total,
+            max_sources,
+            projected_total - current_total,
+        )
         raise HTTPException(
             status_code=409,
-            detail=(
-                f"监控源数量已达到上限（{max_sources}）。"
-                f"当前 {current_total}，最多还能新增 {remaining}。"
-            ),
+            detail="监控源数量已达到上限，无法继续添加。",
         )
 
 

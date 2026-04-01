@@ -1,10 +1,11 @@
 """Pydantic schemas for Source model."""
 
+import re
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class SourceBase(BaseModel):
@@ -21,6 +22,25 @@ class SourceBase(BaseModel):
     auth_required: bool = False
     auth_config_id: Optional[UUID] = None
     metadata_: Optional[Dict[str, Any]] = Field(default_factory=dict, alias="metadata")
+
+    @field_validator("url")
+    @classmethod
+    def validate_url_format(cls, v: str) -> str:
+        v = v.strip()
+        if not re.match(r"^https?://", v, re.IGNORECASE):
+            raise ValueError("URL must start with http:// or https://")
+        return v
+
+    @field_validator("extra_urls")
+    @classmethod
+    def validate_extra_urls_format(cls, v: List[str]) -> List[str]:
+        out: List[str] = []
+        for item in v:
+            item = item.strip()
+            if not re.match(r"^https?://", item, re.IGNORECASE):
+                raise ValueError("Each extra URL must start with http:// or https://")
+            out.append(item)
+        return out
 
 
 class SourceCreate(SourceBase):
@@ -42,6 +62,29 @@ class SourceUpdate(BaseModel):
     auth_required: Optional[bool] = None
     auth_config_id: Optional[UUID] = None
     metadata_: Optional[Dict[str, Any]] = Field(None, alias="metadata")
+
+    @field_validator("url")
+    @classmethod
+    def validate_url_format(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return v
+        v = v.strip()
+        if not re.match(r"^https?://", v, re.IGNORECASE):
+            raise ValueError("URL must start with http:// or https://")
+        return v
+
+    @field_validator("extra_urls")
+    @classmethod
+    def validate_extra_urls_format(cls, v: Optional[List[str]]) -> Optional[List[str]]:
+        if v is None:
+            return v
+        out: List[str] = []
+        for item in v:
+            item = item.strip()
+            if not re.match(r"^https?://", item, re.IGNORECASE):
+                raise ValueError("Each extra URL must start with http:// or https://")
+            out.append(item)
+        return out
 
 
 class SourceResponse(SourceBase):

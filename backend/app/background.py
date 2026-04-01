@@ -5,6 +5,7 @@ Designed for single-process architecture with high-concurrency fetching.
 
 import asyncio
 import time
+from contextlib import asynccontextmanager
 from typing import Optional
 
 from app.services.runtime_lock_service import runtime_lock_service
@@ -107,6 +108,24 @@ class TaskTracker:
     async def end_process(self):
         async with self._lock:
             self._running_processes = max(0, self._running_processes - 1)
+
+    @asynccontextmanager
+    async def track_fetch(self):
+        """Context manager that auto-decrements fetch counter on exit."""
+        await self.start_fetch()
+        try:
+            yield
+        finally:
+            await self.end_fetch()
+
+    @asynccontextmanager
+    async def track_process(self):
+        """Context manager that auto-decrements process counter on exit."""
+        await self.start_process()
+        try:
+            yield
+        finally:
+            await self.end_process()
 
     @property
     def running_fetches(self) -> int:
