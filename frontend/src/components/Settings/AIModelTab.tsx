@@ -66,17 +66,17 @@ const AIModelTab: React.FC = () => {
         api_base: settings.ai_model.api_base,
         temperature: settings.ai_model.temperature,
         max_tokens: settings.ai_model.max_tokens,
-        trans_provider: (settings as any).translation_model?.provider || 'ollama',
-        trans_model: (settings as any).translation_model?.model || 'translategemma:12b',
-        trans_api_base: (settings as any).translation_model?.api_base || 'http://localhost:11434',
+        trans_provider: settings.translation_model?.provider || 'ollama',
+        trans_model: settings.translation_model?.model || 'translategemma:12b',
+        trans_api_base: settings.translation_model?.api_base || 'http://localhost:11434',
         translation_enabled: settings.translation_enabled,
-        title_translation_enabled: (settings as any).title_translation_enabled ?? true,
+        title_translation_enabled: settings.title_translation_enabled ?? true,
         summarization_enabled: settings.summarization_enabled,
-        translation_cloud_fallback_enabled: (settings as any).translation_cloud_fallback_enabled ?? false,
-        summarization_cloud_fallback_enabled: (settings as any).summarization_cloud_fallback_enabled ?? false,
-        max_sources: (settings as any).limits?.max_sources ?? 200,
-        max_digest_candidates: (settings as any).limits?.max_digest_candidates ?? 12,
-        max_hourly_digest_input_items: (settings as any).limits?.max_hourly_digest_input_items ?? 200,
+        translation_cloud_fallback_enabled: settings.translation_cloud_fallback_enabled ?? false,
+        summarization_cloud_fallback_enabled: settings.summarization_cloud_fallback_enabled ?? false,
+        max_sources: settings.limits?.max_sources ?? 200,
+        max_digest_candidates: settings.limits?.max_digest_candidates ?? 12,
+        max_hourly_digest_input_items: settings.limits?.max_hourly_digest_input_items ?? 200,
       })
     }
   }, [settings, form])
@@ -238,7 +238,7 @@ const AIModelTab: React.FC = () => {
           <Form.Item
             name="trans_api_key"
             label="翻译模型 API Key"
-            extra={(settings as any)?.translation_model?.has_api_key ? '已配置 API Key，留空则不更新' : '请输入翻译模型 API Key'}
+            extra={settings?.translation_model?.has_api_key ? '已配置 API Key，留空则不更新' : '请输入翻译模型 API Key'}
           >
             <Password placeholder="sk-..." />
           </Form.Item>

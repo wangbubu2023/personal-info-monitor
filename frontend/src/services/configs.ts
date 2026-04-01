@@ -1,4 +1,7 @@
 import api from './api'
+import type { SystemSettings } from '../types'
+
+export type { SystemSettings }
 
 // API Config types
 export interface APIConfig {
@@ -60,37 +63,6 @@ export interface AIModelProvider {
   default_api_base?: string
   model_source?: string
   availability_message?: string
-}
-
-export interface SystemSettings {
-  ai_model: {
-    provider: string
-    model: string
-    api_base?: string
-    api_key?: string
-    temperature: number
-    max_tokens: number
-    has_api_key?: boolean
-  }
-  translation_model?: {
-    provider: string
-    model: string
-    api_base?: string
-    api_key?: string
-    has_api_key?: boolean
-  }
-  translation_enabled: boolean
-  title_translation_enabled?: boolean
-  auto_translate_language: string
-  summarization_enabled: boolean
-  translation_cloud_fallback_enabled?: boolean
-  summarization_cloud_fallback_enabled?: boolean
-  email_notifications_enabled: boolean
-  limits?: {
-    max_sources: number
-    max_digest_candidates: number
-    max_hourly_digest_input_items: number
-  }
 }
 
 export const configsApi = {

@@ -1,4 +1,5 @@
 import axios from 'axios'
+import { promptApiKey } from '../components/ui/ApiKeyModal'
 import { clearApiKey, readApiKey, writeApiKey } from './apiKeyStore'
 
 declare global {
@@ -110,14 +111,14 @@ function requestApiKeyOnce(): Promise<string | null> {
     return activePrompt
   }
 
-  const promptPromise = Promise.resolve().then(() => {
-    const key = window.prompt('请输入 PIM API Key')
+  const promptPromise = (async () => {
+    const key = await promptApiKey()
     const trimmed = (key || '').trim()
     if (!trimmed) {
       return null
     }
     return writeApiKey(trimmed).then(() => trimmed)
-  }).finally(() => {
+  })().finally(() => {
     setPromptPromise(null)
   })
 

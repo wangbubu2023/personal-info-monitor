@@ -173,3 +173,37 @@ export interface PaginatedResponse<T> {
   page_size: number
   total_pages: number
 }
+
+/** AI / translation model block from GET/PATCH /configs/settings */
+export interface AIModelConfig {
+  provider: string
+  model: string
+  api_base?: string
+  api_key?: string
+  has_api_key?: boolean
+}
+
+/** 摘要模型包含生成参数 */
+export interface SummaryAIModelConfig extends AIModelConfig {
+  temperature: number
+  max_tokens: number
+}
+
+export interface SystemSettingsLimits {
+  max_sources: number
+  max_digest_candidates: number
+  max_hourly_digest_input_items: number
+}
+
+export interface SystemSettings {
+  ai_model: SummaryAIModelConfig
+  translation_model?: AIModelConfig
+  translation_enabled: boolean
+  title_translation_enabled?: boolean
+  auto_translate_language: string
+  summarization_enabled: boolean
+  translation_cloud_fallback_enabled?: boolean
+  summarization_cloud_fallback_enabled?: boolean
+  email_notifications_enabled: boolean
+  limits?: SystemSettingsLimits
+}

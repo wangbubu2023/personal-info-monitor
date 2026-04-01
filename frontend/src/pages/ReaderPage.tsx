@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react'
 import { useParams, Link, useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { Alert, Button, Spin } from 'antd'
+import { isAxiosError } from 'axios'
 import { ArrowLeftOutlined } from '@ant-design/icons'
 import { contentsApi } from '../services/contents'
 
@@ -138,7 +139,7 @@ const ReaderPage: React.FC = () => {
   }
 
   if (!data) {
-    const status = (error as any)?.response?.status
+    const status = isAxiosError(error) ? error.response?.status : undefined
     return (
       <div style={{ maxWidth: 960, margin: '24px auto', padding: '0 16px', color: '#666' }} data-testid="reader-empty">
         {status === 404
