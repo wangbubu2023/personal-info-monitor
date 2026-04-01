@@ -477,6 +477,41 @@ class WebsiteCollector(BaseCollector):
             self.logger.warning("Playwright fetch failed for %s: %s", article_url, exc)
             return None, None, "playwright_fetch_failed"
 
+    async def _attempt_playwright_article_html(
+        self,
+        article_url: str,
+        cookies: Dict[str, str],
+        source_url: str,
+        browser_session: Optional[Dict[str, Any]] = None,
+    ) -> Optional[Tuple[Optional[str], Optional[str], Optional[str]]]:
+        """Run Playwright article fetch when cookies or browser session exist; else None (skipped)."""
+        if not (cookies or self._has_browser_session(browser_session or {})):
+            return None
+        return await self._fetch_article_html_with_playwright(
+            article_url,
+            cookies,
+            source_url,
+            browser_session=browser_session,
+        )
+
+    async def _try_playwright_fetch(
+        self,
+        url: str,
+        cookies: Dict[str, str],
+        source_url: str,
+        browser_session: Optional[Dict[str, Any]] = None,
+    ) -> Optional[Tuple[str, str, None]]:
+        """Try fetching with Playwright. Returns (html, url, None) on success, None on failure or skip."""
+        attempt = await self._attempt_playwright_article_html(
+            url, cookies, source_url, browser_session=browser_session
+        )
+        if attempt is None:
+            return None
+        html, final_url, _reason = attempt
+        if html:
+            return html, final_url, None
+        return None
+
     async def _fetch_article_html(
         self,
         article_url: str,
@@ -488,31 +523,26 @@ class WebsiteCollector(BaseCollector):
 
         if self._is_google_news_wrapper(article_url):
             # First try full browser flow directly on wrapper URL.
-            if cookies or self._has_browser_session(browser_session or {}):
-                html, final_url, reason = await self._fetch_article_html_with_playwright(
-                    article_url,
-                    cookies,
-                    source_url,
-                    browser_session=browser_session,
-                )
-                if html:
-                    return html, final_url, None
+            result = await self._try_playwright_fetch(
+                article_url, cookies, source_url, browser_session=browser_session
+            )
+            if result:
+                return result
 
             # Fallback: resolve wrapper first, then fetch resolved URL.
             resolved_url = await self._resolve_google_wrapper_url_with_playwright(article_url)
             if resolved_url:
                 article_url = resolved_url
-                if cookies or self._has_browser_session(browser_session or {}):
-                    html, final_url, reason = await self._fetch_article_html_with_playwright(
-                        article_url,
-                        cookies,
-                        source_url,
-                        browser_session=browser_session,
-                    )
+                attempt = await self._attempt_playwright_article_html(
+                    article_url, cookies, source_url, browser_session=browser_session
+                )
+                if attempt is not None:
+                    html, final_url, reason = attempt
                     if html:
                         return html, final_url, None
                     if reason:
                         return None, final_url or article_url, reason
+
             if cookies or self._has_browser_session(browser_session or {}):
                 return None, None, "wrapper_unresolved"
 
@@ -531,13 +561,11 @@ class WebsiteCollector(BaseCollector):
                     allow_redirects=True,
                 ) as response:
                     if response.status != 200:
-                        if cookies or self._has_browser_session(browser_session or {}):
-                            html, final_url, reason = await self._fetch_article_html_with_playwright(
-                                article_url,
-                                cookies,
-                                source_url,
-                                browser_session=browser_session,
-                            )
+                        attempt = await self._attempt_playwright_article_html(
+                            article_url, cookies, source_url, browser_session=browser_session
+                        )
+                        if attempt is not None:
+                            html, final_url, reason = attempt
                             if html:
                                 return html, final_url, None
                             if reason:
@@ -546,13 +574,11 @@ class WebsiteCollector(BaseCollector):
                     return await response.text(), str(response.url), None
         except Exception as exc:
             self.logger.warning("HTTP article fetch failed for %s: %s", article_url, exc)
-            if cookies or self._has_browser_session(browser_session or {}):
-                html, final_url, reason = await self._fetch_article_html_with_playwright(
-                    article_url,
-                    cookies,
-                    source_url,
-                    browser_session=browser_session,
-                )
+            attempt = await self._attempt_playwright_article_html(
+                article_url, cookies, source_url, browser_session=browser_session
+            )
+            if attempt is not None:
+                html, final_url, reason = attempt
                 if html:
                     return html, final_url, None
                 if reason:
