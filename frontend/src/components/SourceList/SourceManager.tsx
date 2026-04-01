@@ -636,10 +636,15 @@ const SourceManager: React.FC = () => {
       dataIndex: 'enabled',
       key: 'enabled',
       width: 70,
-      render: (enabled: boolean) => (
-        <Tag color={enabled ? 'green' : 'default'}>
-          {enabled ? '启用' : '禁用'}
-        </Tag>
+      render: (enabled: boolean, record: Source) => (
+        <Space size={4}>
+          <Tag color={enabled ? 'green' : 'default'}>
+            {enabled ? '启用' : '禁用'}
+          </Tag>
+          {record.use_keyword_filter && (
+            <Tag color="orange">过滤</Tag>
+          )}
+        </Space>
       ),
     },
     {
@@ -1176,6 +1181,28 @@ const SourceManager: React.FC = () => {
             initialValue={60}
           >
             <InputNumber min={15} max={1440} style={{ width: '100%' }} />
+          </Form.Item>
+
+          <Divider style={{ marginTop: 8, marginBottom: 12 }}>内容过滤</Divider>
+          <Form.Item
+            name="use_keyword_filter"
+            label="启用关键词过滤"
+            valuePropName="checked"
+            initialValue={false}
+            tooltip="开启后，只有标题或正文匹配至少一个关键词的内容才会被保存。需先在「设置 → 关键词管理」中配置关键词。"
+          >
+            <Switch checkedChildren="过滤" unCheckedChildren="全量" />
+          </Form.Item>
+          <Form.Item shouldUpdate noStyle>
+            {() => {
+              const filterEnabled = form.getFieldValue('use_keyword_filter')
+              if (!filterEnabled) return null
+              return (
+                <SectionNote style={{ marginBottom: 12 }}>
+                  已启用关键词过滤：仅标题或正文匹配关键词的内容会被抓取保存，未匹配内容将被跳过。请确保已在「设置 → 关键词管理」中添加关键词。
+                </SectionNote>
+              )
+            }}
           </Form.Item>
 
           <Form.Item

@@ -52,6 +52,9 @@ const KeywordsTab: React.FC = () => {
 
   return (
     <div>
+      <p style={{ marginBottom: 16, color: 'rgba(0,0,0,0.65)' }}>
+        在此维护关键词列表。若在「监控源」中为某个信源开启了「启用关键词过滤」，则只有标题或正文匹配至少一个关键词的内容会被保存；未开启过滤的信源仍按原有逻辑全量入库。
+      </p>
       <Button type="primary" icon={<PlusOutlined />} onClick={() => { setEditingKeyword(null); form.resetFields(); setIsModalOpen(true) }} style={{ marginBottom: 16 }}>添加搜索词</Button>
       <Table columns={columns} dataSource={keywordsData?.items || []} loading={isLoading} rowKey="id" />
       <Modal title={editingKeyword ? '编辑搜索词' : '添加搜索词'} open={isModalOpen} onCancel={() => setIsModalOpen(false)} footer={null}>

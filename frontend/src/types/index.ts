@@ -13,6 +13,7 @@ export interface Source {
   fetch_interval: number
   enabled: boolean
   priority: number
+  use_keyword_filter: boolean
   auth_required: boolean
   auth_config_id?: string
   last_fetched_at?: string
@@ -37,6 +38,7 @@ export interface SourceCreate {
   fetch_interval?: number
   enabled?: boolean
   priority?: number
+  use_keyword_filter?: boolean
   auth_required?: boolean
   auth_config_id?: string | null
   metadata?: Record<string, unknown>
