@@ -11,7 +11,7 @@ from app.database import SessionLocal
 from app.scheduler import scheduler
 from app.services.monitor_service import MonitorService
 from app.utils.logger import get_logger
-from app.utils.metrics import request_metrics
+from app.utils.metrics import request_metrics, source_metrics
 
 logger = get_logger(__name__)
 settings = get_settings()
@@ -52,6 +52,7 @@ def get_queue_status() -> Dict[str, Any]:
 def get_metrics() -> Dict[str, Any]:
     """Expose lightweight runtime metrics for local observability."""
     payload = request_metrics.snapshot()
+    payload["sources"] = source_metrics.snapshot()
     payload["scheduler"] = {
         "running": bool(getattr(scheduler, "running", False)),
         "job_count": len(scheduler.get_jobs()),

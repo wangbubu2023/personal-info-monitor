@@ -2,9 +2,52 @@
 
 from __future__ import annotations
 
-from collections import Counter
+from collections import Counter, defaultdict
 from threading import Lock
 from typing import Dict
+
+
+class SourceMetrics:
+    """Per-source fetch/process counters, failures, and rolling fetch duration averages."""
+
+    def __init__(self) -> None:
+        self._lock = Lock()
+        self._fetch_counts: dict[str, int] = defaultdict(int)
+        self._fetch_failures: dict[str, int] = defaultdict(int)
+        self._fetch_durations: dict[str, list[float]] = defaultdict(list)
+        self._process_counts: dict[str, int] = defaultdict(int)
+        self._process_failures: dict[str, int] = defaultdict(int)
+
+    def record_fetch(self, source_id: str, duration: float, success: bool) -> None:
+        with self._lock:
+            self._fetch_counts[source_id] += 1
+            if not success:
+                self._fetch_failures[source_id] += 1
+            durations = self._fetch_durations[source_id]
+            durations.append(duration)
+            if len(durations) > 100:
+                durations[:] = durations[-100:]
+
+    def record_process(self, source_id: str, success: bool) -> None:
+        with self._lock:
+            self._process_counts[source_id] += 1
+            if not success:
+                self._process_failures[source_id] += 1
+
+    def snapshot(self) -> dict:
+        with self._lock:
+            result: dict[str, dict[str, float | int]] = {}
+            for sid in set(self._fetch_counts) | set(self._process_counts):
+                durations = self._fetch_durations.get(sid, [])
+                avg_ms = (sum(durations) / len(durations) * 1000) if durations else 0
+                result[sid] = {
+                    "fetch_total": self._fetch_counts.get(sid, 0),
+                    "fetch_failures": self._fetch_failures.get(sid, 0),
+                    "fetch_avg_ms": round(avg_ms, 1),
+                    "process_total": self._process_counts.get(sid, 0),
+                    "process_failures": self._process_failures.get(sid, 0),
+                }
+            return result
 
 
 def _escape_prometheus_label(value: str) -> str:
@@ -76,3 +119,4 @@ class RequestMetrics:
 
 
 request_metrics = RequestMetrics()
+source_metrics = SourceMetrics()
