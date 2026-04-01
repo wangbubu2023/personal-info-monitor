@@ -15,9 +15,6 @@ async def test_translator_ollama_cloud_fallback_uses_runtime_openai_settings(mon
         captured["settings"] = trans_settings
         return "ok"
 
-    async def _fake_google(*args, **kwargs):
-        return None
-
     monkeypatch.setattr(translator_module, "get_translation_settings", lambda: {"provider": "ollama"})
     monkeypatch.setattr(translator_module, "is_translation_cloud_fallback_enabled", lambda: True)
     monkeypatch.setattr(
@@ -34,7 +31,6 @@ async def test_translator_ollama_cloud_fallback_uses_runtime_openai_settings(mon
     t = Translator()
     monkeypatch.setattr(t, "_translate_with_ollama", _fake_ollama)
     monkeypatch.setattr(t, "_translate_with_openai", _fake_openai)
-    monkeypatch.setattr(t, "_translate_with_google", _fake_google)
 
     result = await t.translate("This is a sample text for translation.", "zh-CN", source_language="en")
     assert result == "ok"

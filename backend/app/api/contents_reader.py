@@ -172,7 +172,7 @@ async def _ensure_translated_title(
     if not _is_valid_translation_text(candidate):
         try:
             candidate = await asyncio.wait_for(
-                translator._translate_with_google(original, "zh-CN"),  # type: ignore[attr-defined]
+                translator.translate_with_fallback(original, "zh-CN"),
                 timeout=timeout_seconds,
             )
         except Exception:
@@ -339,7 +339,7 @@ async def _translate_reader_text(
         if not _is_valid_translation_text(translated):
             try:
                 translated = await asyncio.wait_for(
-                    translator._translate_with_google(chunk, "zh-CN"),  # type: ignore[attr-defined]
+                    translator.translate_with_fallback(chunk, "zh-CN"),
                     timeout=min(timeout, 6.0),
                 )
             except Exception:
@@ -368,7 +368,7 @@ async def _translate_reader_paragraph(
     if not _is_valid_translation_text(translated):
         try:
             translated = await asyncio.wait_for(
-                translator._translate_with_google(paragraph, "zh-CN"),  # type: ignore[attr-defined]
+                translator.translate_with_fallback(paragraph, "zh-CN"),
                 timeout=min(timeout_seconds, 6.0),
             )
         except Exception:

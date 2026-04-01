@@ -279,41 +279,28 @@ class Translator:
                 return None
 
             fallback_settings = get_translation_cloud_fallback_openai_settings()
-            translated = await self._translate_with_openai(text, target_language, fallback_settings)
-            if translated:
-                return translated
-            return await self._translate_with_google(text, target_language)
+            return await self._translate_with_openai(text, target_language, fallback_settings)
 
         translated = await self._translate_with_openai(text, target_language, trans_settings)
         if translated:
             return translated
         if not cloud_fallback_enabled:
             return None
-        return await self._translate_with_google(text, target_language)
+        fallback_settings = get_translation_cloud_fallback_openai_settings()
+        return await self._translate_with_openai(text, target_language, fallback_settings)
 
-    async def _translate_with_google(
+    async def translate_with_fallback(
         self,
         text: str,
-        target_language: str,
+        target_language: str = "zh-CN",
     ) -> Optional[str]:
-        """Translate using Google Translate (deep-translator library)."""
-        try:
-            from deep_translator import GoogleTranslator
+        """Public fallback translation using cloud OpenAI-compatible provider.
 
-            dest = target_language
-            if target_language == "zh-CN":
-                dest = "zh-CN"
-            elif target_language == "zh-TW":
-                dest = "zh-TW"
-            else:
-                dest = target_language.split("-")[0]
-
-            translator = GoogleTranslator(source="auto", target=dest)
-            result = translator.translate(text[:5000])
-            if result:
-                logger.info(f"Translated with Google: {len(text)} -> {len(result)} chars")
-                return result
+        Intended as a last-resort attempt when ``translate()`` returns an
+        invalid result.  Always uses the cloud fallback OpenAI settings
+        regardless of the user's ``cloud_fallback_enabled`` flag.
+        """
+        if not text or len(text.strip()) < 5:
             return None
-        except Exception as e:
-            logger.error(f"Google translation error: {e}")
-            return None
+        fallback_settings = get_translation_cloud_fallback_openai_settings()
+        return await self._translate_with_openai(text, target_language, fallback_settings)

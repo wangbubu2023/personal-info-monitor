@@ -57,26 +57,27 @@ async def test_summarizer_openai_path_uses_async_client(monkeypatch):
 @pytest.mark.asyncio
 async def test_translator_openai_provider_no_duplicate_fallback(monkeypatch):
     t = Translator()
-    calls = {"openai": 0, "google": 0}
+    calls = {"openai": 0}
 
     monkeypatch.setattr(translator_module, "get_translation_settings", lambda: {"provider": "openai"})
     monkeypatch.setattr(translator_module, "is_translation_cloud_fallback_enabled", lambda: True)
+    monkeypatch.setattr(
+        translator_module,
+        "get_translation_cloud_fallback_openai_settings",
+        lambda: {"provider": "openai", "model": "fallback-model", "api_key": "k"},
+    )
 
     async def _fake_openai(text, target, trans_settings=None):
         calls["openai"] += 1
+        if trans_settings and trans_settings.get("model") == "fallback-model":
+            return "fallback-ok"
         return None
 
-    async def _fake_google(text, target):
-        calls["google"] += 1
-        return "google-ok"
-
     monkeypatch.setattr(t, "_translate_with_openai", _fake_openai)
-    monkeypatch.setattr(t, "_translate_with_google", _fake_google)
 
     result = await t.translate("This is a test sentence for translation.", "zh-CN")
-    assert result == "google-ok"
-    assert calls["openai"] == 1
-    assert calls["google"] == 1
+    assert result == "fallback-ok"
+    assert calls["openai"] == 2
 
 
 @pytest.mark.asyncio

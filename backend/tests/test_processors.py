@@ -643,37 +643,32 @@ class TestTranslator:
         assert result == "openai translated"
 
     @pytest.mark.asyncio
-    async def test_translate_with_google(self):
+    async def test_translate_with_fallback_returns_translation(self):
         translator = self._make_translator()
-        with patch("deep_translator.GoogleTranslator") as mock_gt:
-            mock_gt.return_value.translate.return_value = "谷歌翻译"
-            result = await translator._translate_with_google("Hello world", "zh-CN")
-        assert result == "谷歌翻译"
+        with patch.object(translator, "_translate_with_openai", new_callable=AsyncMock, return_value="回退翻译"):
+            result = await translator.translate_with_fallback("Hello world", "zh-CN")
+        assert result == "回退翻译"
 
     @pytest.mark.asyncio
-    async def test_translate_with_google_exception(self):
+    async def test_translate_with_fallback_returns_none_on_failure(self):
         translator = self._make_translator()
-        with patch("deep_translator.GoogleTranslator", side_effect=Exception("service down")):
-            result = await translator._translate_with_google("Hello", "zh-CN")
+        with patch.object(translator, "_translate_with_openai", new_callable=AsyncMock, return_value=None):
+            result = await translator.translate_with_fallback("Hello world", "zh-CN")
         assert result is None
 
     @pytest.mark.asyncio
-    async def test_translate_with_google_en_target(self):
+    async def test_translate_with_fallback_short_text_skipped(self):
         translator = self._make_translator()
-        with patch("deep_translator.GoogleTranslator") as mock_gt:
-            mock_gt.return_value.translate.return_value = "English translation"
-            result = await translator._translate_with_google("你好世界", "en")
-        assert result == "English translation"
-        mock_gt.assert_called_with(source="auto", target="en")
+        result = await translator.translate_with_fallback("Hi", "zh-CN")
+        assert result is None
 
     @pytest.mark.asyncio
-    async def test_translate_with_google_zh_tw(self):
+    async def test_translate_with_fallback_default_target_language(self):
         translator = self._make_translator()
-        with patch("deep_translator.GoogleTranslator") as mock_gt:
-            mock_gt.return_value.translate.return_value = "繁體中文"
-            result = await translator._translate_with_google("Hello", "zh-TW")
-        assert result == "繁體中文"
-        mock_gt.assert_called_with(source="auto", target="zh-TW")
+        with patch.object(translator, "_translate_with_openai", new_callable=AsyncMock, return_value="中文") as mock_openai:
+            result = await translator.translate_with_fallback("Hello world test")
+        assert result == "中文"
+        mock_openai.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_translate_with_runtime_none(self):
