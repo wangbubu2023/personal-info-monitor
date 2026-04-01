@@ -16,6 +16,7 @@ const digestItems = [
     read_status: false,
     favorited: false,
     keyword_matches: [{ id: 'kw-1', keyword: '美股', color: '#6b7c3f' }],
+    metadata: { reader_translation_ready: true },
   },
   {
     id: 'content-2',
@@ -121,9 +122,11 @@ const authConfigs = [
     id: 'auth-wsj',
     site_url: 'https://www.wsj.com',
     auth_type: 'cookie',
+    is_shared: false,
     status: 'active',
     login_selectors: {},
     has_credentials: true,
+    bound_source_count: 0,
     created_at: now,
     updated_at: now,
   },
@@ -131,9 +134,11 @@ const authConfigs = [
     id: 'auth-economist',
     site_url: 'https://www.economist.com',
     auth_type: 'cookie',
+    is_shared: false,
     status: 'active',
     login_selectors: {},
     has_credentials: true,
+    bound_source_count: 0,
     created_at: now,
     updated_at: now,
   },
@@ -141,9 +146,24 @@ const authConfigs = [
     id: 'auth-x',
     site_url: 'https://x.com',
     auth_type: 'cookie',
+    is_shared: false,
     status: 'active',
     login_selectors: {},
     has_credentials: true,
+    bound_source_count: 0,
+    created_at: now,
+    updated_at: now,
+  },
+  {
+    id: 'auth-x-shared',
+    name: 'E2E 共享 X',
+    site_url: 'https://x.com',
+    auth_type: 'cookie',
+    is_shared: true,
+    status: 'active',
+    login_selectors: {},
+    has_credentials: true,
+    bound_source_count: 1,
     created_at: now,
     updated_at: now,
   },
@@ -168,6 +188,32 @@ const systemSettings = {
   email_notifications_enabled: false,
   translation_cloud_fallback_enabled: false,
   summarization_cloud_fallback_enabled: false,
+  limits: {
+    max_sources: 200,
+    max_digest_candidates: 12,
+    max_hourly_digest_input_items: 200,
+  },
+}
+
+const queueStatus = {
+  running_fetches: 0,
+  running_processes: 0,
+  fetch_concurrency: 4,
+  sources_status: [
+    {
+      id: 'source-wsj',
+      name: 'WSJ',
+      type: 'website',
+      url: 'https://www.wsj.com',
+      enabled: true,
+      fetch_interval: 60,
+      last_fetched_at: now,
+      next_fetch_at: null,
+      error_count: 0,
+      last_error: null,
+      content_count: 10,
+    },
+  ],
 }
 
 const availableModels = {
@@ -280,6 +326,9 @@ const response = (route: Route, status: number, data: unknown) =>
   })
 
 export const mockApi = async (page: Page) => {
+  await page.addInitScript(() => {
+    window.localStorage.setItem('pim_api_key', 'e2e-mock-api-key')
+  })
   await page.route('**/api/**', async (route) => {
     const method = route.request().method()
     const url = new URL(route.request().url())
@@ -326,6 +375,7 @@ export const mockApi = async (page: Page) => {
           favorited: item.favorited,
           archived: false,
           keyword_matches: item.keyword_matches,
+          metadata: (item as { metadata?: Record<string, unknown> }).metadata,
           fetched_at: item.fetched_at,
           created_at: now,
           updated_at: now,
@@ -351,13 +401,26 @@ export const mockApi = async (page: Page) => {
 
     if (method === 'GET' && path === '/api/sources') {
       const type = url.searchParams.get('type')
-      const filtered = type ? sources.filter((source) => source.type === type) : sources
+      let filtered = type ? sources.filter((source) => source.type === type) : [...sources]
+      const search = (url.searchParams.get('search') || '').trim().toLowerCase()
+      if (search) {
+        filtered = filtered.filter(
+          (source) =>
+            source.name.toLowerCase().includes(search) || source.url.toLowerCase().includes(search)
+        )
+      }
+      const pageNum = Number(url.searchParams.get('page') || 1)
+      const pageSize = Number(url.searchParams.get('page_size') || 20)
+      const total = filtered.length
+      const totalPages = Math.max(1, Math.ceil(total / pageSize))
+      const start = (pageNum - 1) * pageSize
+      const items = filtered.slice(start, start + pageSize)
       return response(route, 200, {
-        items: filtered,
-        total: filtered.length,
-        page: Number(url.searchParams.get('page') || 1),
-        page_size: Number(url.searchParams.get('page_size') || 1000),
-        total_pages: 1,
+        items,
+        total,
+        page: pageNum,
+        page_size: pageSize,
+        total_pages: totalPages,
       })
     }
 
@@ -394,6 +457,10 @@ export const mockApi = async (page: Page) => {
       const detail = hourlyDigestDetails[hour]
       if (!detail) return response(route, 404, { detail: 'Not found' })
       return response(route, 200, detail)
+    }
+
+    if (method === 'GET' && path === '/api/system/queue') {
+      return response(route, 200, queueStatus)
     }
 
     return response(route, 404, { detail: `Unhandled mock endpoint: ${method} ${path}` })

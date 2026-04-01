@@ -32,7 +32,7 @@ test('从首页点击阅读译文可打开阅读页', async ({ page }) => {
 
   await page.getByTestId('read-translation-content-1').click()
 
-  await expect(page).toHaveURL('/reader/content-1')
+  await expect(page).toHaveURL(/\/reader\/content-1\?translate=1$/)
   await expect(page.getByTestId('reader-page')).toBeVisible()
   await expect(page.getByTestId('reader-iframe')).toBeVisible()
   await expect(page.getByRole('button', { name: '打开原文' })).toBeVisible()
