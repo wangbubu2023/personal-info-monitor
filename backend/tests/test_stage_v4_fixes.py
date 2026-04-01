@@ -124,7 +124,7 @@ async def test_content_processor_cookie_fulltext_path_sets_metadata(monkeypatch)
     source._runtime_auth = {"credentials": {"cookies": {"sid": "abc"}}}
 
     long_text = "A" * 900
-    async def _fake_fetch_full_text(url, cookies):
+    async def _fake_fetch_full_text(url, cookies, source_url=None):
         return long_text
 
     monkeypatch.setattr(processor, "_fetch_full_text_with_cookies", _fake_fetch_full_text)
