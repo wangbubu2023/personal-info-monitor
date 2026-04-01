@@ -207,3 +207,25 @@ export interface SystemSettings {
   email_notifications_enabled: boolean
   limits?: SystemSettingsLimits
 }
+
+/** Ant Design 表单字段，对应 AIModelTab 提交到 PATCH /configs/settings 的负载 */
+export interface AIModelTabFormValues {
+  provider: string
+  model: string
+  api_base?: string
+  api_key?: string
+  temperature: number
+  max_tokens: number
+  trans_provider: string
+  trans_model: string
+  trans_api_base?: string
+  trans_api_key?: string
+  translation_enabled: boolean
+  title_translation_enabled: boolean
+  summarization_enabled: boolean
+  translation_cloud_fallback_enabled: boolean
+  summarization_cloud_fallback_enabled: boolean
+  max_sources: number
+  max_digest_candidates: number
+  max_hourly_digest_input_items: number
+}

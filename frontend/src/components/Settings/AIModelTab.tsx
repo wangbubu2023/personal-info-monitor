@@ -13,6 +13,7 @@ import {
   Divider,
 } from 'antd'
 import { configsApi } from '../../services/configs'
+import type { AIModelTabFormValues } from '../../types'
 import ModelProvidersTab from './ModelProvidersTab'
 import SectionNote from '../ui/SectionNote'
 
@@ -116,7 +117,7 @@ const AIModelTab: React.FC = () => {
     }
   }, [transProvider, form, selectedTransProvider])
 
-  const handleSave = (values: any) => {
+  const handleSave = (values: AIModelTabFormValues) => {
     updateMutation.mutate({
       ai_model: {
         provider: values.provider,
