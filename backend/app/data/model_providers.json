@@ -1,0 +1,141 @@
+{
+  "providers": [
+    {
+      "id": "openai",
+      "name": "OpenAI",
+      "models": [
+        { "id": "gpt-4.1-mini", "name": "gpt-4.1-mini (推荐)" },
+        { "id": "gpt-4.1", "name": "gpt-4.1" },
+        { "id": "o4-mini", "name": "o4-mini" },
+        { "id": "o3-mini", "name": "o3-mini" }
+      ],
+      "requires_api_key": true,
+      "default_api_base": "https://api.openai.com/v1",
+      "model_source": "recommended"
+    },
+    {
+      "id": "ollama",
+      "name": "Ollama (本地)",
+      "models": [
+        { "id": "deepseek-r1:14b", "name": "deepseek-r1:14b" },
+        { "id": "translategemma:12b", "name": "translategemma:12b" }
+      ],
+      "requires_api_key": false,
+      "default_api_base": "http://localhost:11434",
+      "model_source": "installed"
+    },
+    {
+      "id": "google",
+      "name": "Google (Gemini)",
+      "models": [
+        { "id": "gemini-2.0-flash", "name": "gemini-2.0-flash (推荐)" },
+        { "id": "gemini-2.0-pro", "name": "gemini-2.0-pro" },
+        { "id": "gemini-1.5-pro", "name": "gemini-1.5-pro" }
+      ],
+      "requires_api_key": true,
+      "default_api_base": "https://generativelanguage.googleapis.com/v1beta/openai",
+      "model_source": "recommended"
+    },
+    {
+      "id": "qwen",
+      "name": "Qwen (通义千问)",
+      "models": [
+        { "id": "qwen-plus-latest", "name": "qwen-plus-latest (推荐)" },
+        { "id": "qwen-max-latest", "name": "qwen-max-latest" },
+        { "id": "qwen3-coder-480b-a35b-instruct", "name": "qwen3-coder-480b-a35b-instruct" }
+      ],
+      "requires_api_key": true,
+      "default_api_base": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+      "model_source": "recommended"
+    },
+    {
+      "id": "volcengine",
+      "name": "火山方舟 (Doubao)",
+      "models": [
+        { "id": "doubao-seed-2-0-pro-260215", "name": "doubao-seed-2-0-pro-260215 (推荐)" },
+        { "id": "Doubao-1.5-thinking-pro", "name": "Doubao-1.5-thinking-pro" },
+        { "id": "doubao-pro-32k", "name": "doubao-pro-32k" }
+      ],
+      "requires_api_key": true,
+      "default_api_base": "https://ark.cn-beijing.volces.com/api/v3",
+      "model_source": "recommended"
+    },
+    {
+      "id": "hunyuan",
+      "name": "腾讯混元",
+      "models": [
+        { "id": "hunyuan-turbos-latest", "name": "hunyuan-turbos-latest (推荐)" },
+        { "id": "hunyuan-t1-latest", "name": "hunyuan-t1-latest" },
+        { "id": "hunyuan-vision-1.5-instruct", "name": "hunyuan-vision-1.5-instruct" }
+      ],
+      "requires_api_key": true,
+      "default_api_base": "https://api.hunyuan.cloud.tencent.com/v1",
+      "model_source": "recommended"
+    },
+    {
+      "id": "minimax",
+      "name": "MiniMax",
+      "models": [
+        { "id": "MiniMax-M2.7", "name": "MiniMax-M2.7 (推荐)" },
+        { "id": "MiniMax-M2.7-highspeed", "name": "MiniMax-M2.7-highspeed" },
+        { "id": "MiniMax-M2.5", "name": "MiniMax-M2.5" }
+      ],
+      "requires_api_key": true,
+      "default_api_base": "https://api.minimaxi.com/v1",
+      "model_source": "recommended"
+    },
+    {
+      "id": "zhipu",
+      "name": "智谱",
+      "models": [
+        { "id": "glm-5", "name": "glm-5 (推荐)" },
+        { "id": "glm-4.6", "name": "glm-4.6" },
+        { "id": "glm-4.5-air", "name": "glm-4.5-air" }
+      ],
+      "requires_api_key": true,
+      "default_api_base": "https://open.bigmodel.cn/api/paas/v4",
+      "model_source": "recommended"
+    },
+    {
+      "id": "moonshot",
+      "name": "Moonshot AI (Kimi)",
+      "models": [
+        { "id": "kimi-k2.5", "name": "kimi-k2.5 (推荐)" },
+        { "id": "kimi-k2", "name": "kimi-k2" },
+        { "id": "kimi-k2-thinking", "name": "kimi-k2-thinking" }
+      ],
+      "requires_api_key": true,
+      "default_api_base": "https://api.moonshot.cn/v1",
+      "model_source": "recommended"
+    },
+    {
+      "id": "deepseek",
+      "name": "DeepSeek",
+      "models": [
+        { "id": "deepseek-chat", "name": "deepseek-chat (推荐)" },
+        { "id": "deepseek-reasoner", "name": "deepseek-reasoner" }
+      ],
+      "requires_api_key": true,
+      "default_api_base": "https://api.deepseek.com/v1",
+      "model_source": "recommended"
+    },
+    {
+      "id": "openai_compatible",
+      "name": "自定义兼容接口",
+      "models": [],
+      "requires_api_key": true,
+      "model_source": "manual"
+    },
+    {
+      "id": "anthropic",
+      "name": "Anthropic",
+      "models": [
+        { "id": "claude-3-7-sonnet-latest", "name": "claude-3-7-sonnet-latest (推荐)" },
+        { "id": "claude-3-5-sonnet-latest", "name": "claude-3-5-sonnet-latest" },
+        { "id": "claude-3-5-haiku-latest", "name": "claude-3-5-haiku-latest" }
+      ],
+      "requires_api_key": true,
+      "model_source": "recommended"
+    }
+  ]
+}

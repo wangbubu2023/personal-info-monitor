@@ -1,0 +1,36 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Personal Info Monitor",
+  "version": "1.0.0",
+  "identifier": "app.personalinfomonitor.desktop",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "npm run build",
+    "devUrl": "http://localhost:3000",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "security": {
+      "csp": null,
+      "capabilities": ["default"]
+    },
+    "windows": [
+      {
+        "label": "main",
+        "title": "Personal Info Monitor",
+        "width": 1280,
+        "height": 840,
+        "resizable": true
+      }
+    ]
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["dmg"],
+    "icon": ["icons/icon.png"],
+    "macOS": {
+      "minimumSystemVersion": "11.0"
+    }
+  },
+  "plugins": {}
+}

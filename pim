@@ -1,0 +1,603 @@
+#!/usr/bin/env python3
+"""PIM — Personal Info Monitor CLI.
+
+Usage:
+    ./pim setup          First-time setup (venv, deps, runtime config, frontend build)
+    ./pim start          Start dev server (backend + frontend dev)
+    ./pim start --prod   Start production server (single process)
+    ./pim stop           Stop background PIM server
+    ./pim status         Show running status
+    ./pim fetch          Trigger a full fetch now
+    ./pim backup         Create a SQLite backup and archive local config
+    ./pim rollback <rev> Downgrade Alembic schema to a target revision
+    ./pim logs           Tail the log file
+"""
+
+import json
+import os
+import shutil
+import signal
+import socket
+import subprocess
+import sys
+import time
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Optional
+
+ROOT = Path(__file__).resolve().parent
+BACKEND = ROOT / "backend"
+FRONTEND = ROOT / "frontend"
+VENV = BACKEND / ".venv"
+PID_FILE = Path.home() / ".pim" / "pim.pid"
+LOG_FILE = Path.home() / ".pim" / "data" / "pim.log"
+BACKUP_DIR = Path.home() / ".pim" / "backups"
+ENV_FILE = BACKEND / ".env"
+ENV_EXAMPLE_FILE = BACKEND / ".env.example"
+
+
+def _python():
+    """Return venv python path."""
+    return str(VENV / "bin" / "python")
+
+
+def _pip():
+    return str(VENV / "bin" / "pip")
+
+
+def _uvicorn():
+    return str(VENV / "bin" / "uvicorn")
+
+
+def _alembic():
+    return str(VENV / "bin" / "alembic")
+
+
+def _ensure_venv():
+    if not VENV.exists():
+        print("Creating Python virtual environment ...")
+        subprocess.check_call([sys.executable, "-m", "venv", str(VENV)])
+    print(f"  venv: {VENV}")
+
+
+def _install_deps():
+    print("Installing Python dependencies ...")
+    subprocess.check_call(
+        [_pip(), "install", "-q", "-r", str(BACKEND / "requirements.txt")],
+    )
+
+
+def _install_playwright():
+    print("Installing Playwright Chromium ...")
+    subprocess.check_call(
+        [_python(), "-m", "playwright", "install", "chromium"],
+    )
+
+
+def _ensure_env_file():
+    """Create a local .env from the example when needed."""
+    if ENV_FILE.exists():
+        print(f"  .env already exists: {ENV_FILE}")
+        return
+
+    if ENV_EXAMPLE_FILE.exists():
+        shutil.copyfile(ENV_EXAMPLE_FILE, ENV_FILE)
+        print(f"  Created .env from template: {ENV_FILE}")
+        return
+
+    ENV_FILE.write_text("DATA_DIR=~/.pim/data\nFETCH_CONCURRENCY=20\nAI_PROCESSING_ENABLED=false\n")
+    print(f"  Created minimal .env: {ENV_FILE}")
+
+
+def _bootstrap_runtime_api_key() -> Optional[str]:
+    """Initialize runtime secrets and return the active API key."""
+    if not VENV.exists():
+        return None
+
+    try:
+        output = subprocess.check_output(
+            [
+                _python(),
+                "-c",
+                (
+                    "from app.config import bootstrap_runtime_environment, get_settings; "
+                    "bootstrap_runtime_environment(); "
+                    "print(get_settings().pim_api_key, end='')"
+                ),
+            ],
+            cwd=str(BACKEND),
+            text=True,
+        )
+    except Exception:
+        return None
+
+    return output.strip() or None
+
+
+def _read_runtime_metadata() -> dict:
+    """Read resolved runtime settings that depend on bootstrap logic."""
+    if not VENV.exists():
+        return {}
+
+    try:
+        output = subprocess.check_output(
+            [
+                _python(),
+                "-c",
+                (
+                    "import json; "
+                    "from app.config import bootstrap_runtime_environment, get_settings; "
+                    "bootstrap_runtime_environment(); "
+                    "s = get_settings(); "
+                    "print(json.dumps({'data_dir': s.data_dir, 'database_url': s.database_url}))"
+                ),
+            ],
+            cwd=str(BACKEND),
+            text=True,
+        )
+    except Exception:
+        return {}
+
+    try:
+        return json.loads(output)
+    except json.JSONDecodeError:
+        return {}
+
+
+def _sqlite_path_from_url(database_url: str) -> Path | None:
+    prefix = "sqlite:///"
+    if not database_url.startswith(prefix):
+        return None
+    return Path(database_url[len(prefix):]).expanduser()
+
+
+def _build_frontend():
+    if not (FRONTEND / "package.json").exists():
+        print("  Frontend not found, skipping build.")
+        return
+    print("Installing frontend dependencies ...")
+    subprocess.check_call(["npm", "install"], cwd=str(FRONTEND))
+    print("Building frontend ...")
+    subprocess.check_call(["npm", "run", "build"], cwd=str(FRONTEND))
+
+
+def cmd_setup():
+    print("=== PIM Setup ===\n")
+    _ensure_venv()
+    _install_deps()
+    _install_playwright()
+    _ensure_env_file()
+    _build_frontend()
+    api_key = _bootstrap_runtime_api_key()
+    print("\n=== Setup complete! ===")
+    if api_key:
+        print("Runtime secrets are stored in ~/.pim/data/runtime-secrets.json")
+        print(f"API Key: {api_key}")
+    print("Run: ./pim start --prod")
+
+
+def _read_api_key():
+    """Read the active API key from runtime secrets/bootstrap state."""
+    return _bootstrap_runtime_api_key()
+
+
+def _is_pid_alive(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+        return True
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+
+
+def _read_pid_command(pid: int) -> str:
+    try:
+        out = subprocess.check_output(["ps", "-p", str(pid), "-o", "command="], text=True)
+        return out.strip()
+    except Exception:
+        return ""
+
+
+def _is_prod_uvicorn_pid(pid: int) -> bool:
+    if not _is_pid_alive(pid):
+        return False
+    cmd = _read_pid_command(pid)
+    if not cmd:
+        return False
+    return "uvicorn" in cmd and "app.main:app" in cmd and "--port 8000" in cmd
+
+
+def _is_port_8000_open() -> bool:
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.settimeout(0.3)
+    try:
+        return sock.connect_ex(("127.0.0.1", 8000)) == 0
+    finally:
+        sock.close()
+
+
+def _terminate_pid(pid: int, timeout_seconds: float = 4.0) -> bool:
+    """Gracefully terminate pid, escalate to SIGKILL on timeout."""
+    if not _is_pid_alive(pid):
+        return True
+    try:
+        os.kill(pid, signal.SIGTERM)
+    except ProcessLookupError:
+        return True
+
+    started = time.time()
+    while time.time() - started < timeout_seconds:
+        if not _is_pid_alive(pid):
+            return True
+        time.sleep(0.1)
+
+    try:
+        os.kill(pid, signal.SIGKILL)
+    except ProcessLookupError:
+        return True
+    time.sleep(0.1)
+    return not _is_pid_alive(pid)
+
+
+def _find_prod_uvicorn_pids() -> list[int]:
+    pattern = f"{_uvicorn()} app.main:app --host 127.0.0.1 --port 8000"
+    try:
+        out = subprocess.check_output(["pgrep", "-f", pattern], text=True).strip()
+    except Exception:
+        return []
+    pids: list[int] = []
+    for raw in out.splitlines():
+        raw = raw.strip()
+        if not raw:
+            continue
+        try:
+            pid = int(raw)
+            if _is_prod_uvicorn_pid(pid):
+                pids.append(pid)
+        except ValueError:
+            continue
+    return pids
+
+
+def cmd_start():
+    prod = "--prod" in sys.argv
+
+    if not VENV.exists():
+        print("venv not found. Run: ./pim setup")
+        sys.exit(1)
+
+    api_key = _read_api_key()
+
+    if prod:
+        print("Starting PIM (production mode) ...")
+        print("  URL: http://127.0.0.1:8000")
+        if api_key:
+            print(f"  API Key: {api_key}")
+
+        # Ensure pid dir exists
+        PID_FILE.parent.mkdir(parents=True, exist_ok=True)
+        LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
+
+        if PID_FILE.exists():
+            try:
+                existing_pid = int(PID_FILE.read_text().strip())
+            except Exception:
+                existing_pid = 0
+            if existing_pid and _is_prod_uvicorn_pid(existing_pid):
+                print(f"  Already running (PID {existing_pid})")
+                return
+            PID_FILE.unlink(missing_ok=True)
+
+        existing_pids = _find_prod_uvicorn_pids()
+        if existing_pids:
+            print(f"  Detected existing unmanaged server PID(s): {', '.join(str(p) for p in existing_pids)}")
+            PID_FILE.write_text(str(existing_pids[0]))
+            print(f"  Recovered PID file with PID {existing_pids[0]}")
+            return
+
+        if _is_port_8000_open():
+            print("  Port 8000 is already in use by another process. Abort start.")
+            return
+
+        env = os.environ.copy()
+        env["VIRTUAL_ENV"] = str(VENV)
+        env["PATH"] = str(VENV / "bin") + ":" + env.get("PATH", "")
+
+        log_handle = open(LOG_FILE, "a", encoding="utf-8")
+        proc = subprocess.Popen(
+            [
+                _uvicorn(),
+                "app.main:app",
+                "--host", "127.0.0.1",
+                "--port", "8000",
+            ],
+            cwd=str(BACKEND),
+            env=env,
+            stdout=log_handle,
+            stderr=log_handle,
+            start_new_session=True,
+        )
+        log_handle.close()
+        PID_FILE.write_text(str(proc.pid))
+        print(f"  PID: {proc.pid}")
+        time.sleep(0.8)
+        if proc.poll() is not None:
+            print("  Failed to start. Last logs:")
+            try:
+                tail = subprocess.check_output(["tail", "-n", "30", str(LOG_FILE)], text=True)
+                print(tail)
+            except Exception:
+                pass
+            PID_FILE.unlink(missing_ok=True)
+            sys.exit(1)
+        print("  Started in background.")
+    else:
+        print("Starting PIM (dev mode) ...")
+        print("  Backend: http://127.0.0.1:8000")
+        print("  Frontend: http://127.0.0.1:3000")
+        if api_key:
+            print(f"  API Key: {api_key}")
+
+        env = os.environ.copy()
+        env["VIRTUAL_ENV"] = str(VENV)
+        env["PATH"] = str(VENV / "bin") + ":" + env.get("PATH", "")
+        env["PIM_DEV_SERVER"] = "1"
+        env["PIM_DEV_FRONTEND_URL"] = "http://127.0.0.1:3000"
+
+        procs = []
+
+        # Backend
+        procs.append(subprocess.Popen(
+            [_uvicorn(), "app.main:app", "--host", "127.0.0.1", "--port", "8000", "--reload"],
+            cwd=str(BACKEND),
+            env=env,
+        ))
+
+        # Frontend dev server
+        if (FRONTEND / "package.json").exists():
+            frontend_env = env.copy()
+            frontend_env.setdefault("VITE_API_URL", "http://127.0.0.1:8000")
+            frontend_env.setdefault("PIM_DEV_HOST", "127.0.0.1")
+            if api_key:
+                frontend_env.setdefault("VITE_PIM_API_KEY", api_key)
+            procs.append(subprocess.Popen(
+                ["npm", "run", "dev"],
+                cwd=str(FRONTEND),
+                env=frontend_env,
+            ))
+
+        try:
+            for p in procs:
+                p.wait()
+        except KeyboardInterrupt:
+            for p in procs:
+                p.terminate()
+            print("\nStopped.")
+
+
+def cmd_stop():
+    stopped_any = False
+    handled_pids: set[int] = set()
+
+    if PID_FILE.exists():
+        try:
+            pid = int(PID_FILE.read_text().strip())
+        except Exception:
+            pid = 0
+        if pid:
+            if _terminate_pid(pid):
+                print(f"Stopped PID {pid}")
+                stopped_any = True
+                handled_pids.add(pid)
+            else:
+                print(f"Failed to stop PID {pid}")
+        PID_FILE.unlink(missing_ok=True)
+
+    extra_pids = [pid for pid in _find_prod_uvicorn_pids() if _is_pid_alive(pid)]
+    for pid in extra_pids:
+        if pid in handled_pids:
+            continue
+        if _terminate_pid(pid):
+            print(f"Stopped unmanaged PID {pid}")
+            stopped_any = True
+
+    if not stopped_any:
+        print("No running PIM server found.")
+
+
+def cmd_status():
+    if PID_FILE.exists():
+        try:
+            pid = int(PID_FILE.read_text().strip())
+        except Exception:
+            pid = 0
+        if pid and _is_prod_uvicorn_pid(pid):
+            print(f"PIM is running (PID {pid})")
+            return
+        PID_FILE.unlink(missing_ok=True)
+
+    discovered = [pid for pid in _find_prod_uvicorn_pids() if _is_prod_uvicorn_pid(pid)]
+    if discovered:
+        pid = discovered[0]
+        PID_FILE.parent.mkdir(parents=True, exist_ok=True)
+        PID_FILE.write_text(str(pid))
+        print(f"PIM is running (PID {pid}, recovered PID file)")
+        return
+
+    if _is_port_8000_open():
+        print("Port 8000 is in use, but PIM process is not managed by current PID file.")
+        return
+    print("PIM is not running.")
+
+
+def cmd_fetch():
+    """Trigger a full fetch via API."""
+    api_key = _read_api_key()
+    import urllib.request
+    import urllib.error
+
+    url = "http://127.0.0.1:8000/api/sources/fetch-all"
+    req = urllib.request.Request(url, method="POST")
+    if api_key:
+        req.add_header("X-API-Key", api_key)
+    req.add_header("Content-Type", "application/json")
+    try:
+        with urllib.request.urlopen(req) as resp:
+            data = json.loads(resp.read())
+            print(f"Fetch triggered: {data}")
+    except urllib.error.URLError as e:
+        print(f"Failed to connect to PIM server: {e}")
+        print("Is the server running? Try: ./pim start --prod")
+
+
+def cmd_logs():
+    if LOG_FILE.exists():
+        os.execvp("tail", ["tail", "-f", str(LOG_FILE)])
+    else:
+        print(f"Log file not found: {LOG_FILE}")
+        print("Logs appear in the terminal when running in foreground.")
+
+
+def cmd_backup():
+    """Create a hot SQLite backup plus a small config archive."""
+    if not VENV.exists():
+        print("venv not found. Run: ./pim setup")
+        sys.exit(1)
+
+    runtime = _read_runtime_metadata()
+    db_path = _sqlite_path_from_url(str(runtime.get("database_url") or ""))
+    if not db_path or not db_path.exists():
+        print("SQLite database not found. Start the app once or check DATA_DIR.")
+        sys.exit(1)
+
+    BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    db_backup_path = BACKUP_DIR / f"pim-{stamp}.sqlite3"
+    config_archive_path = BACKUP_DIR / f"pim-{stamp}-config.tar.gz"
+    runtime_secrets = Path(str(runtime.get("data_dir") or "")).expanduser() / "runtime-secrets.json"
+
+    subprocess.check_call(
+        [
+            _python(),
+            "-c",
+            (
+                "import sqlite3, sys; "
+                "src, dst = sys.argv[1], sys.argv[2]; "
+                "source = sqlite3.connect(src); "
+                "target = sqlite3.connect(dst); "
+                "source.backup(target); "
+                "target.close(); "
+                "source.close()"
+            ),
+            str(db_path),
+            str(db_backup_path),
+        ],
+        cwd=str(BACKEND),
+    )
+
+    archive_inputs = [path for path in [ENV_FILE, runtime_secrets] if path.exists()]
+    if archive_inputs:
+        subprocess.check_call(
+            ["tar", "-czf", str(config_archive_path), *[str(path) for path in archive_inputs]],
+            cwd=str(ROOT),
+        )
+    print(f"Database backup: {db_backup_path}")
+    if archive_inputs:
+        print(f"Config archive:   {config_archive_path}")
+
+
+def cmd_rollback():
+    """Downgrade Alembic schema to the requested revision."""
+    if not VENV.exists():
+        print("venv not found. Run: ./pim setup")
+        sys.exit(1)
+
+    if len(sys.argv) < 3:
+        print("Usage: ./pim rollback <revision>")
+        sys.exit(2)
+
+    revision = sys.argv[2].strip()
+    if not revision:
+        print("Revision must not be empty.")
+        sys.exit(2)
+
+    subprocess.check_call([_alembic(), "downgrade", revision], cwd=str(BACKEND))
+    print(f"Alembic downgraded to {revision}")
+
+
+def cmd_install_service():
+    """Install macOS LaunchAgent for auto-start."""
+    plist_name = "com.pim.server"
+    plist_dir = Path.home() / "Library" / "LaunchAgents"
+    plist_path = plist_dir / f"{plist_name}.plist"
+
+    plist_dir.mkdir(parents=True, exist_ok=True)
+
+    plist_content = f"""<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>{plist_name}</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>{ROOT / "pim"}</string>
+        <string>start</string>
+        <string>--prod</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>WorkingDirectory</key>
+    <string>{ROOT}</string>
+    <key>StandardOutPath</key>
+    <string>{LOG_FILE}</string>
+    <key>StandardErrorPath</key>
+    <string>{LOG_FILE}</string>
+</dict>
+</plist>
+"""
+    plist_path.write_text(plist_content)
+    subprocess.run(["launchctl", "load", str(plist_path)])
+    print(f"Installed LaunchAgent: {plist_path}")
+    print("PIM will start automatically on login.")
+
+
+def cmd_uninstall_service():
+    plist_name = "com.pim.server"
+    plist_path = Path.home() / "Library" / "LaunchAgents" / f"{plist_name}.plist"
+    if plist_path.exists():
+        subprocess.run(["launchctl", "unload", str(plist_path)])
+        plist_path.unlink()
+        print("LaunchAgent removed.")
+    else:
+        print("LaunchAgent not found.")
+
+
+COMMANDS = {
+    "setup": cmd_setup,
+    "start": cmd_start,
+    "stop": cmd_stop,
+    "status": cmd_status,
+    "fetch": cmd_fetch,
+    "backup": cmd_backup,
+    "rollback": cmd_rollback,
+    "logs": cmd_logs,
+    "install-service": cmd_install_service,
+    "uninstall-service": cmd_uninstall_service,
+}
+
+
+def main():
+    if len(sys.argv) < 2 or sys.argv[1] not in COMMANDS:
+        print(__doc__)
+        sys.exit(0 if len(sys.argv) < 2 else 1)
+
+    COMMANDS[sys.argv[1]]()
+
+
+if __name__ == "__main__":
+    main()
