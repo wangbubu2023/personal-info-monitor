@@ -1,5 +1,5 @@
-import React, { useState, useRef } from 'react'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import React, { useState, useRef, useEffect } from 'react'
+import { useQuery, useQueries, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Table,
   Button,
@@ -27,7 +27,7 @@ import {
   RadarChartOutlined,
   SearchOutlined,
 } from '@ant-design/icons'
-import { sourcesApi } from '../../services/sources'
+import { sourcesApi, listSources } from '../../services/sources'
 import { categoriesApi } from '../../services/categories'
 import { configsApi, type AuthConfig } from '../../services/configs'
 import { sourceKeys } from '../../services/queryKeys'
@@ -97,22 +97,81 @@ const SourceManager: React.FC = () => {
   const [importPreview, setImportPreview] = useState<ImportPreviewItem[]>([])
   const [isImporting, setIsImporting] = useState(false)
   const [activeTypeFilter, setActiveTypeFilter] = useState('all')
-  const [searchKeyword, setSearchKeyword] = useState('')
+  const [searchInput, setSearchInput] = useState('')
+  const [debouncedSearch, setDebouncedSearch] = useState('')
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(20)
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([])
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [form] = Form.useForm()
   const queryClient = useQueryClient()
 
+  useEffect(() => {
+    const t = window.setTimeout(() => setDebouncedSearch(searchInput.trim()), 300)
+    return () => window.clearTimeout(t)
+  }, [searchInput])
+
+  useEffect(() => {
+    setPage(1)
+  }, [debouncedSearch, activeTypeFilter])
+
+  useEffect(() => {
+    setSelectedRowKeys([])
+  }, [page, pageSize, debouncedSearch, activeTypeFilter])
+
+  const listParams = {
+    page,
+    page_size: pageSize,
+    search: debouncedSearch || undefined,
+    type: activeTypeFilter === 'all' ? undefined : activeTypeFilter,
+    scope: 'library' as const,
+  }
+
   const {
-    data: sources = [],
+    data: listData,
     isLoading,
     isError,
     error,
     isFetching,
     refetch: refetchSources,
   } = useQuery({
-    queryKey: sourceKeys.list({ scope: 'library' }),
-    queryFn: () => sourcesApi.listAll(),
+    queryKey: sourceKeys.list(listParams),
+    queryFn: () => listSources(listParams),
+  })
+
+  const sources = listData?.items ?? []
+
+  const { data: quotaData } = useQuery({
+    queryKey: [...sourceKeys.all, 'quota-total'],
+    queryFn: () => listSources({ page: 1, page_size: 1 }),
+    staleTime: 30_000,
+  })
+
+  const { data: allTabCountData } = useQuery({
+    queryKey: [...sourceKeys.all, 'tab-total', 'all', debouncedSearch],
+    queryFn: () =>
+      listSources({
+        page: 1,
+        page_size: 1,
+        search: debouncedSearch || undefined,
+      }),
+    staleTime: 30_000,
+  })
+
+  const typeTabCountQueries = useQueries({
+    queries: typeFilters
+      .filter((f) => f.key !== 'all')
+      .map((f) => ({
+        queryKey: [...sourceKeys.all, 'tab-total', f.key, debouncedSearch],
+        queryFn: () =>
+          listSources({
+            page: 1,
+            page_size: 1,
+            type: f.key,
+            search: debouncedSearch || undefined,
+          }),
+        staleTime: 30_000,
+      })),
   })
 
   const { data: categories } = useQuery({
@@ -129,7 +188,7 @@ const SourceManager: React.FC = () => {
     queryFn: configsApi.getSettings,
   })
 
-  const sourceCount = sources.length
+  const sourceCount = quotaData?.total ?? 0
   const maxSources = Number(systemSettings?.limits?.max_sources || 200)
   const remainingSources = Math.max(0, maxSources - sourceCount)
   const sourceLimitReached = sourceCount >= maxSources
@@ -493,28 +552,11 @@ const SourceManager: React.FC = () => {
     youtube: 'red',
   }
 
-  // 过滤数据
-  const filteredSources = sources.filter((source: Source) => {
-    const matchType = activeTypeFilter === 'all' || source.type === activeTypeFilter
-    if (!matchType) return false
-
-    const keyword = searchKeyword.trim().toLowerCase()
-    if (!keyword) return true
-
-    const desc = String(source.metadata?.description || '').toLowerCase()
-    const extraUrls = (source.extra_urls || []).join(' ').toLowerCase()
-    return (
-      source.name.toLowerCase().includes(keyword) ||
-      source.url.toLowerCase().includes(keyword) ||
-      extraUrls.includes(keyword) ||
-      desc.includes(keyword)
-    )
-  })
-
-  // 获取各类型数量
-  const getTypeCount = (type: string): number => {
-    if (type === 'all') return sources.length
-    return sources.filter((s: Source) => s.type === type).length
+  const getTypeCount = (typeKey: string): number => {
+    if (typeKey === 'all') return allTabCountData?.total ?? 0
+    const idx = typeFilters.filter((f) => f.key !== 'all').findIndex((f) => f.key === typeKey)
+    if (idx < 0) return 0
+    return typeTabCountQueries[idx]?.data?.total ?? 0
   }
 
   const strategyLabels: Record<string, string> = {
@@ -768,8 +810,8 @@ const SourceManager: React.FC = () => {
           </Button>
           <Input
             allowClear
-            value={searchKeyword}
-            onChange={(e) => setSearchKeyword(e.target.value)}
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
             placeholder="搜索信源名称或 URL"
             prefix={<SearchOutlined style={{ color: '#999' }} />}
             data-testid="source-search-input"
@@ -861,7 +903,7 @@ const SourceManager: React.FC = () => {
         <Table
           rowSelection={rowSelection}
           columns={columns}
-          dataSource={filteredSources}
+          dataSource={sources}
           loading={isLoading}
           rowKey="id"
           locale={{
@@ -870,16 +912,22 @@ const SourceManager: React.FC = () => {
                 description={
                   isError
                     ? '信源数据暂时加载失败'
-                    : (searchKeyword || activeTypeFilter !== 'all' ? '没有匹配的信源' : '暂无信源')
+                    : (debouncedSearch || activeTypeFilter !== 'all' ? '没有匹配的信源' : '暂无信源')
                 }
                 image={Empty.PRESENTED_IMAGE_SIMPLE}
               />
             ),
           }}
           pagination={{
-            total: filteredSources.length,
-            pageSize: 20,
-            showTotal: (total) => `共 ${total} 条`,
+            current: page,
+            pageSize,
+            total: listData?.total ?? 0,
+            onChange: (p, ps) => {
+              setPage(p)
+              setPageSize(ps ?? 20)
+            },
+            showSizeChanger: true,
+            showTotal: (t) => `共 ${t} 个信源`,
           }}
           style={{ backgroundColor: '#fff' }}
         />

@@ -12,6 +12,27 @@ export interface ListSourcesParams {
   search?: string
 }
 
+/** Params for paginated source list (`listSources`). `scope` is client-only and not sent to the API. */
+export interface SourceListParams {
+  page?: number
+  page_size?: number
+  search?: string
+  type?: string
+  scope?: string
+}
+
+export type PaginatedSourceResponse = PaginatedResponse<Source>
+
+/**
+ * Paginated source list. Prefer this or {@link sourcesApi.list} for UI; use {@link sourcesApi.listAll} only when the full catalog is required.
+ */
+export async function listSources(
+  params: SourceListParams = {}
+): Promise<PaginatedSourceResponse> {
+  const { scope: _scope, ...rest } = params
+  return sourcesApi.list(rest as ListSourcesParams)
+}
+
 export interface ProbeResult {
   status: 'ok' | 'warning' | 'error' | 'unknown'
   strategy: string
@@ -32,7 +53,10 @@ export const sourcesApi = {
     return response.data
   },
 
-  // Load the full source library across multiple backend pages
+  /**
+   * Load every source by paging through the API. Avoid for main list UIs — use {@link sourcesApi.list} or {@link listSources}.
+   * Still appropriate when a caller truly needs the full in-memory list (e.g. bulk workflows that enumerate all sources).
+   */
   listAll: async (params?: Omit<ListSourcesParams, 'page' | 'page_size'>): Promise<Source[]> => {
     const items: Source[] = []
     let page = 1
