@@ -27,8 +27,10 @@ from app.api.contents_reader import (
 from fastapi import APIRouter
 
 router = APIRouter()
-for _child_router in (cleanup_router, reader_router, crud_router):
-    router.routes.extend(_child_router.routes)
+router.include_router(cleanup_router)
+router.include_router(reader_router)
+# crud_router defines GET "" (list). FastAPI rejects include_router(..., prefix="") when any route path is empty.
+router.routes.extend(crud_router.routes)
 
 __all__ = [
     "MAX_CONTENTS_PAGE_SIZE",

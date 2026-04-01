@@ -339,8 +339,16 @@ async def create_source(
             metadata["rss_url"] = rss_urls[source_data.url]
         elif probe_result.rss_url and "rss_url" not in metadata:
             metadata["rss_url"] = probe_result.rss_url
-    except Exception:
-        metadata["probe"] = {"status": "unknown", "message": "探测失败", "probed_at": None}
+    except Exception as exc:
+        logger.warning("Probe failed for source %s: %s", source_data.url, exc)
+        metadata["probe"] = {
+            "status": "failed",
+            "strategy": "unknown",
+            "rss_url": None,
+            "message": str(exc)[:200],
+            "sample_count": 0,
+            "probed_at": None,
+        }
 
     auth_required = source_data.auth_required
     auth_config_id = source_data.auth_config_id
@@ -687,15 +695,18 @@ async def probe_all_sources(
     sources = result.scalars().all()
 
     if not sources:
-        return {"message": "No sources to probe", "total": 0}
+        return {"message": "No sources to probe", "total": 0, "failed_items": []}
 
     updated = 0
+    failed_items: List[Dict[str, str]] = []
     for s in sources:
         stype = _ensure_supported_source_type(s.type)
         urls = _get_source_urls(s)
         try:
             probe_result, rss_urls, _ = await _probe_urls(urls, stype)
-        except Exception:
+        except Exception as exc:
+            logger.warning("Batch probe failed for source %s: %s", s.id, exc)
+            failed_items.append({"id": str(s.id), "error": str(exc)[:200]})
             continue
         meta = dict(s.metadata_ or {})
         meta["probe"] = probe_result.to_dict()
@@ -712,4 +723,8 @@ async def probe_all_sources(
     await db.commit()
     _invalidate_source_cache()
 
-    return {"message": f"Probed {updated} sources", "total": updated}
+    return {
+        "message": f"Probed {updated} sources",
+        "total": updated,
+        "failed_items": failed_items,
+    }

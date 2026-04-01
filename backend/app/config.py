@@ -75,9 +75,6 @@ class Settings(BaseSettings):
 
     # Security
     encryption_key: str = ""
-    jwt_secret_key: str = ""
-    jwt_algorithm: str = "HS256"
-    access_token_expire_minutes: int = 30
     probe_disable_ssl_verify: bool = False
     pim_api_key: str = ""
     cors_origins: str = _default_cors_origins()
@@ -101,8 +98,6 @@ class Settings(BaseSettings):
         # Fallback in-memory secrets for direct imports/tests.
         if not self.encryption_key:
             self.encryption_key = secrets.token_hex(16)
-        if not self.jwt_secret_key:
-            self.jwt_secret_key = secrets.token_hex(32)
         if not self.pim_api_key:
             self.pim_api_key = secrets.token_urlsafe(32)
 
@@ -126,7 +121,6 @@ def _read_runtime_secrets(path: Path) -> dict[str, str]:
         return {}
     return {
         "ENCRYPTION_KEY": str(payload.get("ENCRYPTION_KEY") or "").strip(),
-        "JWT_SECRET_KEY": str(payload.get("JWT_SECRET_KEY") or "").strip(),
         "PIM_API_KEY": str(payload.get("PIM_API_KEY") or "").strip(),
     }
 
@@ -148,8 +142,6 @@ def _ensure_runtime_secrets(data_dir: str) -> dict[str, str]:
 
     if not merged.get("ENCRYPTION_KEY"):
         merged["ENCRYPTION_KEY"] = secrets.token_hex(16)
-    if not merged.get("JWT_SECRET_KEY"):
-        merged["JWT_SECRET_KEY"] = secrets.token_hex(32)
     if not merged.get("PIM_API_KEY"):
         merged["PIM_API_KEY"] = secrets.token_urlsafe(32)
 
@@ -168,7 +160,6 @@ def bootstrap_runtime_environment() -> None:
     # Environment values have highest priority for BaseSettings.
     os.environ.setdefault("DATA_DIR", data_dir)
     os.environ.setdefault("ENCRYPTION_KEY", runtime_secrets["ENCRYPTION_KEY"])
-    os.environ.setdefault("JWT_SECRET_KEY", runtime_secrets["JWT_SECRET_KEY"])
     os.environ.setdefault("PIM_API_KEY", runtime_secrets["PIM_API_KEY"])
 
     get_settings.cache_clear()
