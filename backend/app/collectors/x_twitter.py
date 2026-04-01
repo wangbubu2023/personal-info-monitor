@@ -43,6 +43,7 @@ class XCollector(
 
     async def fetch(self, source: Source) -> List[Dict[str, Any]]:
         """Fetch tweets from a user, trying configured strategies in order."""
+        await self._check_ssrf(source.url)
         username = self._extract_username(source)
         if not username:
             self.logger.error(f"Could not extract username from source: {source.url}")

@@ -7,6 +7,7 @@ from app.utils.datetime import utcnow_naive
 from app.models import Source
 from app.utils.cookies import normalize_cookie_dict
 from app.utils.logger import get_logger
+from app.utils.ssrf import assert_public_http_target
 
 logger = get_logger(__name__)
 
@@ -34,6 +35,10 @@ class BaseCollector(ABC):
         browser_session = auth.get("browser_session") if isinstance(auth, dict) else None
         return browser_session if isinstance(browser_session, dict) else {}
     
+    async def _check_ssrf(self, url: str) -> None:
+        """Check URL against SSRF before fetching."""
+        await assert_public_http_target(url)
+
     @abstractmethod
     async def fetch(self, source: Source) -> List[Dict[str, Any]]:
         """
@@ -88,7 +93,8 @@ class BaseCollector(ABC):
             if isinstance(value, str):
                 try:
                     return datetime.fromisoformat(value.replace("Z", "+00:00")).replace(tzinfo=None)
-                except Exception:
+                except Exception as exc:
+                    logger.debug("Failed to parse datetime %r: %s", value, exc)
                     return None
             return None
 

@@ -621,6 +621,7 @@ class WebsiteCollector(BaseCollector):
     
     async def fetch(self, source: Source) -> List[Dict[str, Any]]:
         """Fetch content from a website."""
+        await self._check_ssrf(source.url)
         self.logger.info(f"Fetching website: {source.url}")
         
         metadata = source.metadata_ or {}

@@ -37,6 +37,7 @@ class YouTubeCollector(BaseCollector):
 
     async def fetch(self, source: Source) -> List[Dict[str, Any]]:
         """Fetch the N most recent videos from a YouTube channel or playlist."""
+        await self._check_ssrf(source.url)
         self.logger.info(f"Fetching YouTube source: {source.url}")
         try:
             import yt_dlp

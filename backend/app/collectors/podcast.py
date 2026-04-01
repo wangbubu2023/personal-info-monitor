@@ -17,6 +17,7 @@ class PodcastCollector(BaseCollector):
     
     async def fetch(self, source: Source) -> List[Dict[str, Any]]:
         """Fetch episodes from a podcast feed."""
+        await self._check_ssrf(source.url)
         self.logger.info(f"Fetching podcast: {source.url}")
         
         # Podcasts are typically RSS feeds

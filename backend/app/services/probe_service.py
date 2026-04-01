@@ -1,9 +1,7 @@
 """Source probe service — detect the best fetch strategy and reachability."""
 
 import asyncio
-import ipaddress
 import re
-import socket
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import parse_qs, urljoin, urlparse
@@ -15,6 +13,7 @@ from bs4 import BeautifulSoup
 from app.config import get_settings
 from app.utils.datetime import to_iso_z, utcnow_naive
 from app.utils.logger import get_logger
+from app.utils.ssrf import assert_public_http_target, _is_private_address
 from app.utils.url import host_matches, normalize_host
 
 logger = get_logger(__name__)
@@ -84,52 +83,10 @@ class ProbeService:
 
     @staticmethod
     def _is_private_address(value: str) -> bool:
-        try:
-            address = ipaddress.ip_address(value)
-        except ValueError:
-            return False
-        return any(
-            [
-                address.is_private,
-                address.is_loopback,
-                address.is_link_local,
-                address.is_reserved,
-                address.is_multicast,
-                address.is_unspecified,
-            ]
-        )
-
-    async def _resolve_host_addresses(self, hostname: str, port: int) -> set[str]:
-        loop = asyncio.get_running_loop()
-        infos = await loop.getaddrinfo(
-            hostname,
-            port,
-            type=socket.SOCK_STREAM,
-            proto=socket.IPPROTO_TCP,
-        )
-        return {info[4][0] for info in infos if info and info[4]}
+        return _is_private_address(value)
 
     async def _assert_public_http_target(self, url: str) -> None:
-        parsed = urlparse(url)
-        if parsed.scheme not in {"http", "https"}:
-            raise ValueError(f"unsupported scheme: {parsed.scheme or 'missing'}")
-
-        hostname = (parsed.hostname or "").strip().lower()
-        if not hostname:
-            raise ValueError("missing hostname")
-        if hostname == "localhost":
-            raise ValueError("localhost is not allowed")
-        if self._is_private_address(hostname):
-            raise ValueError(f"private address is not allowed: {hostname}")
-
-        port = parsed.port or (443 if parsed.scheme == "https" else 80)
-        addresses = await self._resolve_host_addresses(hostname, port)
-        if not addresses:
-            raise ValueError("hostname did not resolve")
-
-        blocked = sorted(ip for ip in addresses if self._is_private_address(ip))
-        if blocked:
-            raise ValueError(f"resolved to private address: {', '.join(blocked)}")
+        await assert_public_http_target(url)
 
     async def probe(self, url: str, source_type: str = "website") -> ProbeResult:
         """
@@ -254,7 +211,8 @@ class ProbeService:
                 text = await self._http_get(feed_url, timeout=8)
                 if text and ("<rss" in text[:500] or "<feed" in text[:500] or "<atom" in text[:500]):
                     return feed_url
-            except Exception:
+            except Exception as exc:
+                logger.debug("RSS path probe failed for %s: %s", feed_url, exc)
                 continue
         return None
 
@@ -311,7 +269,8 @@ class ProbeService:
             for sel in selectors:
                 try:
                     articles = soup.select(sel)
-                except Exception:
+                except Exception as exc:
+                    logger.debug("BS4 select failed: %s", exc)
                     continue
                 if len(articles) >= 3:
                     break
@@ -597,7 +556,8 @@ class ProbeService:
                 playlist_id = query.get("list", [None])[0]
                 if playlist_id:
                     return playlist_id
-        except Exception:
+        except Exception as exc:
+            logger.debug("YouTube playlist ID extraction failed for %s: %s", url, exc)
             return None
         return None
 
@@ -727,5 +687,6 @@ class ProbeService:
         except ValueError as exc:
             logger.warning("Blocked outbound probe request %s: %s", url, exc)
             return None
-        except Exception:
+        except Exception as exc:
+            logger.warning("HTTP GET failed for %s: %s", url, exc)
             return None

@@ -29,6 +29,7 @@ class RSSCollector(BaseCollector):
     
     async def fetch(self, source: Source) -> List[Dict[str, Any]]:
         """Fetch content from an RSS feed."""
+        await self._check_ssrf(source.url)
         self.logger.info(f"Fetching RSS feed: {source.url}")
         
         try:

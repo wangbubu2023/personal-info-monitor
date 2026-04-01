@@ -13,6 +13,7 @@ import aiohttp
 import feedparser
 
 from app.models import Source
+from app.utils.ssrf import assert_public_http_target
 
 
 class XCollectorFeedMixin:
@@ -256,6 +257,7 @@ class XCollectorFeedMixin:
         return None
 
     async def _http_get(self, url: str, timeout: int = 20) -> Optional[str]:
+        await assert_public_http_target(url)
         headers = {
             "User-Agent": (
                 "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "

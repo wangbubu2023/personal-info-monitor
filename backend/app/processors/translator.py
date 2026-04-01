@@ -23,7 +23,8 @@ def get_translation_settings():
         settings = get_system_settings_sync()
         model_settings = settings.get("translation_model", {})
         return model_settings if isinstance(model_settings, dict) else {}
-    except Exception:
+    except Exception as exc:
+        logger.warning("Translation config parsing failed: %s", exc)
         return {}
 
 
@@ -34,7 +35,8 @@ def is_translation_cloud_fallback_enabled() -> bool:
 
         settings = get_system_settings_sync()
         return bool(settings.get("translation_cloud_fallback_enabled", False))
-    except Exception:
+    except Exception as exc:
+        logger.debug("Translation availability check failed: %s", exc)
         return False
 
 
@@ -63,7 +65,8 @@ def get_translation_cloud_fallback_openai_settings() -> dict:
             "temperature": 0.1,
             "max_tokens": 1200,
         }
-    except Exception:
+    except Exception as exc:
+        logger.warning("Translation config fallback failed: %s", exc)
         return {
             "provider": "openai",
             "model": "gpt-4o-mini",
