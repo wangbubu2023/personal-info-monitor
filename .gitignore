@@ -44,3 +44,9 @@ test-results/
 # Logs and data
 *.log
 output/
+
+# Tauri build artifacts
+frontend/src-tauri/target/
+
+# Runtime PID files
+.pim-local-pids/

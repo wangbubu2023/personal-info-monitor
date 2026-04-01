@@ -6,6 +6,7 @@ import json
 import logging
 import os
 import sys
+from logging.handlers import RotatingFileHandler
 from contextvars import ContextVar
 from datetime import datetime, timezone
 from typing import Optional
@@ -81,6 +82,21 @@ def _configure_logging() -> None:
     root_logger.handlers.clear()
     root_logger.addHandler(handler)
     root_logger.setLevel(level)
+
+    log_dir = os.environ.get("PIM_LOG_DIR", ".pim-local-logs")
+    if log_dir:
+        os.makedirs(log_dir, exist_ok=True)
+        file_handler = RotatingFileHandler(
+            os.path.join(log_dir, "backend.log"),
+            maxBytes=10 * 1024 * 1024,  # 10MB per file
+            backupCount=5,
+            encoding="utf-8",
+        )
+        file_handler.setLevel(level)
+        file_handler.addFilter(_RequestContextFilter())
+        file_handler.setFormatter(_JsonFormatter())
+        root_logger.addHandler(file_handler)
+
     _logging_configured = True
 
 

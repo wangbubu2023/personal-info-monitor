@@ -11,6 +11,7 @@ Usage:
     ./pim backup         Create a SQLite backup and archive local config
     ./pim rollback <rev> Downgrade Alembic schema to a target revision
     ./pim logs           Tail the log file
+    ./pim cleanup        Remove Celery remnants, rotated logs, and Python __pycache__
 """
 
 import json
@@ -459,6 +460,50 @@ def cmd_logs():
         print("Logs appear in the terminal when running in foreground.")
 
 
+def cmd_cleanup():
+    """Remove Celery remnants, rotated local backend logs, and Python __pycache__ dirs."""
+    log_dir = ROOT / ".pim-local-logs"
+    pid_dir = ROOT / ".pim-local-pids"
+    removed = 0
+
+    if log_dir.is_dir():
+        for pattern in ("celery_*", "celery-*"):
+            for path in log_dir.glob(pattern):
+                try:
+                    path.unlink()
+                    removed += 1
+                    print(f"  removed {path.relative_to(ROOT)}")
+                except OSError as e:
+                    print(f"  skip {path}: {e}")
+        for path in log_dir.glob("backend.log.*"):
+            try:
+                path.unlink()
+                removed += 1
+                print(f"  removed {path.relative_to(ROOT)}")
+            except OSError as e:
+                print(f"  skip {path}: {e}")
+
+    if pid_dir.is_dir():
+        for path in pid_dir.glob("celery_*"):
+            try:
+                path.unlink()
+                removed += 1
+                print(f"  removed {path.relative_to(ROOT)}")
+            except OSError as e:
+                print(f"  skip {path}: {e}")
+
+    for cache in ROOT.rglob("__pycache__"):
+        if cache.is_dir():
+            try:
+                shutil.rmtree(cache)
+                removed += 1
+                print(f"  removed {cache.relative_to(ROOT)}")
+            except OSError as e:
+                print(f"  skip {cache}: {e}")
+
+    print(f"Cleanup done ({removed} item(s)).")
+
+
 def cmd_backup():
     """Create a hot SQLite backup plus a small config archive."""
     if not VENV.exists():
@@ -586,6 +631,7 @@ COMMANDS = {
     "backup": cmd_backup,
     "rollback": cmd_rollback,
     "logs": cmd_logs,
+    "cleanup": cmd_cleanup,
     "install-service": cmd_install_service,
     "uninstall-service": cmd_uninstall_service,
 }
