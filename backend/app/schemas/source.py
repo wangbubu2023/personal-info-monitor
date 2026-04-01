@@ -19,6 +19,7 @@ class SourceBase(BaseModel):
     fetch_interval: int = Field(default=60, ge=15, le=1440)  # 15 min to 24 hours
     enabled: bool = True
     priority: int = Field(default=0, ge=0, le=100)
+    use_keyword_filter: bool = False
     auth_required: bool = False
     auth_config_id: Optional[UUID] = None
     metadata_: Optional[Dict[str, Any]] = Field(default_factory=dict, alias="metadata")
@@ -59,6 +60,7 @@ class SourceUpdate(BaseModel):
     fetch_interval: Optional[int] = Field(None, ge=15, le=1440)
     enabled: Optional[bool] = None
     priority: Optional[int] = Field(None, ge=0, le=100)
+    use_keyword_filter: Optional[bool] = None
     auth_required: Optional[bool] = None
     auth_config_id: Optional[UUID] = None
     metadata_: Optional[Dict[str, Any]] = Field(None, alias="metadata")

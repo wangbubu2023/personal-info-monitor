@@ -41,6 +41,7 @@ class Source(Base):
     fetch_interval = Column(Integer, default=60)  # Minutes
     enabled = Column(Boolean, default=True)
     priority = Column(Integer, default=0)
+    use_keyword_filter = Column(Boolean, default=False)
 
     # Authentication
     auth_required = Column(Boolean, default=False)
