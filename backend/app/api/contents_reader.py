@@ -37,6 +37,7 @@ from app.processors.translator import Translator
 from app.tasks.fetch_auth_helpers import try_parse_auth_credentials
 from app.utils.cookies import normalize_cookie_dict
 from app.utils.datetime import utcnow_naive
+from app.utils.ssrf import assert_public_http_target
 from app.utils.text import strip_html_tags, truncate_content
 
 router = APIRouter()
@@ -58,6 +59,11 @@ async def _fetch_reader_fulltext(original_url: str) -> tuple[str, str]:
         return "", ""
     parsed = urlparse(url)
     if parsed.scheme not in {"http", "https"}:
+        return "", ""
+
+    try:
+        await assert_public_http_target(url)
+    except ValueError:
         return "", ""
 
     headers = {

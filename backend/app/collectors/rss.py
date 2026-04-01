@@ -14,6 +14,7 @@ from bs4 import BeautifulSoup
 
 from app.collectors.base import BaseCollector
 from app.models import Source
+from app.utils.ssrf import check_before_fetch
 from app.utils.text import strip_html_tags
 
 
@@ -113,12 +114,18 @@ class RSSCollector(BaseCollector):
         import random
         
         try:
+            cookies = self.get_runtime_cookies(source)
+            await check_before_fetch(url, source_url=source.url, cookies=cookies or None)
+        except ValueError as exc:
+            self.logger.warning("SSRF/cookie check blocked page fetch for %s: %s", url, exc)
+            return None
+
+        try:
             headers = {
                 "User-Agent": random.choice(self.user_agents),
                 "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
                 "Accept-Language": "en-US,en;q=0.5",
             }
-            cookies = self.get_runtime_cookies(source)
             
             async with aiohttp.ClientSession() as session:
                 async with session.get(

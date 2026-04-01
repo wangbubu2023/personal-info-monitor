@@ -19,6 +19,7 @@ from app.utils.cookies import cookie_domains_for_host
 from app.utils.logger import get_logger
 from app.utils.playwright_stealth import stealth_init_script
 from app.utils.publish_time import parse_publish_time_text
+from app.utils.ssrf import check_before_fetch
 
 logger = get_logger(__name__)
 
@@ -520,6 +521,16 @@ class WebsiteCollector(BaseCollector):
         browser_session: Optional[Dict[str, Any]] = None,
     ) -> Tuple[Optional[str], Optional[str], Optional[str]]:
         import random
+
+        try:
+            await check_before_fetch(
+                article_url,
+                source_url=source_url,
+                cookies=cookies or None,
+            )
+        except ValueError as exc:
+            self.logger.warning("SSRF/cookie check blocked article fetch for %s: %s", article_url, exc)
+            return None, None, "ssrf_blocked"
 
         if self._is_google_news_wrapper(article_url):
             # First try full browser flow directly on wrapper URL.

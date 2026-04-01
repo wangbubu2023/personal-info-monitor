@@ -17,6 +17,7 @@ from app.processors.extractor import ContentExtractor
 from app.processors.keyword_matcher import KeywordMatcher
 from app.utils.cookies import normalize_cookie_dict
 from app.utils.logger import get_logger
+from app.utils.ssrf import check_before_fetch
 from app.utils.text import strip_html_tags, truncate_content
 
 logger = get_logger(__name__)
@@ -50,9 +51,17 @@ class ContentProcessor:
         except Exception:
             return False
 
-    async def _fetch_full_text_with_cookies(self, url: str, cookies: Dict[str, str]) -> Optional[str]:
+    async def _fetch_full_text_with_cookies(
+        self, url: str, cookies: Dict[str, str], source_url: str = "",
+    ) -> Optional[str]:
         """Fetch first-party article page with cookies and extract readable text."""
         if not url or not cookies or self._is_wrapper_url(url):
+            return None
+
+        try:
+            await check_before_fetch(url, source_url=source_url, cookies=cookies)
+        except ValueError as exc:
+            logger.warning("SSRF/cookie check blocked cookie fetch for %s: %s", url, exc)
             return None
 
         headers = {
@@ -118,7 +127,9 @@ class ContentProcessor:
         # Any cookie-protected website source must attempt full-text retrieval.
         article_url = str(raw_content.get("url") or "")
         if cookie_fulltext_required and (not main_text_clean or len(main_text_clean) < 600):
-            fetched_full_text = await self._fetch_full_text_with_cookies(article_url, runtime_cookies)
+            fetched_full_text = await self._fetch_full_text_with_cookies(
+                article_url, runtime_cookies, source_url=source.url,
+            )
             if fetched_full_text and len(fetched_full_text) > len(main_text_clean):
                 main_text = fetched_full_text
                 main_text_clean = fetched_full_text
