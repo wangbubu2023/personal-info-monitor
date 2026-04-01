@@ -115,8 +115,30 @@ server {
 
 建议定期备份：
 
-- `pim.db`
-- `.env`
+- `pim.db`（SQLite 主库）
+- `backend/.env`（或你实际使用的环境变量文件路径）
+- **`runtime-secrets.json`**（位于 `DATA_DIR` 下，通常与 `pim.db` 同目录）
+
+`runtime-secrets.json` 保存运行时密钥材料（用于加密与认证相关能力；若未在环境变量中显式提供对应密钥，应用会依赖该文件中的持久化值）。**若丢失该文件且没有其他可用的密钥备份，将无法解密库中已保存的历史凭据。** 仅备份 `pim.db` 与 `.env` 不足以保证可解密恢复，请务必将 `runtime-secrets.json` 一并纳入备份与异地保存策略。
+
+推荐使用项目自带的备份命令（会执行 SQLite 热备份并归档 `backend/.env` 与 `runtime-secrets.json`，若存在）：
+
+```bash
+cd /path/to/personal-info-monitor
+./pim backup
+```
+
+手动打包默认数据目录示例（包含 `pim.db` 与 `runtime-secrets.json`）：
+
+```bash
+tar -czvf ~/pim-data-$(date +%Y%m%d).tar.gz -C ~/.pim data
+```
+
+若 `.env` 不在上述目录内，请单独备份，例如：
+
+```bash
+cp /path/to/personal-info-monitor/backend/.env ~/pim-env-backup-$(date +%Y%m%d).txt
+```
 
 ## 7. 更新流程
 

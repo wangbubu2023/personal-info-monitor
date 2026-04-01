@@ -102,5 +102,6 @@ cd backend
 
 ## 说明
 
-- 当前项目不要求 PostgreSQL、Redis、Celery、Alembic。
+- 当前项目不要求 PostgreSQL、Redis、Celery（主路径为 SQLite 与单进程 FastAPI）。
+- 数据库结构变更由 **Alembic** 管理：应用启动时会自动执行迁移；本地也可在 `backend` 目录执行 `./.venv/bin/alembic upgrade head`。完整说明见根目录 `README.md` 中的「数据库迁移」。
 - 如需桌面模式，可在 `frontend/src-tauri/` 下继续使用 Tauri 开发/打包。
