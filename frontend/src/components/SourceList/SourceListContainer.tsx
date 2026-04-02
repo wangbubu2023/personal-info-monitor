@@ -390,9 +390,13 @@ const SourceListContainer: React.FC = () => {
               icon={<RadarChartOutlined />}
               size="small"
               onClick={async () => {
-                await Promise.all(selectedRowKeys.map((id) => sourcesApi.probeSource(id as string)))
-                queryClient.invalidateQueries({ queryKey: sourceKeys.all })
-                message.success(`已探测 ${selectedRowKeys.length} 个源`)
+                try {
+                  await Promise.all(selectedRowKeys.map((id) => sourcesApi.probeSource(id as string)))
+                  queryClient.invalidateQueries({ queryKey: sourceKeys.all })
+                  message.success(`已探测 ${selectedRowKeys.length} 个源`)
+                } catch {
+                  message.error('批量探测失败')
+                }
               }}
             >
               批量探测
@@ -452,7 +456,7 @@ const SourceListContainer: React.FC = () => {
         categories={categories}
         sharedXAuthConfigs={sharedXAuthConfigs}
         isSubmitting={createMutation.isPending || updateMutation.isPending}
-        onTypeChange={handleTypeChange as (type: SourceType) => void}
+        onTypeChange={handleTypeChange}
         onSubmit={handleSubmit}
         onClose={() => {
           setIsModalOpen(false)

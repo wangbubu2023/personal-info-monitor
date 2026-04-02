@@ -13,7 +13,7 @@ import {
   getAuthConfigDisplayName,
 } from '../../../utils/sourceAuth'
 
-interface SourceFormValues extends Omit<SourceCreate, 'extra_urls'> {
+export interface SourceFormValues extends Omit<SourceCreate, 'extra_urls'> {
   extra_urls_text?: string
   paywall_enabled?: boolean
   x_cookie_enabled?: boolean

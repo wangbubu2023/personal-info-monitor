@@ -16,6 +16,7 @@ import type { AuthConfig } from '../../services/configs'
 import { PODCAST_SOURCES_ENABLED } from '../../config/features'
 import { getAuthConfigDisplayName } from '../../utils/sourceAuth'
 import SectionNote from '../ui/SectionNote'
+import type { SourceFormValues } from './hooks/useSourceEditor'
 
 const { Option } = Select
 
@@ -27,7 +28,7 @@ interface SourceEditorModalProps {
   sharedXAuthConfigs: AuthConfig[]
   isSubmitting: boolean
   onTypeChange: (type: SourceType) => void
-  onSubmit: (values: any) => void
+  onSubmit: (values: SourceFormValues) => void
   onClose: () => void
 }
 
