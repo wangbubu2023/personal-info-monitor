@@ -13,8 +13,6 @@ import {
   getAuthConfigDisplayName,
 } from '../../../utils/sourceAuth'
 
-export { getAuthConfigDisplayName }
-
 interface SourceFormValues extends Omit<SourceCreate, 'extra_urls'> {
   extra_urls_text?: string
   paywall_enabled?: boolean
@@ -35,7 +33,6 @@ interface UseSourceEditorOptions {
   authConfigs: AuthConfig[]
   sourceLimitReached: boolean
   maxSources: number
-  remainingSources: number
   sharedXAuthConfigs: AuthConfig[]
   defaultSharedXAuthConfigId: string | undefined
 }

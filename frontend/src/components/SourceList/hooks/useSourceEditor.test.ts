@@ -41,13 +41,13 @@ describe('useSourceEditor', () => {
   beforeEach(() => vi.clearAllMocks())
 
   it('initialises with isModalOpen=false and editingSource=null', () => {
-    const { result } = renderHook(() => useSourceEditor({ authConfigs: [], sourceLimitReached: false, maxSources: 200, remainingSources: 200, sharedXAuthConfigs: [], defaultSharedXAuthConfigId: undefined }), { wrapper })
+    const { result } = renderHook(() => useSourceEditor({ authConfigs: [], sourceLimitReached: false, maxSources: 200, sharedXAuthConfigs: [], defaultSharedXAuthConfigId: undefined }), { wrapper })
     expect(result.current.isModalOpen).toBe(false)
     expect(result.current.editingSource).toBeNull()
   })
 
   it('handleAdd opens modal and resets editingSource', () => {
-    const { result } = renderHook(() => useSourceEditor({ authConfigs: [], sourceLimitReached: false, maxSources: 200, remainingSources: 200, sharedXAuthConfigs: [], defaultSharedXAuthConfigId: undefined }), { wrapper })
+    const { result } = renderHook(() => useSourceEditor({ authConfigs: [], sourceLimitReached: false, maxSources: 200, sharedXAuthConfigs: [], defaultSharedXAuthConfigId: undefined }), { wrapper })
     act(() => { result.current.handleAdd() })
     expect(result.current.isModalOpen).toBe(true)
     expect(result.current.editingSource).toBeNull()
@@ -60,7 +60,7 @@ describe('useSourceEditor', () => {
   })
 
   it('matchAuthConfigByHost returns undefined for empty configs', () => {
-    const { result } = renderHook(() => useSourceEditor({ authConfigs: [], sourceLimitReached: false, maxSources: 200, remainingSources: 200, sharedXAuthConfigs: [], defaultSharedXAuthConfigId: undefined }), { wrapper })
+    const { result } = renderHook(() => useSourceEditor({ authConfigs: [], sourceLimitReached: false, maxSources: 200, sharedXAuthConfigs: [], defaultSharedXAuthConfigId: undefined }), { wrapper })
     expect(result.current.matchAuthConfigByHost('https://example.com', [])).toBeUndefined()
   })
 })
