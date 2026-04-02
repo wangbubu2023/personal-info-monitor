@@ -18,27 +18,13 @@ import {
 import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons'
 import { configsApi, type APIConfig, type AuthConfig } from '../../services/configs'
 import { formatLocalDateTime } from '../../utils/datetime'
+import { isXCookieProfile } from '../../utils/sourceAuth'
 import SectionNote from '../ui/SectionNote'
 
 const { Option } = Select
 const { Password } = Input
 const { Text } = Typography
 const SERVICE_CREDENTIAL_PLATFORMS = ['youtube', 'x_twitter'] as const
-
-const normalizeHost = (value?: string): string => {
-  try {
-    if (!value) return ''
-    const raw = value.includes('://') ? value : `https://${value}`
-    return (new URL(raw).hostname || '').toLowerCase().replace(/^www\./, '')
-  } catch {
-    return ''
-  }
-}
-
-const isXCookieProfile = (config: AuthConfig): boolean => {
-  const host = normalizeHost(config.site_url)
-  return config.auth_type === 'cookie' && (host === 'x.com' || host === 'twitter.com')
-}
 
 const APIKeysTab: React.FC = () => {
   const [isCredentialModalOpen, setIsCredentialModalOpen] = useState(false)
