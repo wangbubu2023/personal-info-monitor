@@ -54,6 +54,10 @@ async def lifespan(app: FastAPI):
     scheduler.start()
     trigger_startup_jobs()
 
+    # Start bounded task queue workers
+    from app.tasks.task_queue import task_queue
+    await task_queue.start_workers()
+
     # Print startup info
     print(f"\n  PIM API Key: {_mask_secret(settings.pim_api_key)}")
     print(f"  Data dir:    {settings.data_dir}")
@@ -65,6 +69,7 @@ async def lifespan(app: FastAPI):
 
     # Shutdown
     scheduler.shutdown(wait=False)
+    await task_queue.stop_workers()
     await async_engine.dispose()
 
 

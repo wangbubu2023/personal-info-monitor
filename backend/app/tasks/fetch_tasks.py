@@ -93,9 +93,9 @@ async def _do_fetch(source_id: str, manual_trigger: bool):
         # Dispatch non-blocking post-processing for new content.
         new_ids = result.get("new_content_ids", [])
         if new_ids:
-            from app.tasks.process_tasks import process_new_content
+            from app.tasks.task_queue import task_queue
             for cid in new_ids:
-                asyncio.create_task(process_new_content(str(cid)))
+                await task_queue.enqueue_process(str(cid))
 
         return result
 
@@ -124,11 +124,12 @@ async def fetch_all_sources(manual_trigger: bool = False):
 
     source_ids = await asyncio.to_thread(_query_sources)
 
+    from app.tasks.task_queue import task_queue
     scheduled = 0
     for sid in source_ids:
         if fetch_lock.is_locked(sid):
             continue
-        asyncio.create_task(fetch_source(sid, manual_trigger=manual_trigger))
+        await task_queue.enqueue_fetch(sid, manual_trigger=manual_trigger)
         scheduled += 1
 
     logger.info(f"Dispatched {scheduled}/{len(source_ids)} fetch tasks")
@@ -164,11 +165,12 @@ async def check_and_fetch_due_sources():
 
     due_ids = await asyncio.to_thread(_query_due)
 
+    from app.tasks.task_queue import task_queue
     scheduled = 0
     for sid in due_ids:
         if fetch_lock.is_locked(sid):
             continue
-        asyncio.create_task(fetch_source(sid))
+        await task_queue.enqueue_fetch(sid)
         scheduled += 1
 
     logger.info(f"Scheduled {scheduled}/{len(due_ids)} due sources")

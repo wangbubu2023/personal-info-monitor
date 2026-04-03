@@ -142,11 +142,10 @@ async def _process_content_async(content_id: str, regenerate_summary: bool, retr
 
 async def batch_process_contents(content_ids: list, regenerate_summary: bool = False, retranslate: bool = False):
     """Batch process multiple content items."""
+    from app.tasks.task_queue import task_queue
     logger.info(f"Batch processing {len(content_ids)} contents")
     for content_id in content_ids:
-        asyncio.create_task(
-            process_content(content_id, regenerate_summary, retranslate)
-        )
+        await task_queue.enqueue_process(content_id)
 
 
 async def update_keyword_matches():
