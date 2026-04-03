@@ -48,35 +48,6 @@ async def probe_url(req: ProbeRequest):
                           sample_count=result.sample_count)
 
 
-@router.post("/{source_id}/probe")
-async def probe_source(source_id: UUID, db: AsyncSession = Depends(get_async_db)):
-    result = await db.execute(select(Source).filter(Source.id == source_id))
-    source = result.scalar_one_or_none()
-    if not source or not _source_is_visible(source):
-        raise HTTPException(status_code=404, detail="Source not found")
-
-    import app.api.sources as _pkg
-    stype = _ensure_supported_source_type(source.type)
-    urls = _get_source_urls(source)
-    probe_result, rss_urls, _ = await _pkg._probe_urls(urls, stype)
-
-    meta = dict(source.metadata_ or {})
-    meta["probe"] = probe_result.to_dict()
-    if stype == "x" and probe_result.strategy in {"rsshub", "nitter", "api"}:
-        meta["strategy"] = probe_result.strategy
-    if rss_urls:
-        meta["rss_urls"] = rss_urls
-    if source.url in rss_urls:
-        meta["rss_url"] = rss_urls[source.url]
-    elif probe_result.rss_url:
-        meta["rss_url"] = probe_result.rss_url
-    source.metadata_ = meta
-    await db.commit()
-    await db.refresh(source)
-    _invalidate_source_cache()
-    return serialize_source(source)
-
-
 @router.post("/probe-all")
 async def probe_all_sources(db: AsyncSession = Depends(get_async_db)):
     result = await db.execute(_exclude_disabled_source_types(select(Source).filter(Source.enabled == True)))
@@ -111,3 +82,32 @@ async def probe_all_sources(db: AsyncSession = Depends(get_async_db)):
     await db.commit()
     _invalidate_source_cache()
     return {"message": f"Probed {updated} sources", "total": updated, "failed_items": failed_items}
+
+
+@router.post("/{source_id}/probe")
+async def probe_source(source_id: UUID, db: AsyncSession = Depends(get_async_db)):
+    result = await db.execute(select(Source).filter(Source.id == source_id))
+    source = result.scalar_one_or_none()
+    if not source or not _source_is_visible(source):
+        raise HTTPException(status_code=404, detail="Source not found")
+
+    import app.api.sources as _pkg
+    stype = _ensure_supported_source_type(source.type)
+    urls = _get_source_urls(source)
+    probe_result, rss_urls, _ = await _pkg._probe_urls(urls, stype)
+
+    meta = dict(source.metadata_ or {})
+    meta["probe"] = probe_result.to_dict()
+    if stype == "x" and probe_result.strategy in {"rsshub", "nitter", "api"}:
+        meta["strategy"] = probe_result.strategy
+    if rss_urls:
+        meta["rss_urls"] = rss_urls
+    if source.url in rss_urls:
+        meta["rss_url"] = rss_urls[source.url]
+    elif probe_result.rss_url:
+        meta["rss_url"] = probe_result.rss_url
+    source.metadata_ = meta
+    await db.commit()
+    await db.refresh(source)
+    _invalidate_source_cache()
+    return serialize_source(source)
