@@ -31,10 +31,10 @@ class BoundedTaskQueue:
             )
             return False
 
-    async def enqueue_process(self, content_id: str, job_id: str | None = None) -> bool:
+    async def enqueue_process(self, content_id: str) -> bool:
         """Enqueue a process job. Returns False (and logs) if queue is full."""
         try:
-            self._process_queue.put_nowait((content_id, job_id))
+            self._process_queue.put_nowait(content_id)
             return True
         except asyncio.QueueFull:
             logger.warning(
@@ -68,8 +68,8 @@ class BoundedTaskQueue:
                 source_id, manual_trigger = await self._fetch_queue.get()
                 try:
                     await fetch_source(source_id, manual_trigger=manual_trigger)
-                except Exception as exc:
-                    logger.error("fetch worker error for source_id=%s: %s", source_id, exc)
+                except Exception:
+                    logger.exception("fetch worker error for source_id=%s", source_id)
                 finally:
                     self._fetch_queue.task_done()
             except asyncio.CancelledError:
@@ -79,11 +79,11 @@ class BoundedTaskQueue:
         from app.tasks.process_tasks import process_new_content
         while True:
             try:
-                content_id, job_id = await self._process_queue.get()
+                content_id = await self._process_queue.get()
                 try:
                     await process_new_content(content_id)
-                except Exception as exc:
-                    logger.error("process worker error for content_id=%s: %s", content_id, exc)
+                except Exception:
+                    logger.exception("process worker error for content_id=%s", content_id)
                 finally:
                     self._process_queue.task_done()
             except asyncio.CancelledError:
