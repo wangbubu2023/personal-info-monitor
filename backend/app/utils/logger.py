@@ -14,7 +14,23 @@ from typing import Optional
 from app.config import get_settings
 
 _request_id: ContextVar[str | None] = ContextVar("request_id", default=None)
+_job_id: ContextVar[str | None] = ContextVar("job_id", default=None)
 _logging_configured = False
+
+
+def set_job_id(job_id: str | None) -> None:
+    """Bind the current background job id into logging context."""
+    _job_id.set(job_id)
+
+
+def clear_job_id() -> None:
+    """Clear job-scoped logging context."""
+    _job_id.set(None)
+
+
+def get_job_id() -> str | None:
+    """Return the active job id, if any."""
+    return _job_id.get()
 
 
 def set_request_id(request_id: str | None) -> None:
@@ -35,6 +51,7 @@ def get_request_id() -> str | None:
 class _RequestContextFilter(logging.Filter):
     def filter(self, record: logging.LogRecord) -> bool:
         record.request_id = get_request_id()
+        record.job_id = get_job_id()
         return True
 
 
@@ -51,6 +68,14 @@ class _JsonFormatter(logging.Formatter):
         request_id = getattr(record, "request_id", None)
         if request_id:
             payload["request_id"] = request_id
+        job_id = getattr(record, "job_id", None)
+        if job_id:
+            payload["job_id"] = job_id
+        # Forward any extra structured fields (phase, source_id, etc.)
+        for key in ("phase", "source_id", "content_id"):
+            val = record.__dict__.get(key)
+            if val is not None:
+                payload[key] = val
         if record.exc_info:
             payload["exc_info"] = self.formatException(record.exc_info)
         return json.dumps(payload, ensure_ascii=True)
