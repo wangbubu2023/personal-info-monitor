@@ -182,11 +182,8 @@ fn get_api_key(app: AppHandle) -> Result<Option<String>, String> {
             }
         }
         Err(keyring::Error::NoEntry) => {
-            // 尝试从旧明文文件迁移
-            if let Ok(migrated) = migrate_from_legacy_file(&app, &entry) {
-                return Ok(migrated);
-            }
-            Ok(None)
+            // 尝试从旧明文文件迁移，错误直接传播
+            migrate_from_legacy_file(&app, &entry)
         }
         Err(e) => Err(format!("读取 API Key 失败: {e}")),
     }
