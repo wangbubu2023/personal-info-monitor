@@ -1,6 +1,7 @@
 """Tasks for fetching content from sources — high-concurrency async engine."""
 
 import asyncio
+from uuid import uuid4
 
 from sqlalchemy import text
 
@@ -16,7 +17,7 @@ from app.models.source import SourceType
 from app.pipeline.coordinator import run_fetch_pipeline
 from app.tasks.fetch_orchestrator import persist_fetch_task_exception
 from app.utils.datetime import utcnow_naive
-from app.utils.logger import get_logger
+from app.utils.logger import get_logger, set_job_id, clear_job_id
 from app.utils.url import normalize_host
 
 logger = get_logger(__name__)
@@ -25,18 +26,24 @@ settings = get_settings()
 
 async def fetch_source(source_id: str, manual_trigger: bool = False):
     """Fetch content from a single source. Runs pipeline in a thread."""
-    logger.info(f"Starting fetch for source: {source_id} (manual={manual_trigger})")
+    job_id = uuid4().hex
+    set_job_id(job_id)
+    logger.info(
+        "Starting fetch for source: %s (manual=%s)", source_id, manual_trigger,
+        extra={"phase": "fetch", "source_id": source_id},
+    )
 
     sem = get_fetch_semaphore()
     async with sem:
         await task_tracker.start_fetch()
         try:
-            await _do_fetch(source_id, manual_trigger)
+            await _do_fetch(source_id, manual_trigger, job_id=job_id)
         finally:
             await task_tracker.end_fetch()
+            clear_job_id()
 
 
-async def _do_fetch(source_id: str, manual_trigger: bool):
+async def _do_fetch(source_id: str, manual_trigger: bool, job_id: str | None = None):
     from app.database import SessionLocal
     from app.models import Source
 
@@ -95,7 +102,7 @@ async def _do_fetch(source_id: str, manual_trigger: bool):
         if new_ids:
             from app.tasks.task_queue import task_queue
             for cid in new_ids:
-                await task_queue.enqueue_process(str(cid))
+                await task_queue.enqueue_process(str(cid), job_id=job_id)
 
         return result
 
