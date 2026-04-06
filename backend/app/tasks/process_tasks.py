@@ -7,14 +7,16 @@ import asyncio
 
 from app.features import KEYWORD_MONITORING_ENABLED
 from app.background import get_llm_semaphore, task_tracker
-from app.utils.logger import get_logger
+from app.utils.logger import get_logger, set_job_id, clear_job_id
 from app.utils.text import truncate_content
 
 logger = get_logger(__name__)
 
 
-async def process_new_content(content_id: str):
+async def process_new_content(content_id: str, job_id: str | None = None):
     """Process a freshly saved content item (cookie full-text + keywords)."""
+    if job_id:
+        set_job_id(job_id)
     sem = get_llm_semaphore()
     async with sem:
         await task_tracker.start_process()
@@ -22,6 +24,8 @@ async def process_new_content(content_id: str):
             await _process_new_content_async(content_id)
         finally:
             await task_tracker.end_process()
+            if job_id:
+                clear_job_id()
 
 
 async def _process_new_content_async(content_id: str):
