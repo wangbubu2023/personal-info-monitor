@@ -11,7 +11,7 @@
   },
   "app": {
     "security": {
-      "csp": null,
+      "csp": "default-src 'self'; connect-src 'self' http://127.0.0.1:8000; img-src 'self' data: blob:; script-src 'self'; style-src 'self' 'unsafe-inline'",
       "capabilities": ["default"]
     },
     "windows": [
