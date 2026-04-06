@@ -5,10 +5,8 @@ use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
-#[cfg(unix)]
-use std::os::unix::fs::PermissionsExt;
-
 use tauri::{AppHandle, Manager, RunEvent};
+use keyring::Entry;
 
 /// Child processes we spawned (killed on app exit).
 struct BackendState {
@@ -171,55 +169,68 @@ fn stop_backend_stack(app: &AppHandle) {
     }
 }
 
-fn api_key_file_path(app: &AppHandle) -> Result<PathBuf, String> {
-    let base = app
-        .path()
-        .app_config_dir()
-        .map_err(|e| format!("无法获取应用配置目录: {e}"))?;
-    let secrets_dir = base.join("secrets");
-    std::fs::create_dir_all(&secrets_dir)
-        .map_err(|e| format!("无法创建 secrets 目录: {e}"))?;
-    Ok(secrets_dir.join("pim_api_key"))
-}
-
 #[tauri::command]
 fn get_api_key(app: AppHandle) -> Result<Option<String>, String> {
-    let path = api_key_file_path(&app)?;
-    if !path.exists() {
-        return Ok(None);
-    }
-    let value = std::fs::read_to_string(path).map_err(|e| format!("读取 API Key 失败: {e}"))?;
-    let trimmed = value.trim().to_string();
-    if trimmed.is_empty() {
-        Ok(None)
-    } else {
-        Ok(Some(trimmed))
+    let entry = Entry::new("pim", "api_key").map_err(|e| format!("keyring init failed: {e}"))?;
+    match entry.get_password() {
+        Ok(value) => {
+            let trimmed = value.trim().to_string();
+            if trimmed.is_empty() {
+                Ok(None)
+            } else {
+                Ok(Some(trimmed))
+            }
+        }
+        Err(keyring::Error::NoEntry) => {
+            // 尝试从旧明文文件迁移
+            if let Ok(migrated) = migrate_from_legacy_file(&app, &entry) {
+                return Ok(migrated);
+            }
+            Ok(None)
+        }
+        Err(e) => Err(format!("读取 API Key 失败: {e}")),
     }
 }
 
+/// 从旧的 secrets/pim_api_key 文件读取，写入 Keychain，删除文件。
+fn migrate_from_legacy_file(app: &AppHandle, entry: &Entry) -> Result<Option<String>, String> {
+    let base = app.path().app_config_dir()
+        .map_err(|e| format!("cannot get config dir: {e}"))?;
+    let legacy = base.join("secrets").join("pim_api_key");
+    if !legacy.exists() {
+        return Ok(None);
+    }
+    let raw = std::fs::read_to_string(&legacy)
+        .map_err(|e| format!("read legacy key: {e}"))?;
+    let trimmed = raw.trim().to_string();
+    if trimmed.is_empty() {
+        let _ = std::fs::remove_file(&legacy);
+        return Ok(None);
+    }
+    entry.set_password(&trimmed).map_err(|e| format!("migrate to keyring: {e}"))?;
+    let _ = std::fs::remove_file(&legacy);
+    eprintln!("[pim-tauri] API Key 已从旧文件迁移到系统 Keychain");
+    Ok(Some(trimmed))
+}
+
 #[tauri::command]
-fn set_api_key(app: AppHandle, value: String) -> Result<(), String> {
-    let path = api_key_file_path(&app)?;
-    let trimmed = value.trim();
+fn set_api_key(_app: AppHandle, value: String) -> Result<(), String> {
+    let trimmed = value.trim().to_string();
     if trimmed.is_empty() {
         return Err("API Key 不能为空".into());
     }
-    std::fs::write(&path, trimmed.as_bytes()).map_err(|e| format!("写入 API Key 失败: {e}"))?;
-    #[cfg(unix)]
-    {
-        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))
-            .map_err(|e| format!("设置 API Key 文件权限失败: {e}"))?;
-    }
-    Ok(())
+    let entry = Entry::new("pim", "api_key").map_err(|e| format!("keyring init failed: {e}"))?;
+    entry.set_password(&trimmed).map_err(|e| format!("写入 API Key 失败: {e}"))
 }
 
 #[tauri::command]
-fn clear_api_key(app: AppHandle) -> Result<(), String> {
-    let path = api_key_file_path(&app)?;
-    if path.exists() {
-        std::fs::remove_file(path).map_err(|e| format!("清除 API Key 失败: {e}"))?;
+fn clear_api_key(_app: AppHandle) -> Result<(), String> {
+    let entry = Entry::new("pim", "api_key").map_err(|e| format!("keyring init failed: {e}"))?;
+    match entry.delete_credential() {
+        Ok(()) => Ok(()),
+        Err(keyring::Error::NoEntry) => Ok(()),
+        Err(e) => Err(format!("清除 API Key 失败: {e}")),
     }
-    Ok(())
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
