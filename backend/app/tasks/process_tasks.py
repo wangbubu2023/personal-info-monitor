@@ -16,15 +16,17 @@ logger = get_logger(__name__)
 async def process_new_content(content_id: str, job_id: str | None = None):
     """Process a freshly saved content item (cookie full-text + keywords)."""
     token = bind_job_id(job_id) if job_id else None
-    sem = get_llm_semaphore()
-    async with sem:
-        await task_tracker.start_process()
-        try:
-            await _process_new_content_async(content_id)
-        finally:
-            await task_tracker.end_process()
-            if token is not None:
-                restore_job_id(token)
+    try:
+        sem = get_llm_semaphore()
+        async with sem:
+            await task_tracker.start_process()
+            try:
+                await _process_new_content_async(content_id)
+            finally:
+                await task_tracker.end_process()
+    finally:
+        if token is not None:
+            restore_job_id(token)
 
 
 async def _process_new_content_async(content_id: str):
