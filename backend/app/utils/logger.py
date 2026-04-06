@@ -7,7 +7,7 @@ import logging
 import os
 import sys
 from logging.handlers import RotatingFileHandler
-from contextvars import ContextVar
+from contextvars import ContextVar, Token
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -18,14 +18,14 @@ _job_id: ContextVar[str | None] = ContextVar("job_id", default=None)
 _logging_configured = False
 
 
-def set_job_id(job_id: str | None) -> None:
-    """Bind the current background job id into logging context."""
-    _job_id.set(job_id)
+def bind_job_id(job_id: str | None) -> Token:
+    """Bind job_id to context, returns Token for restore."""
+    return _job_id.set(job_id)
 
 
-def clear_job_id() -> None:
-    """Clear job-scoped logging context."""
-    _job_id.set(None)
+def restore_job_id(token: Token) -> None:
+    """Restore previous job_id using saved token."""
+    _job_id.reset(token)
 
 
 def get_job_id() -> str | None:

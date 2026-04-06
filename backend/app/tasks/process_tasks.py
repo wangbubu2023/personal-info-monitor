@@ -7,7 +7,7 @@ import asyncio
 
 from app.features import KEYWORD_MONITORING_ENABLED
 from app.background import get_llm_semaphore, task_tracker
-from app.utils.logger import get_logger, set_job_id, clear_job_id
+from app.utils.logger import get_logger, bind_job_id, restore_job_id
 from app.utils.text import truncate_content
 
 logger = get_logger(__name__)
@@ -15,8 +15,7 @@ logger = get_logger(__name__)
 
 async def process_new_content(content_id: str, job_id: str | None = None):
     """Process a freshly saved content item (cookie full-text + keywords)."""
-    if job_id:
-        set_job_id(job_id)
+    token = bind_job_id(job_id) if job_id else None
     sem = get_llm_semaphore()
     async with sem:
         await task_tracker.start_process()
@@ -24,8 +23,8 @@ async def process_new_content(content_id: str, job_id: str | None = None):
             await _process_new_content_async(content_id)
         finally:
             await task_tracker.end_process()
-            if job_id:
-                clear_job_id()
+            if token is not None:
+                restore_job_id(token)
 
 
 async def _process_new_content_async(content_id: str):
@@ -149,7 +148,7 @@ async def batch_process_contents(content_ids: list, regenerate_summary: bool = F
     from app.tasks.task_queue import task_queue
     logger.info(f"Batch processing {len(content_ids)} contents")
     for content_id in content_ids:
-        await task_queue.enqueue_process(content_id)
+        await task_queue.enqueue_process(content_id, job_id=None)
 
 
 async def update_keyword_matches():
