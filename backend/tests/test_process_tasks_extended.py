@@ -65,8 +65,9 @@ async def test_process_new_content_keyword_matching():
                 with patch("app.database.SessionLocal", return_value=mock_db):
                     with patch("app.processors.keyword_matcher.KeywordMatcher") as MockMatcher:
                         MockMatcher.return_value.match.return_value = [{"id": "kw-1", "keyword": "test"}]
-                        from app.tasks.process_tasks import process_new_content
-                        await process_new_content("content-1")
+                        with patch("app.tasks.process_tasks._dispatch_keyword_alerts"):
+                            from app.tasks.process_tasks import process_new_content
+                            await process_new_content("content-1")
 
     assert mock_content.keyword_matches == [{"id": "kw-1", "keyword": "test"}]
 
@@ -103,8 +104,8 @@ async def test_process_new_content_no_keywords_when_disabled():
                     with patch("app.processors.keyword_matcher.KeywordMatcher") as MockMatcher:
                         from app.tasks.process_tasks import process_new_content
                         await process_new_content("content-1")
-                        # KeywordMatcher should not be called when disabled
-                        MockMatcher.return_value.match.assert_not_called()
+                        # When disabled, KeywordMatcher class should never be instantiated
+                        MockMatcher.assert_not_called()
 
 
 @pytest.mark.asyncio

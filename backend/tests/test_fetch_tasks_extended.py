@@ -98,3 +98,6 @@ async def test_check_and_fetch_due_sources_dispatches_due():
                 mock_queue.enqueue_fetch = AsyncMock(return_value=True)
                 from app.tasks.fetch_tasks import check_and_fetch_due_sources
                 await check_and_fetch_due_sources()
+
+    # Verify at least one source was scheduled for fetch
+    assert mock_queue.enqueue_fetch.call_count > 0

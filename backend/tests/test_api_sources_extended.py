@@ -26,8 +26,8 @@ async def test_list_sources_pagination(client: AsyncClient, db_session):
     resp = await client.get("/api/sources?page=1&page_size=2")
     assert resp.status_code == 200
     data = resp.json()
-    assert len(data["items"]) <= 2
-    assert data["total"] >= 0
+    assert len(data["items"]) == 2
+    assert data["total"] == 3
 
 
 @pytest.mark.asyncio
