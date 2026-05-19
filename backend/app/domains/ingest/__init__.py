@@ -49,6 +49,15 @@ here:
   ``content_fts`` virtual table that ingest populates via
   ``StorageStage``). Legacy ``app.utils.fts_query`` path is a
   re-export shim.
+* ``domains/ingest/cleanup.py`` — moved from
+  ``app.api.contents_cleanup`` in Phase 3 step 7 (low-signal /
+  junk-row cleanup helpers that re-apply the same
+  ``get_website_content_reject_reason`` filter ingest uses on raw
+  items). The FastAPI route handlers stay in
+  ``app.api.contents_cleanup`` and re-import the helpers from this
+  module, so the existing
+  ``api.contents → api.contents_cleanup`` re-export chain that
+  ``tests/test_content_quality_filters.py`` relies on stays intact.
 
 The ingest domain MUST NOT import LLM providers, the summariser or the
 translator; that boundary is enforced by ``check_domain_imports.py`` from
