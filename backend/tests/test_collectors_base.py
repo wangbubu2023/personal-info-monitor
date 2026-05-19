@@ -88,7 +88,7 @@ class TestShouldFetch:
         source = MagicMock()
         source.last_fetched_at = datetime(2020, 1, 1)
         source.fetch_interval = 30
-        with patch("app.collectors.base.utcnow_naive", return_value=datetime(2020, 1, 1, 1, 0)):
+        with patch("app.domains.fetch.collectors.base.utcnow_naive", return_value=datetime(2020, 1, 1, 1, 0)):
             assert await collector.should_fetch(source) is True
 
     @pytest.mark.asyncio
@@ -97,7 +97,7 @@ class TestShouldFetch:
         source = MagicMock()
         source.last_fetched_at = datetime(2020, 1, 1, 0, 0)
         source.fetch_interval = 60
-        with patch("app.collectors.base.utcnow_naive", return_value=datetime(2020, 1, 1, 0, 30)):
+        with patch("app.domains.fetch.collectors.base.utcnow_naive", return_value=datetime(2020, 1, 1, 0, 30)):
             assert await collector.should_fetch(source) is False
 
 
@@ -199,7 +199,7 @@ class TestCheckSsrf:
     @pytest.mark.asyncio
     async def test_check_ssrf_delegates(self):
         collector = ConcreteCollector()
-        with patch("app.collectors.base.assert_public_http_target") as mock_check:
+        with patch("app.domains.fetch.collectors.base.assert_public_http_target") as mock_check:
             mock_check.return_value = None
             await collector._check_ssrf("https://example.com")
             mock_check.assert_called_once_with("https://example.com")
