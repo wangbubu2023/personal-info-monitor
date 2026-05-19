@@ -5,103 +5,40 @@ content, then dispatch non-blocking per-item post-processing tasks. This keeps
 fetch workers free and maximises fetch throughput.
 """
 
-from datetime import datetime
-from typing import Dict, Any, List
+from typing import Dict, Any
 
 from sqlalchemy.orm import Session
 
 from app.models import Content, Source
-from app.services.content_quality_service import merge_content_quality_metadata
 from app.utils.datetime import utcnow_naive
-from app.utils.text import strip_html_tags, truncate_content
 from app.utils.logger import get_logger
+# ``_build_raw_content_objects`` has moved to ``app.domains.ingest.build_content``
+# as part of Phase 3 step 3. We keep the legacy private name as a re-export
+# shim so existing test patch targets like
+# ``patch("app.pipeline.coordinator._build_raw_content_objects", ...)``
+# continue to resolve through Phase 7. The wrapper-internal symbols
+# (``strip_html_tags``, ``truncate_content``, ``merge_content_quality_metadata``)
+# now live next to the implementation and should be patched at
+# ``app.domains.ingest.build_content.<name>``.
+from app.domains.ingest.build_content import (
+    build_raw_content_objects as _build_raw_content_objects,
+    strip_html_tags,
+    truncate_content,
+    merge_content_quality_metadata,
+)
 
 logger = get_logger(__name__)
 
-
-async def _build_raw_content_objects(raw_contents: List[dict], source: Source) -> tuple[List[Content], int]:
-    """Build Content ORM objects from raw dicts without any LLM calls.
-
-    Only does local text extraction / cleanup so the fetch task stays fast.
-    Keyword matching / optional cookie full-text enrichment happen
-    asynchronously via ``process_new_content``.
-    """
-    from app.processors.extractor import ContentExtractor
-
-    extractor = ContentExtractor()
-    source_type = source.type.value if hasattr(source.type, "value") else str(source.type)
-    results: List[Content] = []
-    build_failed = 0
-
-    for raw in raw_contents:
-        try:
-            main_text = raw.get("content", "")
-            html = raw.get("html")
-
-            if html and not main_text:
-                main_text = await extractor.extract(html, raw.get("url"))
-
-            main_text_clean = strip_html_tags(main_text) if main_text else ""
-            title = strip_html_tags(raw.get("title", "Untitled"))
-
-            # Truncated snippet as placeholder summary (AI will replace it later)
-            summary = None
-            if main_text_clean:
-                summary = main_text_clean[:500] + ("…" if len(main_text_clean) > 500 else "")
-
-            publish_time = raw.get("publish_time")
-            if isinstance(publish_time, str):
-                try:
-                    publish_time = datetime.fromisoformat(publish_time.replace("Z", "+00:00"))
-                except Exception:
-                    publish_time = utcnow_naive()
-            elif not publish_time:
-                publish_time = utcnow_naive()
-
-            metadata = raw.get("metadata")
-            if not isinstance(metadata, dict):
-                metadata = {}
-            metadata = merge_content_quality_metadata(
-                metadata,
-                title=title,
-                full_content=main_text_clean,
-                summary=summary,
-            )
-
-            # PROACTIVE SIGNAL FILTERING
-            from app.domains.ingest.quality import get_website_content_reject_reason
-            reject_reason = get_website_content_reject_reason(
-                source.url,
-                {
-                    "title": title,
-                    "content": main_text_clean,
-                    "url": raw.get("url", ""),
-                    "html": html or "",
-                }
-            )
-            if reject_reason:
-                logger.info(f"Pipeline: Dropping low-signal content from {source.url} ({reject_reason}): {title}")
-                continue
-
-            results.append(Content(
-                source_id=source.id,
-                external_id=raw.get("external_id"),
-                title=title,
-                summary=summary,
-                original_url=raw.get("url", ""),
-                content_type=source_type,
-                publish_time=publish_time,
-                full_content=truncate_content(main_text_clean, url=raw.get("url", "")) if main_text_clean else None,
-                metadata_=metadata,
-                keyword_matches=[],
-                fetched_at=utcnow_naive(),
-            ))
-        except Exception as exc:
-            build_failed += 1
-            logger.error(f"Failed to build Content object for {raw.get('url', '?')}: {exc}")
-            continue
-
-    return results, build_failed
+__all__ = [
+    "run_fetch_pipeline",
+    "_build_raw_content_objects",
+    "_update_source_status",
+    "_apply_keyword_filter",
+    "strip_html_tags",
+    "truncate_content",
+    "merge_content_quality_metadata",
+    "logger",
+]
 
 
 def _update_source_status(

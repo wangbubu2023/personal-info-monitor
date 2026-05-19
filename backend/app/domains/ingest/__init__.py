@@ -11,8 +11,13 @@ here:
   from ``app/pipeline`` in Phase 3 step 2 (legacy ``app.pipeline.*`` paths
   remain as re-export shims so existing test ``patch`` targets keep
   resolving through Phase 7).
-* ``domains/ingest/build_content.py`` — split from
-  ``processors/content_processor.py`` (LLM-free portion only)
+* ``domains/ingest/build_content.py`` — moved from
+  ``app.pipeline.coordinator._build_raw_content_objects`` in Phase 3 step 3
+  (the LLM-free portion of the raw → ORM Content build). The legacy private
+  name still resolves through ``app.pipeline.coordinator`` as a re-export
+  shim; wrapper-internal helpers (``strip_html_tags`` etc.) live next to the
+  implementation and must be patched at
+  ``app.domains.ingest.build_content.<name>``.
 * ``domains/ingest/extractor.py``, ``keywords/`` — moved from
   ``app/processors``
 

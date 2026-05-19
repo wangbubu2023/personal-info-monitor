@@ -434,7 +434,7 @@ class TestStorageStage:
 # coordinator._build_raw_content_objects
 # ===========================================================================
 
-_no_reject = patch("app.domains.ingest.quality.get_website_content_reject_reason", return_value=None)
+_no_reject = patch("app.domains.ingest.build_content.get_website_content_reject_reason", return_value=None)
 
 
 class TestBuildRawContentObjects:
@@ -506,7 +506,7 @@ class TestBuildRawContentObjects:
 
         with _no_reject, patch("app.processors.extractor.ContentExtractor") as MockExt:
             MockExt.return_value = AsyncMock()
-            with patch("app.pipeline.coordinator.strip_html_tags", side_effect=[
+            with patch("app.domains.ingest.build_content.strip_html_tags", side_effect=[
                 "Article", "body text", RuntimeError("bad data")
             ]):
                 results, _build_failures = await _build_raw_content_objects(raw, source)

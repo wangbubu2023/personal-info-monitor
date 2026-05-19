@@ -30,8 +30,7 @@ async def _materialize_hydrated_fulltext(raw_content: dict) -> None:
     The website collector's ``_hydrate_direct_articles`` stashes the article
     HTML under ``raw_content["html"]`` and blanks out ``raw_content["content"]``,
     leaving text extraction to later stages. That works for *new* rows because
-    :func:`app.pipeline.coordinator._build_raw_content_objects` extracts (the
-    coordinator helper still lives under ``app.pipeline`` pending Phase 3 step 3)
+    :func:`app.domains.ingest.build_content.build_raw_content_objects` extracts
     lazily — but duplicate rows go through :func:`handle_external_id_duplicate`
     first, and that helper only upgrades an existing stub when the incoming
     row already has ``content`` populated and ``metadata.article_fulltext``
