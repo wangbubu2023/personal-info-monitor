@@ -30,10 +30,10 @@ async def test_build_equivalent_terms_uses_public_fallback_for_short_keywords(mo
             return "artificial intelligence"
         return None
 
-    monkeypatch.setattr("app.services.keyword_rules._translation_cache._entries", {})
+    monkeypatch.setattr("app.domains.ingest.keywords.rules._translation_cache._entries", {})
     monkeypatch.setattr("app.processors.translator.Translator.translate", _fake_model_translate)
     monkeypatch.setattr(
-        "app.services.keyword_rules._translate_keyword_via_public_endpoint",
+        "app.domains.ingest.keywords.rules._translate_keyword_via_public_endpoint",
         _fake_public_translate,
     )
 
@@ -59,7 +59,7 @@ async def test_build_equivalent_terms_includes_static_aliases(monkeypatch):
 
     monkeypatch.setattr("app.processors.translator.Translator.translate", _fake_model_translate)
     monkeypatch.setattr(
-        "app.services.keyword_rules._translate_keyword_via_public_endpoint",
+        "app.domains.ingest.keywords.rules._translate_keyword_via_public_endpoint",
         _fake_public_translate,
     )
 
@@ -89,7 +89,7 @@ async def test_compute_stored_equivalent_terms_manual_only_skips_auto(monkeypatc
     async def _boom(*_a, **_k):
         raise AssertionError("auto should not run")
 
-    monkeypatch.setattr("app.services.keyword_rules.build_equivalent_terms", _boom)
+    monkeypatch.setattr("app.domains.ingest.keywords.rules.build_equivalent_terms", _boom)
 
     out = await compute_stored_equivalent_terms(
         "Meta",

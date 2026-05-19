@@ -14,7 +14,7 @@ def stub_keyword_equivalents(monkeypatch):
         }
         return mapping.get(keyword, [])
 
-    monkeypatch.setattr("app.services.keyword_rules.build_equivalent_terms", _fake_build_equivalent_terms)
+    monkeypatch.setattr("app.domains.ingest.keywords.rules.build_equivalent_terms", _fake_build_equivalent_terms)
 
 
 @pytest.fixture(autouse=True)
@@ -230,7 +230,7 @@ async def test_patch_disable_include_auto_clears_auto_equivalents(client, monkey
             return ["纳米香蕉"]
         return []
 
-    monkeypatch.setattr("app.services.keyword_rules.build_equivalent_terms", _fake_build)
+    monkeypatch.setattr("app.domains.ingest.keywords.rules.build_equivalent_terms", _fake_build)
 
     created = await client.post(
         "/api/keywords",
@@ -269,7 +269,7 @@ async def test_patch_manual_equivalent_merges_with_auto_list_and_response_match(
             return ["开爪"]
         return []
 
-    monkeypatch.setattr("app.services.keyword_rules.build_equivalent_terms", _fake_build)
+    monkeypatch.setattr("app.domains.ingest.keywords.rules.build_equivalent_terms", _fake_build)
 
     created = await client.post(
         "/api/keywords",

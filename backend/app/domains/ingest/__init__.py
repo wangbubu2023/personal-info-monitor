@@ -27,9 +27,19 @@ here:
   text extraction; readability + trafilatura + BeautifulSoup
   fallbacks). The legacy ``app.processors.extractor`` path remains as a
   re-export shim so test ``patch`` targets stay valid.
-* ``domains/ingest/keywords/``, ``scoring.py`` — to be moved from
-  ``app/processors`` and ``app/services`` in the remaining Phase 3
-  step-4 cuts.
+* ``domains/ingest/keywords/matcher.py`` — moved from
+  ``app.processors.keyword_matcher`` in Phase 3 step 4
+  (regex/contains/exact match with ReDoS guards, highlight, context
+  snippets). Legacy path is a re-export shim.
+* ``domains/ingest/keywords/rules.py`` — moved from
+  ``app.services.keyword_rules`` in Phase 3 step 4
+  (normalize/dedupe/identity-key + bilingual ``build_equivalent_terms``).
+  Legacy path is a re-export shim. The bilingual expansion calls
+  ``processors.translator.Translator`` lazily inside the function — at
+  module-import time the ingest domain stays free of any LLM dependency,
+  keeping the Phase 3 boundary check clean.
+* ``domains/ingest/scoring.py`` — to be moved from
+  ``app/services/scoring_service.py`` in the last Phase 3 step-4 cut.
 
 The ingest domain MUST NOT import LLM providers, the summariser or the
 translator; that boundary is enforced by ``check_domain_imports.py`` from
