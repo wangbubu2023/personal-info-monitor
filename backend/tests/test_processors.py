@@ -226,7 +226,7 @@ class TestExtractorHelpers:
 class TestSummarizer:
 
     def _make_summarizer(self):
-        with patch("app.processors.summarizer.get_settings") as mock_settings:
+        with patch("app.platform.llm.summarizer.get_settings") as mock_settings:
             mock_settings.return_value = MagicMock(openai_api_key="test-key")
             from app.processors.summarizer import Summarizer
             return Summarizer(api_key="test-key")
@@ -499,7 +499,7 @@ class TestSummarizer:
             assert mock_openai.call_count == 2
 
     def test_get_client_no_key_raises(self):
-        with patch("app.processors.summarizer.get_settings") as mock_settings:
+        with patch("app.platform.llm.summarizer.get_settings") as mock_settings:
             mock_settings.return_value = MagicMock(openai_api_key=None)
             from app.processors.summarizer import Summarizer
             s = Summarizer(api_key=None)
@@ -516,7 +516,7 @@ class TestSummarizer:
             assert mock_openai.call_count == 1
 
     def test_get_async_client_no_key_raises(self):
-        with patch("app.processors.summarizer.get_settings") as mock_settings:
+        with patch("app.platform.llm.summarizer.get_settings") as mock_settings:
             mock_settings.return_value = MagicMock(openai_api_key=None)
             from app.processors.summarizer import Summarizer
             s = Summarizer(api_key=None)
@@ -544,8 +544,8 @@ class TestSummarizer:
 class TestTranslator:
 
     def _make_translator(self):
-        with patch("app.processors.translator.get_settings") as mock_settings, \
-             patch("app.processors.translator.ModelProviderClient") as mock_mpc:
+        with patch("app.platform.llm.translator.get_settings") as mock_settings, \
+             patch("app.platform.llm.translator.ModelProviderClient") as mock_mpc:
             mock_settings.return_value = MagicMock(openai_api_key="sk-test")
             from app.processors.translator import Translator
             return Translator()
@@ -607,8 +607,8 @@ class TestTranslator:
     @pytest.mark.asyncio
     async def test_translate_ollama_success(self):
         translator = self._make_translator()
-        with patch("app.processors.translator.get_translation_settings", return_value={"provider": "ollama"}), \
-             patch("app.processors.translator.is_translation_cloud_fallback_enabled", return_value=False), \
+        with patch("app.platform.llm.translator.get_translation_settings", return_value={"provider": "ollama"}), \
+             patch("app.platform.llm.translator.is_translation_cloud_fallback_enabled", return_value=False), \
              patch.object(translator, "_translate_with_ollama", new_callable=AsyncMock, return_value="translated text"):
             result = await translator.translate("Hello world test text", target_language="zh-CN", source_language="en")
         assert result == "translated text"
@@ -616,8 +616,8 @@ class TestTranslator:
     @pytest.mark.asyncio
     async def test_translate_ollama_fail_no_fallback(self):
         translator = self._make_translator()
-        with patch("app.processors.translator.get_translation_settings", return_value={"provider": "ollama"}), \
-             patch("app.processors.translator.is_translation_cloud_fallback_enabled", return_value=False), \
+        with patch("app.platform.llm.translator.get_translation_settings", return_value={"provider": "ollama"}), \
+             patch("app.platform.llm.translator.is_translation_cloud_fallback_enabled", return_value=False), \
              patch.object(translator, "_translate_with_ollama", new_callable=AsyncMock, return_value=None):
             result = await translator.translate("Hello world test text", target_language="zh-CN", source_language="en")
         assert result is None
@@ -625,11 +625,11 @@ class TestTranslator:
     @pytest.mark.asyncio
     async def test_translate_ollama_fail_with_cloud_fallback(self):
         translator = self._make_translator()
-        with patch("app.processors.translator.get_translation_settings", return_value={"provider": "ollama"}), \
-             patch("app.processors.translator.is_translation_cloud_fallback_enabled", return_value=True), \
-             patch("app.processors.translator.get_translation_fallback_model_settings", return_value={}), \
+        with patch("app.platform.llm.translator.get_translation_settings", return_value={"provider": "ollama"}), \
+             patch("app.platform.llm.translator.is_translation_cloud_fallback_enabled", return_value=True), \
+             patch("app.platform.llm.translator.get_translation_fallback_model_settings", return_value={}), \
              patch(
-                 "app.processors.translator.get_translation_cloud_fallback_openai_settings",
+                 "app.platform.llm.translator.get_translation_cloud_fallback_openai_settings",
                  return_value={"provider": "openai", "model": "gpt-4o-mini", "api_key": "sk-test"},
              ), \
              patch.object(translator, "_translate_with_ollama", new_callable=AsyncMock, return_value=None), \
@@ -640,8 +640,8 @@ class TestTranslator:
     @pytest.mark.asyncio
     async def test_translate_openai_provider(self):
         translator = self._make_translator()
-        with patch("app.processors.translator.get_translation_settings", return_value={"provider": "openai"}), \
-             patch("app.processors.translator.is_translation_cloud_fallback_enabled", return_value=False), \
+        with patch("app.platform.llm.translator.get_translation_settings", return_value={"provider": "openai"}), \
+             patch("app.platform.llm.translator.is_translation_cloud_fallback_enabled", return_value=False), \
              patch.object(translator, "_translate_with_openai", new_callable=AsyncMock, return_value="openai translated"):
             result = await translator.translate("Hello world test text", target_language="zh-CN", source_language="en")
         assert result == "openai translated"
@@ -649,8 +649,8 @@ class TestTranslator:
     @pytest.mark.asyncio
     async def test_translate_with_fallback_returns_translation(self):
         translator = self._make_translator()
-        with patch("app.processors.translator.is_translation_cloud_fallback_enabled", return_value=True), \
-             patch("app.processors.translator.get_translation_fallback_model_settings", return_value={"provider": "openai", "model": "gpt-4o-mini", "api_key": "sk"}), \
+        with patch("app.platform.llm.translator.is_translation_cloud_fallback_enabled", return_value=True), \
+             patch("app.platform.llm.translator.get_translation_fallback_model_settings", return_value={"provider": "openai", "model": "gpt-4o-mini", "api_key": "sk"}), \
              patch.object(translator, "_translate_with_provider_settings", new_callable=AsyncMock, return_value="回退翻译"):
             result = await translator.translate_with_fallback("Hello world", "zh-CN")
         assert result == "回退翻译"
@@ -658,8 +658,8 @@ class TestTranslator:
     @pytest.mark.asyncio
     async def test_translate_with_fallback_returns_none_on_failure(self):
         translator = self._make_translator()
-        with patch("app.processors.translator.is_translation_cloud_fallback_enabled", return_value=True), \
-             patch("app.processors.translator.get_translation_fallback_model_settings", return_value={"provider": "openai", "api_key": "sk"}), \
+        with patch("app.platform.llm.translator.is_translation_cloud_fallback_enabled", return_value=True), \
+             patch("app.platform.llm.translator.get_translation_fallback_model_settings", return_value={"provider": "openai", "api_key": "sk"}), \
              patch.object(translator, "_translate_with_provider_settings", new_callable=AsyncMock, return_value=None):
             result = await translator.translate_with_fallback("Hello world", "zh-CN")
         assert result is None
@@ -673,8 +673,8 @@ class TestTranslator:
     @pytest.mark.asyncio
     async def test_translate_with_fallback_default_target_language(self):
         translator = self._make_translator()
-        with patch("app.processors.translator.is_translation_cloud_fallback_enabled", return_value=True), \
-             patch("app.processors.translator.get_translation_fallback_model_settings", return_value={"provider": "openai", "model": "m", "api_key": "sk"}), \
+        with patch("app.platform.llm.translator.is_translation_cloud_fallback_enabled", return_value=True), \
+             patch("app.platform.llm.translator.get_translation_fallback_model_settings", return_value={"provider": "openai", "model": "m", "api_key": "sk"}), \
              patch.object(translator, "_translate_with_provider_settings", new_callable=AsyncMock, return_value="中文") as mock_fb:
             result = await translator.translate_with_fallback("Hello world test")
         assert result == "中文"

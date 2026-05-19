@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 
 from app.models.auth_config import APIConfig, AuthConfig
+from app.platform.auth.api_credentials import decrypt_api_credentials  # noqa: F401 - re-export
 from app.utils.datetime import to_iso_z
 from app.utils.encryption import decrypt_data
 from app.utils.url import normalize_host
@@ -19,27 +20,6 @@ def mask_api_key(key: str) -> str:
     if not key or len(key) < 8:
         return "****"
     return f"{key[:4]}...{key[-4:]}"
-
-
-def decrypt_api_credentials(config: APIConfig) -> dict:
-    """Best-effort decrypt API credentials JSON.
-
-    Swallows all decrypt errors and returns ``{}`` — callers treat an empty
-    dict as "no credentials present", which is the desired failure mode for
-    UI masking and scheduler enrichment paths.
-    """
-    try:
-        if not config.encrypted_credentials:
-            return {}
-        raw = decrypt_data(config.encrypted_credentials)
-        if isinstance(raw, dict):
-            return raw
-        if isinstance(raw, str):
-            parsed = json.loads(raw)
-            return parsed if isinstance(parsed, dict) else {}
-        return {}
-    except Exception:  # noqa: BLE001 - opaque decrypt / JSON path, UI degrades to "no creds"
-        return {}
 
 
 def serialize_api_config(config: APIConfig) -> dict:

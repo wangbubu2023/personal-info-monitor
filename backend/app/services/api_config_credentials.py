@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from typing import Any, Dict, Optional
 
-from app.api.configs_common import decrypt_api_credentials
 from app.database import SessionLocal
 from app.models.auth_config import APIConfig, AuthStatus
+from app.platform.auth.api_credentials import decrypt_api_credentials
 from app.utils.logger import get_logger
 
 logger = get_logger(__name__)

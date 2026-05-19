@@ -67,4 +67,18 @@ Phase progress:
   ``send_keyword_alert`` references were migrated to the canonical
   submodule paths in ``tests/test_email_tasks.py`` and
   ``tests/test_process_tasks_extended.py``.
+* :mod:`app.platform.llm.summarizer` / :mod:`app.platform.llm.translator`
+  — moved from ``app.processors.summarizer`` / ``app.processors.translator``
+  in Phase 4 step 3. The enrich domain reaches these via the platform
+  layer; legacy ``app.processors.*`` paths remain as ``from new import *``
+  re-export shims. ``app.platform.auth.api_credentials.decrypt_api_credentials``
+  was also extracted from ``app.api.configs_common_auth`` in the same
+  step so that ``app.services.api_config_credentials`` no longer has to
+  reach into the HTTP layer — this eliminates the last residual Phase 4
+  violation. Test patches against wrapper-internal symbols
+  (``get_settings`` / ``ModelProviderClient`` / ``get_translation_*``)
+  were migrated to ``app.platform.llm.{summarizer,translator}.*`` in
+  ``tests/test_processors.py``, and ``translator_module`` references
+  in ``tests/test_stage_{a,v3}_fixes.py`` were rebound to the
+  canonical module.
 """

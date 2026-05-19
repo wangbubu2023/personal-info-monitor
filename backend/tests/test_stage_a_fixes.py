@@ -1,8 +1,8 @@
 import pytest
 
-from app.processors.summarizer import Summarizer
-from app.processors import translator as translator_module
-from app.processors.translator import Translator
+from app.platform.llm import translator as translator_module
+from app.platform.llm.summarizer import Summarizer
+from app.platform.llm.translator import Translator
 
 
 class _FakeMessage:
