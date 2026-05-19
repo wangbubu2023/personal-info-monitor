@@ -85,24 +85,107 @@ sudo systemctl start personal-info-monitor
 sudo systemctl status personal-info-monitor
 ```
 
-## 5. 反向代理（可选）
+## 5. 反向代理与安全加固
 
-若希望通过域名访问，可使用 Nginx 将请求反代到 `127.0.0.1:8000`：
+### 5.1 HTTPS（必须）
+
+通过域名公网访问时 **必须启用 HTTPS**，否则 API Key 会以明文传输。推荐使用 Caddy（自动证书）或 Certbot + Nginx。
+
+**Caddy 示例**（最简方式，自动申请 Let's Encrypt 证书）：
+
+```
+your-domain.com {
+    reverse_proxy 127.0.0.1:8000 {
+        header_up X-Real-IP {remote_host}
+    }
+}
+```
+
+**Nginx + Certbot 示例**：
 
 ```nginx
+# 先用 certbot 申请证书：
+# sudo certbot --nginx -d your-domain.com
+
 server {
-    listen 80;
+    listen 443 ssl;
     server_name your-domain.com;
+
+    ssl_certificate     /etc/letsencrypt/live/your-domain.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/your-domain.com/privkey.pem;
 
     location / {
         proxy_pass http://127.0.0.1:8000;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
+        # 必须传递真实客户端 IP，否则限速和本地令牌检查将失效
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
     }
 }
+
+server {
+    listen 80;
+    server_name your-domain.com;
+    return 301 https://$host$request_uri;
+}
+```
+
+### 5.2 配置 TRUSTED_PROXY_IPS
+
+使用反向代理时，**必须**将代理的 IP 加入 `TRUSTED_PROXY_IPS`，否则：
+
+- `/local-token` 端点的 loopback 检查将以代理 IP 为准，导致所有请求被拒绝（403）
+- 速率限制将把所有流量视为同一 IP，失去精确的 per-client 效果
+
+在 systemd 服务文件中添加：
+
+```ini
+[Service]
+...
+# 代理在本机时填 127.0.0.1，外部代理填其实际 IP
+Environment=TRUSTED_PROXY_IPS=127.0.0.1
+```
+
+或在 `.env` 中：
+
+```
+TRUSTED_PROXY_IPS=127.0.0.1
+```
+
+### 5.3 防火墙（推荐）
+
+仅暴露必要端口，阻止直接访问 8000：
+
+```bash
+# UFW 示例
+sudo ufw default deny incoming
+sudo ufw allow ssh
+sudo ufw allow 80/tcp
+sudo ufw allow 443/tcp
+# 不要开放 8000！FastAPI 通过 127.0.0.1:8000 仅本地监听
+sudo ufw enable
+```
+
+### 5.4 加密主密钥保护
+
+`runtime-secrets.json` 中的 `ENCRYPTION_KEY` 用于解密所有已保存凭据。  
+在 VPS 上建议通过环境变量注入而不依赖文件（避免文件被读取后密钥泄露）：
+
+```ini
+[Service]
+...
+# 从安全来源（如 Vault、systemd Credentials）注入，不写入文件
+Environment=ENCRYPTION_KEY=<your-key>
+Environment=PIM_API_KEY=<your-api-key>
+```
+
+使用 **systemd Credentials**（systemd ≥ 250）：
+
+```bash
+sudo systemd-creds encrypt --name=ENCRYPTION_KEY -
+# 粘贴密钥后 Ctrl+D，将输出添加到 [Service] 的 LoadCredentialEncrypted= 中
 ```
 
 ## 6. 备份建议

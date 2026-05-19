@@ -1,7 +1,7 @@
 # PIM CLI 规划规范
 
-文档版本：v0.1  
-日期：2026-03-30  
+文档版本：v0.3（命令树已与实现同步）
+日期：2026-04-12（上次同步）
 适用范围：`Personal Info Monitor` 本地模式、服务器模式、Agent 调用模式
 
 ## 1. 背景与目标
@@ -162,28 +162,40 @@ pim doctor
 建议命令树如下：
 
 ```bash
-pimctl auth login
+pimctl auth login [--set-default]
 pimctl auth logout
 pimctl auth whoami
 
-pimctl system health
-pimctl system queue
-pimctl system stats
+# 系统状态
+pimctl system health            # 无需认证，轻量存活探针 → GET /livez
+pimctl system health-check      # 认证，检查 DB/调度器/磁盘 → GET /health
+pimctl system metrics           # 请求统计、延迟、源运行指标 → GET /api/system/metrics
+pimctl system queue             # 抓取/处理队列深度 → GET /api/system/queue
+pimctl system stats             # Dashboard 摘要统计 → GET /api/dashboard/stats
+pimctl system search-rebuild    # 重建全文搜索索引 → POST /api/system/search/rebuild
+pimctl system doctor            # 完整系统诊断 → GET /api/system/doctor
 
-pimctl sources list
+# 监控源管理
+pimctl sources list [--type] [--enabled] [--search] [--page] [--page-size]
 pimctl sources get <id>
-pimctl sources add
-pimctl sources update <id>
+pimctl sources add --name --type --url [--extra-url] [--fetch-interval] [--disabled]
+pimctl sources update <id> [--name] [--url] [--fetch-interval] [--enabled]
 pimctl sources delete <id>
 pimctl sources probe <id>
-pimctl sources probe-url <url>
+pimctl sources probe-url <url> [--type]
 pimctl sources fetch <id>
 pimctl sources fetch-all
 pimctl sources export
 
-pimctl contents list
+# 内容管理
+pimctl contents list [--source-id] [--source-type] [--read] [--favorited] [--archived] [--from-date] [--to-date] [--search] [--page] [--page-size]
 pimctl contents get <id>
-pimctl contents search <query>
+pimctl contents search <query> [--page] [--page-size]
+pimctl contents delete <id>
+pimctl contents reader <id> [--translate]
+pimctl contents export-md
+pimctl contents cleanup-low-signal [--apply] [--source-id] [--preview-limit]
+pimctl contents cleanup-junk [--apply] [--source-id] [--preview-limit] [--no-binary] [--no-thin-rss]
 pimctl contents mark-read <id>
 pimctl contents mark-unread <id>
 pimctl contents favorite <id>
@@ -191,15 +203,26 @@ pimctl contents unfavorite <id>
 pimctl contents archive <id>
 pimctl contents unarchive <id>
 
+# 关键词监控
+pimctl keywords list [--enabled]
+pimctl keywords get <id>
+pimctl keywords add <keyword> [--match-type] [--match-scope] [--description] [--color] [--notify] [--notify-email] [--disabled]
+pimctl keywords batch-add <kw1> <kw2> ... [--match-type] [--match-scope] [--notify] [--notify-email]
+pimctl keywords update <id> [--match-type] [--match-scope] [--enabled] [--notify] [--color] ...
+pimctl keywords batch-update <id1> <id2> ... [--enabled] [--notify] [--color] ...
+pimctl keywords delete <id>
+
+# 日报/摘要
 pimctl digest latest
-pimctl digest day <date>
-pimctl digest hour <yyyy-mm-ddThh>
+pimctl digest stats
+pimctl digest hourly-list [--date]
+pimctl digest day <YYYY-MM-DD>
+pimctl digest hour <YYYY-MM-DDTHH>
 
+# 系统设置
 pimctl settings get
-pimctl settings set
-
-pimctl configs api-keys list
-pimctl configs auth list
+pimctl settings limits
+pimctl settings set --key <k> --value <v>
 ```
 
 ## 5. 全局参数规范
@@ -614,8 +637,12 @@ pimctl settings set --provider ollama --model deepseek-r1:14b
 | CLI | HTTP API |
 |-----|----------|
 | `pimctl system health` | `GET /livez` |
+| `pimctl system health-check` | `GET /health` |
+| `pimctl system metrics` | `GET /api/system/metrics` |
 | `pimctl system queue` | `GET /api/system/queue` |
 | `pimctl system stats` | `GET /api/dashboard/stats` |
+| `pimctl system search-rebuild` | `POST /api/system/search/rebuild` |
+| `pimctl system doctor` | `GET /api/system/doctor` |
 | `pimctl sources list` | `GET /api/sources` |
 | `pimctl sources get` | `GET /api/sources/{id}` |
 | `pimctl sources add` | `POST /api/sources` |
@@ -625,10 +652,35 @@ pimctl settings set --provider ollama --model deepseek-r1:14b
 | `pimctl sources probe-url` | `POST /api/sources/probe` |
 | `pimctl sources fetch` | `POST /api/sources/{id}/fetch` |
 | `pimctl sources fetch-all` | `POST /api/sources/fetch-all` |
+| `pimctl sources export` | `GET /api/sources/export` |
 | `pimctl contents list` | `GET /api/contents` |
 | `pimctl contents get` | `GET /api/contents/{id}` |
-| `pimctl digest ...` | 复用 `GET /api/digest*` |
+| `pimctl contents search` | `GET /api/contents?search=...` |
+| `pimctl contents delete` | `DELETE /api/contents/{id}` |
+| `pimctl contents reader` | `GET /api/contents/{id}/reader` |
+| `pimctl contents export-md` | `POST /api/contents/export-md` |
+| `pimctl contents cleanup-low-signal` | `POST /api/contents/cleanup-low-signal` |
+| `pimctl contents cleanup-junk` | `POST /api/contents/cleanup-junk` |
+| `pimctl contents mark-read` | `POST /api/contents/{id}/read` |
+| `pimctl contents mark-unread` | `PATCH /api/contents/{id}` |
+| `pimctl contents favorite` | `POST /api/contents/{id}/favorite` |
+| `pimctl contents unfavorite` | `PATCH /api/contents/{id}` |
+| `pimctl contents archive` | `PATCH /api/contents/{id}` |
+| `pimctl contents unarchive` | `PATCH /api/contents/{id}` |
+| `pimctl keywords list` | `GET /api/keywords` |
+| `pimctl keywords get` | `GET /api/keywords/{id}` |
+| `pimctl keywords add` | `POST /api/keywords` |
+| `pimctl keywords batch-add` | `POST /api/keywords/batch` |
+| `pimctl keywords update` | `PATCH /api/keywords/{id}` |
+| `pimctl keywords batch-update` | `PATCH /api/keywords/batch` |
+| `pimctl keywords delete` | `DELETE /api/keywords/{id}` |
+| `pimctl digest latest` | `GET /api/digest` |
+| `pimctl digest stats` | `GET /api/digest/stats` |
+| `pimctl digest hourly-list` | `GET /api/digest/hourly` |
+| `pimctl digest day` | `GET /api/digest?date=...` |
+| `pimctl digest hour` | `GET /api/digest/hourly/{hour}` |
 | `pimctl settings get` | `GET /api/configs/settings` |
+| `pimctl settings limits` | `GET /api/configs/settings` |
 | `pimctl settings set` | `PATCH /api/configs/settings` |
 
 ## 13. 建议的实现结构

@@ -85,6 +85,43 @@ curl -H "X-API-Key: <your-api-key>" \
   http://127.0.0.1:8000/metrics
 ```
 
+暴露的核心系列（全部为 `counter` 或 `gauge`，适合直接在 Grafana / Prometheus 中查询）：
+
+- `pim_http_requests_total` — 累计 HTTP 请求数（counter）
+- `pim_http_requests_by_status{status="2xx|3xx|4xx|5xx"}` — 按状态码分桶（counter）
+- `pim_http_requests_by_route{route="METHOD /path"}` — 按路由分桶（counter）
+- `pim_http_request_latency_ms_total` — 累计请求延迟（counter；用于平均延迟）
+- `pim_http_request_latency_ms_max` — 进程内最大单次延迟（gauge）
+- `pim_tasks_dropped_total{task_type="fetch|process"}` — 因队列满被丢弃的任务（counter）
+
+**`rate()` 推荐查询**
+
+Counter 在进程重启时会保留累计值（由后端 `data_dir/metrics-checkpoint.json` 持久化，优雅停机时写入，启动时读取），因此 `rate()` 在绝大多数场景下都能得到有意义的结果：
+
+```promql
+# 过去 5 分钟 QPS
+rate(pim_http_requests_total[5m])
+
+# 按状态码拆分的 5xx 错误率
+sum by (status) (rate(pim_http_requests_by_status[5m]))
+
+# 按路由的 Top-10 QPS
+topk(10, rate(pim_http_requests_by_route[5m]))
+
+# 平均延迟（毫秒）= 累计延迟 / 累计请求数
+rate(pim_http_request_latency_ms_total[5m])
+  / clamp_min(rate(pim_http_requests_total[5m]), 1)
+
+# 任务丢弃频率（健康时应为 0）
+rate(pim_tasks_dropped_total[5m])
+```
+
+注意事项：
+
+- 使用 5m/1m 时间窗口时，Prometheus 抓取周期建议 ≤15s，以保证至少两个样本。
+- 重启期间会有一次采样间隔的"空洞"，`rate()` 会自动平滑这个间隙。
+- JSON 端点 `/api/system/metrics` 返回的是快照而非时间序列，适合仪表盘实时展示，不适合做速率计算。
+
 健康检查：
 
 ```bash

@@ -46,13 +46,25 @@
 
 ### 1. 后端
 
+推荐使用 [`uv`](https://docs.astral.sh/uv/)（与 CI 一致）：
+
 ```bash
 cd backend
-python3 -m venv .venv
+uv sync --extra dev           # 按 uv.lock 创建 .venv 并安装依赖（含 pytest/ruff）
 . .venv/bin/activate
-pip install -r requirements.txt
 uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
 ```
+
+> 也可退回 `pip` 路径，使用锁定好的 `requirements.txt`：
+>
+> ```bash
+> cd backend
+> python3 -m venv .venv && . .venv/bin/activate
+> pip install -r requirements.txt
+> ```
+>
+> `requirements.txt` 由 `pyproject.toml` + `uv.lock` 自动导出，**请勿手改**。
+> 需要新增/升级依赖时：改 `pyproject.toml` → `uv lock` → `uv export --no-hashes --no-dev --no-emit-project --format requirements.txt -o requirements.txt`。
 
 ### 2. 前端
 
