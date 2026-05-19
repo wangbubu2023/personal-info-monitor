@@ -55,4 +55,16 @@ Phase progress:
   ``get_system_settings_sync`` hits the actual call sites, and to
   reach the underscore-prefixed legacy aliases that ``import *`` does
   not carry through the shim.
+* ``domains/enrich/notifications/{daily_digest, doctor_digest,
+  keyword_alert}.py`` — extracted from the legacy 407-line
+  ``app.tasks.email_tasks`` module in Phase 4 step 7. SMTP transport
+  moved to :mod:`app.platform.notifications.smtp`. ``app.scheduler``,
+  ``app.tasks.__init__`` and ``app.domains.ingest.finish`` switched to
+  import each entry point from its canonical location;
+  ``app.tasks.email_tasks`` remains a thin facade that re-exports the
+  five public names from the four new modules. Test patches that
+  targeted wrapper-internal ``asyncio.to_thread`` / ``send_email`` /
+  ``send_keyword_alert`` references were migrated to the canonical
+  submodule paths in ``tests/test_email_tasks.py`` and
+  ``tests/test_process_tasks_extended.py``.
 """

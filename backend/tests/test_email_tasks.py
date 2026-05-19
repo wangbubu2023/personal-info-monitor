@@ -1,4 +1,11 @@
-"""Tests for app.tasks.email_tasks — email sending and digest rendering."""
+"""Tests for the notification pipeline.
+
+Covers ``app.platform.notifications.smtp`` and the templates under
+``app.domains.enrich.notifications.*``. The legacy ``app.tasks.email_tasks``
+facade still re-exports every public symbol; patches that target
+wrapper-internal references (``asyncio.to_thread``, ``send_email``)
+must point at the canonical submodule.
+"""
 
 from __future__ import annotations
 
@@ -8,11 +15,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.tasks.email_tasks import (
+from app.domains.enrich.notifications.daily_digest import (
     render_digest_email,
-    send_email,
-    send_keyword_alert,
+    send_daily_digest_emails,
 )
+from app.domains.enrich.notifications.keyword_alert import send_keyword_alert
+from app.platform.notifications.smtp import send_email
 
 
 # ---------------------------------------------------------------------------
@@ -178,27 +186,45 @@ class TestSendKeywordAlert:
         def _build_alert():
             return None
 
-        with patch("app.tasks.email_tasks.asyncio.to_thread", new_callable=AsyncMock) as mock_thread:
+        with patch(
+            "app.domains.enrich.notifications.keyword_alert.asyncio.to_thread",
+            new_callable=AsyncMock,
+        ) as mock_thread:
             mock_thread.return_value = None
             await send_keyword_alert("content-id", "AI", "Test Title")
 
     @pytest.mark.asyncio
     async def test_no_email_notify(self):
-        with patch("app.tasks.email_tasks.asyncio.to_thread", new_callable=AsyncMock) as mock_thread:
+        with patch(
+            "app.domains.enrich.notifications.keyword_alert.asyncio.to_thread",
+            new_callable=AsyncMock,
+        ) as mock_thread:
             mock_thread.return_value = None
             await send_keyword_alert("content-id", "AI", "Test Title")
 
     @pytest.mark.asyncio
     async def test_sends_alerts(self):
         tasks = [("user@example.com", "关键词匹配：AI", "<html>alert</html>")]
-        with patch("app.tasks.email_tasks.asyncio.to_thread", new_callable=AsyncMock, return_value=tasks):
-            with patch("app.tasks.email_tasks.send_email", new_callable=AsyncMock, return_value=True) as mock_send:
+        with patch(
+            "app.domains.enrich.notifications.keyword_alert.asyncio.to_thread",
+            new_callable=AsyncMock,
+            return_value=tasks,
+        ):
+            with patch(
+                "app.domains.enrich.notifications.keyword_alert.send_email",
+                new_callable=AsyncMock,
+                return_value=True,
+            ) as mock_send:
                 await send_keyword_alert("content-id", "AI", "Test Title")
                 mock_send.assert_called_once_with("user@example.com", "关键词匹配：AI", "<html>alert</html>")
 
     @pytest.mark.asyncio
     async def test_empty_tasks(self):
-        with patch("app.tasks.email_tasks.asyncio.to_thread", new_callable=AsyncMock, return_value=[]):
+        with patch(
+            "app.domains.enrich.notifications.keyword_alert.asyncio.to_thread",
+            new_callable=AsyncMock,
+            return_value=[],
+        ):
             await send_keyword_alert("content-id", "AI", "Test Title")
 
     @pytest.mark.asyncio
@@ -207,8 +233,16 @@ class TestSendKeywordAlert:
             ("user1@example.com", "关键词匹配：AI", "<html>alert</html>"),
             ("user2@example.com", "关键词匹配：AI", "<html>alert</html>"),
         ]
-        with patch("app.tasks.email_tasks.asyncio.to_thread", new_callable=AsyncMock, return_value=tasks):
-            with patch("app.tasks.email_tasks.send_email", new_callable=AsyncMock, return_value=True) as mock_send:
+        with patch(
+            "app.domains.enrich.notifications.keyword_alert.asyncio.to_thread",
+            new_callable=AsyncMock,
+            return_value=tasks,
+        ):
+            with patch(
+                "app.domains.enrich.notifications.keyword_alert.send_email",
+                new_callable=AsyncMock,
+                return_value=True,
+            ) as mock_send:
                 await send_keyword_alert("content-id", "AI", "Test Title")
                 assert mock_send.call_count == 2
 
@@ -221,29 +255,43 @@ class TestSendDailyDigestEmails:
 
     @pytest.mark.asyncio
     async def test_no_schedules(self):
-        from app.tasks.email_tasks import send_daily_digest_emails
-
-        with patch("app.tasks.email_tasks.asyncio.to_thread", new_callable=AsyncMock, return_value=[]):
+        with patch(
+            "app.domains.enrich.notifications.daily_digest.asyncio.to_thread",
+            new_callable=AsyncMock,
+            return_value=[],
+        ):
             await send_daily_digest_emails()
 
     @pytest.mark.asyncio
     async def test_sends_emails(self):
-        from app.tasks.email_tasks import send_daily_digest_emails
-
         tasks = [("user@example.com", "Daily Digest 2025-06-15", "<html>digest</html>")]
-        with patch("app.tasks.email_tasks.asyncio.to_thread", new_callable=AsyncMock, return_value=tasks):
-            with patch("app.tasks.email_tasks.send_email", new_callable=AsyncMock, return_value=True) as mock_send:
+        with patch(
+            "app.domains.enrich.notifications.daily_digest.asyncio.to_thread",
+            new_callable=AsyncMock,
+            return_value=tasks,
+        ):
+            with patch(
+                "app.domains.enrich.notifications.daily_digest.send_email",
+                new_callable=AsyncMock,
+                return_value=True,
+            ) as mock_send:
                 await send_daily_digest_emails()
                 mock_send.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_partial_send_failure(self):
-        from app.tasks.email_tasks import send_daily_digest_emails
-
         tasks = [
             ("user1@example.com", "Digest", "<html>1</html>"),
             ("user2@example.com", "Digest", "<html>2</html>"),
         ]
-        with patch("app.tasks.email_tasks.asyncio.to_thread", new_callable=AsyncMock, return_value=tasks):
-            with patch("app.tasks.email_tasks.send_email", new_callable=AsyncMock, side_effect=[True, False]):
+        with patch(
+            "app.domains.enrich.notifications.daily_digest.asyncio.to_thread",
+            new_callable=AsyncMock,
+            return_value=tasks,
+        ):
+            with patch(
+                "app.domains.enrich.notifications.daily_digest.send_email",
+                new_callable=AsyncMock,
+                side_effect=[True, False],
+            ):
                 await send_daily_digest_emails()

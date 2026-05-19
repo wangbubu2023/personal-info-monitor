@@ -191,7 +191,10 @@ async def test_dispatch_keyword_alerts_uses_create_task():
     mock_db = MagicMock()
     mock_db.query.return_value.filter.return_value.first.side_effect = _first_for_keyword
 
-    with patch("app.tasks.email_tasks.send_keyword_alert", new=AsyncMock()) as mock_send:
+    with patch(
+        "app.domains.enrich.notifications.keyword_alert.send_keyword_alert",
+        new=AsyncMock(),
+    ) as mock_send:
         from app.tasks.process_tasks import _dispatch_keyword_alerts
 
         _dispatch_keyword_alerts(mock_db, content)

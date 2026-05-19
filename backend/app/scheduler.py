@@ -31,7 +31,8 @@ def setup_scheduler():
         purge_expired_runtime_locks,
         run_markdown_export,
     )
-    from app.tasks.email_tasks import send_daily_digest_emails, send_doctor_digest_email
+    from app.domains.enrich.notifications.daily_digest import send_daily_digest_emails
+    from app.domains.enrich.notifications.doctor_digest import send_doctor_digest_email
 
     # Core: check sources every 5 minutes (fetch priority)
     scheduler.add_job(

@@ -132,7 +132,7 @@ async def _finish_content_async(content_id: str) -> None:
 def _dispatch_keyword_alerts(db, content) -> None:
     """Schedule keyword-alert emails fire-and-forget."""
     from app.models import Keyword
-    from app.tasks.email_tasks import send_keyword_alert
+    from app.domains.enrich.notifications.keyword_alert import send_keyword_alert
 
     async def _deliver_keyword_alert(keyword: str) -> None:
         try:
