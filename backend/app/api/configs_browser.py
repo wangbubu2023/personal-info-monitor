@@ -21,17 +21,19 @@ from app.schemas.config import (
 from app.utils.datetime import utcnow_naive
 from app.utils.logger import get_logger
 from app.utils.url import host_matches, normalize_host
-from app.api.configs_common import (
+from app.api.configs_common import extract_auth_cookies_for_host
+from app.domains.fetch.auth import (
     bind_browser_session_to_sources,
     ensure_x_shared_auth_config,
-    extract_auth_cookies_for_host,
+    serialize_browser_session,
+    sync_cookies_to_auth_config,
+)
+from app.platform.browser import (
     is_x_host,
     profiles_root,
     run_browser_bootstrap,
     run_browser_validation,
-    serialize_browser_session,
     slugify_profile_name,
-    sync_cookies_to_auth_config,
 )
 
 router = APIRouter()

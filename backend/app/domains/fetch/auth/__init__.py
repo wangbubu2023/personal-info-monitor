@@ -12,6 +12,12 @@ Lower-level mechanics (Playwright login, generic cookie probing,
 ``BrowserSession`` runtime hydration) live in ``app.platform.{browser,auth}``.
 """
 
+from app.domains.fetch.auth.browser import (
+    bind_browser_session_to_sources,
+    ensure_x_shared_auth_config,
+    serialize_browser_session,
+    sync_cookies_to_auth_config,
+)
 from app.domains.fetch.auth.credentials import try_parse_auth_credentials
 from app.domains.fetch.auth.refresh import maybe_refresh_auth_cookies
 from app.domains.fetch.auth.warnings import (
@@ -21,7 +27,11 @@ from app.domains.fetch.auth.warnings import (
 
 __all__ = [
     "auth_warning_entry",
+    "bind_browser_session_to_sources",
     "cookie_hydration_warning_entry",
+    "ensure_x_shared_auth_config",
     "maybe_refresh_auth_cookies",
+    "serialize_browser_session",
+    "sync_cookies_to_auth_config",
     "try_parse_auth_credentials",
 ]
