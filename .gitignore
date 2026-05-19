@@ -51,3 +51,15 @@ frontend/src-tauri/target/
 
 # Runtime PID files
 .pim-local-pids/
+
+# Local logs
+.pim-local-logs/
+
+# Git worktrees for refactor work
+.worktrees/
+
+# UV lockfile lock dir
+backend/.uv/
+
+# Auto-generated requirements snapshot
+backend/requirements.txt.generated
