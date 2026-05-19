@@ -43,6 +43,12 @@ here:
   baseline scoring: dimension/score-confidence calc, structured
   recommendation reasons, final-score + selection-status pipeline).
   Pure functions, no LLM. Legacy path is a re-export shim.
+* ``domains/ingest/search.py`` — moved from
+  ``app.utils.fts_query`` in Phase 3 step 6 (SQLite FTS5 MATCH
+  expression builder; sanitizes user input before hitting the
+  ``content_fts`` virtual table that ingest populates via
+  ``StorageStage``). Legacy ``app.utils.fts_query`` path is a
+  re-export shim.
 
 The ingest domain MUST NOT import LLM providers, the summariser or the
 translator; that boundary is enforced by ``check_domain_imports.py`` from
