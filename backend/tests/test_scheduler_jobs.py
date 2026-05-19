@@ -12,5 +12,6 @@ def test_hourly_digest_job_is_always_registered():
     assert "check_and_fetch_due_sources" in job_ids
     assert "generate_hourly_digest" in job_ids
     assert "send_daily_digest_emails" in job_ids
+    assert "purge_expired_runtime_locks" in job_ids
 
     scheduler.remove_all_jobs()

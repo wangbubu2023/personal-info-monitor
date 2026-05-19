@@ -61,6 +61,7 @@ async def test_translator_openai_provider_no_duplicate_fallback(monkeypatch):
 
     monkeypatch.setattr(translator_module, "get_translation_settings", lambda: {"provider": "openai"})
     monkeypatch.setattr(translator_module, "is_translation_cloud_fallback_enabled", lambda: True)
+    monkeypatch.setattr(translator_module, "get_translation_fallback_model_settings", lambda: {})
     monkeypatch.setattr(
         translator_module,
         "get_translation_cloud_fallback_openai_settings",

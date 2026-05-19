@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.config import parse_cors_origins
+from app.config import CorsOriginConfigError, parse_cors_origins
 
 
 def test_parse_cors_origins_deduplicates_and_splits_lines():
@@ -10,9 +10,29 @@ def test_parse_cors_origins_deduplicates_and_splits_lines():
     assert parsed == ["http://a.test", "http://b.test"]
 
 
+def test_parse_cors_origins_rejects_wildcard():
+    with pytest.raises(CorsOriginConfigError):
+        parse_cors_origins("*")
+
+
+def test_parse_cors_origins_rejects_wildcard_subdomain():
+    with pytest.raises(CorsOriginConfigError):
+        parse_cors_origins("https://*.example.com")
+
+
+def test_parse_cors_origins_rejects_missing_scheme():
+    with pytest.raises(CorsOriginConfigError):
+        parse_cors_origins("example.com")
+
+
+def test_parse_cors_origins_accepts_tauri_scheme():
+    parsed = parse_cors_origins("tauri://localhost")
+    assert parsed == ["tauri://localhost"]
+
+
 @pytest.mark.asyncio
 async def test_prometheus_metrics_endpoint_exposes_text_format(client):
-    await client.get("/api/categories")
+    await client.get("/api/sources")
 
     response = await client.get("/metrics")
     assert response.status_code == 200

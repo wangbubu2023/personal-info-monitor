@@ -82,10 +82,54 @@ async def test_create_and_delete_auth_config(client: AsyncClient):
 
     del_resp = await client.delete(f"/api/configs/auth-configs/{config_id}")
     assert del_resp.status_code == 200
+    body = del_resp.json()
+    assert body.get("sources_unlinked") == 0
+    assert body.get("browser_sessions_unlinked") == 0
 
     # Confirm it's gone
     get_resp = await client.get(f"/api/configs/auth-configs/{config_id}")
     assert get_resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_delete_auth_config_unlinks_referencing_sources(client: AsyncClient):
+    """Deleting an auth config must not fail when sources still reference it.
+
+    The DELETE handler transparently unlinks referencing sources (clearing
+    ``auth_required`` as well) and reports the count. Without this, the FK
+    constraint would turn the action into a cryptic 500 in the UI.
+    """
+    auth_payload = {
+        "name": "bound-cfg",
+        "site_url": "https://bound.example.com",
+        "auth_type": "cookie",
+        "cookies": "session=abc",
+    }
+    auth_resp = await client.post("/api/configs/auth-configs", json=auth_payload)
+    assert auth_resp.status_code in (200, 201)
+    auth_id = auth_resp.json()["id"]
+
+    src_payload = {
+        "name": "bound-source",
+        "type": "website",
+        "url": "https://bound.example.com/news",
+        "auth_required": True,
+        "auth_config_id": auth_id,
+    }
+    src_resp = await client.post("/api/sources", json=src_payload)
+    assert src_resp.status_code in (200, 201), src_resp.text
+    src_id = src_resp.json()["id"]
+
+    del_resp = await client.delete(f"/api/configs/auth-configs/{auth_id}")
+    assert del_resp.status_code == 200
+    body = del_resp.json()
+    assert body.get("sources_unlinked") == 1
+
+    src_get = await client.get(f"/api/sources/{src_id}")
+    assert src_get.status_code == 200
+    src_body = src_get.json()
+    assert src_body.get("auth_config_id") in (None, "")
+    assert src_body.get("auth_required") is False
 
 
 @pytest.mark.asyncio

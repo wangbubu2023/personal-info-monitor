@@ -1,6 +1,8 @@
 from datetime import datetime
 import asyncio
 
+from app.services.hourly_digest import synthesis as digest_synthesis
+from app.services.hourly_digest import text_utils as digest_text
 from app.tasks import hourly_digest_tasks as digest_tasks
 
 
@@ -22,7 +24,7 @@ def _cluster_item(idx: int) -> dict:
 
 def test_digest_limits_are_read_from_system_settings(monkeypatch):
     monkeypatch.setattr(
-        digest_tasks,
+        digest_text,
         "get_system_settings_sync",
         lambda: {"limits": {"max_hourly_digest_input_items": 360, "max_digest_candidates": 8}},
     )
@@ -72,6 +74,7 @@ def test_parse_generated_digest_item_returns_structured_item():
         "summary": "苹果继续依靠芯片、系统与硬件一体化能力巩固竞争力，并将这种整合模式延伸到下一阶段产品布局。",
         "source_name": "source-1",
         "article_url": "https://article-1.example.com",
+        "local_reader_path": "",
     }
 
 
@@ -111,7 +114,7 @@ def test_localize_fallback_clusters_translates_primary_items(monkeypatch):
         async def translate(self, text: str, target_language: str = "zh-CN"):
             return f"译文：{text}"
 
-    monkeypatch.setattr(digest_tasks, "Translator", lambda: _FakeTranslator())
+    monkeypatch.setattr(digest_synthesis, "Translator", lambda: _FakeTranslator())
 
     clusters = [_cluster_item(1)]
     asyncio.run(digest_tasks._localize_fallback_clusters(clusters, candidate_limit=1))
@@ -119,6 +122,18 @@ def test_localize_fallback_clusters_translates_primary_items(monkeypatch):
     primary = clusters[0]["items"][0]
     assert primary["translated_title"] == "译文：original-1"
     assert primary["translated_summary"] == "译文：summary-1"
+
+
+def test_is_valid_digest_format_accepts_synthesized_reader_links():
+    title = "3 月 31 日 19 时简报"
+    body = f"## {title}\n\n本小时最值得关注的动态集中在政策与科技交叉领域。[详情](/reader/abc) 与 [延伸](/reader/def) 显示多方信息正在收敛。"
+    assert digest_tasks._is_valid_digest_format(body)
+
+
+def test_parse_selection_ids_filters_and_caps():
+    valid = {"a", "b", "c"}
+    raw = '{"ids": ["b", "x", "a", "b"]}'
+    assert digest_tasks._parse_selection_ids(raw, valid, max_n=2) == ["b", "a"]
 
 
 def test_classify_digest_category_avoids_false_positive_substring_matches():
@@ -133,3 +148,12 @@ def test_completed_hour_digest_uses_window_end_hour_for_title():
     assert start_local.hour == 18
     assert end_local.hour == 19
     assert digest_tasks._format_digest_title(end_local) == "3 月 31 日 19 时简报"
+
+
+def test_three_hour_digest_window_uses_completed_boundary():
+    now = datetime(2026, 3, 31, 19, 20, tzinfo=digest_tasks.SYSTEM_TZ)
+    start_local, end_local, _, _ = digest_tasks._compute_digest_window(now, window_hours=3)
+
+    assert start_local.hour == 15
+    assert end_local.hour == 18
+    assert digest_tasks._format_digest_title(end_local, window_hours=3) == "3 月 31 日 15-18 时简报"

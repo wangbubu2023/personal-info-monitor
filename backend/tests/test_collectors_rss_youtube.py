@@ -4,6 +4,25 @@ from app.collectors.rss import RSSCollector
 from app.collectors.youtube import YouTubeCollector
 
 
+def test_rss_validate_content_requires_plain_text_body():
+    collector = RSSCollector()
+    assert collector.validate_content(
+        {"title": "T", "url": "https://example.com/a", "content": "x" * 25},
+    )
+    assert not collector.validate_content(
+        {"title": "T", "url": "https://example.com/a", "content": "short"},
+    )
+    assert not collector.validate_content({"title": "T", "url": "https://example.com/a", "content": ""})
+
+
+def test_rss_validate_content_rejects_embedded_png():
+    collector = RSSCollector()
+    blob = (b"\x89PNG\r\n\x1a\n" + b"z" * 60).decode("latin-1")
+    assert not collector.validate_content(
+        {"title": "T", "url": "https://example.com/a", "content": blob},
+    )
+
+
 def test_rss_collector_extracts_meta_description_summary():
     collector = RSSCollector()
     html = """

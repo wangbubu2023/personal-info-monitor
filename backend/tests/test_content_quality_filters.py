@@ -1,3 +1,5 @@
+from datetime import timedelta
+
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
@@ -183,7 +185,6 @@ async def test_normalizer_stage_filters_low_signal_website_contents_before_stora
         url="https://hbr.org",
         fetch_interval=60,
         enabled=True,
-        priority=0,
         metadata_={},
     )
     db.add(source)
@@ -234,7 +235,6 @@ async def test_normalizer_stage_keeps_cross_source_external_id_matches():
         url="https://x.com/account-a",
         fetch_interval=60,
         enabled=True,
-        priority=0,
         metadata_={},
     )
     source_b = Source(
@@ -243,7 +243,6 @@ async def test_normalizer_stage_keeps_cross_source_external_id_matches():
         url="https://x.com/account-b",
         fetch_interval=60,
         enabled=True,
-        priority=0,
         metadata_={},
     )
     db.add(source_a)
@@ -288,6 +287,79 @@ async def test_normalizer_stage_keeps_cross_source_external_id_matches():
     assert len(valid_contents) == 1
     assert valid_contents[0]["external_id"] == "tweet-123"
     assert valid_contents[0]["metadata"]["cross_source_external_id_match"] == existing.id
+
+
+async def test_normalizer_scheduled_allows_days_old_website_rss_items_by_default():
+    """Regression: 60m default lag dropped entire VentureBeat-style RSS-backed website feeds."""
+    db = _build_db_session()
+    source = Source(
+        name="VB",
+        type=SourceType.WEBSITE,
+        url="https://venturebeat.com/",
+        fetch_interval=60,
+        enabled=True,
+        metadata_={},
+    )
+    db.add(source)
+    db.commit()
+    db.refresh(source)
+
+    old = utcnow_naive() - timedelta(days=2)
+    raw_contents = [
+        {
+            "external_id": "vb-1",
+            "title": "Some enterprise AI story",
+            "content": "x" * 300,
+            "url": "https://venturebeat.com/ai/some-enterprise-ai-story-2026",
+            "publish_time": old,
+        },
+    ]
+
+    valid_contents, stale_skipped = await NormalizerStage.execute(
+        db=db,
+        source=source,
+        raw_contents=raw_contents,
+        manual_trigger=False,
+    )
+
+    assert stale_skipped == 0
+    assert len(valid_contents) == 1
+
+
+async def test_normalizer_scheduled_keeps_tight_lag_for_x_by_default():
+    db = _build_db_session()
+    source = Source(
+        name="X user",
+        type=SourceType.X,
+        url="https://x.com/example",
+        fetch_interval=60,
+        enabled=True,
+        metadata_={},
+    )
+    db.add(source)
+    db.commit()
+    db.refresh(source)
+
+    old = utcnow_naive() - timedelta(hours=3)
+    raw_contents = [
+        {
+            "external_id": "tweet-999",
+            "title": "Old post",
+            "content": "hello world " * 20,
+            "url": "https://x.com/example/status/999",
+            "publish_time": old,
+        },
+    ]
+
+    valid_contents, stale_skipped = await NormalizerStage.execute(
+        db=db,
+        source=source,
+        raw_contents=raw_contents,
+        manual_trigger=False,
+    )
+
+    assert stale_skipped == 1
+    assert valid_contents == []
 
 
 def test_low_signal_cleanup_report_matches_only_junk_history():

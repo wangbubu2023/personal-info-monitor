@@ -5,8 +5,9 @@ from types import SimpleNamespace
 import pytest
 
 from app.api import sources as sources_api
+from app.api.sources import _helpers as sources_helpers
 from app.features import PODCAST_DISABLED_DETAIL
-from app.models import Category, Source
+from app.models import Source
 from app.models.source import SourceType
 
 
@@ -31,14 +32,10 @@ class _ProbeResult:
 
 @pytest.mark.asyncio
 async def test_sources_crud_and_list_cache_invalidation(client, db_session, monkeypatch):
-    category = Category(name="Tech", color="#123456")
-    db_session.add(category)
-    await db_session.commit()
-
-    async def _fake_probe_urls(urls, source_type):
+    async def _fake_probe_urls(urls, source_type, **_):
         return _ProbeResult(rss_url="https://example.com/feed.xml"), {urls[0]: "https://example.com/feed.xml"}, 1
 
-    monkeypatch.setattr(sources_api, "_probe_urls", _fake_probe_urls)
+    monkeypatch.setattr(sources_helpers, "_probe_urls", _fake_probe_urls)
 
     create_response = await client.post(
         "/api/sources",
@@ -46,10 +43,8 @@ async def test_sources_crud_and_list_cache_invalidation(client, db_session, monk
             "name": "Example Feed",
             "type": "website",
             "url": "https://example.com",
-            "category_id": str(category.id),
             "fetch_interval": 60,
             "enabled": True,
-            "priority": 10,
             "auth_required": False,
             "extra_urls": ["https://example.com/news"],
             "metadata": {"team": "alpha"},
@@ -57,7 +52,14 @@ async def test_sources_crud_and_list_cache_invalidation(client, db_session, monk
     )
     assert create_response.status_code == 200
     source_id = create_response.json()["id"]
-    assert create_response.json()["metadata"]["rss_url"] == "https://example.com/feed.xml"
+    body = create_response.json()
+    assert body["probe_status"] == "not_probed"
+    assert body["fetch_status"] == "unknown"
+
+    probe_response = await client.post(f"/api/sources/{source_id}/probe")
+    assert probe_response.status_code == 200
+    assert probe_response.json()["probe_status"] == "ok"
+    assert probe_response.json()["metadata"]["rss_url"] == "https://example.com/feed.xml"
 
     first_list = await client.get("/api/sources")
     assert first_list.status_code == 200
@@ -100,21 +102,23 @@ async def test_probe_source_updates_fetch_status_and_invalidates_list_cache(clie
     await db_session.commit()
     await db_session.refresh(source)
 
-    async def _fake_probe_urls(urls, source_type):
+    async def _fake_probe_urls(urls, source_type, **_):
         return _ProbeResult(strategy="scrape"), {}, 1
 
-    monkeypatch.setattr(sources_api, "_probe_urls", _fake_probe_urls)
+    monkeypatch.setattr(sources_helpers, "_probe_urls", _fake_probe_urls)
 
     warm = await client.get("/api/sources")
     assert warm.status_code == 200
 
     probe_response = await client.post(f"/api/sources/{source.id}/probe")
     assert probe_response.status_code == 200
-    assert probe_response.json()["fetch_strategy"] == "scrape"
+    assert probe_response.json()["probe_strategy"] == "scrape"
+    assert probe_response.json()["probe_status"] == "ok"
+    assert probe_response.json()["fetch_status"] == "unknown"
 
     refreshed = await client.get("/api/sources")
     assert refreshed.status_code == 200
-    assert refreshed.json()["items"][0]["fetch_strategy"] == "scrape"
+    assert refreshed.json()["items"][0]["probe_strategy"] == "scrape"
 
 
 @pytest.mark.asyncio
@@ -132,7 +136,6 @@ async def test_podcast_sources_are_hidden_and_rejected(client, db_session):
             "url": "https://example.com/podcast.xml",
             "fetch_interval": 60,
             "enabled": True,
-            "priority": 0,
             "auth_required": False,
             "extra_urls": [],
             "metadata": {},
@@ -147,3 +150,42 @@ async def test_podcast_sources_are_hidden_and_rejected(client, db_session):
 
     get_response = await client.get(f"/api/sources/{source.id}")
     assert get_response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_sources_metadata_max_fetch_lag_minutes(client, monkeypatch):
+    async def _fake_probe_urls(urls, source_type, **_):
+        return _ProbeResult(), {}, 1
+
+    monkeypatch.setattr(sources_helpers, "_probe_urls", _fake_probe_urls)
+
+    bad = await client.post(
+        "/api/sources",
+        json={
+            "name": "Lag Bad",
+            "type": "rss",
+            "url": "https://example.com/lag-bad.xml",
+            "metadata": {"max_fetch_lag_minutes": 0},
+        },
+    )
+    assert bad.status_code == 422
+
+    ok = await client.post(
+        "/api/sources",
+        json={
+            "name": "Lag Ok",
+            "type": "rss",
+            "url": "https://example.com/lag-ok.xml",
+            "metadata": {"max_fetch_lag_minutes": 1440},
+        },
+    )
+    assert ok.status_code == 200
+    assert ok.json()["metadata"].get("max_fetch_lag_minutes") == 1440
+
+    sid = ok.json()["id"]
+    cleared = await client.patch(
+        f"/api/sources/{sid}",
+        json={"metadata": {"max_fetch_lag_minutes": None}},
+    )
+    assert cleared.status_code == 200
+    assert "max_fetch_lag_minutes" not in cleared.json().get("metadata", {})

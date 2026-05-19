@@ -209,6 +209,149 @@ class TestCollectorStage:
 
         db.query.assert_called()
 
+    @pytest.mark.asyncio
+    async def test_active_browser_session_skips_password_auto_login(self):
+        """An active browser_session's on-disk profile already holds valid cookies;
+        running password auto-login anyway (WSJ et al.) only yields false-positive
+        ``auth_captcha`` warnings. Verify the stage short-circuits it."""
+        from app.pipeline.collector_stage import CollectorStage
+
+        source = _make_source(type="website")
+        source.type = MagicMock()
+        source.type.value = "website"
+        source.auth_config_id = uuid4()
+        auth_cfg = MagicMock()
+        auth_cfg.auth_type = MagicMock()
+        auth_cfg.auth_type.value = "password"
+        auth_cfg.login_url = "https://example.com/login"
+        auth_cfg.login_selectors = {}
+        source.auth_config = auth_cfg
+
+        mock_collector = MagicMock()
+        mock_collector.fetch = AsyncMock(return_value=[])
+        db = MagicMock()
+
+        refresh_mock = AsyncMock(return_value=({}, None))
+        browser_session_stub = {
+            "id": "abc",
+            "user_data_dir": "/tmp/p",
+            "status": "active",
+            "auth_ready": True,
+        }
+
+        with patch("app.pipeline.collector_stage.get_collector", return_value=mock_collector), \
+             patch("app.pipeline.collector_stage.get_source_urls", return_value=["https://example.com/x"]), \
+             patch("app.pipeline.collector_stage.dedupe_raw_contents", side_effect=lambda x: x), \
+             patch("app.pipeline.collector_stage.auth_warning_entry", return_value=None), \
+             patch("app.pipeline.collector_stage.cookie_hydration_warning_entry", return_value=None), \
+             patch("app.pipeline.collector_stage.merge_warning_messages", return_value=None), \
+             patch("app.pipeline.collector_stage.try_parse_auth_credentials", return_value={"username": "u", "password": "p"}), \
+             patch("app.pipeline.collector_stage.maybe_refresh_auth_cookies", refresh_mock), \
+             patch(
+                 "app.pipeline.collector_stage.build_browser_session_runtime",
+                 return_value=browser_session_stub,
+             ):
+
+            await CollectorStage.execute(db, source)
+
+        refresh_mock.assert_not_awaited()
+        runtime_auth = getattr(source, "_runtime_auth")
+        assert runtime_auth["browser_session"] == browser_session_stub
+
+    @pytest.mark.asyncio
+    async def test_active_but_unvalidated_browser_session_still_runs_auto_login(self):
+        """ACTIVE only means a profile exists; without a recent successful
+        validation, password auth should still be allowed to refresh cookies."""
+        from app.pipeline.collector_stage import CollectorStage
+
+        source = _make_source(type="website")
+        source.type = MagicMock()
+        source.type.value = "website"
+        source.auth_config_id = uuid4()
+        auth_cfg = MagicMock()
+        auth_cfg.auth_type = MagicMock()
+        auth_cfg.auth_type.value = "password"
+        auth_cfg.login_url = "https://example.com/login"
+        auth_cfg.login_selectors = {}
+        source.auth_config = auth_cfg
+
+        mock_collector = MagicMock()
+        mock_collector.fetch = AsyncMock(return_value=[])
+        db = MagicMock()
+
+        refresh_mock = AsyncMock(return_value=({"cookies": {"x": "y"}}, None))
+        browser_session_stub = {
+            "id": "abc",
+            "user_data_dir": "/tmp/p",
+            "status": "active",
+            "auth_ready": False,
+            "auth_warning": "浏览器会话尚未完成正文校验，需要重新登录或校验",
+        }
+
+        with patch("app.pipeline.collector_stage.get_collector", return_value=mock_collector), \
+             patch("app.pipeline.collector_stage.get_source_urls", return_value=["https://example.com/x"]), \
+             patch("app.pipeline.collector_stage.dedupe_raw_contents", side_effect=lambda x: x), \
+             patch("app.pipeline.collector_stage.auth_warning_entry", return_value=None), \
+             patch("app.pipeline.collector_stage.cookie_hydration_warning_entry", return_value=None), \
+             patch("app.pipeline.collector_stage.merge_warning_messages", return_value=None), \
+             patch("app.pipeline.collector_stage.try_parse_auth_credentials", return_value={"username": "u", "password": "p"}), \
+             patch("app.pipeline.collector_stage.maybe_refresh_auth_cookies", refresh_mock), \
+             patch(
+                 "app.pipeline.collector_stage.build_browser_session_runtime",
+                 return_value=browser_session_stub,
+             ):
+
+            await CollectorStage.execute(db, source)
+
+        refresh_mock.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_inactive_browser_session_still_runs_auto_login(self):
+        """If the browser session is not active (needs_login / error), we should
+        fall back to the password auto-login path so the user still gets a chance
+        at credential-based cookies."""
+        from app.pipeline.collector_stage import CollectorStage
+
+        source = _make_source(type="website")
+        source.type = MagicMock()
+        source.type.value = "website"
+        source.auth_config_id = uuid4()
+        auth_cfg = MagicMock()
+        auth_cfg.auth_type = MagicMock()
+        auth_cfg.auth_type.value = "password"
+        auth_cfg.login_url = "https://example.com/login"
+        auth_cfg.login_selectors = {}
+        source.auth_config = auth_cfg
+
+        mock_collector = MagicMock()
+        mock_collector.fetch = AsyncMock(return_value=[])
+        db = MagicMock()
+
+        refresh_mock = AsyncMock(return_value=({"cookies": {"x": "y"}}, None))
+        browser_session_stub = {
+            "id": "abc",
+            "user_data_dir": "/tmp/p",
+            "status": "needs_login",
+            "auth_ready": False,
+        }
+
+        with patch("app.pipeline.collector_stage.get_collector", return_value=mock_collector), \
+             patch("app.pipeline.collector_stage.get_source_urls", return_value=["https://example.com/x"]), \
+             patch("app.pipeline.collector_stage.dedupe_raw_contents", side_effect=lambda x: x), \
+             patch("app.pipeline.collector_stage.auth_warning_entry", return_value=None), \
+             patch("app.pipeline.collector_stage.cookie_hydration_warning_entry", return_value=None), \
+             patch("app.pipeline.collector_stage.merge_warning_messages", return_value=None), \
+             patch("app.pipeline.collector_stage.try_parse_auth_credentials", return_value={"username": "u", "password": "p"}), \
+             patch("app.pipeline.collector_stage.maybe_refresh_auth_cookies", refresh_mock), \
+             patch(
+                 "app.pipeline.collector_stage.build_browser_session_runtime",
+                 return_value=browser_session_stub,
+             ):
+
+            await CollectorStage.execute(db, source)
+
+        refresh_mock.assert_awaited_once()
+
 
 # ===========================================================================
 # StorageStage
@@ -291,6 +434,9 @@ class TestStorageStage:
 # coordinator._build_raw_content_objects
 # ===========================================================================
 
+_no_reject = patch("app.pipeline.utils.get_website_content_reject_reason", return_value=None)
+
+
 class TestBuildRawContentObjects:
 
     @pytest.mark.asyncio
@@ -300,9 +446,9 @@ class TestBuildRawContentObjects:
         source = _make_source()
         raw = [_raw(title="Hello World", content="Some body text")]
 
-        with patch("app.processors.extractor.ContentExtractor") as MockExt:
+        with _no_reject, patch("app.processors.extractor.ContentExtractor") as MockExt:
             MockExt.return_value = AsyncMock()
-            results = await _build_raw_content_objects(raw, source)
+            results, _build_failures = await _build_raw_content_objects(raw, source)
 
         assert len(results) == 1
         assert results[0].title == "Hello World"
@@ -318,8 +464,8 @@ class TestBuildRawContentObjects:
         mock_extractor = AsyncMock()
         mock_extractor.extract.return_value = "Extracted text"
 
-        with patch("app.processors.extractor.ContentExtractor", return_value=mock_extractor):
-            results = await _build_raw_content_objects(raw, source)
+        with _no_reject, patch("app.processors.extractor.ContentExtractor", return_value=mock_extractor):
+            results, _build_failures = await _build_raw_content_objects(raw, source)
 
         assert len(results) == 1
         mock_extractor.extract.assert_called_once()
@@ -331,9 +477,9 @@ class TestBuildRawContentObjects:
         source = _make_source()
         raw = [_raw(publish_time="2025-06-15T10:00:00Z")]
 
-        with patch("app.processors.extractor.ContentExtractor") as MockExt:
+        with _no_reject, patch("app.processors.extractor.ContentExtractor") as MockExt:
             MockExt.return_value = AsyncMock()
-            results = await _build_raw_content_objects(raw, source)
+            results, _build_failures = await _build_raw_content_objects(raw, source)
 
         assert results[0].publish_time.year == 2025
         assert results[0].publish_time.month == 6
@@ -345,9 +491,9 @@ class TestBuildRawContentObjects:
         source = _make_source()
         raw = [_raw(publish_time=None)]
 
-        with patch("app.processors.extractor.ContentExtractor") as MockExt:
+        with _no_reject, patch("app.processors.extractor.ContentExtractor") as MockExt:
             MockExt.return_value = AsyncMock()
-            results = await _build_raw_content_objects(raw, source)
+            results, _build_failures = await _build_raw_content_objects(raw, source)
 
         assert results[0].publish_time is not None
 
@@ -358,12 +504,12 @@ class TestBuildRawContentObjects:
         source = _make_source()
         raw = [_raw(), {"title": None}]
 
-        with patch("app.processors.extractor.ContentExtractor") as MockExt:
+        with _no_reject, patch("app.processors.extractor.ContentExtractor") as MockExt:
             MockExt.return_value = AsyncMock()
             with patch("app.pipeline.coordinator.strip_html_tags", side_effect=[
                 "Article", "body text", RuntimeError("bad data")
             ]):
-                results = await _build_raw_content_objects(raw, source)
+                results, _build_failures = await _build_raw_content_objects(raw, source)
 
         assert len(results) <= 2
 
@@ -375,25 +521,27 @@ class TestBuildRawContentObjects:
         long_body = "X" * 600
         raw = [_raw(content=long_body)]
 
-        with patch("app.processors.extractor.ContentExtractor") as MockExt:
+        with _no_reject, patch("app.processors.extractor.ContentExtractor") as MockExt:
             MockExt.return_value = AsyncMock()
-            results = await _build_raw_content_objects(raw, source)
+            results, _build_failures = await _build_raw_content_objects(raw, source)
 
         assert results[0].summary is not None
         assert results[0].summary.endswith("…")
 
     @pytest.mark.asyncio
-    async def test_metadata_normalised_to_dict(self):
+    async def test_metadata_normalised_to_dict_and_quality_stamped(self):
         from app.pipeline.coordinator import _build_raw_content_objects
 
         source = _make_source()
         raw = [_raw(metadata="not-a-dict")]
 
-        with patch("app.processors.extractor.ContentExtractor") as MockExt:
+        with _no_reject, patch("app.processors.extractor.ContentExtractor") as MockExt:
             MockExt.return_value = AsyncMock()
-            results = await _build_raw_content_objects(raw, source)
+            results, _build_failures = await _build_raw_content_objects(raw, source)
 
-        assert results[0].metadata_ == {}
+        assert isinstance(results[0].metadata_, dict)
+        assert results[0].metadata_["fulltext_status"] == "title_only"
+        assert results[0].metadata_["score_basis"] == "title"
 
 
 # ===========================================================================
@@ -473,7 +621,9 @@ class TestHandleExternalIdDuplicate:
         result = handle_external_id_duplicate(db, source, _raw(), "ext-1")
 
         assert result is True
-        db.commit.assert_called()
+        # The helper must NOT commit — that's the coordinator's job at the
+        # batch boundary (see dedupe docstring / Phase 2 P1).
+        db.commit.assert_not_called()
 
     def test_cross_source_sets_metadata(self):
         from app.pipeline.dedupe import handle_external_id_duplicate
@@ -508,6 +658,7 @@ class TestHandleExternalIdDuplicate:
         existing.metadata_ = {}
         existing.full_content = None
         existing.summary = None
+        existing.is_user_edited = False
         existing.title = "http://old-url"
 
         first_query = MagicMock()
@@ -524,6 +675,145 @@ class TestHandleExternalIdDuplicate:
 
         assert result is True
         assert existing.full_content is not None
+
+    def test_skips_backfill_if_edited(self):
+        from app.pipeline.dedupe import handle_external_id_duplicate
+
+        db = MagicMock()
+        source = _make_source()
+
+        existing = MagicMock(spec=Content)
+        existing.metadata_ = {}
+        existing.full_content = "User manual text"
+        existing.is_user_edited = True
+
+        first_query = MagicMock()
+        first_query.filter.return_value.first.return_value = existing
+        db.query.side_effect = [first_query, MagicMock()]
+
+        raw = _raw(content="Better scraped text", metadata={"article_fulltext": True})
+        result = handle_external_id_duplicate(db, source, raw, "ext-1")
+
+        assert result is True
+        # Should NOT have updated to "Better scraped text"
+        assert existing.full_content == "User manual text"
+
+    def test_dedupe_batch_issues_no_per_row_commits(self):
+        """Regression guard for Phase 2 P1: N duplicate rows must not fsync N times."""
+        from app.pipeline.dedupe import handle_external_id_duplicate
+
+        db = MagicMock()
+        source = _make_source()
+
+        def _fresh_queries():
+            existing = MagicMock(spec=Content)
+            existing.metadata_ = {}
+            existing.full_content = None
+            existing.summary = None
+            existing.is_user_edited = False
+            existing.title = "Old"
+            same_q = MagicMock()
+            same_q.filter.return_value.first.return_value = existing
+            cross_q = MagicMock()
+            cross_q.filter.return_value.first.return_value = None
+            return [same_q, cross_q]
+
+        queries: list[MagicMock] = []
+        for _ in range(5):
+            queries.extend(_fresh_queries())
+        db.query.side_effect = queries
+
+        for i in range(5):
+            assert handle_external_id_duplicate(db, source, _raw(), f"ext-{i}") is True
+
+        db.commit.assert_not_called()
+
+
+# ===========================================================================
+# NormalizerStage — hydrated-HTML preprocessing (backfill for existing stubs)
+# ===========================================================================
+
+class TestMaterializeHydratedFulltext:
+    """Guards the fix for: paywall re-fetches failing to backfill existing
+    stub rows because ``_hydrate_direct_articles`` put HTML in ``raw_content["html"]``
+    but left ``content`` empty, which caused ``handle_external_id_duplicate``
+    to skip the upgrade path. See :func:`_materialize_hydrated_fulltext`.
+    """
+
+    @pytest.mark.asyncio
+    async def test_html_with_empty_content_gets_extracted_and_marked(self):
+        from app.pipeline.normalizer_stage import _materialize_hydrated_fulltext
+
+        raw_content = {
+            "url": "https://example.com/article",
+            "content": "",
+            "html": "<html><body><article>" + ("Real article body. " * 40) + "</article></body></html>",
+            "metadata": {},
+        }
+
+        async def _fake_extract(html, url):  # noqa: ARG001 - signature mirrors real extractor
+            return "Real article body. " * 40
+
+        with patch("app.processors.extractor.ContentExtractor") as MockExtractor:
+            MockExtractor.return_value.extract = _fake_extract
+            await _materialize_hydrated_fulltext(raw_content)
+
+        assert len(raw_content["content"]) >= 280
+        assert raw_content["metadata"]["article_fulltext"] is True
+
+    @pytest.mark.asyncio
+    async def test_noop_when_no_html(self):
+        from app.pipeline.normalizer_stage import _materialize_hydrated_fulltext
+
+        raw_content = {"url": "https://example.com/x", "content": "short snippet"}
+        await _materialize_hydrated_fulltext(raw_content)
+
+        assert raw_content["content"] == "short snippet"
+        assert "article_fulltext" not in raw_content.get("metadata", {})
+
+    @pytest.mark.asyncio
+    async def test_noop_when_content_already_populated(self):
+        """Avoid re-extracting when the collector already gave us long fulltext
+        (e.g., RSS feeds that include the whole article body inline)."""
+        from app.pipeline.normalizer_stage import _materialize_hydrated_fulltext
+
+        populated = "X" * 400
+        raw_content = {
+            "url": "https://example.com/article",
+            "content": populated,
+            "html": "<html>...</html>",
+            "metadata": {},
+        }
+
+        with patch("app.processors.extractor.ContentExtractor") as MockExtractor:
+            await _materialize_hydrated_fulltext(raw_content)
+            MockExtractor.assert_not_called()
+
+        assert raw_content["content"] == populated
+
+    @pytest.mark.asyncio
+    async def test_extracted_text_below_threshold_is_discarded(self):
+        """If the page is still a paywall shell / signup prompt, we must not
+        mark it as fulltext — that would clobber legitimate existing stubs
+        with garbage."""
+        from app.pipeline.normalizer_stage import _materialize_hydrated_fulltext
+
+        raw_content = {
+            "url": "https://paywall.test/x",
+            "content": "",
+            "html": "<html><body><p>Subscribe to continue</p></body></html>",
+            "metadata": {},
+        }
+
+        async def _tiny_extract(html, url):  # noqa: ARG001
+            return "Subscribe to continue"
+
+        with patch("app.processors.extractor.ContentExtractor") as MockExtractor:
+            MockExtractor.return_value.extract = _tiny_extract
+            await _materialize_hydrated_fulltext(raw_content)
+
+        assert raw_content["content"] == ""
+        assert "article_fulltext" not in raw_content["metadata"]
 
 
 # ===========================================================================

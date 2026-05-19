@@ -17,6 +17,7 @@ async def test_translator_ollama_cloud_fallback_uses_runtime_openai_settings(mon
 
     monkeypatch.setattr(translator_module, "get_translation_settings", lambda: {"provider": "ollama"})
     monkeypatch.setattr(translator_module, "is_translation_cloud_fallback_enabled", lambda: True)
+    monkeypatch.setattr(translator_module, "get_translation_fallback_model_settings", lambda: {})
     monkeypatch.setattr(
         translator_module,
         "get_translation_cloud_fallback_openai_settings",

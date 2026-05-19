@@ -44,9 +44,12 @@ async def test_contents_crud_endpoints(client, db_session):
     assert update_response.status_code == 200
     assert update_response.json()["favorited"] is True
 
-    favorite_toggle = await client.post(f"/api/contents/{content.id}/favorite")
-    assert favorite_toggle.status_code == 200
-    assert favorite_toggle.json()["favorited"] is False
+    favorite_off = await client.patch(
+        f"/api/contents/{content.id}/favorite",
+        json={"favorited": False},
+    )
+    assert favorite_off.status_code == 200
+    assert favorite_off.json()["favorited"] is False
 
     mark_read = await client.post(f"/api/contents/{content.id}/read")
     assert mark_read.status_code == 200
@@ -96,6 +99,61 @@ async def test_contents_cleanup_low_signal_dry_run_and_apply(client, db_session)
     assert remaining.status_code == 200
     assert remaining.json()["total"] == 1
     assert remaining.json()["items"][0]["title"] == "How AI Changes Team Strategy"
+
+
+@pytest.mark.asyncio
+async def test_contents_cleanup_junk_dry_run_and_apply(client, db_session):
+    source = Source(name="36kr-test", type=SourceType.RSS, url="https://36kr.com/feed")
+    now = utcnow_naive()
+    png_body = (b"\x89PNG\r\n\x1a\n" + b"0" * 80).decode("latin-1")
+    junk_binary = Content(
+        source=source,
+        title="36碳",
+        summary=png_body,
+        full_content="",
+        original_url="https://36kr.com/carbon",
+        content_type="rss",
+        publish_time=now,
+        fetched_at=now,
+    )
+    junk_thin = Content(
+        source=source,
+        title="36氪出海",
+        summary="",
+        full_content="",
+        original_url="https://36kr.com/chuhai",
+        content_type="rss",
+        publish_time=now,
+        fetched_at=now,
+    )
+    keep = Content(
+        source=source,
+        title="正常文章标题示例",
+        summary="这是一条足够长度的 RSS 摘要文字，用于保留在库中不被误删。",
+        full_content="",
+        original_url="https://36kr.com/p/123456",
+        content_type="rss",
+        publish_time=now,
+        fetched_at=now,
+    )
+    db_session.add_all([source, junk_binary, junk_thin, keep])
+    await db_session.commit()
+
+    dry = await client.post("/api/contents/cleanup-junk")
+    assert dry.status_code == 200
+    data = dry.json()
+    assert data["matched_count"] == 2
+    assert data["by_reason"]["embedded_binary"] == 1
+    assert data["by_reason"]["rss_thin_or_empty_text"] == 1
+
+    applied = await client.post("/api/contents/cleanup-junk", params={"apply": "true"})
+    assert applied.status_code == 200
+    assert applied.json()["deleted_count"] == 2
+
+    remaining = await client.get("/api/contents")
+    assert remaining.status_code == 200
+    assert remaining.json()["total"] == 1
+    assert remaining.json()["items"][0]["title"] == "正常文章标题示例"
 
 
 @pytest.mark.asyncio

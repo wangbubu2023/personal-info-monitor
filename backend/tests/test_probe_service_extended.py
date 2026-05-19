@@ -241,12 +241,13 @@ class TestProbeDispatch:
             assert result.status == "ok"
 
     @pytest.mark.asyncio
-    async def test_rss_type_dispatches_to_website(self):
+    async def test_rss_type_dispatches_to_direct_feed_probe(self):
         service = ProbeService()
-        with patch.object(service, "_probe_website", new_callable=AsyncMock) as mock_probe:
+        with patch.object(service, "_probe_rss", new_callable=AsyncMock) as mock_probe:
             mock_probe.return_value = ProbeResult(status="ok", strategy="rss")
             result = await service.probe("https://example.com/feed", source_type="rss")
-            mock_probe.assert_called_once()
+            mock_probe.assert_called_once_with("https://example.com/feed")
+            assert result.status == "ok"
 
     @pytest.mark.asyncio
     async def test_x_type_dispatches(self):
@@ -658,7 +659,10 @@ class TestHttpGet:
                 call_count += 1
                 return _FakeResp(302, headers={"Location": "http://public.example.com/redir"}, url=url)
 
-        with patch("app.services.probe_service.aiohttp.ClientSession", lambda: _FakeSession()):
+        with patch(
+            "app.services.probe_service.aiohttp.ClientSession",
+            lambda *a, **kw: _FakeSession(),
+        ):
             async def _fake_resolve(hostname, port):
                 return ["93.184.216.34"]
             with patch("app.utils.ssrf._resolve_host_addresses", _fake_resolve):

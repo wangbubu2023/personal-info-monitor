@@ -12,6 +12,18 @@ from app.database import Base, get_async_db
 from app.main import app
 
 
+@pytest.fixture(autouse=True)
+def _test_default_ai_settings(monkeypatch):
+    """Tests must not inherit a developer's .env that disables AI (breaks processor unit tests)."""
+    monkeypatch.setenv("AI_PROCESSING_ENABLED", "true")
+    monkeypatch.setenv("AI_DAILY_TOKEN_BUDGET", "0")
+    from app.config import get_settings
+
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()
+
+
 @pytest.fixture
 def anyio_backend() -> str:
     return "asyncio"
@@ -49,10 +61,15 @@ async def db_session(
 @pytest_asyncio.fixture
 async def client(
     async_session_factory: async_sessionmaker[AsyncSession],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> AsyncIterator[AsyncClient]:
     async def override_get_async_db() -> AsyncIterator[AsyncSession]:
         async with async_session_factory() as session:
             yield session
+
+    # Background tasks (e.g. post-create probe) open their own sessions via
+    # AsyncSessionLocal — point them at the same in-memory test DB.
+    monkeypatch.setattr("app.database.AsyncSessionLocal", async_session_factory)
 
     app.dependency_overrides[get_async_db] = override_get_async_db
     app.dependency_overrides[verify_api_key] = lambda: "test-api-key"

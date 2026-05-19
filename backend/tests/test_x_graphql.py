@@ -194,8 +194,8 @@ async def test_fetch_via_graphql_no_cookies(collector):
     source = Source(id=1, name="Test", url="https://x.com/test", type="x")
     source.metadata_ = {"strategy": "graphql"}
     
-    with patch("app.collectors.x_twitter.XCollector.x_auth_token", new_callable=PropertyMock) as mock_token:
-        mock_token.return_value = None
+    with patch.object(collector, "x_auth_token", return_value=None), \
+         patch.object(collector, "x_ct0_token", return_value=None):
         res = await collector._fetch_via_graphql("hello", source)
         assert res == []
 

@@ -627,7 +627,11 @@ class TestTranslator:
         translator = self._make_translator()
         with patch("app.processors.translator.get_translation_settings", return_value={"provider": "ollama"}), \
              patch("app.processors.translator.is_translation_cloud_fallback_enabled", return_value=True), \
-             patch("app.processors.translator.get_translation_cloud_fallback_openai_settings", return_value={"model": "gpt-4o-mini", "api_key": "sk-test"}), \
+             patch("app.processors.translator.get_translation_fallback_model_settings", return_value={}), \
+             patch(
+                 "app.processors.translator.get_translation_cloud_fallback_openai_settings",
+                 return_value={"provider": "openai", "model": "gpt-4o-mini", "api_key": "sk-test"},
+             ), \
              patch.object(translator, "_translate_with_ollama", new_callable=AsyncMock, return_value=None), \
              patch.object(translator, "_translate_with_openai", new_callable=AsyncMock, return_value="cloud translated"):
             result = await translator.translate("Hello world test text", target_language="zh-CN", source_language="en")
@@ -645,14 +649,18 @@ class TestTranslator:
     @pytest.mark.asyncio
     async def test_translate_with_fallback_returns_translation(self):
         translator = self._make_translator()
-        with patch.object(translator, "_translate_with_openai", new_callable=AsyncMock, return_value="回退翻译"):
+        with patch("app.processors.translator.is_translation_cloud_fallback_enabled", return_value=True), \
+             patch("app.processors.translator.get_translation_fallback_model_settings", return_value={"provider": "openai", "model": "gpt-4o-mini", "api_key": "sk"}), \
+             patch.object(translator, "_translate_with_provider_settings", new_callable=AsyncMock, return_value="回退翻译"):
             result = await translator.translate_with_fallback("Hello world", "zh-CN")
         assert result == "回退翻译"
 
     @pytest.mark.asyncio
     async def test_translate_with_fallback_returns_none_on_failure(self):
         translator = self._make_translator()
-        with patch.object(translator, "_translate_with_openai", new_callable=AsyncMock, return_value=None):
+        with patch("app.processors.translator.is_translation_cloud_fallback_enabled", return_value=True), \
+             patch("app.processors.translator.get_translation_fallback_model_settings", return_value={"provider": "openai", "api_key": "sk"}), \
+             patch.object(translator, "_translate_with_provider_settings", new_callable=AsyncMock, return_value=None):
             result = await translator.translate_with_fallback("Hello world", "zh-CN")
         assert result is None
 
@@ -665,10 +673,12 @@ class TestTranslator:
     @pytest.mark.asyncio
     async def test_translate_with_fallback_default_target_language(self):
         translator = self._make_translator()
-        with patch.object(translator, "_translate_with_openai", new_callable=AsyncMock, return_value="中文") as mock_openai:
+        with patch("app.processors.translator.is_translation_cloud_fallback_enabled", return_value=True), \
+             patch("app.processors.translator.get_translation_fallback_model_settings", return_value={"provider": "openai", "model": "m", "api_key": "sk"}), \
+             patch.object(translator, "_translate_with_provider_settings", new_callable=AsyncMock, return_value="中文") as mock_fb:
             result = await translator.translate_with_fallback("Hello world test")
         assert result == "中文"
-        mock_openai.assert_called_once()
+        mock_fb.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_translate_with_runtime_none(self):
@@ -717,7 +727,8 @@ class TestTranslatorStandalone:
         with patch("app.services.system_settings.get_system_settings_sync", return_value={"translation_model": {"provider": "ollama"}}):
             from app.processors.translator import get_translation_settings
             result = get_translation_settings()
-        assert result == {"provider": "ollama"}
+        assert result["provider"] == "ollama"
+        assert "api_base" in result
 
     def test_get_translation_settings_exception(self):
         with patch("app.services.system_settings.get_system_settings_sync", side_effect=Exception("no db")):
@@ -738,6 +749,17 @@ class TestTranslatorStandalone:
 
     def test_is_translation_cloud_fallback_enabled_false(self):
         with patch("app.services.system_settings.get_system_settings_sync", return_value={}):
+            from app.processors.translator import is_translation_cloud_fallback_enabled
+            assert is_translation_cloud_fallback_enabled() is False
+
+    def test_is_translation_fallback_new_key_overrides_legacy(self):
+        with patch(
+            "app.services.system_settings.get_system_settings_sync",
+            return_value={
+                "translation_fallback_enabled": False,
+                "translation_cloud_fallback_enabled": True,
+            },
+        ):
             from app.processors.translator import is_translation_cloud_fallback_enabled
             assert is_translation_cloud_fallback_enabled() is False
 

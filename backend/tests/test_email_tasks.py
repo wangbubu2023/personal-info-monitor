@@ -134,7 +134,7 @@ class TestRenderDigestEmail:
         digest = self._make_digest()
         result = render_digest_email(digest)
         assert "<!DOCTYPE html>" in result
-        assert "每日资讯简报" in result
+        assert "资讯简报" in result
         assert "2025-06-15" in result
         assert "TechBlog" in result
         assert "AI Advances in 2025" in result
@@ -144,7 +144,7 @@ class TestRenderDigestEmail:
         digest = self._make_digest(total_items=0, items=[])
         digest.categories["websites"] = self._make_category(0, [])
         result = render_digest_email(digest)
-        assert "今日暂无更新内容" in result
+        assert "今日清闲，暂无监控更新" in result
 
     def test_keyword_rendering(self):
         digest = self._make_digest()

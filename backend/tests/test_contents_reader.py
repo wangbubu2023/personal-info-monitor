@@ -80,20 +80,20 @@ class TestFetchReaderFulltext:
 
     @pytest.mark.asyncio
     async def test_private_url_rejected(self):
-        with patch("app.api.contents_reader.assert_public_http_target", side_effect=ValueError("private")):
+        with patch("app.services.reader.body_loader.assert_public_http_target", side_effect=ValueError("private")):
             assert await _fetch_reader_fulltext("http://10.0.0.1/page") == ("", "")
 
     @pytest.mark.asyncio
     async def test_http_error_returns_empty(self):
-        with patch("app.api.contents_reader.assert_public_http_target", new_callable=AsyncMock):
-            with patch("app.api.contents_reader.aiohttp.ClientSession") as mock_session_cls:
+        with patch("app.services.reader.body_loader.assert_public_http_target", new_callable=AsyncMock):
+            with patch("app.services.reader.body_loader.aiohttp.ClientSession") as mock_session_cls:
                 mock_resp = AsyncMock()
                 mock_resp.status = 404
-                mock_ctx = AsyncMock()
+                mock_ctx = MagicMock()
                 mock_ctx.__aenter__ = AsyncMock(return_value=mock_resp)
                 mock_ctx.__aexit__ = AsyncMock(return_value=False)
-                mock_session = AsyncMock()
-                mock_session.get.return_value = mock_ctx
+                mock_session = MagicMock()
+                mock_session.get = MagicMock(return_value=mock_ctx)
                 mock_session.__aenter__ = AsyncMock(return_value=mock_session)
                 mock_session.__aexit__ = AsyncMock(return_value=False)
                 mock_session_cls.return_value = mock_session
@@ -101,17 +101,17 @@ class TestFetchReaderFulltext:
 
     @pytest.mark.asyncio
     async def test_short_html_returns_empty(self):
-        with patch("app.api.contents_reader.assert_public_http_target", new_callable=AsyncMock):
-            with patch("app.api.contents_reader.aiohttp.ClientSession") as mock_session_cls:
+        with patch("app.services.reader.body_loader.assert_public_http_target", new_callable=AsyncMock):
+            with patch("app.services.reader.body_loader.aiohttp.ClientSession") as mock_session_cls:
                 mock_resp = AsyncMock()
                 mock_resp.status = 200
                 mock_resp.text = AsyncMock(return_value="<html>short</html>")
                 mock_resp.url = "https://example.com/page"
-                mock_ctx = AsyncMock()
+                mock_ctx = MagicMock()
                 mock_ctx.__aenter__ = AsyncMock(return_value=mock_resp)
                 mock_ctx.__aexit__ = AsyncMock(return_value=False)
-                mock_session = AsyncMock()
-                mock_session.get.return_value = mock_ctx
+                mock_session = MagicMock()
+                mock_session.get = MagicMock(return_value=mock_ctx)
                 mock_session.__aenter__ = AsyncMock(return_value=mock_session)
                 mock_session.__aexit__ = AsyncMock(return_value=False)
                 mock_session_cls.return_value = mock_session
@@ -119,8 +119,12 @@ class TestFetchReaderFulltext:
 
     @pytest.mark.asyncio
     async def test_network_exception_returns_empty(self):
-        with patch("app.api.contents_reader.assert_public_http_target", new_callable=AsyncMock):
-            with patch("app.api.contents_reader.aiohttp.ClientSession", side_effect=Exception("network error")):
+        import aiohttp as aiohttp_real
+        with patch("app.services.reader.body_loader.assert_public_http_target", new_callable=AsyncMock):
+            with patch(
+                "app.services.reader.body_loader.aiohttp.ClientSession",
+                side_effect=aiohttp_real.ClientError("network error"),
+            ):
                 assert await _fetch_reader_fulltext("https://example.com/page") == ("", "")
 
     @pytest.mark.asyncio
@@ -131,25 +135,25 @@ class TestFetchReaderFulltext:
     @pytest.mark.asyncio
     async def test_short_extracted_text_returns_empty(self):
         long_html = "<html><body>" + "x" * 600 + "</body></html>"
-        with patch("app.api.contents_reader.assert_public_http_target", new_callable=AsyncMock):
-            with patch("app.api.contents_reader.aiohttp.ClientSession") as mock_session_cls:
+        with patch("app.services.reader.body_loader.assert_public_http_target", new_callable=AsyncMock):
+            with patch("app.services.reader.body_loader.aiohttp.ClientSession") as mock_session_cls:
                 mock_resp = AsyncMock()
                 mock_resp.status = 200
                 mock_resp.text = AsyncMock(return_value=long_html)
                 mock_resp.url = "https://example.com/page"
-                mock_ctx = AsyncMock()
+                mock_ctx = MagicMock()
                 mock_ctx.__aenter__ = AsyncMock(return_value=mock_resp)
                 mock_ctx.__aexit__ = AsyncMock(return_value=False)
-                mock_session = AsyncMock()
-                mock_session.get.return_value = mock_ctx
+                mock_session = MagicMock()
+                mock_session.get = MagicMock(return_value=mock_ctx)
                 mock_session.__aenter__ = AsyncMock(return_value=mock_session)
                 mock_session.__aexit__ = AsyncMock(return_value=False)
                 mock_session_cls.return_value = mock_session
-                with patch("app.api.contents_reader.ContentExtractor") as mock_extractor_cls:
+                with patch("app.services.reader.body_loader.ContentExtractor") as mock_extractor_cls:
                     mock_extractor = MagicMock()
                     mock_extractor.extract = AsyncMock(return_value="short")
                     mock_extractor_cls.return_value = mock_extractor
-                    with patch("app.api.contents_reader.strip_html_tags", return_value="short"):
+                    with patch("app.services.reader.body_loader.strip_html_tags", return_value="short"):
                         assert await _fetch_reader_fulltext("https://example.com/page") == ("", "")
 
 
@@ -206,7 +210,7 @@ class TestLoadSourceCookiesForReader:
     async def test_db_exception_returns_fallback(self):
         db = AsyncMock()
         db.execute = AsyncMock(side_effect=Exception("db error"))
-        with patch("app.api.contents_reader.get_settings") as mock_settings:
+        with patch("app.services.reader.body_loader.get_settings") as mock_settings:
             settings = MagicMock()
             settings.x_auth_token = None
             settings.x_ct0_token = None
@@ -220,7 +224,7 @@ class TestLoadSourceCookiesForReader:
         mock_result = MagicMock()
         mock_result.scalar_one_or_none.return_value = None
         db.execute = AsyncMock(return_value=mock_result)
-        with patch("app.api.contents_reader.get_settings") as mock_settings:
+        with patch("app.services.reader.body_loader.get_settings") as mock_settings:
             settings = MagicMock()
             settings.x_auth_token = "tok"
             settings.x_ct0_token = "ct0"
@@ -238,8 +242,8 @@ class TestLoadSourceCookiesForReader:
         mock_result.scalar_one_or_none.return_value = source
         db.execute = AsyncMock(return_value=mock_result)
 
-        with patch("app.api.contents_reader.try_parse_auth_credentials", return_value={"cookies": {"a": "1"}}):
-            with patch("app.api.contents_reader.normalize_cookie_dict", return_value={"a": "1"}):
+        with patch("app.services.reader.body_loader.try_parse_auth_credentials", return_value={"cookies": {"a": "1"}}):
+            with patch("app.services.reader.body_loader.normalize_cookie_dict", return_value={"a": "1"}):
                 result = await _load_source_cookies_for_reader(db, "some-id")
                 assert result == {"a": "1"}
 
@@ -253,8 +257,8 @@ class TestLoadSourceCookiesForReader:
         mock_result.scalar_one_or_none.return_value = source
         db.execute = AsyncMock(return_value=mock_result)
 
-        with patch("app.api.contents_reader.try_parse_auth_credentials", return_value={}):
-            with patch("app.api.contents_reader.normalize_cookie_dict", return_value={}):
+        with patch("app.services.reader.body_loader.try_parse_auth_credentials", return_value={}):
+            with patch("app.services.reader.body_loader.normalize_cookie_dict", return_value={}):
                 result = await _load_source_cookies_for_reader(db, "some-id")
                 assert result == {"auth_token": "meta_tok", "ct0": "meta_ct0"}
 
@@ -298,7 +302,7 @@ class TestEnsureTranslatedTitle:
         content.title = "这是一个中文标题"
         content.translated_title = ""
         db = AsyncMock()
-        with patch("app.api.contents_reader.Translator") as mock_translator_cls:
+        with patch("app.services.reader.translation.Translator") as mock_translator_cls:
             mock_translator = MagicMock()
             mock_translator.is_chinese.return_value = True
             mock_translator_cls.return_value = mock_translator
@@ -311,13 +315,13 @@ class TestEnsureTranslatedTitle:
         content.title = "Hello World"
         content.translated_title = ""
         db = AsyncMock()
-        with patch("app.api.contents_reader.Translator") as mock_translator_cls:
+        with patch("app.services.reader.translation.Translator") as mock_translator_cls:
             mock_translator = MagicMock()
             mock_translator.is_chinese.return_value = False
             mock_translator.translate = AsyncMock(return_value="你好世界")
             mock_translator_cls.return_value = mock_translator
-            with patch("app.api.contents_reader._is_valid_translation_text", return_value=True):
-                with patch("app.api.contents_reader._is_valid_title_translation", return_value=True):
+            with patch("app.services.reader.translation._is_valid_translation_text", return_value=True):
+                with patch("app.services.reader.translation._is_valid_title_translation", return_value=True):
                     result = await _ensure_translated_title(content, db)
                     assert result == "你好世界"
                     db.commit.assert_called()
@@ -328,14 +332,14 @@ class TestEnsureTranslatedTitle:
         content.title = "Hello World"
         content.translated_title = ""
         db = AsyncMock()
-        with patch("app.api.contents_reader.Translator") as mock_translator_cls:
+        with patch("app.services.reader.translation.Translator") as mock_translator_cls:
             mock_translator = MagicMock()
             mock_translator.is_chinese.return_value = False
             mock_translator.translate = AsyncMock(side_effect=asyncio.TimeoutError)
             mock_translator.translate_with_fallback = AsyncMock(side_effect=asyncio.TimeoutError)
             mock_translator_cls.return_value = mock_translator
-            with patch("app.api.contents_reader._is_valid_translation_text", return_value=False):
-                with patch("app.api.contents_reader._is_valid_title_translation", return_value=False):
+            with patch("app.services.reader.translation._is_valid_translation_text", return_value=False):
+                with patch("app.services.reader.translation._is_valid_title_translation", return_value=False):
                     result = await _ensure_translated_title(content, db)
                     assert result == "Hello World"
 
@@ -345,14 +349,14 @@ class TestEnsureTranslatedTitle:
         content.title = "Hello World"
         content.translated_title = ""
         db = AsyncMock()
-        with patch("app.api.contents_reader.Translator") as mock_translator_cls:
+        with patch("app.services.reader.translation.Translator") as mock_translator_cls:
             mock_translator = MagicMock()
             mock_translator.is_chinese.return_value = False
             mock_translator.translate = AsyncMock(return_value=None)
             mock_translator.translate_with_fallback = AsyncMock(return_value="你好世界")
             mock_translator_cls.return_value = mock_translator
-            with patch("app.api.contents_reader._is_valid_translation_text", side_effect=[False, True]):
-                with patch("app.api.contents_reader._is_valid_title_translation", return_value=True):
+            with patch("app.services.reader.translation._is_valid_translation_text", side_effect=[False, True]):
+                with patch("app.services.reader.translation._is_valid_title_translation", return_value=True):
                     result = await _ensure_translated_title(content, db)
                     assert result == "你好世界"
 
@@ -390,7 +394,7 @@ class TestTranslateReaderParagraph:
     async def test_successful_translation(self):
         translator = MagicMock()
         translator.translate = AsyncMock(return_value="翻译结果")
-        with patch("app.api.contents_reader._is_valid_translation_text", return_value=True):
+        with patch("app.services.reader.translation._is_valid_translation_text", return_value=True):
             piece, success = await _translate_reader_paragraph("Hello", translator, timeout_seconds=5.0)
             assert piece == "翻译结果"
             assert success is True
@@ -400,7 +404,7 @@ class TestTranslateReaderParagraph:
         translator = MagicMock()
         translator.translate = AsyncMock(side_effect=Exception("fail"))
         translator.translate_with_fallback = AsyncMock(return_value="回退翻译")
-        with patch("app.api.contents_reader._is_valid_translation_text", side_effect=[False, True]):
+        with patch("app.services.reader.translation._is_valid_translation_text", side_effect=[False, True]):
             piece, success = await _translate_reader_paragraph("Hello", translator, timeout_seconds=5.0)
             assert piece == "回退翻译"
             assert success is True
@@ -410,7 +414,7 @@ class TestTranslateReaderParagraph:
         translator = MagicMock()
         translator.translate = AsyncMock(side_effect=Exception("fail"))
         translator.translate_with_fallback = AsyncMock(side_effect=Exception("also fail"))
-        with patch("app.api.contents_reader._is_valid_translation_text", return_value=False):
+        with patch("app.services.reader.translation._is_valid_translation_text", return_value=False):
             piece, success = await _translate_reader_paragraph("Hello", translator, timeout_seconds=5.0)
             assert piece == "Hello"
             assert success is False
@@ -428,7 +432,7 @@ class TestTranslateReaderText:
 
     @pytest.mark.asyncio
     async def test_chinese_text_returns_as_is(self):
-        with patch("app.api.contents_reader.Translator") as mock_cls:
+        with patch("app.services.reader.translation.Translator") as mock_cls:
             mock_t = MagicMock()
             mock_t.is_chinese.return_value = True
             mock_cls.return_value = mock_t
@@ -438,13 +442,13 @@ class TestTranslateReaderText:
     @pytest.mark.asyncio
     async def test_translation_with_chunks(self):
         text = "Paragraph one.\n\nParagraph two."
-        with patch("app.api.contents_reader.Translator") as mock_cls:
+        with patch("app.services.reader.translation.Translator") as mock_cls:
             mock_t = MagicMock()
             mock_t.is_chinese.return_value = False
             mock_t.translate = AsyncMock(return_value="翻译段落")
             mock_cls.return_value = mock_t
-            with patch("app.api.contents_reader._split_for_reader", return_value=["Paragraph one.", "Paragraph two."]):
-                with patch("app.api.contents_reader._is_valid_translation_text", return_value=True):
+            with patch("app.services.reader.translation._split_for_reader", return_value=["Paragraph one.", "Paragraph two."]):
+                with patch("app.services.reader.translation._is_valid_translation_text", return_value=True):
                     result = await _translate_reader_text(text)
                     assert "翻译段落" in result
 
@@ -491,7 +495,7 @@ class TestEmitCachedReaderTranslation:
 
     @pytest.mark.asyncio
     async def test_yields_chunks_and_done(self):
-        with patch("app.api.contents_reader._split_for_reader", return_value=["段落一", "段落二"]):
+        with patch("app.services.reader.streaming._split_for_reader", return_value=["段落一", "段落二"]):
             chunks = []
             async for item in _emit_cached_reader_translation("段落一\n\n段落二"):
                 chunks.append(json.loads(item.decode("utf-8")))
@@ -558,7 +562,7 @@ class TestEnsureReaderBody:
         content.summary = ""
         content.content_type = "x"
         db = AsyncMock()
-        with patch("app.api.contents_reader._upgrade_x_reader_body", new_callable=AsyncMock) as mock_upgrade:
+        with patch("app.services.reader.body_loader.upgrade_x_reader_body", new_callable=AsyncMock) as mock_upgrade:
             mock_upgrade.return_value = ("long article text" * 20, {"upgraded": True})
             body, meta = await _ensure_reader_body(content, db)
             assert "long article text" in body
@@ -574,11 +578,11 @@ class TestEnsureReaderBody:
         content.title = "Normal Title"
         content.translated_title = None
         db = AsyncMock()
-        with patch("app.api.contents_reader._upgrade_x_reader_body", new_callable=AsyncMock) as mock_upgrade:
+        with patch("app.services.reader.body_loader.upgrade_x_reader_body", new_callable=AsyncMock) as mock_upgrade:
             mock_upgrade.return_value = (None, None)
-            with patch("app.api.contents_reader._clean_x_body_if_needed", new_callable=AsyncMock) as mock_clean:
+            with patch("app.services.reader.body_loader.clean_x_body_if_needed", new_callable=AsyncMock) as mock_clean:
                 mock_clean.return_value = ("A" * 300, {})
-                with patch("app.api.contents_reader._title_looks_like_url", return_value=False):
+                with patch("app.services.reader.body_loader._title_looks_like_url", return_value=False):
                     body, meta = await _ensure_reader_body(content, db)
                     assert body == "A" * 300
 
@@ -591,7 +595,7 @@ class TestEnsureReaderBody:
         content.content_type = "website"
         content.original_url = "https://example.com"
         db = AsyncMock()
-        with patch("app.api.contents_reader._backfill_website_reader_body", new_callable=AsyncMock) as mock_backfill:
+        with patch("app.services.reader.body_loader.backfill_website_reader_body", new_callable=AsyncMock) as mock_backfill:
             mock_backfill.return_value = ("backfilled text", {"backfilled": True})
             body, meta = await _ensure_reader_body(content, db)
             assert body == "backfilled text"
@@ -637,9 +641,9 @@ class TestBackfillWebsiteReaderBody:
         content.original_url = "https://example.com"
         content.summary = ""
         db = AsyncMock()
-        with patch("app.api.contents_reader._fetch_reader_fulltext", new_callable=AsyncMock) as mock_fetch:
+        with patch("app.services.reader.body_loader.fetch_reader_fulltext", new_callable=AsyncMock) as mock_fetch:
             mock_fetch.return_value = ("Fetched body text " * 30, "https://example.com/resolved")
-            with patch("app.api.contents_reader.truncate_content", return_value="Fetched body text " * 30):
+            with patch("app.services.reader.body_loader.truncate_content", return_value="Fetched body text " * 30):
                 body, meta = await _backfill_website_reader_body(content, {}, "", db)
                 assert "Fetched body text" in body
                 db.commit.assert_called()
@@ -651,9 +655,9 @@ class TestBackfillWebsiteReaderBody:
         content.original_url = "https://example.com/old"
         content.summary = ""
         db = AsyncMock()
-        with patch("app.api.contents_reader._fetch_reader_fulltext", new_callable=AsyncMock) as mock_fetch:
+        with patch("app.services.reader.body_loader.fetch_reader_fulltext", new_callable=AsyncMock) as mock_fetch:
             mock_fetch.return_value = ("Content " * 80, "https://example.com/new")
-            with patch("app.api.contents_reader.truncate_content", return_value="Content " * 80):
+            with patch("app.services.reader.body_loader.truncate_content", return_value="Content " * 80):
                 body, meta = await _backfill_website_reader_body(content, {}, "", db)
                 assert content.original_url == "https://example.com/new"
                 assert meta.get("resolved_original_url") == "https://example.com/new"
@@ -669,7 +673,7 @@ class TestCleanXBodyIfNeeded:
     async def test_no_change_needed(self):
         content = MagicMock()
         db = AsyncMock()
-        with patch("app.api.contents_reader._clean_x_reader_body", return_value="same body"):
+        with patch("app.services.reader.body_loader._clean_x_reader_body", return_value="same body"):
             body, meta = await _clean_x_body_if_needed(content, {}, "same body", db)
             assert body == "same body"
 
@@ -678,8 +682,8 @@ class TestCleanXBodyIfNeeded:
         content = MagicMock()
         content.original_url = "https://x.com/status/1"
         db = AsyncMock()
-        with patch("app.api.contents_reader._clean_x_reader_body", return_value="cleaned body"):
-            with patch("app.api.contents_reader.truncate_content", return_value="cleaned body"):
+        with patch("app.services.reader.body_loader._clean_x_reader_body", return_value="cleaned body"):
+            with patch("app.services.reader.body_loader.truncate_content", return_value="cleaned body"):
                 body, meta = await _clean_x_body_if_needed(content, {}, "dirty body", db)
                 assert body == "cleaned body"
                 assert meta.get("x_reader_cleaned") is True
@@ -689,7 +693,7 @@ class TestCleanXBodyIfNeeded:
     async def test_empty_cleaned_returns_original(self):
         content = MagicMock()
         db = AsyncMock()
-        with patch("app.api.contents_reader._clean_x_reader_body", return_value=""):
+        with patch("app.services.reader.body_loader._clean_x_reader_body", return_value=""):
             body, meta = await _clean_x_body_if_needed(content, {}, "original", db)
             assert body == "original"
 
@@ -705,9 +709,9 @@ class TestUpgradeXReaderBody:
         content = MagicMock()
         content.source_id = "src-1"
         db = AsyncMock()
-        with patch("app.api.contents_reader._extract_x_article_url", return_value="https://x.com/i/article/1"):
-            with patch("app.api.contents_reader._load_source_cookies_for_reader", new_callable=AsyncMock, return_value={}):
-                with patch("app.api.contents_reader._fetch_x_article_fulltext", new_callable=AsyncMock, return_value=""):
+        with patch("app.services.reader.body_loader._extract_x_article_url", return_value="https://x.com/i/article/1"):
+            with patch("app.services.reader.body_loader.load_source_cookies_for_reader", new_callable=AsyncMock, return_value={}):
+                with patch("app.services.reader.body_loader.fetch_x_article_fulltext", new_callable=AsyncMock, return_value=""):
                     body, meta = await _upgrade_x_reader_body(content, {}, "short", db)
                     assert body is None
                     assert meta is None
@@ -717,9 +721,9 @@ class TestUpgradeXReaderBody:
         content = MagicMock()
         content.source_id = "src-1"
         db = AsyncMock()
-        with patch("app.api.contents_reader._extract_x_article_url", return_value=""):
-            with patch("app.api.contents_reader._load_source_cookies_for_reader", new_callable=AsyncMock, return_value={}):
-                with patch("app.api.contents_reader._fetch_x_article_fulltext", new_callable=AsyncMock, return_value="short"):
+        with patch("app.services.reader.body_loader._extract_x_article_url", return_value=""):
+            with patch("app.services.reader.body_loader.load_source_cookies_for_reader", new_callable=AsyncMock, return_value={}):
+                with patch("app.services.reader.body_loader.fetch_x_article_fulltext", new_callable=AsyncMock, return_value="short"):
                     body, meta = await _upgrade_x_reader_body(content, {}, "longer body text", db)
                     assert body is None
 
@@ -731,13 +735,13 @@ class TestUpgradeXReaderBody:
         content.title = "Normal Title"
         content.translated_title = None
         db = AsyncMock()
-        with patch("app.api.contents_reader._extract_x_article_url", return_value="https://x.com/i/article/1"):
-            with patch("app.api.contents_reader._load_source_cookies_for_reader", new_callable=AsyncMock, return_value={}):
-                with patch("app.api.contents_reader._fetch_x_article_fulltext", new_callable=AsyncMock, return_value=long_text):
-                    with patch("app.api.contents_reader.truncate_content", return_value=long_text):
-                        with patch("app.api.contents_reader._clear_reader_translation_cache", return_value={}):
-                            with patch("app.api.contents_reader._title_looks_like_url", return_value=False):
-                                with patch("app.api.contents_reader._looks_like_translation_refusal", return_value=False):
+        with patch("app.services.reader.body_loader._extract_x_article_url", return_value="https://x.com/i/article/1"):
+            with patch("app.services.reader.body_loader.load_source_cookies_for_reader", new_callable=AsyncMock, return_value={}):
+                with patch("app.services.reader.body_loader.fetch_x_article_fulltext", new_callable=AsyncMock, return_value=long_text):
+                    with patch("app.services.reader.body_loader.truncate_content", return_value=long_text):
+                        with patch("app.services.reader.body_loader.clear_reader_translation_cache", return_value={}):
+                            with patch("app.services.reader.body_loader._title_looks_like_url", return_value=False):
+                                with patch("app.services.reader.body_loader._looks_like_translation_refusal", return_value=False):
                                     body, meta = await _upgrade_x_reader_body(content, {}, "short", db)
                                     assert body == long_text
                                     db.commit.assert_called()

@@ -15,7 +15,7 @@ from app.models.content import Content
 from app.utils.encryption import decrypt_data, encrypt_data
 
 
-def _legacy_encrypt(payload: dict) -> str:
+def _legacy_fixed_salt_encrypt(payload: dict) -> str:
     settings = get_settings()
     kdf = PBKDF2HMAC(
         algorithm=hashes.SHA256(),
@@ -28,15 +28,46 @@ def _legacy_encrypt(payload: dict) -> str:
     return base64.urlsafe_b64encode(token).decode()
 
 
-def test_encrypt_data_roundtrip_uses_new_format():
+def _legacy_v2_encrypt(payload: dict) -> str:
+    import secrets as _secrets
+
+    settings = get_settings()
+    salt = _secrets.token_bytes(16)
+    kdf = PBKDF2HMAC(
+        algorithm=hashes.SHA256(),
+        length=32,
+        salt=salt,
+        iterations=100000,
+    )
+    key = base64.urlsafe_b64encode(kdf.derive(settings.encryption_key.encode()))
+    token = Fernet(key).encrypt(json.dumps(payload).encode())
+    packed = base64.urlsafe_b64encode(salt + token).decode()
+    return f"v2:{packed}"
+
+
+def test_encrypt_data_roundtrip_uses_v3_envelope():
     encrypted = encrypt_data({"foo": "bar"})
-    assert encrypted.startswith("v2:")
+    assert encrypted.startswith("v3:")
     assert decrypt_data(encrypted) == {"foo": "bar"}
 
 
-def test_decrypt_data_supports_legacy_payload():
-    legacy = _legacy_encrypt({"legacy": True})
+def test_decrypt_data_supports_fixed_salt_legacy_payload():
+    legacy = _legacy_fixed_salt_encrypt({"legacy": True})
     assert decrypt_data(legacy) == {"legacy": True}
+
+
+def test_decrypt_data_supports_v2_payload():
+    legacy = _legacy_v2_encrypt({"legacy_v2": True})
+    assert legacy.startswith("v2:")
+    assert decrypt_data(legacy) == {"legacy_v2": True}
+
+
+def test_encrypt_data_uses_600k_iterations():
+    """Guard-rail test: catch accidental downgrades of PBKDF2 work factor."""
+    from app.utils import encryption
+
+    assert encryption._ITERATIONS_DEFAULT >= 600_000
+    assert encryption._ITERATIONS_V3 == 600_000
 
 
 def test_collector_factory_supports_rss():

@@ -66,8 +66,12 @@ async def test_login_and_capture_cookies_closes_context_and_browser_on_failure(m
         async def __aexit__(self, exc_type, exc, tb):
             return False
 
-    fake_module = types.SimpleNamespace(async_playwright=lambda: _FakePlaywright())
-    monkeypatch.setitem(sys.modules, "playwright.async_api", fake_module)
+    # _login_and_capture_cookies now goes through the playwright_runtime shim
+    # (so patchright and playwright can be swapped at runtime). Replace the
+    # shim's factory directly rather than sys.modules["playwright.async_api"].
+    from app.utils import playwright_runtime
+
+    monkeypatch.setattr(playwright_runtime, "async_playwright", lambda: _FakePlaywright())
 
     with pytest.raises(RuntimeError, match="goto failed"):
         await fetch_auth_helpers._login_and_capture_cookies(

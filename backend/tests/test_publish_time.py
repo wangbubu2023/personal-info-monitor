@@ -326,27 +326,54 @@ class TestFetchPublishTimeFromUrl:
 
     @pytest.mark.asyncio
     async def test_non_200_returns_none(self):
-        with patch("app.utils.publish_time.aiohttp.ClientSession") as mock_cls:
-            mock_resp = AsyncMock()
-            mock_resp.status = 404
+        # Mirrors the successful-fetch mock shape (MagicMock on session.get
+        # returning an async ctx manager) — AsyncMock on the method would yield
+        # a coroutine that isn't itself a context manager, which used to rely
+        # on the old `except Exception:` swallowing the TypeError.
+        mock_resp = MagicMock()
+        mock_resp.status = 404
 
-            mock_ctx = AsyncMock()
-            mock_ctx.__aenter__ = AsyncMock(return_value=mock_resp)
-            mock_ctx.__aexit__ = AsyncMock(return_value=False)
+        mock_get_ctx = AsyncMock()
+        mock_get_ctx.__aenter__ = AsyncMock(return_value=mock_resp)
+        mock_get_ctx.__aexit__ = AsyncMock(return_value=False)
 
-            mock_session = AsyncMock()
-            mock_session.get.return_value = mock_ctx
+        mock_session = MagicMock()
+        mock_session.get = MagicMock(return_value=mock_get_ctx)
 
-            mock_session_ctx = AsyncMock()
-            mock_session_ctx.__aenter__ = AsyncMock(return_value=mock_session)
-            mock_session_ctx.__aexit__ = AsyncMock(return_value=False)
-            mock_cls.return_value = mock_session_ctx
+        mock_session_ctx = AsyncMock()
+        mock_session_ctx.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session_ctx.__aexit__ = AsyncMock(return_value=False)
 
+        with patch("app.utils.publish_time.aiohttp.ClientSession", return_value=mock_session_ctx):
             result = await fetch_publish_time_from_url("https://example.com/404")
         assert result is None
 
     @pytest.mark.asyncio
-    async def test_exception_returns_none(self):
-        with patch("app.utils.publish_time.aiohttp.ClientSession", side_effect=Exception("network error")):
+    async def test_network_error_returns_none(self):
+        """Realistic network failures (aiohttp.ClientError) must be swallowed."""
+        import aiohttp
+
+        with patch(
+            "app.utils.publish_time.aiohttp.ClientSession",
+            side_effect=aiohttp.ClientError("connection reset"),
+        ):
             result = await fetch_publish_time_from_url("https://example.com/fail")
         assert result is None
+
+    @pytest.mark.asyncio
+    async def test_timeout_returns_none(self):
+        with patch(
+            "app.utils.publish_time.aiohttp.ClientSession",
+            side_effect=TimeoutError("slow"),
+        ):
+            assert await fetch_publish_time_from_url("https://example.com/slow") is None
+
+    @pytest.mark.asyncio
+    async def test_unexpected_exception_propagates(self):
+        """Phase 2 Q1: the narrowed handler must NOT swallow non-network bugs."""
+        with patch(
+            "app.utils.publish_time.aiohttp.ClientSession",
+            side_effect=RuntimeError("programmer error"),
+        ):
+            with pytest.raises(RuntimeError):
+                await fetch_publish_time_from_url("https://example.com/boom")

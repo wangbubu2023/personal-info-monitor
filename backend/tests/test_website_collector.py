@@ -70,6 +70,56 @@ class TestHasBrowserSession:
         assert WebsiteCollector._has_browser_session({"other": "value"}) is False
 
 
+class TestBrowserSessionAuthReady:
+
+    def test_legacy_payload_without_auth_ready_is_usable(self):
+        assert WebsiteCollector._browser_session_auth_ready({"user_data_dir": "/tmp/profile"}) is True
+
+    def test_explicit_stale_session_is_not_usable(self):
+        assert WebsiteCollector._browser_session_auth_ready(
+            {"user_data_dir": "/tmp/profile", "auth_ready": False}
+        ) is False
+
+
+# ---------------------------------------------------------------------------
+# _storage_state_path_for_playwright
+# ---------------------------------------------------------------------------
+
+
+class TestStorageStatePathForPlaywright:
+
+    def test_none_session(self):
+        assert WebsiteCollector._storage_state_path_for_playwright(None) is None
+
+    def test_skipped_when_persistent_profile(self, tmp_path):
+        f = tmp_path / "state.json"
+        f.write_text("{}")
+        assert (
+            WebsiteCollector._storage_state_path_for_playwright(
+                {"user_data_dir": str(tmp_path / "prof"), "storage_state_path": str(f)}
+            )
+            is None
+        )
+
+    def test_returns_resolved_path_when_file_exists(self, tmp_path):
+        f = tmp_path / "storage_state.json"
+        f.write_text("{}")
+        out = WebsiteCollector._storage_state_path_for_playwright({"storage_state_path": str(f)})
+        assert out == str(f.resolve())
+
+    def test_missing_file(self, tmp_path):
+        assert WebsiteCollector._storage_state_path_for_playwright(
+            {"storage_state_path": str(tmp_path / "nope.json")}
+        ) is None
+
+    def test_skipped_when_auth_not_ready(self, tmp_path):
+        f = tmp_path / "storage_state.json"
+        f.write_text("{}")
+        assert WebsiteCollector._storage_state_path_for_playwright(
+            {"storage_state_path": str(f), "auth_ready": False}
+        ) is None
+
+
 # ---------------------------------------------------------------------------
 # _same_site
 # ---------------------------------------------------------------------------
@@ -517,7 +567,7 @@ class TestParseHtml:
             <p>Summary text for article two</p>
         </article>
         </body></html>"""
-        with patch("app.collectors.website.get_website_content_reject_reason", return_value=None):
+        with patch("app.collectors.website_parser.get_website_content_reject_reason", return_value=None):
             results = collector._parse_html(html, source)
             assert len(results) >= 1
 
@@ -539,7 +589,7 @@ class TestParseHtml:
             <p>Custom content</p>
         </div>
         </body></html>"""
-        with patch("app.collectors.website.get_website_content_reject_reason", return_value=None):
+        with patch("app.collectors.website_parser.get_website_content_reject_reason", return_value=None):
             results = collector._parse_html(html, source)
             assert len(results) >= 1
 
@@ -558,7 +608,7 @@ class TestParseArticleCandidate:
         source = _make_source(url="https://example.com")
         html = '<div><h2><a href="/news/slug">Title</a></h2><p>Content</p></div>'
         article = BeautifulSoup(html, "html.parser").div
-        with patch("app.collectors.website.get_website_content_reject_reason", return_value=None):
+        with patch("app.collectors.website_parser.get_website_content_reject_reason", return_value=None):
             result = self.collector._parse_article_candidate(
                 article, source=source,
                 title_selector="h2", link_selector="a",
@@ -597,7 +647,7 @@ class TestParseArticleCandidate:
         source = _make_source(url="https://example.com")
         html = '<div><h2><a href="/post/my-article">Title</a></h2></div>'
         article = BeautifulSoup(html, "html.parser").div
-        with patch("app.collectors.website.get_website_content_reject_reason", return_value=None):
+        with patch("app.collectors.website_parser.get_website_content_reject_reason", return_value=None):
             result = self.collector._parse_article_candidate(
                 article, source=source,
                 title_selector="h2", link_selector="a",
@@ -610,7 +660,7 @@ class TestParseArticleCandidate:
         source = _make_source(url="https://example.com")
         html = '<div><h2><a href="/news/slug">Title</a></h2><p>Content</p></div>'
         article = BeautifulSoup(html, "html.parser").div
-        with patch("app.collectors.website.get_website_content_reject_reason", return_value="too_short"):
+        with patch("app.collectors.website_parser.get_website_content_reject_reason", return_value="too_short"):
             result = self.collector._parse_article_candidate(
                 article, source=source,
                 title_selector="h2", link_selector="a",
@@ -623,7 +673,7 @@ class TestParseArticleCandidate:
         source = _make_source(url="https://example.com")
         html = '<div><h2><a href="/news/slug">Title</a></h2><time datetime="2025-01-15T10:00:00Z">Jan 15</time></div>'
         article = BeautifulSoup(html, "html.parser").div
-        with patch("app.collectors.website.get_website_content_reject_reason", return_value=None):
+        with patch("app.collectors.website_parser.get_website_content_reject_reason", return_value=None):
             result = self.collector._parse_article_candidate(
                 article, source=source,
                 title_selector="h2", link_selector="a",
@@ -674,3 +724,328 @@ class TestAttemptPlaywrightArticleHtml:
                 browser_session={"user_data_dir": "/tmp/profile"},
             )
             assert result is not None
+
+    @pytest.mark.asyncio
+    async def test_skips_stale_browser_session_without_cookies(self):
+        collector = WebsiteCollector()
+        fetch_mock = AsyncMock(return_value=("<html>ok</html>", "https://example.com/page", None))
+        with patch.object(
+            collector,
+            "_fetch_article_html_with_playwright",
+            fetch_mock,
+        ):
+            result = await collector._attempt_playwright_article_html(
+                "https://example.com/page", {}, "https://example.com",
+                browser_session={"user_data_dir": "/tmp/profile", "auth_ready": False},
+            )
+        assert result is None
+        fetch_mock.assert_not_awaited()
+
+
+# ---------------------------------------------------------------------------
+# _hydrate_direct_articles — paced vs parallel dispatch
+# ---------------------------------------------------------------------------
+
+class TestHydrateDirectArticlesPacing:
+    """The hydration loop must serialize + insert anti-bot pauses when a
+    browser session is present (paywall case), but stay fast/parallel when
+    it isn't (public sites). Verifies the burst-suppression heuristic that
+    lets logged-in fetches survive NYT/WSJ bot detectors."""
+
+    def _build_contents(self, n: int = 3) -> List[Dict[str, Any]]:
+        return [
+            {"url": f"https://example.com/article-{i}", "title": f"A{i}"}
+            for i in range(n)
+        ]
+
+    @pytest.mark.asyncio
+    async def test_browser_session_paces_articles_sequentially(self):
+        collector = WebsiteCollector()
+        source = _make_source(metadata_={"direct_article_hydrate_limit": 5})
+        contents = self._build_contents(3)
+
+        call_order: List[str] = []
+        pause_calls: List[tuple[int, int]] = []
+
+        async def fake_fetch(url, *args, **kwargs):
+            call_order.append(f"start:{url}")
+            # Give the event loop a chance — if two fetches were running
+            # truly in parallel this interleave would produce
+            # start,start,end,end instead of start,end,start,end.
+            import asyncio
+            await asyncio.sleep(0)
+            call_order.append(f"end:{url}")
+            return ("<html>ok</html>", url, None)
+
+        async def fake_pause(*, min_ms: int, max_ms: int) -> None:
+            pause_calls.append((min_ms, max_ms))
+
+        with patch.object(collector, "_fetch_article_html", side_effect=fake_fetch), \
+             patch.object(
+                 collector.__module__ and
+                 __import__("app.collectors.website", fromlist=["_helpers"])._helpers,
+                 "looks_like_article_url",
+                 return_value=True,
+             ), \
+             patch("app.collectors.website.human_inter_request_pause", side_effect=fake_pause):
+            hydrated, diag = await collector._hydrate_direct_articles(
+                source,
+                contents,
+                cookies={},
+                browser_session={"user_data_dir": "/tmp/profile", "id": "x"},
+            )
+
+        assert diag["attempted"] == 3
+        assert diag["hydrated"] == 3
+        # Strictly serial: each article's end occurs before the next start.
+        for i in range(len(contents)):
+            assert call_order[i * 2] == f"start:https://example.com/article-{i}"
+            assert call_order[i * 2 + 1] == f"end:https://example.com/article-{i}"
+        # n-1 pauses between n articles.
+        assert len(pause_calls) == len(contents) - 1
+        for lo, hi in pause_calls:
+            assert lo >= 500 and hi <= 5000 and lo < hi
+
+    @pytest.mark.asyncio
+    async def test_browser_session_default_hydrate_limit_is_three(self):
+        collector = WebsiteCollector()
+        source = _make_source(metadata_={})
+        contents = self._build_contents(5)
+
+        async def fake_fetch(url, *args, **kwargs):
+            return ("<html>ok</html>", url, None)
+
+        with patch.object(collector, "_fetch_article_html", side_effect=fake_fetch), \
+             patch.object(
+                 __import__("app.collectors.website", fromlist=["_helpers"])._helpers,
+                 "looks_like_article_url",
+                 return_value=True,
+             ), \
+             patch("app.collectors.website.human_inter_request_pause", new_callable=AsyncMock):
+            _hydrated, diag = await collector._hydrate_direct_articles(
+                source,
+                contents,
+                cookies={},
+                browser_session={"user_data_dir": "/tmp/profile", "auth_ready": True},
+            )
+
+        assert diag["attempted"] == 3
+
+    @pytest.mark.asyncio
+    async def test_stale_browser_session_keeps_parallel_dispatch(self):
+        """A profile with auth_ready=false is treated like no usable auth
+        session, so stale paywall profiles do not put the collector on the
+        slow persistent-Chrome pacing path."""
+        collector = WebsiteCollector()
+        source = _make_source(metadata_={"direct_article_hydrate_limit": 5})
+        contents = self._build_contents(3)
+
+        active = {"count": 0, "max_concurrent": 0}
+
+        async def fake_fetch(url, *args, **kwargs):
+            import asyncio
+            active["count"] += 1
+            active["max_concurrent"] = max(active["max_concurrent"], active["count"])
+            await asyncio.sleep(0.01)
+            active["count"] -= 1
+            return ("<html>ok</html>", url, None)
+
+        with patch.object(collector, "_fetch_article_html", side_effect=fake_fetch), \
+             patch.object(
+                 __import__("app.collectors.website", fromlist=["_helpers"])._helpers,
+                 "looks_like_article_url",
+                 return_value=True,
+             ), \
+             patch("app.collectors.website.human_inter_request_pause", new_callable=AsyncMock) as pause_mock:
+            _hydrated, diag = await collector._hydrate_direct_articles(
+                source,
+                contents,
+                cookies={},
+                browser_session={"user_data_dir": "/tmp/profile", "auth_ready": False},
+            )
+
+        assert diag["hydrated"] == 3
+        assert active["max_concurrent"] >= 2
+        pause_mock.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_no_browser_session_keeps_parallel_dispatch(self):
+        """Public sources (no auth session) should keep the fast
+        asyncio.gather path to preserve throughput; adding paced-sleep
+        here would regress fetch latency for the 90% common case."""
+        collector = WebsiteCollector()
+        source = _make_source(metadata_={"direct_article_hydrate_limit": 5})
+        contents = self._build_contents(3)
+
+        active = {"count": 0, "max_concurrent": 0}
+
+        async def fake_fetch(url, *args, **kwargs):
+            import asyncio
+            active["count"] += 1
+            active["max_concurrent"] = max(active["max_concurrent"], active["count"])
+            await asyncio.sleep(0.01)
+            active["count"] -= 1
+            return ("<html>ok</html>", url, None)
+
+        pause_calls: List[tuple] = []
+
+        async def fake_pause(**_kw) -> None:
+            pause_calls.append(("pause",))
+
+        with patch.object(collector, "_fetch_article_html", side_effect=fake_fetch), \
+             patch.object(
+                 __import__("app.collectors.website", fromlist=["_helpers"])._helpers,
+                 "looks_like_article_url",
+                 return_value=True,
+             ), \
+             patch("app.collectors.website.human_inter_request_pause", side_effect=fake_pause):
+            hydrated, diag = await collector._hydrate_direct_articles(
+                source,
+                contents,
+                cookies={},
+                browser_session=None,
+            )
+
+        assert diag["hydrated"] == 3
+        # Parallel gather lets at least 2 fetches overlap.
+        assert active["max_concurrent"] >= 2
+        # Non-paced branch must not call inter-request pause.
+        assert not pause_calls
+
+
+# ---------------------------------------------------------------------------
+# rss_only metadata flag — skip Playwright hydration, return RSS summaries
+# ---------------------------------------------------------------------------
+
+
+class TestRssOnlyMode:
+    """``source.metadata.rss_only = True`` tells the collector to give up on
+    full-text hydration and just surface whatever the RSS feed yields. This
+    is the operator's escape hatch when DataDome/Cloudflare permanently block
+    Playwright for a given domain."""
+
+    def _rss_items(self) -> List[Dict[str, Any]]:
+        # ``publish_time`` must be recent — ``is_stale_rss_content`` treats
+        # any feed whose newest item is >3 days old (or missing) as stale and
+        # the collector then falls through to the wsj/fallback/discovery
+        # branches, masking the behavior we want to verify.
+        now = utcnow_naive()
+        return [
+            {"url": "https://example.com/a", "title": "A", "content": "summary A", "publish_time": now},
+            {"url": "https://example.com/b", "title": "B", "content": "summary B", "publish_time": now},
+        ]
+
+    @pytest.mark.asyncio
+    async def test_rss_only_skips_direct_article_hydration(self):
+        """Even with cookies + a browser session on the source, rss_only must
+        short-circuit the authenticated direct-article path and take the RSS
+        branch instead. Protects users who explicitly opted out of Playwright
+        hydration from having their choice silently overridden."""
+        collector = WebsiteCollector()
+        source = _make_source(
+            url="https://paywalled.example.com",
+            metadata_={"rss_only": True, "rss_url": "https://paywalled.example.com/feed"},
+        )
+        items = self._rss_items()
+
+        direct_mock = AsyncMock(return_value=[{"url": "hydrated"}])
+        rss_mock = AsyncMock(return_value=list(items))
+        hydrate_rss_mock = AsyncMock(return_value=[{"url": "would-be-hydrated"}])
+
+        with patch.object(collector, "_check_ssrf", new_callable=AsyncMock), \
+             patch.object(collector, "get_runtime_auth", return_value=None), \
+             patch.object(collector, "get_runtime_cookies", return_value={"session": "abc"}), \
+             patch.object(
+                 collector, "get_runtime_browser_session",
+                 return_value={"user_data_dir": "/tmp/profile", "id": "x"},
+             ), \
+             patch.object(
+                 collector, "_fetch_authenticated_direct_articles",
+                 new=direct_mock,
+             ), \
+             patch.object(collector.rss_collector, "fetch", new=rss_mock), \
+             patch.object(
+                 collector, "_maybe_hydrate_rss_contents",
+                 new=hydrate_rss_mock,
+             ):
+            result = await collector.fetch(source)
+
+        # RSS items are returned verbatim, no hydration passes ran.
+        assert [c["url"] for c in result] == ["https://example.com/a", "https://example.com/b"]
+        direct_mock.assert_not_awaited()
+        hydrate_rss_mock.assert_not_awaited()
+        rss_mock.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_rss_only_off_still_hydrates_when_auth_present(self):
+        """Regression guard: with rss_only unset, the legacy hydration path
+        still runs. If this test breaks, we've accidentally disabled full-text
+        extraction for every website source."""
+        collector = WebsiteCollector()
+        source = _make_source(
+            url="https://paywalled.example.com",
+            metadata_={"rss_url": "https://paywalled.example.com/feed"},
+        )
+        items = self._rss_items()
+
+        direct_mock = AsyncMock(return_value=[])  # direct path has nothing to offer
+        rss_mock = AsyncMock(return_value=list(items))
+        hydrate_rss_mock = AsyncMock(
+            return_value=[{"url": "hydrated", "content": "full"}]
+        )
+
+        with patch.object(collector, "_check_ssrf", new_callable=AsyncMock), \
+             patch.object(collector, "get_runtime_auth", return_value=None), \
+             patch.object(collector, "get_runtime_cookies", return_value={"session": "abc"}), \
+             patch.object(
+                 collector, "get_runtime_browser_session",
+                 return_value={"user_data_dir": "/tmp/profile", "id": "x"},
+             ), \
+             patch.object(
+                 collector, "_fetch_authenticated_direct_articles",
+                 new=direct_mock,
+             ), \
+             patch.object(collector.rss_collector, "fetch", new=rss_mock), \
+             patch.object(
+                 collector, "_maybe_hydrate_rss_contents",
+                 new=hydrate_rss_mock,
+             ):
+            result = await collector.fetch(source)
+
+        # Hydration ran exactly once and we returned its output.
+        direct_mock.assert_awaited_once()
+        hydrate_rss_mock.assert_awaited_once()
+        assert result == [{"url": "hydrated", "content": "full"}]
+
+    @pytest.mark.asyncio
+    async def test_rss_only_returns_empty_when_no_feed_configured(self):
+        """If no RSS feed is configured or discoverable, rss_only must NOT
+        silently fall back to ``_fetch_with_playwright`` or ``_fetch_static``.
+        The operator explicitly opted out of HTML fetches; returning [] tells
+        the pipeline "no new items" without crossing the line the user drew."""
+        collector = WebsiteCollector()
+        source = _make_source(
+            url="https://paywalled.example.com",
+            metadata_={"rss_only": True},  # no rss_url
+        )
+
+        rss_fetch_mock = AsyncMock(return_value=[])
+        discover_mock = AsyncMock(return_value=None)
+        static_mock = AsyncMock(return_value=[{"url": "static-result"}])
+        playwright_mock = AsyncMock(return_value=[{"url": "playwright-result"}])
+
+        with patch.object(collector, "_check_ssrf", new_callable=AsyncMock), \
+             patch.object(collector, "get_runtime_auth", return_value=None), \
+             patch.object(collector, "get_runtime_cookies", return_value={}), \
+             patch.object(collector, "get_runtime_browser_session", return_value=None), \
+             patch.object(collector.rss_collector, "fetch", new=rss_fetch_mock), \
+             patch.object(
+                 collector.rss_collector, "discover_feed_url", new=discover_mock,
+             ), \
+             patch.object(collector, "_fetch_static", new=static_mock), \
+             patch.object(collector, "_fetch_with_playwright", new=playwright_mock):
+            result = await collector.fetch(source)
+
+        assert result == []
+        static_mock.assert_not_awaited()
+        playwright_mock.assert_not_awaited()

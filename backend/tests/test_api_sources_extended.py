@@ -20,7 +20,7 @@ async def test_list_sources_pagination(client: AsyncClient, db_session):
     from app.models import Source
     for i in range(3):
         db_session.add(Source(name=f"src{i}", type="rss", url=f"https://example{i}.com/feed",
-                               fetch_interval=60, enabled=True, priority=0))
+                               fetch_interval=60, enabled=True))
     await db_session.commit()
 
     resp = await client.get("/api/sources?page=1&page_size=2")
@@ -40,7 +40,7 @@ async def test_get_source_not_found(client: AsyncClient):
 async def test_create_source_duplicate_rejected(client: AsyncClient, db_session):
     from app.models import Source
     db_session.add(Source(name="dup", type="rss", url="https://dup.com/feed",
-                           fetch_interval=60, enabled=True, priority=0))
+                           fetch_interval=60, enabled=True))
     await db_session.commit()
 
     mock_probe_result = MagicMock()
@@ -55,7 +55,7 @@ async def test_create_source_duplicate_rejected(client: AsyncClient, db_session)
     ))):
         resp = await client.post("/api/sources", json={
             "name": "dup", "type": "rss", "url": "https://dup.com/feed",
-            "fetch_interval": 60, "enabled": True, "priority": 0,
+            "fetch_interval": 60, "enabled": True,
         })
     assert resp.status_code == 409
 
@@ -65,7 +65,7 @@ async def test_create_source_podcast_rejected_when_disabled(client: AsyncClient)
     with patch("app.api.sources._helpers.PODCAST_SOURCES_ENABLED", False):
         resp = await client.post("/api/sources", json={
             "name": "pod", "type": "podcast", "url": "https://pod.com/feed",
-            "fetch_interval": 60, "enabled": True, "priority": 0,
+            "fetch_interval": 60, "enabled": True,
         })
     assert resp.status_code == 409
 
@@ -89,13 +89,57 @@ async def test_update_source_not_found(client: AsyncClient):
 async def test_bulk_import_creates_sources(client: AsyncClient):
     resp = await client.post("/api/sources/bulk-import", json={"sources": [
         {"name": "bulk1", "type": "rss", "url": "https://bulk1.com/feed",
-         "fetch_interval": 60, "enabled": True, "priority": 0}
+         "fetch_interval": 60, "enabled": True}
     ]})
     assert resp.status_code == 200
     data = resp.json()
-    assert isinstance(data, list)
-    assert len(data) == 1
-    assert data[0]["name"] == "bulk1"
+    assert data["skipped_duplicates"] == 0
+    assert len(data["created"]) == 1
+    assert data["created"][0]["name"] == "bulk1"
+
+
+@pytest.mark.asyncio
+async def test_bulk_import_skips_duplicate_urls(client: AsyncClient, db_session):
+    from app.models import Source
+    db_session.add(Source(name="existing", type="rss", url="https://same.com/feed",
+                          fetch_interval=60, enabled=True))
+    await db_session.commit()
+
+    resp = await client.post("/api/sources/bulk-import", json={"sources": [
+        {"name": "new1", "type": "rss", "url": "https://same.com/feed",
+         "fetch_interval": 60, "enabled": True},
+        {"name": "new2", "type": "rss", "url": "https://other.com/feed",
+         "fetch_interval": 60, "enabled": True},
+    ]})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["skipped_duplicates"] == 1
+    assert len(data["created"]) == 1
+    assert data["created"][0]["name"] == "new2"
+
+
+@pytest.mark.asyncio
+async def test_create_source_rejects_duplicate_normalized_url(client: AsyncClient, db_session):
+    from app.models import Source
+    db_session.add(Source(name="a", type="website", url="https://www.huxiu.com",
+                          fetch_interval=60, enabled=True))
+    await db_session.commit()
+
+    mock_probe_result = MagicMock()
+    mock_probe_result.status = "ok"
+    mock_probe_result.strategy = "scrape"
+    mock_probe_result.rss_url = None
+    mock_probe_result.message = ""
+    mock_probe_result.to_dict = lambda: {}
+
+    with patch("app.api.sources._helpers._probe_urls", new=AsyncMock(return_value=(
+        mock_probe_result, {}, 1
+    ))):
+        resp = await client.post("/api/sources", json={
+            "name": "b", "type": "website", "url": "https://www.huxiu.com/",
+            "fetch_interval": 60, "enabled": True,
+        })
+    assert resp.status_code == 409
 
 
 @pytest.mark.asyncio
