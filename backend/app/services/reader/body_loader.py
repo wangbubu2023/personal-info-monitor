@@ -15,7 +15,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.api.content_shared import (
+from app.domains.enrich.reader.shared import (
     _clean_x_reader_body,
     _derive_title_from_body,
     _extract_x_article_url,

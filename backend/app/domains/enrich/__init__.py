@@ -16,4 +16,16 @@ into this package:
 The enrich domain consumes atoms exclusively through
 :class:`app.domains.contracts.atoms.AtomReader` — it never imports the
 atoms implementation directly.
+
+Phase progress:
+
+* ``domains/enrich/reader/shared.py`` — moved from
+  ``app.api.content_shared`` in Phase 4 step 1 (paragraph split, X-body
+  clean, title heuristics, translation-validity gates, X article URL
+  extraction, reader-body hash, clean reader HTML builder). The reader
+  service modules (``services/reader/{body_loader, streaming,
+  translation}``) now import from this canonical location instead of
+  reverse-depending on ``app.api``; the legacy
+  ``app.api.content_shared`` path keeps the same symbols as re-exports
+  through Phase 7.
 """

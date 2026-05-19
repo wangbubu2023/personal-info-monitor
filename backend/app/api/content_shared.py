@@ -1,211 +1,39 @@
-"""Shared helpers for content API routes."""
+"""HTTP serialization helpers + backwards-compatible reader-helper facade.
+
+Reader-shared helpers (paragraph split, X-body clean, title heuristics,
+translation-validity gates, X article URL extraction, reader-body hash,
+clean reader HTML builder) moved to
+:mod:`app.domains.enrich.reader.shared` in Phase 4 step 1 of the
+module-refactor blueprint, which eliminates the
+``app.services.reader.* → app.api.content_shared`` reverse dependency
+the audit flagged.
+
+The remaining HTTP-layer concern is :func:`_serialize_content`, which
+maps a ``Content`` ORM instance onto the API response dict
+``app.api.contents_crud`` returns. That stays here because it shapes
+HTTP responses, not domain logic.
+
+All previously exported reader-helper names are re-exported below so
+existing imports (``from app.api.content_shared import _split_for_reader``,
+``from app.api.contents import _split_for_reader``, plus the routes in
+``app.api.contents_reader``) keep resolving through Phase 7.
+"""
 
 from __future__ import annotations
 
-from collections.abc import Iterable
-from datetime import datetime
-import hashlib
-import html
-import re
-from typing import Optional
-
+from app.domains.enrich.reader.shared import (  # noqa: F401 — re-exported for backwards compatibility
+    _build_clean_reader_html,
+    _clean_x_reader_body,
+    _derive_title_from_body,
+    _extract_x_article_url,
+    _is_valid_title_translation,
+    _is_valid_translation_text,
+    _looks_like_translation_refusal,
+    _reader_body_hash,
+    _split_for_reader,
+    _title_looks_like_url,
+)
 from app.models import Content
-from app.processors.translator import Translator
-
-_X_ARTICLE_URL_RE = re.compile(r"(?:https?://)?(?:x\.com|twitter\.com)/i/article/\d+", re.IGNORECASE)
-_TITLE_URL_RE = re.compile(r"^(?:https?://|www\.)", re.IGNORECASE)
-
-
-def _title_looks_like_url(title: str) -> bool:
-    text = (title or "").strip().lower()
-    if not text:
-        return True
-    return bool(_TITLE_URL_RE.match(text)) or "t.co/" in text
-
-
-def _looks_like_translation_refusal(text: str) -> bool:
-    value = (text or "").strip().lower()
-    if not value:
-        return False
-    markers = (
-        "i cannot translate",
-        "i can't translate",
-        "please provide",
-        "无法翻译",
-        "请提供",
-        "没有提供",
-        "未提供",
-        "无法进行翻译",
-    )
-    return any(marker in value for marker in markers)
-
-
-def _reader_body_hash(text: str) -> str:
-    normalized = (text or "").strip()
-    if not normalized:
-        return ""
-    return hashlib.sha1(normalized.encode("utf-8")).hexdigest()
-
-
-def _extract_x_article_url(metadata: dict) -> str:
-    if not isinstance(metadata, dict):
-        return ""
-
-    direct = str(metadata.get("article_url") or "").strip()
-    if direct:
-        matched = _X_ARTICLE_URL_RE.search(direct)
-        if matched:
-            direct = matched.group(0).strip()
-            if not direct.startswith("http://") and not direct.startswith("https://"):
-                direct = f"https://{direct}"
-            if direct.startswith("http://"):
-                direct = "https://" + direct[len("http://"):]
-            return direct
-
-    for item in metadata.get("urls") or []:
-        candidates: list[str] = []
-        if isinstance(item, dict):
-            candidates.extend(
-                [
-                    str(item.get("expanded_url") or ""),
-                    str(item.get("display_url") or ""),
-                    str(item.get("short_url") or ""),
-                ]
-            )
-        elif isinstance(item, str):
-            candidates.append(item)
-        for candidate in candidates:
-            matched = _X_ARTICLE_URL_RE.search(candidate or "")
-            if not matched:
-                continue
-            url = matched.group(0).strip()
-            if not url.startswith("http://") and not url.startswith("https://"):
-                url = f"https://{url}"
-            if url.startswith("http://"):
-                url = "https://" + url[len("http://"):]
-            return url
-    return ""
-
-
-def _is_valid_translation_text(text: Optional[str]) -> bool:
-    if not text or not text.strip():
-        return False
-    return Translator().is_chinese(text)
-
-
-def _is_valid_title_translation(original: str, candidate: Optional[str]) -> bool:
-    if not _is_valid_translation_text(candidate):
-        return False
-    value = str(candidate).strip()
-    if _looks_like_translation_refusal(value):
-        return False
-    if _title_looks_like_url(original):
-        return False
-    if len(value) > max(180, len(original) * 6):
-        return False
-    return True
-
-
-def _split_for_reader(text: str) -> list[str]:
-    """Split plain text into readable paragraphs."""
-    cleaned = (text or "").replace("\r\n", "\n").strip()
-    if not cleaned:
-        return []
-
-    paragraphs = [p.strip() for p in re.split(r"\n{2,}", cleaned) if p.strip()]
-    if len(paragraphs) <= 1:
-        protected = re.sub(
-            r"\b(?:[A-Za-z]\.){2,}",
-            lambda m: m.group(0).replace(".", "<DOT>"),
-            cleaned,
-        )
-        paragraphs = [
-            p.replace("<DOT>", ".").strip()
-            for p in re.split(r"(?<=[。！？.!?])\s+", protected)
-            if p.strip()
-        ]
-    return paragraphs
-
-
-def _derive_title_from_body(text: str) -> str:
-    if not text:
-        return ""
-
-    skip_exact = {
-        "查看键盘快捷键",
-        "要查看键盘快捷键，按下问号",
-        "Log in",
-        "Sign up",
-        "Articles",
-        "Posts",
-        "Replies",
-        "·",
-    }
-    lines: list[str] = []
-    for paragraph in _split_for_reader(text):
-        for line in paragraph.split("\n"):
-            candidate = (line or "").strip()
-            if not candidate or candidate in skip_exact:
-                continue
-            if candidate.startswith("@"):
-                continue
-            if re.fullmatch(r"[·•\-\s]+", candidate):
-                continue
-            if re.fullmatch(r"\d+(?:\.\d+)?(?:万|亿|k|K|m|M|千)?", candidate):
-                continue
-            if re.fullmatch(r"\d+\s*(?:秒|分钟|小时|天|周|月|年)", candidate):
-                continue
-            if re.fullmatch(r"\d+月\d+日", candidate):
-                continue
-            if len(candidate) < 8:
-                continue
-            lines.append(candidate)
-            if len(lines) >= 12:
-                break
-        if len(lines) >= 12:
-            break
-
-    if not lines:
-        return ""
-    title = lines[0][:120].strip()
-    if len(lines[0]) > 120:
-        title += "..."
-    return title
-
-
-def _clean_x_reader_body(text: str) -> str:
-    cleaned = (text or "").replace("\r\n", "\n").strip()
-    if not cleaned:
-        return ""
-
-    skip_exact = {
-        "查看键盘快捷键",
-        "要查看键盘快捷键，按下问号",
-        "键盘快捷键",
-        "键盘快捷方式",
-        "Log in",
-        "Sign up",
-        "Posts",
-        "Replies",
-        "Articles",
-        "Media",
-        "·",
-    }
-    filtered: list[str] = []
-    for line in [line.strip() for line in cleaned.split("\n") if line.strip()]:
-        if line in skip_exact or line.startswith("@"):
-            continue
-        if re.fullmatch(r"[·•\-\s]+", line):
-            continue
-        if re.fullmatch(r"\d+(?:\.\d+)?(?:万|亿|k|K|m|M|千)?", line):
-            continue
-        if re.fullmatch(r"\d+\s*(?:秒|分钟|小时|天|周|月|年)", line):
-            continue
-        if re.fullmatch(r"\d+月\d+日", line):
-            continue
-        filtered.append(line)
-    result = "\n".join(filtered).strip()
-    return result if len(result) >= 280 else cleaned
 
 
 def _serialize_content(content: Content) -> dict:
@@ -235,37 +63,16 @@ def _serialize_content(content: Content) -> dict:
     }
 
 
-def _build_clean_reader_html(
-    title: str,
-    source_name: str,
-    original_url: str,
-    publish_time: Optional[datetime],
-    body_zh: str,
-) -> str:
-    """Build a sanitized, reader-friendly HTML document."""
-    publish_text = publish_time.isoformat() if publish_time else "-"
-    body_html = "\n".join(f"<p>{html.escape(p)}</p>" for p in _split_for_reader(body_zh))
-    if not body_html:
-        body_html = "<p>暂无可阅读正文。</p>"
-
-    return f"""<!doctype html>
-<html lang="zh-CN">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>{html.escape(title or "内容阅读")}</title>
-  <style>
-    body {{ max-width: 920px; margin: 24px auto; padding: 0 18px; line-height: 1.9; color: #1f1f1f; font-family: -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif; }}
-    h1 {{ font-size: 28px; margin: 0 0 8px; line-height: 1.4; }}
-    .meta {{ color: #6b7280; font-size: 13px; margin-bottom: 20px; }}
-    .meta a {{ color: #6b7c3f; text-decoration: none; }}
-    .meta a:hover {{ text-decoration: underline; }}
-    article p {{ margin: 0 0 14px; white-space: pre-wrap; }}
-  </style>
-</head>
-<body>
-  <h1>{html.escape(title or "未命名内容")}</h1>
-  <div class="meta">来源：{html.escape(source_name or "-")} | 发布时间：{html.escape(publish_text)} | <a href="{html.escape(original_url or "#")}" target="_blank" rel="noopener noreferrer">原文链接</a></div>
-  <article>{body_html}</article>
-</body>
-</html>"""
+__all__ = [
+    "_serialize_content",
+    "_title_looks_like_url",
+    "_looks_like_translation_refusal",
+    "_reader_body_hash",
+    "_extract_x_article_url",
+    "_is_valid_translation_text",
+    "_is_valid_title_translation",
+    "_split_for_reader",
+    "_derive_title_from_body",
+    "_clean_x_reader_body",
+    "_build_clean_reader_html",
+]

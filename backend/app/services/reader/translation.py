@@ -12,7 +12,7 @@ from typing import Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.content_shared import (
+from app.domains.enrich.reader.shared import (
     _is_valid_title_translation,
     _is_valid_translation_text,
     _split_for_reader,
