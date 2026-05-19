@@ -52,7 +52,7 @@ class ScoringConfig:
 def clamp_float(value: Any, *, default: float = 0.0, min_value: float = 0.0, max_value: float = 1.0) -> float:
     try:
         parsed = float(value)
-    except Exception:
+    except (TypeError, ValueError):
         parsed = default
     return max(min_value, min(max_value, parsed))
 
@@ -60,7 +60,7 @@ def clamp_float(value: Any, *, default: float = 0.0, min_value: float = 0.0, max
 def normalize_source_stars(value: Any, default: int = 1) -> int:
     try:
         parsed = int(value)
-    except Exception:
+    except (TypeError, ValueError):
         parsed = default
     return max(1, min(3, parsed))
 

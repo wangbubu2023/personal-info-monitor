@@ -1,0 +1,19 @@
+"""LLM summarisation/translation, reader, digest, notifications.
+
+Phase 4 of the refactor moves all LLM-bound and user-facing post-processing
+into this package:
+
+* ``domains/enrich/content/`` — summariser, translator, manual reprocess
+* ``domains/enrich/reader/`` — moved from ``app/services/reader/``
+  (Reader body loader, NDJSON streaming, translation orchestration)
+* ``domains/enrich/digest/`` — daily digest service
+* ``domains/enrich/hourly/`` — 3-hourly digest (the ``hourly_digest_tasks``
+  name is kept on the HTTP boundary for backwards compatibility)
+* ``domains/enrich/ranking.py`` — event clustering / scoring
+* ``domains/enrich/notifications.py`` — keyword/doctor alert content
+  (SMTP transport lives in ``platform.notifications``)
+
+The enrich domain consumes atoms exclusively through
+:class:`app.domains.contracts.atoms.AtomReader` — it never imports the
+atoms implementation directly.
+"""

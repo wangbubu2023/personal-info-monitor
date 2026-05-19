@@ -188,7 +188,7 @@ cat ~/.pim/data/runtime-secrets.json
 |------|--------|------|
 | `DATA_DIR` | `~/.pim/data` | SQLite 数据库与日志目录 |
 | `FETCH_CONCURRENCY` | `20` | 并发抓取数 |
-| `AI_PROCESSING_ENABLED` | `false` | 是否启用 AI 摘要/翻译 |
+| `AI_PROCESSING_ENABLED` | `true` | 是否启用 AI 摘要/翻译（与 `backend/app/config.py` 默认值一致） |
 | `OPENAI_API_KEY` | — | 云端模型（可选） |
 | `RSSHUB_URL` | `https://rsshub.app` | RSSHub 实例地址 |
 | `CORS_ORIGINS` | 见下 | 允许的前端来源 |

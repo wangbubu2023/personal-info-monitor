@@ -70,7 +70,7 @@ def _looks_blocked(metadata: Mapping[str, Any], *, body_len: int, summary_len: i
     try:
         if int(status_code) in _BLOCKED_STATUS_CODES:
             return True
-    except Exception:
+    except (TypeError, ValueError):
         pass
 
     outcome = metadata.get("last_fetch_outcome")
