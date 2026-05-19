@@ -13,7 +13,7 @@ from sqlalchemy.orm import selectinload
 
 from app.database import get_async_db
 from app.models import Content
-from app.pipeline.utils import get_website_content_reject_reason
+from app.domains.ingest.quality import get_website_content_reject_reason
 from app.utils.text import strip_html_tags, text_looks_like_embedded_binary
 
 router = APIRouter()

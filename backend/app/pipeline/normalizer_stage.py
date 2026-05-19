@@ -7,9 +7,9 @@ from app.models import Source, Content
 from app.utils.datetime import utcnow_naive
 from app.utils.logger import get_logger
 from app.utils.text import strip_html_tags
+from app.domains.ingest.quality import get_website_content_reject_reason
 from app.pipeline.dedupe import handle_external_id_duplicate
 from app.pipeline.utils import (
-    get_website_content_reject_reason,
     normalize_external_id,
     normalize_publish_time,
 )

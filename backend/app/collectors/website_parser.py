@@ -14,7 +14,7 @@ from urllib.parse import urljoin
 from bs4 import BeautifulSoup
 
 from app.models import Source
-from app.pipeline.utils import get_website_content_reject_reason
+from app.domains.ingest.quality import get_website_content_reject_reason
 from app.utils.logger import get_logger
 from app.utils.publish_time import parse_publish_time_text
 

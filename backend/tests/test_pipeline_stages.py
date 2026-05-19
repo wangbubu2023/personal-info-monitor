@@ -434,7 +434,7 @@ class TestStorageStage:
 # coordinator._build_raw_content_objects
 # ===========================================================================
 
-_no_reject = patch("app.pipeline.utils.get_website_content_reject_reason", return_value=None)
+_no_reject = patch("app.domains.ingest.quality.get_website_content_reject_reason", return_value=None)
 
 
 class TestBuildRawContentObjects:

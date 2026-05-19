@@ -69,7 +69,7 @@ async def _build_raw_content_objects(raw_contents: List[dict], source: Source) -
             )
 
             # PROACTIVE SIGNAL FILTERING
-            from app.pipeline.utils import get_website_content_reject_reason
+            from app.domains.ingest.quality import get_website_content_reject_reason
             reject_reason = get_website_content_reject_reason(
                 source.url,
                 {
