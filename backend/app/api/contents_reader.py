@@ -1,8 +1,10 @@
 """HTTP layer for the reader endpoints.
 
 Responsibilities kept to: route binding, request parsing, and stitching
-together the domain helpers in :mod:`app.services.reader`. All body
-fetching / translation / streaming logic lives under that package.
+together the domain helpers in :mod:`app.domains.enrich.reader`. All
+body fetching / translation / streaming logic lives under that package
+(moved out of ``app.services.reader`` in Phase 4 step 5 of the
+module-refactor blueprint; the old path is kept as a re-export shim).
 
 Legacy private symbols (``_fetch_reader_fulltext`` etc.) are re-exported
 at module scope so downstream callers (``app.api.contents``, test files
@@ -27,9 +29,9 @@ from app.api.content_shared import (
 )
 from app.database import get_async_db
 from app.models import Content
-from app.services.reader import body_loader as _body_loader
-from app.services.reader import streaming as _streaming
-from app.services.reader import translation as _translation
+from app.domains.enrich.reader import body_loader as _body_loader
+from app.domains.enrich.reader import streaming as _streaming
+from app.domains.enrich.reader import translation as _translation
 
 router = APIRouter()
 

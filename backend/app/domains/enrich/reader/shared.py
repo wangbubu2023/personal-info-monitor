@@ -5,9 +5,10 @@ Moved out of :mod:`app.api.content_shared` as part of Phase 4 step 1 of
 the module-refactor blueprint. The HTTP layer (``app.api.contents``,
 ``app.api.contents_reader``) and the reader service modules
 (``app.services.reader.{body_loader, streaming, translation}``) all
-need these helpers; lifting them out of ``app.api`` is the one and
+need these helpers; lifting them out of ``app.api`` was the one and
 only way to eliminate the ``services → api`` reverse dependency the
-blueprint calls out.
+blueprint called out (Phase 4 step 5 then relocated the reader
+service modules themselves into this same sub-domain).
 
 These functions are intentionally **pure-ish**: only :func:`_is_valid_translation_text`
 and :func:`_is_valid_title_translation` touch the Translator (and only

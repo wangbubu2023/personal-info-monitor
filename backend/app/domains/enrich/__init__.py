@@ -34,4 +34,11 @@ Phase progress:
   Content row). The legacy method on ``ContentProcessor`` is now a
   thin wrapper that delegates here; ``tasks/process_tasks.process_content``
   keeps calling ``ContentProcessor().reprocess_content(...)`` unchanged.
+* ``domains/enrich/reader/{body_loader, translation, streaming}.py`` —
+  moved from ``app.services.reader.*`` in Phase 4 step 5 (Reader 整包
+  平移). ``app.api.contents_reader`` switched to import these directly
+  from the canonical location; the ``app.services.reader.*`` paths
+  remain as re-export shims (test patches that target internals were
+  migrated to ``app.domains.enrich.reader.*`` paths in
+  ``tests/test_contents_reader.py``).
 """
