@@ -1,15 +1,18 @@
-import React from 'react'
-import { DatePicker, Button } from 'antd'
-import { SyncOutlined } from '@ant-design/icons'
-import type { Dayjs } from 'dayjs'
-import type { DashboardStats } from '../../types'
+import React from 'react';
+import { DatePicker } from 'antd';
+import { RefreshCw, Calendar, Inbox, TrendingUp } from 'lucide-react';
+import type { Dayjs } from 'dayjs';
+import type { DashboardStats } from '../../types';
+import PageHeroTitle from '../common/PageHeroTitle';
+
+const iconStroke = 1.5
 
 interface DashboardHeaderProps {
-  stats?: DashboardStats
-  selectedDate: Dayjs
-  onDateChange: (date: Dayjs) => void
-  onFetchAll: () => void
-  isFetching: boolean
+  stats?: DashboardStats;
+  selectedDate: Dayjs;
+  onDateChange: (date: Dayjs) => void;
+  onFetchAll: () => void;
+  isFetching: boolean;
 }
 
 const DashboardHeader: React.FC<DashboardHeaderProps> = ({
@@ -19,60 +22,57 @@ const DashboardHeader: React.FC<DashboardHeaderProps> = ({
   onFetchAll,
   isFetching,
 }) => (
-  <div style={{
-    backgroundColor: '#f5f5f5',
-    borderBottom: '1px solid #eee',
-  }}>
-    <div style={{
-      maxWidth: 1200,
-      margin: '0 auto',
-      padding: '16px 24px',
-      display: 'flex',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-    }}>
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: 12 }}>
-        <h1 style={{
-          fontSize: 20,
-          fontWeight: 500,
-          color: '#333',
-          margin: 0,
-        }}>
-          <span data-testid="dashboard-title">资讯监控中心</span>
-        </h1>
-        <span style={{ color: '#ccc' }}>|</span>
-        <span style={{ fontSize: 13, color: '#999' }}>追踪您关注的信息源</span>
-      </div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-        <span style={{ fontSize: 13, color: '#666' }}>
-          更新 <strong style={{ color: '#6b7c3f' }}>{stats?.today_total || 0}</strong>
-          <span style={{ margin: '0 6px', color: '#ddd' }}>|</span>
-          未读 <strong style={{ color: '#6b7c3f' }}>{stats?.unread_count || 0}</strong>
-        </span>
-        <DatePicker
-          value={selectedDate}
-          onChange={(date) => date && onDateChange(date)}
-          allowClear={false}
-          size="small"
-          style={{ width: 120 }}
-        />
-        <Button
-          icon={<SyncOutlined spin={isFetching} />}
+  <div className="flex flex-col gap-3.5 pb-1 pt-4 sm:gap-4 sm:pt-5">
+    {/* 标题区与日期/抓取同一行，纵向与整块标题（中英）居中对齐 */}
+    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+      <PageHeroTitle
+        titleZh="资讯中心"
+        titleEn="Information Center"
+        data-testid="dashboard-title"
+      />
+      <div className="flex shrink-0 flex-wrap items-center gap-2 sm:justify-end">
+        <div className="flex items-center gap-1.5 rounded-lg border border-[rgba(88,100,118,0.1)] bg-white/95 px-2.5 py-1.5 shadow-sm">
+          <Calendar size={15} className="ml-0.5 shrink-0 text-[#5f6f82]" strokeWidth={iconStroke} />
+          <DatePicker
+            value={selectedDate}
+            onChange={(date) => date && onDateChange(date)}
+            allowClear={false}
+            size="small"
+            className="!min-w-0 !border-none !bg-transparent !shadow-none !text-[13px] !text-[#4a5a6e] hover:!text-[#2c3a50] focus:!text-[#2c3a50]"
+            suffixIcon={null}
+          />
+        </div>
+
+        <button
+          type="button"
           onClick={onFetchAll}
-          loading={isFetching}
-          size="small"
+          disabled={isFetching}
           data-testid="dashboard-fetch-all-btn"
-          style={{
-            backgroundColor: '#6b7c3f',
-            borderColor: '#6b7c3f',
-            color: '#fff',
-          }}
+          className={`flex h-9 shrink-0 items-center justify-center gap-2 rounded-lg px-4 text-[13px] font-medium transition-all ${
+            isFetching
+              ? 'cursor-not-allowed border border-[rgba(88,100,118,0.1)] bg-[#eef3f8] text-[#8a96a5]'
+              : 'border border-[#49A8C9]/28 bg-[#49A8C9] text-white shadow-sm shadow-[#49A8C9]/15 hover:bg-[#3d94b3] active:scale-[0.99]'
+          }`}
         >
-          抓取
-        </Button>
+          <RefreshCw size={14} strokeWidth={iconStroke} className={isFetching ? 'animate-spin' : ''} />
+          {isFetching ? '同步中' : '重新抓取'}
+        </button>
+      </div>
+    </div>
+
+    <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+      <div className="flex items-center gap-2 rounded-lg border border-[rgba(88,100,118,0.08)] bg-white/90 px-2.5 py-1.5 shadow-sm">
+        <TrendingUp className="h-3.5 w-3.5 shrink-0 text-[#3a9eb8]" strokeWidth={iconStroke} />
+        <span className="text-[12px] text-[#5f6f82]">收录</span>
+        <span className="text-[14px] font-semibold tabular-nums text-[#2c3a50]">{stats?.today_total ?? 0}</span>
+      </div>
+      <div className="flex items-center gap-2 rounded-lg border border-[rgba(88,100,118,0.08)] bg-white/90 px-2.5 py-1.5 shadow-sm">
+        <Inbox className="h-3.5 w-3.5 shrink-0 text-[#6d684f]" strokeWidth={iconStroke} />
+        <span className="text-[12px] text-[#5f6f82]">待读</span>
+        <span className="text-[14px] font-semibold tabular-nums text-[#2c3a50]">{stats?.unread_count ?? 0}</span>
       </div>
     </div>
   </div>
-)
+);
 
-export default DashboardHeader
+export default DashboardHeader;

@@ -7,7 +7,6 @@ export interface ListSourcesParams {
   page?: number
   page_size?: number
   type?: string
-  category_id?: string
   enabled?: boolean
   search?: string
 }
@@ -82,7 +81,7 @@ export const sourcesApi = {
     return response.data
   },
 
-  // Create source
+  // Create source only persists config; probe is a separate action.
   create: async (data: SourceCreate): Promise<Source> => {
     const response = await api.post('/sources', data)
     return response.data
@@ -100,7 +99,9 @@ export const sourcesApi = {
   },
 
   // Bulk import (with longer timeout for large imports)
-  bulkImport: async (sources: SourceCreate[]): Promise<Source[]> => {
+  bulkImport: async (
+    sources: SourceCreate[],
+  ): Promise<{ created: Source[]; skipped_duplicates: number }> => {
     const response = await api.post('/sources/bulk-import', { sources }, {
       timeout: 300000  // 5 minutes for large imports
     })

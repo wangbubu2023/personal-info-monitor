@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import tomllib
 from dataclasses import dataclass
@@ -10,6 +11,21 @@ from typing import Any
 
 DEFAULT_SERVER = "http://127.0.0.1:8000"
 DEFAULT_PROFILE = "local"
+_RUNTIME_SECRETS_PATH = Path.home() / ".pim" / "data" / "runtime-secrets.json"
+
+
+def read_local_runtime_key() -> str | None:
+    """Read the API key from the local PIM server's runtime-secrets.json.
+
+    Zero-config fallback for single-user local installations —
+    no ``auth login`` or environment variable setup required.
+    """
+    try:
+        payload = json.loads(_RUNTIME_SECRETS_PATH.read_text(encoding="utf-8"))
+        key = str(payload.get("PIM_API_KEY") or "").strip()
+        return key or None
+    except Exception:
+        return None
 
 
 @dataclass
@@ -68,6 +84,10 @@ def save_config(config: dict[str, Any]) -> None:
         lines.append("")
 
     path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
+    try:
+        path.chmod(0o600)
+    except OSError:
+        pass
 
 
 def _escape(value: str) -> str:

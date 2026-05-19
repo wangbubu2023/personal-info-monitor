@@ -1,6 +1,8 @@
-import React, { Suspense, lazy } from 'react'
+import React, { Suspense, lazy, useState, useEffect } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
-import { Header } from './components/layout'
+import { motion, AnimatePresence } from 'framer-motion'
+import MainLayout from './components/layout/MainLayout'
+import Spotlight from './components/common/Spotlight'
 
 const HomePage = lazy(() => import('./pages/HomePage'))
 const DigestPage = lazy(() => import('./pages/DigestPage'))
@@ -8,11 +10,34 @@ const SettingsPage = lazy(() => import('./pages/SettingsPage'))
 const ReaderPage = lazy(() => import('./pages/ReaderPage'))
 
 const App: React.FC = () => {
+  const [isSpotlightOpen, setIsSpotlightOpen] = useState<boolean>(false)
+
+  useEffect(() => {
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault()
+        setIsSpotlightOpen(prev => !prev)
+      }
+    };
+    window.addEventListener('keydown', handleGlobalKeyDown)
+    return () => window.removeEventListener('keydown', handleGlobalKeyDown)
+  }, [])
+
   return (
-    <div className="min-h-screen bg-[var(--color-background)]">
-      <Header />
-      <main>
-        <Suspense fallback={<div style={{ padding: 24, color: '#666' }}>页面加载中...</div>}>
+    <MainLayout>
+      <Spotlight isOpen={isSpotlightOpen} onClose={() => setIsSpotlightOpen(false)} />
+      <AnimatePresence mode="wait">
+        <Suspense fallback={
+          <div className="flex h-[50vh] items-center justify-center">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              className="text-[#586476] font-medium tracking-[0.14em] text-xs uppercase"
+            >
+              正在加载…
+            </motion.div>
+          </div>
+        }>
           <Routes>
             <Route path="/" element={<HomePage />} />
             <Route path="/digest" element={<DigestPage />} />
@@ -22,8 +47,8 @@ const App: React.FC = () => {
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </Suspense>
-      </main>
-    </div>
+      </AnimatePresence>
+    </MainLayout>
   )
 }
 

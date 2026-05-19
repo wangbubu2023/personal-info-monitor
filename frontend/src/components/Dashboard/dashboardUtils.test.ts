@@ -1,11 +1,24 @@
 import { describe, expect, it } from 'vitest'
 
 import type { Content, Digest } from '../../types'
-import { contentToDigestItem, getDashboardCategoryCount, getDashboardItems } from './dashboardUtils'
+import {
+  buildDashboardHomePath,
+  buildReaderPath,
+  capDashboardListPreview,
+  contentToDigestItem,
+  digestSummaryPlain,
+  getDigestItemFinalScore,
+  getDigestItemFulltextStatusLabel,
+  getDigestItemRecommendationReason,
+  getDigestItemSourceStars,
+  getDashboardCategoryCount,
+  getDashboardItems,
+  makeDigestBodyPreview,
+} from './dashboardUtils'
 
 const digestFixture: Digest = {
   date: '2026-03-31',
-  total_items: 3,
+  total_items: 4,
   categories: {
     websites: {
       count: 1,
@@ -15,8 +28,26 @@ const digestFixture: Digest = {
           source_name: 'Website',
           title: 'Website item',
           url: 'https://website.example.com',
-          publish_time: '2026-03-31T03:00:00',
-          fetched_at: '2026-03-31T03:10:00',
+          // 发布时间很旧、但今天才抓取：在「全部」里应靠抓取时间排在前面
+          publish_time: '2018-06-01T12:00:00',
+          fetched_at: '2026-03-31T06:00:00',
+          read_status: false,
+          favorited: false,
+          keyword_matches: [],
+          metadata: {},
+        },
+      ],
+    },
+    rss: {
+      count: 1,
+      items: [
+        {
+          id: 'r-1',
+          source_name: 'RSS',
+          title: 'RSS item',
+          url: 'https://rss.example.com/feed.xml',
+          publish_time: '2026-03-31T04:30:00',
+          fetched_at: '2026-03-31T04:35:00',
           read_status: false,
           favorited: false,
           keyword_matches: [],
@@ -66,13 +97,14 @@ const digestFixture: Digest = {
 }
 
 describe('dashboardUtils', () => {
-  it('sorts all dashboard items by publish time descending', () => {
+  it('sorts merged items by fetched_at desc then publish_time (new fetches surface in 全部)', () => {
     const items = getDashboardItems(digestFixture, 'all')
-    expect(items.map((item) => item.id)).toEqual(['x-1', 'y-1', 'w-1'])
+    expect(items.map((item) => item.id)).toEqual(['w-1', 'x-1', 'r-1', 'y-1'])
   })
 
   it('returns category counts including the synthetic all bucket', () => {
-    expect(getDashboardCategoryCount(digestFixture, 'all')).toBe(3)
+    expect(getDashboardCategoryCount(digestFixture, 'all')).toBe(4)
+    expect(getDashboardCategoryCount(digestFixture, 'rss')).toBe(1)
     expect(getDashboardCategoryCount(digestFixture, 'youtube')).toBe(1)
     expect(getDashboardCategoryCount(digestFixture, 'podcasts')).toBe(0)
   })
@@ -114,5 +146,89 @@ describe('dashboardUtils', () => {
       keyword_matches: [],
       metadata: { author: 'PIM' },
     })
+  })
+})
+
+describe('digestSummaryPlain', () => {
+  it('strips tags so list preview is visible', () => {
+    expect(digestSummaryPlain('<p>可见文字</p>')).toBe('可见文字')
+    expect(digestSummaryPlain('  \n  ')).toBe('')
+  })
+})
+
+describe('makeDigestBodyPreview', () => {
+  it('strips HTML and truncates long plain text', () => {
+    const long = '测'.repeat(400)
+    const prev = makeDigestBodyPreview(`<p>${long}</p>`)
+    expect(prev).toBeDefined()
+    expect(prev!.endsWith('…')).toBe(true)
+    expect(prev!.length).toBeLessThanOrEqual(285)
+  })
+
+  it('returns undefined when plain text too short', () => {
+    expect(makeDigestBodyPreview('<p>短</p>')).toBeUndefined()
+  })
+})
+
+describe('capDashboardListPreview', () => {
+  it('truncates very long plain text like mistaken full article in summary', () => {
+    const long = '文'.repeat(500)
+    const out = capDashboardListPreview(long)
+    expect(out.endsWith('…')).toBe(true)
+    expect(out.length).toBeLessThanOrEqual(285)
+  })
+
+  it('keeps short text when below digest preview minimum', () => {
+    expect(capDashboardListPreview('短')).toBe('短')
+  })
+})
+
+describe('digest item quality metadata helpers', () => {
+  it('normalizes score, source stars, and fulltext status labels for badges', () => {
+    const item = {
+      id: 'q-1',
+      source_name: 'Quality',
+      title: 'Quality item',
+      url: 'https://quality.example.com',
+      read_status: false,
+      favorited: false,
+      keyword_matches: [],
+      metadata: {
+        final_score: '86.4',
+        source_stars: '3',
+        fulltext_status: 'summary_only',
+        recommendation_reason: {
+          why_matters: '主题相关评分较高。',
+          caveat: '需要交叉验证。',
+          confidence: 0.83,
+        },
+      },
+    }
+
+    expect(getDigestItemFinalScore(item)).toBe(86.4)
+    expect(getDigestItemSourceStars(item)).toBe(3)
+    expect(getDigestItemFulltextStatusLabel(item)).toBe('摘要')
+    expect(getDigestItemRecommendationReason(item)).toMatchObject({
+      why_matters: '主题相关评分较高。',
+      caveat: '需要交叉验证。',
+      confidence: 0.83,
+    })
+  })
+})
+
+describe('buildReaderPath / buildDashboardHomePath', () => {
+  it('阅读链接在非「全部」分类下附带 tab', () => {
+    expect(buildReaderPath('x', { tab: 'rss' })).toBe('/reader/x?tab=rss')
+    expect(buildReaderPath('x', { translate: true, tab: 'rss' })).toBe('/reader/x?translate=1&tab=rss')
+  })
+
+  it('「全部」不附带 tab', () => {
+    expect(buildReaderPath('x', { tab: 'all' })).toBe('/reader/x')
+  })
+
+  it('搜索上下文附带 search，返回首页优先 search', () => {
+    expect(buildReaderPath('x', { search: 'foo' })).toBe('/reader/x?search=foo')
+    expect(buildDashboardHomePath('rss', 'foo')).toBe('/?search=foo')
+    expect(buildDashboardHomePath('rss', undefined)).toBe('/?tab=rss')
   })
 })

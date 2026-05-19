@@ -30,12 +30,15 @@ const MODEL_PROVIDER_PLATFORMS = [
   'moonshot',
   'deepseek',
   'openai_compatible',
+  'ollama',
 ] as const
 
 const ModelProvidersTab: React.FC = () => {
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingConfig, setEditingConfig] = useState<APIConfig | null>(null)
   const [form] = Form.useForm()
+  const modalPlatform = Form.useWatch('platform', form)
+  const isOllama = modalPlatform === 'ollama'
   const queryClient = useQueryClient()
 
   const { data: apiKeys, isLoading } = useQuery({
@@ -94,13 +97,20 @@ const ModelProvidersTab: React.FC = () => {
     moonshot: 'Moonshot AI (Kimi)',
     deepseek: 'DeepSeek',
     openai_compatible: '自定义兼容接口',
+    ollama: 'Ollama (本地)',
   }
 
   const columns = [
     { title: '提供商', dataIndex: 'platform', key: 'platform', render: (p: string) => platformLabels[p] || p },
     { title: '名称', dataIndex: 'name', key: 'name', render: (name: string) => name || '-' },
     { title: 'API Base', dataIndex: 'api_base', key: 'api_base', render: (base: string) => base || '-' },
-    { title: 'API Key', dataIndex: 'masked_key', key: 'masked_key', render: (key: string) => <code>{key || '****'}</code> },
+    {
+      title: 'API Key',
+      dataIndex: 'masked_key',
+      key: 'masked_key',
+      render: (key: string, record: APIConfig) =>
+        record.platform === 'ollama' ? <span className="text-[#8a96a5]">—</span> : <code>{key || '****'}</code>,
+    },
     { title: '状态', dataIndex: 'status', key: 'status', render: (status: string) => <Tag color={status === 'active' ? 'green' : 'red'}>{status === 'active' ? '有效' : '无效'}</Tag> },
     {
       title: '操作', key: 'actions',
@@ -132,7 +142,7 @@ const ModelProvidersTab: React.FC = () => {
   return (
     <div>
       <SectionNote style={{ marginBottom: 16 }}>
-        先在这里配置模型供应商的接口凭证。已内置 OpenAI、Anthropic、Google、Qwen、火山方舟、腾讯混元、MiniMax、智谱、Moonshot、DeepSeek 等厂商；暂未内置或需走代理网关的接口，可用“自定义兼容接口”接入。
+        先在这里配置模型供应商：<strong>云端</strong>接口填写 API Key（及必要时 API Base）；<strong>Ollama 本地</strong>请选择「Ollama (本地)」并填写服务地址（默认本机 <code className="text-[13px]">http://localhost:11434</code>），无需 Key。配置保存后，摘要模型与翻译模型中才会出现对应提供商。
       </SectionNote>
       <Button type="primary" icon={<PlusOutlined />} onClick={() => { setEditingConfig(null); form.resetFields(); setIsModalOpen(true) }} style={{ marginBottom: 16 }}>添加模型接入</Button>
       <Table columns={columns} dataSource={modelConfigs} loading={isLoading} rowKey="id" />
@@ -144,7 +154,7 @@ const ModelProvidersTab: React.FC = () => {
             const payload = {
               platform: values.platform,
               name: values.name,
-              api_key: values.api_key,
+              api_key: values.platform === 'ollama' ? (values.api_key || '') : values.api_key,
               api_secret: values.api_secret,
               additional_config: {
                 api_base: values.api_base,
@@ -164,7 +174,15 @@ const ModelProvidersTab: React.FC = () => {
           }}
         >
           <Form.Item name="platform" label="提供商" rules={[{ required: true }]}>
-            <Select placeholder="选择提供商">
+            <Select
+              placeholder="选择提供商"
+              onChange={(v: string) => {
+                if (v === 'ollama') {
+                  const cur = form.getFieldValue('api_base')
+                  if (!cur) form.setFieldValue('api_base', 'http://localhost:11434')
+                }
+              }}
+            >
               <Option value="openai">OpenAI</Option>
               <Option value="anthropic">Anthropic</Option>
               <Option value="google">Google (Gemini)</Option>
@@ -176,11 +194,26 @@ const ModelProvidersTab: React.FC = () => {
               <Option value="moonshot">Moonshot AI (Kimi)</Option>
               <Option value="deepseek">DeepSeek</Option>
               <Option value="openai_compatible">自定义兼容接口（小米等）</Option>
+              <Option value="ollama">Ollama (本地)</Option>
             </Select>
           </Form.Item>
           <Form.Item name="name" label="名称 (可选)"><Input placeholder="例如：公司 OpenAI Key" /></Form.Item>
-          <Form.Item name="api_base" label="API Base (可选)"><Input placeholder="不填将使用该厂商默认地址；自定义兼容接口建议手动填写" /></Form.Item>
-          <Form.Item name="api_key" label="API Key" rules={editingConfig ? [] : [{ required: true }]}><Password placeholder={editingConfig ? '留空则不更新' : '输入 API Key'} /></Form.Item>
+          <Form.Item
+            name="api_base"
+            label={isOllama ? 'Ollama 服务地址' : 'API Base (可选)'}
+            rules={isOllama ? [{ required: true, message: '请填写 Ollama 根地址' }] : []}
+            extra={isOllama ? '一般为 http://localhost:11434，远程 Ollama 填实际可访问的 URL。' : undefined}
+          >
+            <Input placeholder={isOllama ? 'http://localhost:11434' : '不填将使用该厂商默认地址；自定义兼容接口建议手动填写'} />
+          </Form.Item>
+          <Form.Item
+            name="api_key"
+            label="API Key"
+            rules={editingConfig || isOllama ? [] : [{ required: true, message: '请输入 API Key' }]}
+            hidden={isOllama}
+          >
+            <Password placeholder={editingConfig ? '留空则不更新' : '输入 API Key'} />
+          </Form.Item>
           <Form.Item name="api_secret" label="API Secret (如需要)"><Password placeholder="某些平台需要 API Secret" /></Form.Item>
           <Form.Item><Button type="primary" htmlType="submit">{editingConfig ? '更新' : '添加'}</Button></Form.Item>
         </Form>

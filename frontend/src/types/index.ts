@@ -3,16 +3,17 @@ export type SourceType = 'website' | 'rss' | 'x' | 'youtube' | 'podcast'
 
 export type FetchStatus = 'ok' | 'warning' | 'error' | 'unknown'
 
+/** Result of an explicit URL probe — separate from fetch_status (real grab history). */
+export type ProbeStatus = FetchStatus | 'pending' | 'not_probed' | 'failed'
+
 export interface Source {
   id: string
   name: string
   type: SourceType
   url: string
   extra_urls?: string[]
-  category_id?: string
   fetch_interval: number
   enabled: boolean
-  priority: number
   use_keyword_filter: boolean
   auth_required: boolean
   auth_config_id?: string
@@ -24,6 +25,9 @@ export interface Source {
   fetch_status: FetchStatus
   fetch_strategy: string
   fetch_status_message: string
+  probe_status: ProbeStatus
+  probe_strategy: string
+  probe_message: string
   probed_at?: string
   created_at: string
   updated_at: string
@@ -34,10 +38,8 @@ export interface SourceCreate {
   type: SourceType
   url: string
   extra_urls?: string[]
-  category_id?: string
   fetch_interval?: number
   enabled?: boolean
-  priority?: number
   use_keyword_filter?: boolean
   auth_required?: boolean
   auth_config_id?: string | null
@@ -49,6 +51,9 @@ export interface KeywordMatch {
   id: string
   keyword: string
   color?: string
+  matched_term?: string
+  matched_scope?: KeywordMatchScope
+  match_scope?: KeywordMatchScope
 }
 
 export interface Content {
@@ -66,6 +71,7 @@ export interface Content {
   read_status: boolean
   favorited: boolean
   archived: boolean
+  is_user_edited?: boolean
   keyword_matches: KeywordMatch[]
   metadata?: Record<string, unknown>
   fetched_at: string
@@ -74,43 +80,24 @@ export interface Content {
   source_name?: string
 }
 
-// Category types
-export interface Category {
-  id: string
-  name: string
-  description?: string
-  color: string
-  icon?: string
-  parent_id?: string
-  sort_order: number
-  created_at: string
-  updated_at: string
-  source_count: number
-  children: Category[]
-}
-
-export interface CategoryCreate {
-  name: string
-  description?: string
-  color?: string
-  icon?: string
-  parent_id?: string
-  sort_order?: number
-}
-
 // Keyword types
 export type MatchType = 'exact' | 'contains' | 'regex'
+export type KeywordMatchScope = 'title' | 'content' | 'title_content'
 
 export interface Keyword {
   id: string
   keyword: string
   description?: string
   match_type: MatchType
+  match_scope: KeywordMatchScope
   case_sensitive: boolean
+  manual_equivalent_terms: string[]
+  include_auto_equivalent_terms: boolean
   notify: boolean
   notify_email: boolean
   color: string
   enabled: boolean
+  equivalent_terms: string[]
   created_at: string
   updated_at: string
 }
@@ -119,11 +106,47 @@ export interface KeywordCreate {
   keyword: string
   description?: string
   match_type?: MatchType
+  match_scope?: KeywordMatchScope
   case_sensitive?: boolean
+  manual_equivalent_terms?: string[]
+  include_auto_equivalent_terms?: boolean
   notify?: boolean
   notify_email?: boolean
   color?: string
   enabled?: boolean
+}
+
+export interface KeywordBatchCreate {
+  keywords: string[]
+  description?: string
+  match_type?: MatchType
+  match_scope?: KeywordMatchScope
+  case_sensitive?: boolean
+  manual_equivalent_terms?: string[]
+  include_auto_equivalent_terms?: boolean
+  notify?: boolean
+  notify_email?: boolean
+  color?: string
+  enabled?: boolean
+}
+
+export interface KeywordBatchCreateResponse {
+  items: Keyword[]
+  total: number
+  skipped_keywords: string[]
+}
+
+export interface KeywordBatchUpdate {
+  keyword_ids: string[]
+  color?: string
+  match_scope?: KeywordMatchScope
+  match_type?: MatchType
+  enabled?: boolean
+}
+
+export interface KeywordBatchUpdateResponse {
+  items: Keyword[]
+  total: number
 }
 
 // Digest types
@@ -134,6 +157,8 @@ export interface DigestItem {
   translated_title?: string
   summary?: string
   translated_summary?: string
+  /** 摘要过短时由后端从正文截取的列表预览 */
+  body_preview?: string
   url: string
   publish_time?: string
   fetched_at?: string
@@ -153,6 +178,7 @@ export interface Digest {
   total_items: number
   categories: {
     websites: DigestCategory
+    rss: DigestCategory
     x_accounts: DigestCategory
     youtube: DigestCategory
     podcasts: DigestCategory
@@ -197,6 +223,21 @@ export interface SystemSettingsLimits {
   max_hourly_digest_input_items: number
 }
 
+/** 简报窗口：统一任务提示词、参与扫描的入库类型与窗口长度 */
+export interface HourlyDigestSettings {
+  /** 已保存的自定义文案；空字符串表示未自定义（整点任务用内置默认） */
+  prompt: string
+  content_types: string[]
+  window_hours?: number
+  /** GET 响应只读：实际用于整点简报的提示词（含内置默认合并结果） */
+  prompt_effective?: string
+}
+
+export interface FallbackModelPick {
+  provider: string
+  model: string
+}
+
 export interface SystemSettings {
   ai_model: SummaryAIModelConfig
   translation_model?: AIModelConfig
@@ -204,29 +245,33 @@ export interface SystemSettings {
   title_translation_enabled?: boolean
   auto_translate_language: string
   summarization_enabled: boolean
+  translation_fallback_enabled?: boolean
+  translation_fallback?: FallbackModelPick
+  summarization_fallback_enabled?: boolean
+  summarization_fallback?: FallbackModelPick
+  /** @deprecated 由后端读时迁移到 translation_fallback_enabled */
   translation_cloud_fallback_enabled?: boolean
+  /** @deprecated 由后端读时迁移到 summarization_fallback_enabled */
   summarization_cloud_fallback_enabled?: boolean
   email_notifications_enabled: boolean
   limits?: SystemSettingsLimits
+  hourly_digest?: HourlyDigestSettings
 }
 
 /** Ant Design 表单字段，对应 AIModelTab 提交到 PATCH /configs/settings 的负载 */
 export interface AIModelTabFormValues {
   provider: string
   model: string
-  api_base?: string
-  api_key?: string
   temperature: number
   max_tokens: number
   trans_provider: string
   trans_model: string
-  trans_api_base?: string
-  trans_api_key?: string
-  translation_enabled: boolean
-  title_translation_enabled: boolean
-  summarization_enabled: boolean
-  translation_cloud_fallback_enabled: boolean
-  summarization_cloud_fallback_enabled: boolean
+  translation_fallback_enabled: boolean
+  trans_fallback_provider: string
+  trans_fallback_model: string
+  summarization_fallback_enabled: boolean
+  sum_fallback_provider: string
+  sum_fallback_model: string
   max_sources: number
   max_digest_candidates: number
   max_hourly_digest_input_items: number

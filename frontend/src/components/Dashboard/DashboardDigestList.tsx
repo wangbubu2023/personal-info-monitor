@@ -1,18 +1,17 @@
-import React from 'react'
-import { Spin } from 'antd'
-import type { Dayjs } from 'dayjs'
-import type { DigestItem } from '../../types'
-import type { CategoryTab } from './dashboardTypes'
-import DashboardItemCard from './DashboardItemCard'
+import React from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import type { Dayjs } from 'dayjs';
+import type { DigestItem } from '../../types';
+import type { CategoryTab } from './dashboardTypes';
+import DashboardItemCard from './DashboardItemCard';
+import { Loader2, SearchX } from 'lucide-react';
 
 interface DashboardDigestListProps {
-  isLoading: boolean
-  items: DigestItem[]
-  selectedDate: Dayjs
-  activeTab: string
-  categories: CategoryTab[]
-  renderTimePair: (publish?: string, fetched?: string) => string
-  renderTranslationAction: (item: DigestItem) => React.ReactNode
+  isLoading: boolean;
+  items: DigestItem[];
+  selectedDate: Dayjs;
+  activeTab: string;
+  categories: CategoryTab[];
 }
 
 const DashboardDigestList: React.FC<DashboardDigestListProps> = ({
@@ -21,44 +20,49 @@ const DashboardDigestList: React.FC<DashboardDigestListProps> = ({
   selectedDate,
   activeTab,
   categories,
-  renderTimePair,
-  renderTranslationAction,
 }) => (
-  <div style={{
-    maxWidth: 1200,
-    margin: '0 auto',
-    padding: '0 24px',
-  }} data-testid="dashboard-content-list">
-    {isLoading ? (
-      <div style={{ display: 'flex', justifyContent: 'center', padding: 48 }}>
-        <Spin size="large" />
-      </div>
-    ) : items.length > 0 ? (
-      <div>
-        {items.map((item) => (
-          <DashboardItemCard
-            key={item.id}
-            item={item}
-            timeText={renderTimePair(item.publish_time, item.fetched_at || item.publish_time)}
-            translationAction={renderTranslationAction(item)}
-          />
-        ))}
-      </div>
-    ) : (
-      <div style={{
-        textAlign: 'center',
-        padding: 64,
-        color: '#999',
-      }}>
-        <div style={{ fontSize: 16 }}>暂无内容</div>
-        <div style={{ fontSize: 14, marginTop: 8 }}>
-          {selectedDate.format('YYYY年MM月DD日')} 没有
-          {activeTab === 'all' ? '任何' : categories.find((category) => category.key === activeTab)?.label}
-          更新
-        </div>
-      </div>
-    )}
+  <div className="min-w-0" data-testid="dashboard-content-list">
+    <AnimatePresence mode="wait">
+      {isLoading ? (
+        <motion.div
+          key="loading"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          className="flex min-h-[200px] items-center justify-center py-12"
+        >
+          <div className="flex flex-col items-center gap-3">
+            <Loader2 className="h-8 w-8 animate-spin text-[#49A8C9]" strokeWidth={1.5} />
+            <span className="text-[13px] text-[#5f6f82]">正在加载列表…</span>
+          </div>
+        </motion.div>
+      ) : items.length > 0 ? (
+        <motion.div key="content" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-4">
+          {items.map((item) => (
+            <DashboardItemCard key={item.id} item={item} activeTab={activeTab} />
+          ))}
+        </motion.div>
+      ) : (
+        <motion.div
+          key="empty"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          className="flex min-h-[220px] flex-col items-center justify-center rounded-2xl border border-dashed border-[rgba(88,100,118,0.14)] bg-white/50 px-6 py-10"
+        >
+          <div className="flex h-12 w-12 items-center justify-center rounded-full border border-[rgba(88,100,118,0.1)] bg-white shadow-sm">
+            <SearchX size={22} className="text-[#5f6f82]" strokeWidth={1.5} />
+          </div>
+          <h3 className="mt-4 text-[15px] font-semibold text-[#2c3a50]">这一天没有新条目</h3>
+          <p className="mt-1.5 max-w-sm text-center text-[13px] leading-relaxed text-[#5f6f82]">
+            {selectedDate.format('YYYY-MM-DD')}
+            {activeTab === 'all'
+              ? ' 暂无内容。'
+              : ` 在「${categories.find((c) => c.key === activeTab)?.label || ''}」分类下暂无内容。`}
+          </p>
+        </motion.div>
+      )}
+    </AnimatePresence>
   </div>
-)
+);
 
-export default DashboardDigestList
+export default DashboardDigestList;

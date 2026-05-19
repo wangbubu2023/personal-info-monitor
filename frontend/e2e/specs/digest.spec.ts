@@ -9,7 +9,7 @@ test('私人简报列表与详情切换可用', async ({ page }) => {
   await page.goto('/digest')
 
   await expect(page.getByTestId('digest-page')).toBeVisible()
-  await expect(page.getByTestId('digest-title')).toHaveText('私人简报')
+  await expect(page.getByTestId('digest-title')).toHaveText('个人简报')
   await expect(page.getByTestId('digest-hour-card-10')).toBeVisible()
 
   await page.getByTestId('digest-hour-card-10').click()

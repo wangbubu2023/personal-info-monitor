@@ -24,7 +24,13 @@ export function useSourceImport({ remainingSources }: UseSourceImportOptions) {
     mutationFn: sourcesApi.bulkImport,
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: sourceKeys.all })
-      message.success(`成功导入 ${data.length} 个监控源`)
+      const n = data.created?.length ?? 0
+      const skip = data.skipped_duplicates ?? 0
+      message.success(
+        skip > 0
+          ? `成功导入 ${n} 个监控源，已跳过 ${skip} 个重复 URL`
+          : `成功导入 ${n} 个监控源`,
+      )
       setIsImportModalOpen(false)
       setImportPreview([])
     },
@@ -73,7 +79,6 @@ export function useSourceImport({ remainingSources }: UseSourceImportOptions) {
       metadata: item.description ? { description: item.description } : undefined,
       fetch_interval: 60,
       enabled: true,
-      priority: 0,
     }))
 
     try {

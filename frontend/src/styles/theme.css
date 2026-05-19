@@ -1,92 +1,77 @@
-/* 
- * Design Shack 风格主题
- * 参考: https://designshack.net/category/articles/ux-design/
+/*
+ * Reading-first light theme — Colormind reference palette
+ * Light canvas #f5f9fc · Olive Haze #8C866A · Shakespeare #49A8C9 · Shuttle Gray #586476 · Rhino #293859
+ *
+ * 字号约定（与 Tailwind 类名一致）：最小 12px；正文类尺寸使用整数 px 或标准档（如 text-sm）。
  */
 
 :root {
-  /* 主色调 - 橄榄绿（Design Shack 风格） */
-  --color-primary: #6b7c3f;
-  --color-primary-hover: #5a6935;
-  --color-primary-light: #8a9c5a;
-  --color-primary-bg: #f8f9f5;
-  
-  /* 背景色 */
-  --color-background: #ffffff;
-  --color-background-alt: #f5f5f5;
+  --palette-botticelli: #e8f0f6;
+  --palette-olive: #8c866a;
+  --palette-shakespeare: #49a8c9;
+  --palette-shuttle: #586476;
+  --palette-rhino: #293859;
+
+  --color-background: #f5f9fc;
+  --color-sidebar: var(--palette-rhino);
   --color-surface: #ffffff;
-  --color-surface-hover: #f9f9f9;
-  
-  /* 文字颜色 */
-  --color-text: #333333;
-  --color-text-secondary: #666666;
-  --color-text-muted: #999999;
-  --color-text-tertiary: #999999;
-  
-  /* 边框 */
-  --color-border: #e0e0e0;
-  --color-border-light: #eeeeee;
-  
-  /* 来源类型颜色 */
-  --color-website: #6b7c3f;
-  --color-x: #1da1f2;
-  --color-youtube: #ff0000;
-  --color-podcast: #8b5cf6;
-  --color-type-website: #3b82f6;
-  --color-type-x: #14b8a6;
-  --color-type-youtube: #ef4444;
-  --color-type-podcast: #a855f7;
-  
-  /* 圆角 */
-  --radius-sm: 4px;
-  --radius-md: 6px;
-  --radius-lg: 8px;
-  --radius-xl: 12px;
-  --radius-full: 9999px;
-  
-  /* 间距 */
-  --spacing-page: 24px;
-  --spacing-card: 16px;
-  --spacing-section: 32px;
-  
-  /* 过渡动画 */
+  --color-surface-muted: rgba(255, 255, 255, 0.78);
+  --color-surface-elevated: #f0f5fa;
+  --color-surface-hover: rgba(41, 56, 89, 0.06);
+
+  --color-primary: var(--palette-shakespeare);
+  --color-primary-hover: #3d94b3;
+  --color-primary-light: rgba(73, 168, 201, 0.14);
+  --color-accent-secondary: var(--palette-olive);
+
+  --color-border: rgba(88, 100, 118, 0.22);
+  --color-border-light: rgba(88, 100, 118, 0.12);
+  --color-border-hover: rgba(88, 100, 118, 0.32);
+
+  --color-text: var(--palette-rhino);
+  --color-text-main: var(--palette-rhino);
+  --color-text-secondary: var(--palette-shuttle);
+  --color-text-tertiary: #6a788a;
+  --color-text-muted: #6e7d90;
+
+  --color-type-website: var(--palette-shakespeare);
+  --color-type-x: #3a9e9a;
+  --color-type-youtube: #c45c5c;
+  --color-type-podcast: var(--palette-olive);
+
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 22px;
+
+  --shadow-lg: 0 14px 44px -14px rgba(41, 56, 89, 0.2);
+  --shadow-glow: 0 0 28px rgba(73, 168, 201, 0.22);
+  --shadow-premium: 0 18px 50px -18px rgba(41, 56, 89, 0.22);
+
   --transition-fast: 0.15s ease;
-  --transition-normal: 0.2s ease;
-  --transition-slow: 0.3s ease;
-  
-  /* 阴影 */
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
-  --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.07);
-  --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.1);
-  
-  /* 最大宽度 */
-  --max-width-content: 1200px;
-  --max-width-wide: 1400px;
+  --transition-normal: 0.28s ease;
+
+  --spacing-page: 28px;
+  --spacing-card: 22px;
+
+  --max-width-content: 48rem;
+  --max-width-wide: 72rem;
+  /* 资讯 / 简报 / 设置 主栏：原 max-w-4xl(56rem) 偏窄，宽表易裁切 */
+  --max-width-page: 80rem;
+  /* 资讯中心列表：比 page 窄一截，减轻视线拉得过宽 */
+  --max-width-feed: 56rem;
 }
 
-/* 基础重置 */
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
+/* Legacy slate tokens (scrollbar / rare fallbacks) */
+:root {
+  --slate-700: #5a6570;
+  --slate-800: #4a5560;
 }
 
-html {
-  font-size: 16px;
-  line-height: 1.6;
-}
-
-body {
-  font-family: 'Helvetica Neue', Arial, 'PingFang SC', 'Microsoft YaHei', sans-serif;
-  color: var(--color-text);
-  background: var(--color-background);
-  -webkit-font-smoothing: antialiased;
-}
-
-a {
-  color: inherit;
-  text-decoration: none;
-}
-
-a:hover {
-  color: var(--color-primary);
+.ant-message-notice-content {
+  background: var(--color-surface) !important;
+  color: var(--color-text) !important;
+  border: 1px solid var(--color-border-light) !important;
+  backdrop-filter: blur(12px) !important;
+  box-shadow: var(--shadow-lg) !important;
 }

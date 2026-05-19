@@ -1,64 +1,106 @@
-import React from 'react'
-import { Tooltip } from 'antd'
-import { LoadingOutlined, CheckCircleOutlined, ExclamationCircleOutlined } from '@ant-design/icons'
-import type { QueueStatus } from '../../services/system'
+import React from 'react';
+import { Tooltip } from 'antd';
+import { Loader2, Zap, Brain, AlertCircle, CheckCircle } from 'lucide-react';
+import type { QueueStatus } from '../../services/system';
+
+const iconStroke = 1.5
 
 interface DashboardQueueStatusProps {
-  queueStatus?: QueueStatus
-  isLoading: boolean
+  queueStatus?: QueueStatus;
+  isLoading: boolean;
+  /** 与分类 Tab 同排时的紧凑条样式 */
+  variant?: 'bar' | 'inline';
 }
 
-const DashboardQueueStatus: React.FC<DashboardQueueStatusProps> = ({ queueStatus, isLoading }) => (
-  <div style={{
-    borderBottom: '1px solid #eee',
-    backgroundColor: '#fafafa',
-    padding: '8px 0',
-  }} data-testid="dashboard-fetch-status">
-    <div style={{
-      maxWidth: 1200,
-      margin: '0 auto',
-      padding: '0 24px',
-      display: 'flex',
-      alignItems: 'center',
-      gap: 24,
-      fontSize: 13,
-      color: '#666',
-    }}>
-      <span style={{ fontWeight: 500, color: '#333' }}>抓取状态</span>
-      {isLoading ? (
-        <span><LoadingOutlined spin /> 加载中…</span>
-      ) : queueStatus ? (
-        <>
-          <Tooltip title="正在并行抓取的源数 / 最大并发数">
-            <span>
-              抓取中 <strong style={{ color: queueStatus.running_fetches > 0 ? '#6b7c3f' : '#999' }}>{queueStatus.running_fetches}</strong> / {queueStatus.fetch_concurrency}
-            </span>
-          </Tooltip>
-          <span style={{ color: '#ddd' }}>|</span>
-          <Tooltip title="正在执行的AI处理任务数">
-            <span>
-              处理中 <strong style={{ color: queueStatus.running_processes > 0 ? '#6b7c3f' : '#999' }}>{queueStatus.running_processes}</strong>
-            </span>
-          </Tooltip>
-          {queueStatus.sources_status?.some((source) => source.last_error) && (
-            <>
-              <span style={{ color: '#ddd' }}>|</span>
-              <span style={{ color: '#c41d7f' }}>
-                <ExclamationCircleOutlined /> {queueStatus.sources_status.filter((source) => source.last_error).length} 个源有错误
-              </span>
-            </>
-          )}
-          {queueStatus.sources_status?.length > 0 && !queueStatus.sources_status?.some((source) => source.last_error) && (
-            <span style={{ color: '#52c41a', marginLeft: 'auto' }}>
-              <CheckCircleOutlined /> 共 {queueStatus.sources_status.length} 个源
-            </span>
-          )}
-        </>
-      ) : (
-        <span style={{ color: '#999' }}>无法获取系统状态</span>
-      )}
-    </div>
-  </div>
-)
+const DashboardQueueStatus: React.FC<DashboardQueueStatusProps> = ({
+  queueStatus,
+  isLoading,
+  variant = 'bar',
+}) => {
+  const isInline = variant === 'inline';
 
-export default DashboardQueueStatus
+  const inner = (
+    <>
+      <div className={`flex shrink-0 items-center gap-1.5 ${isInline ? 'text-[#5f6f82]' : 'font-medium text-[#4a5a6e]'}`}>
+        <Zap size={isInline ? 13 : 15} className="shrink-0 text-[#49A8C9]" strokeWidth={iconStroke} />
+        <span className={isInline ? 'text-[12px]' : 'text-[13px]'}>任务状态</span>
+      </div>
+
+      {isLoading ? (
+        <div className="flex items-center gap-1.5 text-[#5f6f82]">
+          <Loader2 size={13} className="animate-spin" strokeWidth={iconStroke} />
+          <span className="text-[12px]">同步中…</span>
+        </div>
+      ) : queueStatus ? (
+        <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-0.5 text-[12px]">
+          <Tooltip title="并行抓取 worker 数">
+            <span className="inline-flex items-center gap-1 whitespace-nowrap">
+              <span className="text-[#5f6f82]">抓取</span>
+              <span
+                className={`tabular-nums font-semibold ${queueStatus.running_fetches > 0 ? 'text-[#2a8f65]' : 'text-[#8a96a5]'}`}
+              >
+                {queueStatus.running_fetches}/{queueStatus.fetch_concurrency}
+              </span>
+            </span>
+          </Tooltip>
+
+          <span className="hidden text-[rgba(88,100,118,0.25)] sm:inline">·</span>
+
+          <Tooltip title="AI 处理任务">
+            <span className="inline-flex items-center gap-1 whitespace-nowrap">
+              <Brain
+                size={13}
+                strokeWidth={iconStroke}
+                className={queueStatus.running_processes > 0 ? 'text-[#49A8C9]' : 'text-[#8a96a5]'}
+              />
+              <span className="text-[#5f6f82]">处理</span>
+              <span
+                className={`tabular-nums font-semibold ${queueStatus.running_processes > 0 ? 'text-[#49A8C9]' : 'text-[#8a96a5]'}`}
+              >
+                {queueStatus.running_processes}
+              </span>
+            </span>
+          </Tooltip>
+
+          {queueStatus.sources_status?.some((s) => s.last_error) ? (
+            <span className="inline-flex items-center gap-1 whitespace-nowrap text-rose-600">
+              <AlertCircle size={13} strokeWidth={iconStroke} />
+              {queueStatus.sources_status.filter((s) => s.last_error).length} 源异常
+            </span>
+          ) : (
+            <span className="hidden items-center gap-1 whitespace-nowrap text-[#2a8f65] lg:inline-flex">
+              <CheckCircle size={13} strokeWidth={iconStroke} />
+              正常
+            </span>
+          )}
+        </div>
+      ) : (
+        <span className="truncate text-[12px] text-[#7d8b9a]">无法连接后端</span>
+      )}
+    </>
+  );
+
+  if (isInline) {
+    return (
+      <div
+        className="flex min-w-0 max-w-full shrink-0 flex-wrap items-center gap-x-2 gap-y-1 sm:max-w-[min(100%,22rem)] sm:justify-end lg:max-w-none"
+        data-testid="dashboard-fetch-status"
+      >
+        {inner}
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className="border-y border-[rgba(88,100,118,0.08)] bg-white/55 py-2.5 backdrop-blur-[2px]"
+      data-testid="dashboard-fetch-status"
+    >
+      <div className="mx-auto flex max-w-page flex-wrap items-center gap-x-5 gap-y-2 pl-5 pr-6 text-[13px] leading-snug sm:pl-7 sm:pr-8 lg:pl-9 lg:pr-10">
+        {inner}
+      </div>
+    </div>
+  );
+};
+
+export default DashboardQueueStatus;

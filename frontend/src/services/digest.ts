@@ -3,7 +3,6 @@ import type { Digest, DigestItem, DashboardStats } from '../types'
 
 export interface DigestParams {
   date?: string
-  category_ids?: string[]
   keyword_ids?: string[]
   unread_only?: boolean
   source_types?: string[]

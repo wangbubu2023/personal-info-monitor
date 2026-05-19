@@ -2,17 +2,12 @@ import { useState, useEffect } from 'react'
 import type React from 'react'
 import { useQuery, useQueries } from '@tanstack/react-query'
 import { listSources } from '../../../services/sources'
-import { categoriesApi } from '../../../services/categories'
 import { configsApi } from '../../../services/configs'
 import { sourceKeys } from '../../../services/queryKeys'
+import { sourceTypeFilterOptions } from '../../../config/sourceTypes'
+import { getAxiosErrorMessage } from '../../../utils/apiError'
 
-export const typeFilters = [
-  { key: 'all', label: '全部' },
-  { key: 'website', label: '网站/博客' },
-  { key: 'rss', label: 'RSS' },
-  { key: 'x', label: 'X (Twitter)' },
-  { key: 'youtube', label: 'YouTube' },
-]
+export const typeFilters = sourceTypeFilterOptions()
 
 export function useSourceList() {
   const [activeTypeFilter, setActiveTypeFilter] = useState('all')
@@ -82,11 +77,6 @@ export function useSourceList() {
       })),
   })
 
-  const { data: categories } = useQuery({
-    queryKey: ['categories', 'flat'],
-    queryFn: () => categoriesApi.list(true),
-  })
-
   const { data: authConfigs } = useQuery({
     queryKey: ['auth-configs'],
     queryFn: configsApi.listAuthConfigs,
@@ -102,10 +92,7 @@ export function useSourceList() {
   const maxSources = Number(systemSettings?.limits?.max_sources || 200)
   const remainingSources = Math.max(0, maxSources - sourceCount)
   const sourceLimitReached = sourceCount >= maxSources
-  const sourceLoadError =
-    (error as { response?: { data?: { detail?: string } }; message?: string } | null)?.response?.data?.detail ||
-    (error as { message?: string } | null)?.message ||
-    '信源加载失败，请稍后重试。'
+  const sourceLoadError = getAxiosErrorMessage(error, '信源加载失败，请稍后重试。')
 
   const getTypeCount = (typeKey: string): number => {
     if (typeKey === 'all') return allTabCountData?.total ?? 0
@@ -135,7 +122,6 @@ export function useSourceList() {
     error,
     isFetching,
     refetchSources,
-    categories,
     authConfigs,
     systemSettings,
     sourceCount,

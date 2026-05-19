@@ -1,17 +1,16 @@
-import React from 'react'
-import { Spin, Button } from 'antd'
-import { SearchOutlined } from '@ant-design/icons'
-import type { DigestItem } from '../../types'
-import DashboardItemCard from './DashboardItemCard'
+import React from 'react';
+import { Button } from 'antd';
+import { Search, Loader2, SearchX } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import type { DigestItem } from '../../types';
+import DashboardItemCard from './DashboardItemCard';
 
 interface DashboardSearchResultsProps {
-  searchQuery: string
-  total: number
-  items: DigestItem[]
-  isLoading: boolean
-  onClearSearch: () => void
-  renderTimePair: (publish?: string, fetched?: string) => string
-  renderTranslationAction: (item: DigestItem) => React.ReactNode
+  searchQuery: string;
+  total: number;
+  items: DigestItem[];
+  isLoading: boolean;
+  onClearSearch: () => void;
 }
 
 const DashboardSearchResults: React.FC<DashboardSearchResultsProps> = ({
@@ -20,65 +19,84 @@ const DashboardSearchResults: React.FC<DashboardSearchResultsProps> = ({
   items,
   isLoading,
   onClearSearch,
-  renderTimePair,
-  renderTranslationAction,
 }) => (
-  <div style={{ backgroundColor: '#fff', minHeight: '100vh' }} data-testid="dashboard-search-page">
-    <div style={{
-      backgroundColor: '#f5f5f5',
-      borderBottom: '1px solid #eee',
-    }}>
-      <div style={{
-        maxWidth: 1200,
-        margin: '0 auto',
-        padding: '16px 24px',
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-      }}>
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: 12 }}>
-          <h1 style={{ fontSize: 20, fontWeight: 500, color: '#333', margin: 0 }}>
-            <SearchOutlined style={{ marginRight: 8 }} />
+  <div className="space-y-4 pb-16 pt-1" data-testid="dashboard-search-page">
+    <div className="mx-auto max-w-feed pl-5 pr-6 sm:pl-7 sm:pr-8 lg:pl-9 lg:pr-10">
+      <div className="flex flex-col gap-3.5 border-b border-[rgba(88,100,118,0.1)] pb-3 pt-4 sm:gap-4 sm:pt-5">
+        {/* 第一层：图标 + 标题 */}
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-[#49A8C9]/22 bg-white/95 text-[#3a9eb8] shadow-sm">
+            <Search size={18} strokeWidth={1.5} />
+          </div>
+          <h1 className="text-[19px] font-semibold leading-tight tracking-tight text-[#2c3a50] sm:text-[20px]">
             搜索结果
           </h1>
-          <span style={{ color: '#ccc' }}>|</span>
-          <span style={{ fontSize: 13, color: '#999' }}>
-            "{searchQuery}" 共 {total} 条
-          </span>
         </div>
-        <Button
-          size="small"
-          onClick={onClearSearch}
-          style={{ color: '#6b7c3f', borderColor: '#6b7c3f' }}
-        >
-          清除搜索
-        </Button>
+
+        {/* 第二层：摘要文案 */}
+        <p className="max-w-2xl text-[12px] leading-relaxed text-[#6b7c8f] sm:text-[13px]">
+          共 <span className="font-semibold tabular-nums text-[#2c3a50]">{total}</span> 条与关键词{' '}
+          <span className="font-medium text-[#49A8C9]">「{searchQuery}」</span>
+          匹配。
+        </p>
+
+        {/* 第三层：操作 */}
+        <div className="flex justify-end">
+          <Button
+            onClick={onClearSearch}
+            className="!h-9 !rounded-lg !border-[rgba(88,100,118,0.12)] !bg-white/95 !px-4 !text-[13px] !font-medium !text-[#5f6f82] hover:!border-[#49A8C9]/28 hover:!text-[#2c3a50]"
+          >
+            清除
+          </Button>
+        </div>
       </div>
     </div>
-    <div style={{ maxWidth: 1200, margin: '0 auto', padding: '0 24px' }}>
-      {isLoading ? (
-        <div style={{ display: 'flex', justifyContent: 'center', padding: 48 }}>
-          <Spin size="large" />
-        </div>
-      ) : items.length > 0 ? (
-        <div>
-          {items.map((item) => (
-            <DashboardItemCard
-              key={item.id}
-              item={item}
-              timeText={renderTimePair(item.publish_time, item.fetched_at || item.publish_time)}
-              translationAction={renderTranslationAction(item)}
-            />
-          ))}
-        </div>
-      ) : (
-        <div style={{ textAlign: 'center', padding: 64, color: '#999' }}>
-          <div style={{ fontSize: 16 }}>未找到匹配的内容</div>
-          <div style={{ fontSize: 14, marginTop: 8 }}>尝试使用不同的关键词搜索</div>
-        </div>
-      )}
+
+    <div className="mx-auto max-w-feed pl-5 pr-6 sm:pl-7 sm:pr-8 lg:pl-9 lg:pr-10">
+      <AnimatePresence mode="wait">
+        {isLoading ? (
+          <motion.div
+            key="loading"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="flex min-h-[200px] items-center justify-center py-12"
+          >
+            <div className="flex flex-col items-center gap-3">
+              <Loader2 className="h-8 w-8 animate-spin text-[#49A8C9]" />
+              <span className="text-[13px] font-medium text-[#586476]">搜索中…</span>
+            </div>
+          </motion.div>
+        ) : items.length > 0 ? (
+          <motion.div key="results" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-4">
+            {items.map((item) => (
+              <DashboardItemCard
+                key={item.id}
+                item={item}
+                activeTab="all"
+                searchReturnQuery={searchQuery}
+              />
+            ))}
+          </motion.div>
+        ) : (
+          <motion.div
+            key="no-result"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="flex min-h-[220px] flex-col items-center justify-center rounded-2xl border border-dashed border-[rgba(88,100,118,0.14)] bg-white/50 px-6 py-10"
+          >
+            <div className="flex h-12 w-12 items-center justify-center rounded-full border border-[rgba(88,100,118,0.1)] bg-white shadow-sm">
+              <SearchX size={22} className="text-[#5f6f82]" strokeWidth={1.5} />
+            </div>
+            <h3 className="mt-4 text-[15px] font-semibold text-[#2c3a50]">没有匹配结果</h3>
+            <p className="mt-1.5 max-w-xs text-center text-[13px] leading-relaxed text-[#5f6f82]">
+              试试更短的关键词，或换一种说法。
+            </p>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   </div>
-)
+);
 
-export default DashboardSearchResults
+export default DashboardSearchResults;

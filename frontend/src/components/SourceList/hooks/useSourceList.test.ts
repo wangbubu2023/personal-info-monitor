@@ -1,7 +1,10 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
-import { renderHook, act, waitFor } from '@testing-library/react'
+import { renderHook, act } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import React from 'react'
+
+// Simple async wait utility to replace problematic waitFor
+const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 // Mock service layer
 vi.mock('../../../services/sources', () => ({
@@ -42,7 +45,8 @@ describe('useSourceList', () => {
     act(() => { result.current.setPage(3) })
     expect(result.current.page).toBe(3)
     act(() => { result.current.setActiveTypeFilter('rss') })
-    await waitFor(() => expect(result.current.page).toBe(1))
+    await act(async () => { await wait(0) }) // Ensure state update propagates
+    expect(result.current.page).toBe(1)
   })
 
   it('resets selectedRowKeys when page changes', async () => {
@@ -50,7 +54,8 @@ describe('useSourceList', () => {
     act(() => { result.current.setSelectedRowKeys(['id1', 'id2']) })
     expect(result.current.selectedRowKeys).toHaveLength(2)
     act(() => { result.current.setPage(2) })
-    await waitFor(() => expect(result.current.selectedRowKeys).toHaveLength(0))
+    await act(async () => { await wait(0) })
+    expect(result.current.selectedRowKeys).toHaveLength(0)
   })
 
   it('debounces searchInput by 300ms', async () => {

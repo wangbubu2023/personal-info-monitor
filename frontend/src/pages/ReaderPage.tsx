@@ -1,237 +1,164 @@
-import React, { useEffect, useMemo, useState } from 'react'
-import { useParams, Link, useSearchParams } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
-import { Alert, Button, Spin } from 'antd'
-import { isAxiosError } from 'axios'
-import { ArrowLeftOutlined } from '@ant-design/icons'
-import { contentsApi } from '../services/contents'
-
-function splitForReader(text: string): string[] {
-  const cleaned = (text || '').replace(/\r\n/g, '\n').trim()
-  if (!cleaned) {
-    return []
-  }
-  const paragraphs = cleaned.split(/\n{2,}/).map((p) => p.trim()).filter(Boolean)
-  if (paragraphs.length > 1) {
-    return paragraphs
-  }
-  const protectedText = cleaned.replace(/\b(?:[A-Za-z]\.){2,}/g, (abbr) => abbr.replace(/\./g, '<DOT>'))
-  return protectedText
-    .split(/(?<=[。！？.!?])\s+/)
-    .map((p) => p.replace(/<DOT>/g, '.').trim())
-    .filter(Boolean)
-}
+import React from 'react';
+import { useParams, Link, useSearchParams } from 'react-router-dom';
+import { buildDashboardHomePath, buildReaderPath } from '../components/Dashboard/dashboardUtils';
+import {
+  ArrowLeft,
+  ExternalLink,
+  Globe,
+  FileText,
+  Loader2,
+  Bookmark,
+  ShieldCheck,
+  Languages,
+} from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { useReader } from '../hooks/useReader';
+import SectionNote from '../components/ui/SectionNote';
+import PageLoading from '../components/common/PageLoading';
 
 const ReaderPage: React.FC = () => {
-  const { id } = useParams<{ id: string }>()
-  const [searchParams] = useSearchParams()
-  const translateRequested = ['1', 'true', 'yes'].includes((searchParams.get('translate') || '').toLowerCase())
-  const [streamChunks, setStreamChunks] = useState<string[]>([])
-  const [streamTotal, setStreamTotal] = useState(0)
-  const [streamTitle, setStreamTitle] = useState<string | null>(null)
-  const [streamLoading, setStreamLoading] = useState(false)
-  const [streamError, setStreamError] = useState<string | null>(null)
-  const [streamHint, setStreamHint] = useState<string | null>(null)
-  const [streamFinished, setStreamFinished] = useState(false)
-  const [streamSucceeded, setStreamSucceeded] = useState(false)
-
-  const { data, isLoading, error } = useQuery({
-    queryKey: ['reader', id],
-    queryFn: () => contentsApi.getReader(id || '', { translate: false }),
-    enabled: !!id,
-    retry: false,
-  })
-
-  useEffect(() => {
-    setStreamChunks([])
-    setStreamTotal(0)
-    setStreamTitle(null)
-    setStreamLoading(false)
-    setStreamError(null)
-    setStreamHint(null)
-    setStreamFinished(false)
-    setStreamSucceeded(false)
-
-    if (!translateRequested || !id || !data) {
-      return
-    }
-
-    const controller = new AbortController()
-    setStreamLoading(true)
-    contentsApi
-      .streamReaderTranslation(id, {
-        signal: controller.signal,
-        onEvent: (event) => {
-          if (event.type === 'init') {
-            setStreamTotal(event.paragraphs_total || 0)
-            if (event.title) {
-              setStreamTitle(event.title)
-            }
-            return
-          }
-          if (event.type === 'chunk') {
-            setStreamChunks((prev) => [...prev, event.text])
-            return
-          }
-          if (event.type === 'done') {
-            setStreamLoading(false)
-            setStreamFinished(true)
-            const ok = Boolean(event.translated) && !event.partial_fallback
-            setStreamSucceeded(ok)
-            if (!ok) {
-              setStreamChunks([])
-            }
-            if (event.message && event.message !== 'ok') {
-              setStreamHint(event.message)
-            }
-          }
-        },
+  const { id } = useParams<{ id: string }>();
+  const [searchParams] = useSearchParams();
+  const translateRequested = ['1', 'true', 'yes'].includes((searchParams.get('translate') || '').toLowerCase());
+  const fromTab = searchParams.get('tab') || undefined;
+  const fromSearch = searchParams.get('search') || undefined;
+  const backHref = buildDashboardHomePath(fromTab, fromSearch);
+  const readerTogglePath = id
+    ? buildReaderPath(id, {
+        translate: !translateRequested,
+        ...(fromSearch ? { search: fromSearch } : { tab: fromTab }),
       })
-      .catch((err: unknown) => {
-        if (controller.signal.aborted) {
-          return
-        }
-        setStreamLoading(false)
-        setStreamFinished(true)
-        setStreamSucceeded(false)
-        setStreamChunks([])
-        setStreamError(err instanceof Error ? err.message : '译文流加载失败')
-      })
+    : '/';
 
-    return () => controller.abort()
-  }, [translateRequested, id, data])
+  const { data, loading, error, displayTitle, displayParagraphs, stream } = useReader(id, translateRequested);
 
-  const displayTitle = useMemo(() => {
-    if (!data) {
-      return ''
-    }
-    if (!translateRequested) {
-      return data.title
-    }
-    if (streamTitle && streamTitle.trim()) {
-      return streamTitle
-    }
-    return data.translated_title || data.title
-  }, [data, translateRequested, streamTitle])
+  if (loading) return <PageLoading />;
 
-  const displayParagraphs = useMemo(() => {
-    if (!data) {
-      return []
-    }
-    if (!translateRequested) {
-      return splitForReader(data.body_raw || '')
-    }
-    if (streamFinished && !streamSucceeded) {
-      return splitForReader(data.body_raw || '')
-    }
-    if (streamChunks.length > 0) {
-      return streamChunks
-    }
-    return splitForReader(data.body_zh || data.body_raw || '')
-  }, [data, translateRequested, streamChunks])
-
-  if (isLoading) {
+  if (!data || error) {
     return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '60vh' }} data-testid="reader-loading">
-        <Spin size="large" />
+      <div className="mx-auto max-w-2xl px-5 py-24 text-center sm:px-8" data-testid="reader-empty">
+        <div className="mx-auto mb-8 flex h-16 w-16 items-center justify-center rounded-2xl border border-rose-200/80 bg-rose-50 text-rose-500">
+          <Bookmark size={32} />
+        </div>
+        <h3 className="text-xl font-semibold tracking-tight text-[#293859]">暂无法阅读</h3>
+        <p className="mt-3 text-[15px] leading-relaxed text-[#586476]">
+          {error || '该内容已删除或暂时无法从存档中打开。'}
+        </p>
+        <Link
+          to={backHref}
+          className="mt-10 inline-flex items-center gap-2 text-sm font-semibold text-[#49A8C9] hover:text-[#3d94b3]"
+        >
+          <ArrowLeft size={16} /> 返回首页
+        </Link>
       </div>
-    )
-  }
-
-  if (!data) {
-    const status = isAxiosError(error) ? error.response?.status : undefined
-    return (
-      <div style={{ maxWidth: 960, margin: '24px auto', padding: '0 16px', color: '#666' }} data-testid="reader-empty">
-        {status === 404
-          ? '内容不存在或已被删除。'
-          : translateRequested
-            ? '译文加载失败，请稍后重试。'
-            : '内容加载失败，请稍后重试。'}
-      </div>
-    )
+    );
   }
 
   return (
-    <div style={{ maxWidth: 980, margin: '16px auto 32px', padding: '0 16px' }} data-testid="reader-page">
-      <div style={{ marginBottom: 12 }}>
-        <Link to="/" style={{ marginRight: 8 }}>
-          <Button icon={<ArrowLeftOutlined />} size="small" data-testid="reader-back-btn">
-            返回监控
-          </Button>
-        </Link>
-        <a href={data.original_url} target="_blank" rel="noopener noreferrer">
-          <Button size="small">打开原文</Button>
-        </a>
-        {id && !translateRequested && (
-          <Link to={`/reader/${id}?translate=1`} style={{ marginLeft: 8 }}>
-            <Button size="small">查看译文</Button>
-          </Link>
-        )}
-        {id && translateRequested && (
-          <Link to={`/reader/${id}`} style={{ marginLeft: 8 }}>
-            <Button size="small">查看原文版</Button>
-          </Link>
-        )}
+    <div className="min-h-screen bg-[#f5f9fc] pb-36" data-testid="reader-page">
+      <div className="sticky top-0 z-40 border-b border-[rgba(88,100,118,0.1)] bg-[#f5f9fc]/92 backdrop-blur-xl">
+        <div className="mx-auto max-w-3xl px-5 py-5 sm:px-10">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <Link
+              to={backHref}
+              className="flex items-center gap-2 text-[12px] font-semibold uppercase tracking-[0.16em] text-[#586476] hover:text-[#293859] transition-colors"
+            >
+              <ArrowLeft size={14} /> 返回
+            </Link>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <a
+                href={data.original_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-2 rounded-xl border border-[rgba(88,100,118,0.18)] bg-white/70 px-3.5 py-2 text-[12px] font-semibold text-[#586476] shadow-sm transition-all hover:border-[#49A8C9]/40 hover:bg-white hover:text-[#293859]"
+              >
+                <ExternalLink size={14} /> 原文链接
+              </a>
+
+              <Link
+                to={readerTogglePath}
+                className={`flex items-center gap-2 rounded-xl border px-4 py-2 text-[12px] font-semibold transition-all ${
+                  translateRequested
+                    ? 'border-[#49A8C9]/35 bg-[#49A8C9] text-white shadow-md shadow-[#49A8C9]/25'
+                    : 'border-[rgba(88,100,118,0.18)] bg-white/60 text-[#586476] hover:bg-white hover:text-[#293859]'
+                }`}
+              >
+                {translateRequested ? <Globe size={14} /> : <Languages size={14} />}
+                {translateRequested ? '查看原文' : '翻译阅读'}
+              </Link>
+            </div>
+          </div>
+        </div>
       </div>
 
-      {(streamLoading || streamHint || streamError) && translateRequested && (
-        <div style={{ marginBottom: 12 }}>
-          {streamLoading && (
-            <Alert
-              type="info"
-              showIcon
-              message={`正在生成译文（${streamChunks.length}${streamTotal > 0 ? ` / ${streamTotal}` : ''} 段）`}
-            />
+      <div className="mx-auto max-w-3xl px-5 pt-14 sm:px-10">
+        <AnimatePresence>
+          {(stream.loading || stream.hint) && translateRequested && (
+            <motion.div
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              className="mb-10"
+            >
+              <SectionNote
+                compact={false}
+                tone={stream.loading ? 'neutral' : 'caution'}
+                title={stream.loading ? '正在生成译文' : '翻译说明'}
+              >
+                {stream.loading ? (
+                  <div className="flex items-center gap-2">
+                    <Loader2 size={12} className="animate-spin text-[#49A8C9]" />
+                    已处理 {stream.chunks.length}
+                    {stream.total > 0 ? ` / ${stream.total}` : ''} 段…
+                  </div>
+                ) : (
+                  stream.hint
+                )}
+              </SectionNote>
+            </motion.div>
           )}
-          {!streamLoading && streamHint && (
-            <Alert
-              type="warning"
-              showIcon
-              message={streamHint}
-            />
-          )}
-          {streamError && (
-            <Alert
-              type="error"
-              showIcon
-              message="译文加载失败"
-              description={streamError}
-            />
-          )}
-        </div>
-      )}
+        </AnimatePresence>
 
-      <section
-        data-testid="reader-iframe"
-        style={{
-          border: '1px solid #d7dcc8',
-          borderRadius: 12,
-          background: '#fff',
-          padding: '28px 24px',
-          lineHeight: 1.9,
-        }}
-      >
-        <h1 style={{ margin: 0, fontSize: 34, lineHeight: 1.4, color: '#1f1f1f' }}>{displayTitle || '未命名内容'}</h1>
-        <div style={{ marginTop: 8, marginBottom: 20, color: '#6b7280', fontSize: 13 }}>
-          来源：{data.source_name || '-'}
-          {' | '}
-          发布时间：{data.publish_time || '-'}
-          {' | '}
-          <a href={data.original_url} target="_blank" rel="noopener noreferrer" style={{ color: '#6b7c3f' }}>
-            原文链接
-          </a>
-        </div>
-        <article>
-          {displayParagraphs.length === 0 && <p>暂无可阅读正文。</p>}
-          {displayParagraphs.map((paragraph, index) => (
-            <p key={`${index}-${paragraph.slice(0, 20)}`} style={{ margin: '0 0 14px', whiteSpace: 'pre-wrap' }}>
-              {paragraph}
-            </p>
-          ))}
+        <article className="space-y-14">
+          <header className="space-y-7">
+            <div className="flex items-center gap-2 text-[12px] font-semibold uppercase tracking-[0.2em] text-[#8C866A]">
+              <ShieldCheck size={12} /> 存档条目
+            </div>
+
+            <h1 className="text-[30px] font-semibold leading-[1.25] tracking-tight text-[#293859] sm:text-[34px]">
+              {displayTitle || '无标题'}
+            </h1>
+
+            <div className="flex flex-wrap items-center gap-x-8 gap-y-3 border-b border-[rgba(88,100,118,0.14)] pb-9 text-[13px] font-medium text-[#586476]">
+              <div className="flex items-center gap-1.5 text-[#49A8C9]">
+                <Globe size={14} /> {data.source_name || '来源'}
+              </div>
+              <div className="flex items-center gap-1.5">
+                <FileText size={14} /> 编号 #{id?.slice(0, 8)}
+              </div>
+              <div className="flex items-center gap-1.5">发布 {data.publish_time || '—'}</div>
+            </div>
+          </header>
+
+          <div className="max-w-none text-[18px] leading-[1.85] text-[#293859]" data-testid="reader-iframe">
+            {displayParagraphs.length === 0 ? (
+              <div className="py-16 text-center text-[15px] font-medium italic text-[#586476]">正文为空。</div>
+            ) : (
+              displayParagraphs.map((paragraph, index) => (
+                <p
+                  key={`${index}-${paragraph.slice(0, 20)}`}
+                  className="mb-9 whitespace-pre-wrap selection:bg-[#49A8C9]/25"
+                >
+                  {paragraph}
+                </p>
+              ))
+            )}
+          </div>
         </article>
-      </section>
+      </div>
     </div>
-  )
-}
+  );
+};
 
-export default ReaderPage
+export default ReaderPage;

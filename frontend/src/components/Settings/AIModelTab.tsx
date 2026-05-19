@@ -2,7 +2,6 @@ import React from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Form,
-  Input,
   Button,
   Select,
   AutoComplete,
@@ -16,9 +15,9 @@ import { configsApi } from '../../services/configs'
 import type { AIModelTabFormValues } from '../../types'
 import ModelProvidersTab from './ModelProvidersTab'
 import SectionNote from '../ui/SectionNote'
+import PanelLoading from '../common/PanelLoading'
 
 const { Option } = Select
-const { Password } = Input
 
 const AIModelTab: React.FC = () => {
   const [form] = Form.useForm()
@@ -44,9 +43,17 @@ const AIModelTab: React.FC = () => {
   const currentProvider = modelsData?.providers?.find(p => p.id === selectedProvider)
   const selectedTransProvider = Form.useWatch('trans_provider', form)
   const transProvider = modelsData?.providers?.find(p => p.id === selectedTransProvider)
+  const selectedTransFbProvider = Form.useWatch('trans_fallback_provider', form)
+  const transFbProvider = modelsData?.providers?.find(p => p.id === selectedTransFbProvider)
+  const selectedSumFbProvider = Form.useWatch('sum_fallback_provider', form)
+  const sumFbProvider = modelsData?.providers?.find(p => p.id === selectedSumFbProvider)
+  const translationFallbackOn = Form.useWatch('translation_fallback_enabled', form)
+  const summarizationFallbackOn = Form.useWatch('summarization_fallback_enabled', form)
   const modelOptions = (currentProvider?.models || []).map((m) => ({ value: m.id, label: m.name }))
   const transModelOptions = (transProvider?.models || []).map((m) => ({ value: m.id, label: m.name }))
-  const buildModelFilter = (inputValue: string, option: { value?: string; label?: string } | undefined, fieldName: 'model' | 'trans_model') => {
+  const transFbModelOptions = (transFbProvider?.models || []).map((m) => ({ value: m.id, label: m.name }))
+  const sumFbModelOptions = (sumFbProvider?.models || []).map((m) => ({ value: m.id, label: m.name }))
+  const buildModelFilter = (inputValue: string, option: { value?: string; label?: string } | undefined, fieldName: 'model' | 'trans_model' | 'trans_fallback_model' | 'sum_fallback_model') => {
     const normalizedInput = String(inputValue || '').toLowerCase().trim()
     if (!normalizedInput) return true
     const currentValue = String(form.getFieldValue(fieldName) || '').toLowerCase().trim()
@@ -60,27 +67,54 @@ const AIModelTab: React.FC = () => {
   }
 
   React.useEffect(() => {
-    if (settings) {
-      form.setFieldsValue({
-        provider: settings.ai_model.provider,
-        model: settings.ai_model.model,
-        api_base: settings.ai_model.api_base,
-        temperature: settings.ai_model.temperature,
-        max_tokens: settings.ai_model.max_tokens,
-        trans_provider: settings.translation_model?.provider || 'ollama',
-        trans_model: settings.translation_model?.model || 'translategemma:12b',
-        trans_api_base: settings.translation_model?.api_base || 'http://localhost:11434',
-        translation_enabled: settings.translation_enabled,
-        title_translation_enabled: settings.title_translation_enabled ?? true,
-        summarization_enabled: settings.summarization_enabled,
-        translation_cloud_fallback_enabled: settings.translation_cloud_fallback_enabled ?? false,
-        summarization_cloud_fallback_enabled: settings.summarization_cloud_fallback_enabled ?? false,
-        max_sources: settings.limits?.max_sources ?? 200,
-        max_digest_candidates: settings.limits?.max_digest_candidates ?? 12,
-        max_hourly_digest_input_items: settings.limits?.max_hourly_digest_input_items ?? 200,
-      })
-    }
+    if (!settings) return
+    form.setFieldsValue({
+      provider: settings.ai_model.provider,
+      model: settings.ai_model.model,
+      temperature: settings.ai_model.temperature,
+      max_tokens: settings.ai_model.max_tokens,
+      trans_provider: settings.translation_model?.provider || 'ollama',
+      trans_model: settings.translation_model?.model || 'translategemma:12b',
+      translation_fallback_enabled:
+        settings.translation_fallback_enabled ?? settings.translation_cloud_fallback_enabled ?? false,
+      summarization_fallback_enabled:
+        settings.summarization_fallback_enabled ?? settings.summarization_cloud_fallback_enabled ?? false,
+      trans_fallback_provider: settings.translation_fallback?.provider,
+      trans_fallback_model: settings.translation_fallback?.model,
+      sum_fallback_provider: settings.summarization_fallback?.provider,
+      sum_fallback_model: settings.summarization_fallback?.model,
+      max_sources: settings.limits?.max_sources ?? 200,
+      max_digest_candidates: settings.limits?.max_digest_candidates ?? 12,
+      max_hourly_digest_input_items: settings.limits?.max_hourly_digest_input_items ?? 200,
+    })
   }, [settings, form])
+
+  /** 备用模型只使用当前「可用模型」列表里已有的提供商；避免后端默认的 openai 出现在未接入 OpenAI 时。 */
+  React.useEffect(() => {
+    if (!settings || !modelsData?.providers?.length) return
+    const providers = modelsData.providers
+    const ids = new Set(providers.map((p) => p.id))
+    const coerce = (fb?: { provider?: string; model?: string } | null) => {
+      const p = fb?.provider
+      const m = fb?.model
+      if (p && ids.has(p)) {
+        const prov = providers.find((x) => x.id === p)!
+        const mids = new Set((prov.models || []).map((x) => x.id))
+        const model = m && mids.has(m) ? m : (prov.models?.[0]?.id ?? m ?? '')
+        return { provider: p, model }
+      }
+      const first = providers[0]
+      return { provider: first.id, model: first.models?.[0]?.id ?? '' }
+    }
+    const tf = coerce(settings.translation_fallback)
+    const sf = coerce(settings.summarization_fallback)
+    form.setFieldsValue({
+      trans_fallback_provider: tf.provider,
+      trans_fallback_model: tf.model,
+      sum_fallback_provider: sf.provider,
+      sum_fallback_model: sf.model,
+    })
+  }, [settings, modelsData, form])
 
   React.useEffect(() => {
     if (!currentProvider) return
@@ -91,10 +125,6 @@ const AIModelTab: React.FC = () => {
       if (fallback) {
         form.setFieldValue('model', fallback)
       }
-    }
-    const currentApiBase = form.getFieldValue('api_base')
-    if (!currentApiBase && currentProvider.default_api_base) {
-      form.setFieldValue('api_base', currentProvider.default_api_base)
     }
   }, [currentProvider, form])
 
@@ -108,36 +138,57 @@ const AIModelTab: React.FC = () => {
         form.setFieldValue('trans_model', fallback)
       }
     }
-    const currentApiBase = form.getFieldValue('trans_api_base')
-    if (
-      transProvider.default_api_base &&
-      (!currentApiBase || (selectedTransProvider !== 'ollama' && currentApiBase === 'http://localhost:11434'))
-    ) {
-      form.setFieldValue('trans_api_base', transProvider.default_api_base)
+  }, [transProvider, form])
+
+  React.useEffect(() => {
+    if (!transFbProvider) return
+    const model = form.getFieldValue('trans_fallback_model')
+    const ids = new Set((transFbProvider.models || []).map((m) => m.id))
+    if (!model || !ids.has(model)) {
+      const fallback = transFbProvider.models?.[0]?.id
+      if (fallback) {
+        form.setFieldValue('trans_fallback_model', fallback)
+      }
     }
-  }, [transProvider, form, selectedTransProvider])
+  }, [transFbProvider, form])
+
+  React.useEffect(() => {
+    if (!sumFbProvider) return
+    const model = form.getFieldValue('sum_fallback_model')
+    const ids = new Set((sumFbProvider.models || []).map((m) => m.id))
+    if (!model || !ids.has(model)) {
+      const fallback = sumFbProvider.models?.[0]?.id
+      if (fallback) {
+        form.setFieldValue('sum_fallback_model', fallback)
+      }
+    }
+  }, [sumFbProvider, form])
 
   const handleSave = (values: AIModelTabFormValues) => {
+    // onFinish 的 values 可能省略未触发的 Switch 字段，JSON 序列化会丢掉 undefined，导致 PATCH 不写布尔键、后端仍为 false
+    const translationFallbackEnabled = form.getFieldValue('translation_fallback_enabled')
+    const summarizationFallbackEnabled = form.getFieldValue('summarization_fallback_enabled')
     updateMutation.mutate({
       ai_model: {
         provider: values.provider,
         model: values.model,
-        api_base: values.api_base,
-        api_key: values.api_key,
         temperature: values.temperature,
         max_tokens: values.max_tokens,
       },
       translation_model: {
         provider: values.trans_provider,
         model: values.trans_model,
-        api_base: values.trans_api_base,
-        api_key: values.trans_api_key,
       },
-      translation_enabled: values.translation_enabled,
-      title_translation_enabled: values.title_translation_enabled,
-      summarization_enabled: values.summarization_enabled,
-      translation_cloud_fallback_enabled: values.translation_cloud_fallback_enabled,
-      summarization_cloud_fallback_enabled: values.summarization_cloud_fallback_enabled,
+      translation_fallback_enabled: translationFallbackEnabled === true,
+      translation_fallback: {
+        provider: values.trans_fallback_provider,
+        model: values.trans_fallback_model,
+      },
+      summarization_fallback_enabled: summarizationFallbackEnabled === true,
+      summarization_fallback: {
+        provider: values.sum_fallback_provider,
+        model: values.sum_fallback_model,
+      },
       limits: {
         max_sources: values.max_sources,
         max_digest_candidates: values.max_digest_candidates,
@@ -146,7 +197,9 @@ const AIModelTab: React.FC = () => {
     })
   }
 
-  if (isLoading) return <div>加载中...</div>
+  if (isLoading) {
+    return <PanelLoading message="正在读取模型与系统设置…" />
+  }
 
   return (
     <div>
@@ -154,7 +207,7 @@ const AIModelTab: React.FC = () => {
       <ModelProvidersTab />
 
       <SectionNote style={{ marginBottom: 16, marginTop: 24 }}>
-        已接入的提供商才会出现在下面的模型选择中。
+        已接入的提供商才会出现在下面的模型选择中。API Key 与网关地址只在上方「模型接入」维护；此处仅选择提供商、模型及生成参数（Temperature / Token 等）。
       </SectionNote>
       {selectedProvider === 'ollama' && currentProvider?.availability_message ? (
         <SectionNote tone="caution" style={{ marginBottom: 16 }}>
@@ -178,7 +231,7 @@ const AIModelTab: React.FC = () => {
           rules={[{ required: true }]}
           extra={selectedProvider === 'ollama'
             ? 'Ollama 模型列表来自本机已安装模型（实时读取）。'
-            : '云端提供商显示推荐模型列表；可直接输入自定义模型 ID。'}
+            : undefined}
         >
           <AutoComplete
             options={modelOptions}
@@ -187,21 +240,12 @@ const AIModelTab: React.FC = () => {
           />
         </Form.Item>
 
-        {currentProvider?.requires_api_key && (
-          <Form.Item name="api_key" label="API Key" extra={settings?.ai_model?.has_api_key ? '已配置 API Key，留空则不更新' : '请输入 API Key'}>
-            <Password placeholder="sk-..." />
-          </Form.Item>
-        )}
-
-        <Form.Item
-          name="api_base"
-          label={selectedProvider === 'ollama' ? 'Ollama API 地址' : 'API Base（可选，OpenAI 兼容）'}
-          extra={selectedProvider === 'ollama'
-            ? '本地 Ollama 默认地址为 http://localhost:11434'
-            : '如使用官方 OpenAI 可留默认；Gemini/Qwen 可填写其兼容网关地址。'}
-        >
-          <Input placeholder={selectedProvider === 'ollama' ? 'http://localhost:11434' : 'https://api.openai.com/v1'} />
-        </Form.Item>
+        {selectedProvider ? (
+          <SectionNote style={{ marginBottom: 16 }}>
+            当前通道服务地址（来自模型接入）：{' '}
+            <code className="text-[13px]">{currentProvider?.default_api_base || '—'}</code>
+          </SectionNote>
+        ) : null}
 
         <Form.Item name="temperature" label="Temperature" extra="控制输出的随机性，0 为确定性输出，2 为最大随机">
           <Slider min={0} max={2} step={0.1} marks={{ 0: '0', 0.7: '0.7', 1: '1', 2: '2' }} />
@@ -210,6 +254,47 @@ const AIModelTab: React.FC = () => {
         <Form.Item name="max_tokens" label="最大 Token 数">
           <InputNumber min={100} max={4000} style={{ width: '100%' }} />
         </Form.Item>
+
+        <Form.Item
+          name="summarization_fallback_enabled"
+          label="启用摘要备用（fallback）模型"
+          valuePropName="checked"
+          extra="关闭后，摘要失败将退回截断正文，不再尝试备用模型。"
+        >
+          <Switch checkedChildren="开启" unCheckedChildren="关闭" />
+        </Form.Item>
+
+        {summarizationFallbackOn ? (
+          <>
+            <Form.Item name="sum_fallback_provider" label="摘要备用 · 提供商" rules={[{ required: true }]}>
+              <Select placeholder="选择提供商">
+                {modelsData?.providers?.map(p => (
+                  <Option key={p.id} value={p.id}>{p.name}</Option>
+                ))}
+              </Select>
+            </Form.Item>
+            <Form.Item
+              name="sum_fallback_model"
+              label="摘要备用 · 模型"
+              rules={[{ required: true }]}
+              extra={selectedSumFbProvider === 'ollama'
+                ? '列表来自本机已安装模型（与上方列表同源）。'
+                : undefined}
+            >
+              <AutoComplete
+                options={sumFbModelOptions}
+                placeholder="选择或输入模型 ID"
+                filterOption={(inputValue, option) => buildModelFilter(inputValue, option, 'sum_fallback_model')}
+              />
+            </Form.Item>
+            {selectedSumFbProvider ? (
+              <SectionNote style={{ marginBottom: 16 }}>
+                摘要备用通道地址（来自模型接入）：{' '}
+                <code className="text-[13px]">{sumFbProvider?.default_api_base || '—'}</code>
+              </SectionNote>
+            ) : null}
+          </>
+        ) : null}
 
         <Divider orientation="left">翻译模型配置</Divider>
 
@@ -226,7 +311,7 @@ const AIModelTab: React.FC = () => {
           label="翻译模型"
           extra={selectedTransProvider === 'ollama'
             ? '翻译模型来自本机 Ollama 已安装模型。'
-            : '云端提供商显示推荐模型列表；可直接输入自定义模型 ID。'}
+            : undefined}
         >
           <AutoComplete
             options={transModelOptions}
@@ -235,57 +320,53 @@ const AIModelTab: React.FC = () => {
           />
         </Form.Item>
 
-        {transProvider?.requires_api_key && (
-          <Form.Item
-            name="trans_api_key"
-            label="翻译模型 API Key"
-            extra={settings?.translation_model?.has_api_key ? '已配置 API Key，留空则不更新' : '请输入翻译模型 API Key'}
-          >
-            <Password placeholder="sk-..." />
-          </Form.Item>
-        )}
+        {selectedTransProvider ? (
+          <SectionNote style={{ marginBottom: 16 }}>
+            当前翻译通道服务地址（来自模型接入）：{' '}
+            <code className="text-[13px]">{transProvider?.default_api_base || '—'}</code>
+          </SectionNote>
+        ) : null}
 
         <Form.Item
-          name="trans_api_base"
-          label={selectedTransProvider === 'ollama' ? '翻译模型 Ollama API 地址' : '翻译模型 API Base（可选，OpenAI 兼容）'}
-          extra={selectedTransProvider === 'ollama'
-            ? '默认 http://localhost:11434'
-            : '不填将优先使用该提供商默认地址；如需代理网关可手动覆盖。'}
-        >
-          <Input placeholder={selectedTransProvider === 'ollama' ? 'http://localhost:11434' : 'https://ark.cn-beijing.volces.com/api/v3'} />
-        </Form.Item>
-
-        <Divider orientation="left">功能开关</Divider>
-
-        <Form.Item name="translation_enabled" label="自动翻译摘要" valuePropName="checked">
-          <Switch checkedChildren="开启" unCheckedChildren="关闭" />
-        </Form.Item>
-
-        <Form.Item name="title_translation_enabled" label="自动翻译标题" valuePropName="checked">
-          <Switch checkedChildren="开启" unCheckedChildren="关闭" />
-        </Form.Item>
-
-        <Form.Item name="summarization_enabled" label="内容摘要" valuePropName="checked">
-          <Switch checkedChildren="开启" unCheckedChildren="关闭" />
-        </Form.Item>
-
-        <Form.Item
-          name="translation_cloud_fallback_enabled"
-          label="翻译云端回退（OpenAI/Google）"
+          name="translation_fallback_enabled"
+          label="启用翻译备用（fallback）模型"
           valuePropName="checked"
-          extra="默认关闭。仅在本地 Ollama 失败时回退到云端。"
+          extra="关闭后，翻译失败即停止，不再尝试备用模型。"
         >
           <Switch checkedChildren="开启" unCheckedChildren="关闭" />
         </Form.Item>
 
-        <Form.Item
-          name="summarization_cloud_fallback_enabled"
-          label="摘要云端回退（OpenAI）"
-          valuePropName="checked"
-          extra="默认关闭。仅在本地 Ollama 摘要失败时回退到云端。"
-        >
-          <Switch checkedChildren="开启" unCheckedChildren="关闭" />
-        </Form.Item>
+        {translationFallbackOn ? (
+          <>
+            <Form.Item name="trans_fallback_provider" label="翻译备用 · 提供商" rules={[{ required: true }]}>
+              <Select placeholder="选择提供商">
+                {modelsData?.providers?.map(p => (
+                  <Option key={p.id} value={p.id}>{p.name}</Option>
+                ))}
+              </Select>
+            </Form.Item>
+            <Form.Item
+              name="trans_fallback_model"
+              label="翻译备用 · 模型"
+              rules={[{ required: true }]}
+              extra={selectedTransFbProvider === 'ollama'
+                ? '列表来自本机已安装模型（与上方列表同源）。'
+                : undefined}
+            >
+              <AutoComplete
+                options={transFbModelOptions}
+                placeholder="选择或输入模型 ID"
+                filterOption={(inputValue, option) => buildModelFilter(inputValue, option, 'trans_fallback_model')}
+              />
+            </Form.Item>
+            {selectedTransFbProvider ? (
+              <SectionNote style={{ marginBottom: 16 }}>
+                翻译备用通道地址（来自模型接入）：{' '}
+                <code className="text-[13px]">{transFbProvider?.default_api_base || '—'}</code>
+              </SectionNote>
+            ) : null}
+          </>
+        ) : null}
 
         <Divider orientation="left">系统上限</Divider>
 
@@ -308,7 +389,7 @@ const AIModelTab: React.FC = () => {
         <Form.Item
           name="max_hourly_digest_input_items"
           label="每小时简报输入内容上限"
-          extra="每轮简报读取的原始内容条数上限，避免输入无限增长。"
+          extra="每轮简报读取的原始内容条数上限，避免输入无限增长。选稿与综述提示词在「任务提示」选项卡。"
         >
           <InputNumber min={20} max={2000} style={{ width: '100%' }} />
         </Form.Item>

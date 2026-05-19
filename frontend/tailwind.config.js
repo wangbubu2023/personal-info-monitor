@@ -12,14 +12,37 @@ export default {
           hover: 'var(--color-primary-hover)',
           light: 'var(--color-primary-light)',
         },
-        surface: 'var(--color-surface)',
+        slate: {
+          950: '#020617',
+        },
         background: 'var(--color-background)',
+        surface: 'var(--color-surface)',
+        text: {
+          DEFAULT: 'var(--color-text)',
+          secondary: 'var(--color-text-secondary)',
+          muted: 'var(--color-text-muted)',
+        },
+      },
+      backgroundImage: {
+        'glass-gradient': 'linear-gradient(to bottom right, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0))',
+      },
+      backdropBlur: {
+        'xs': '2px',
       },
       fontFamily: {
-        sans: ['Inter', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'sans-serif'],
+        sans: ['"Plus Jakarta Sans"', 'ui-sans-serif', 'system-ui', 'sans-serif'],
       },
       maxWidth: {
-        '8xl': '88rem',
+        page: 'var(--max-width-page)',
+        feed: 'var(--max-width-feed)',
+      },
+      borderRadius: {
+        'xl': 'var(--radius-xl)',
+        '2xl': '1.5rem',
+      },
+      boxShadow: {
+        'premium': 'var(--shadow-lg)',
+        'glow': 'var(--shadow-glow)',
       },
     },
   },

@@ -15,6 +15,7 @@ from cli.pimctl.config import (
     clear_profile_api_key,
     get_profile,
     load_config,
+    read_local_runtime_key,
     upsert_profile,
 )
 from cli.pimctl.output import emit_error, emit_success, print_key_values, print_table
@@ -37,6 +38,7 @@ def build_parser() -> argparse.ArgumentParser:
     _build_system_parser(subparsers)
     _build_sources_parser(subparsers)
     _build_contents_parser(subparsers)
+    _build_keywords_parser(subparsers)
     _build_settings_parser(subparsers)
     _build_digest_parser(subparsers)
 
@@ -57,9 +59,13 @@ def _build_auth_parser(subparsers) -> None:
 def _build_system_parser(subparsers) -> None:
     parser = subparsers.add_parser("system", help="Inspect system status")
     sub = parser.add_subparsers(dest="command")
-    sub.add_parser("health", help="Check server health")
-    sub.add_parser("queue", help="Inspect queue/runtime status")
+    sub.add_parser("health", help="Liveness probe — unauthenticated, fast (GET /livez)")
+    sub.add_parser("health-check", help="Authenticated deep health check: DB + scheduler + disk (GET /health)")
+    sub.add_parser("metrics", help="Show runtime metrics (request counts, latency, source stats)")
+    sub.add_parser("queue", help="Show task queue and fetch worker status")
     sub.add_parser("stats", help="Show dashboard summary stats")
+    sub.add_parser("search-rebuild", help="Trigger a full rebuild of the search index")
+    sub.add_parser("doctor", help="Perform a full system diagnostic audit")
 
 
 def _build_sources_parser(subparsers) -> None:
@@ -68,7 +74,6 @@ def _build_sources_parser(subparsers) -> None:
 
     list_parser = sub.add_parser("list", help="List sources")
     list_parser.add_argument("--type")
-    list_parser.add_argument("--category-id")
     list_parser.add_argument("--enabled", choices=["true", "false"])
     list_parser.add_argument("--search")
     list_parser.add_argument("--page", type=int, default=1)
@@ -82,9 +87,7 @@ def _build_sources_parser(subparsers) -> None:
     add_parser.add_argument("--type", required=True, choices=["website", "rss", "x", "youtube", "podcast"])
     add_parser.add_argument("--url", required=True)
     add_parser.add_argument("--extra-url", action="append", default=[])
-    add_parser.add_argument("--category-id")
     add_parser.add_argument("--fetch-interval", type=int, default=60)
-    add_parser.add_argument("--priority", type=int, default=0)
     add_parser.add_argument("--disabled", action="store_true")
     add_parser.add_argument("--auth-required", action="store_true")
     add_parser.add_argument("--auth-config-id")
@@ -104,6 +107,15 @@ def _build_sources_parser(subparsers) -> None:
 
     sub.add_parser("fetch-all", help="Trigger fetch for all active sources")
 
+    update_parser = sub.add_parser("update", help="Update an existing source")
+    update_parser.add_argument("id")
+    update_parser.add_argument("--name")
+    update_parser.add_argument("--url")
+    update_parser.add_argument("--fetch-interval", type=int)
+    update_parser.add_argument("--enabled", choices=["true", "false"])
+
+    sub.add_parser("export", help="Export all source configurations")
+
 
 def _build_contents_parser(subparsers) -> None:
     parser = subparsers.add_parser("contents", help="Inspect collected contents")
@@ -112,7 +124,6 @@ def _build_contents_parser(subparsers) -> None:
     list_parser = sub.add_parser("list", help="List contents")
     list_parser.add_argument("--source-id")
     list_parser.add_argument("--source-type")
-    list_parser.add_argument("--category-id")
     list_parser.add_argument("--read", choices=["true", "false"])
     list_parser.add_argument("--favorited", choices=["true", "false"])
     list_parser.add_argument("--archived", choices=["true", "false"])
@@ -129,11 +140,33 @@ def _build_contents_parser(subparsers) -> None:
     search_parser.add_argument("query")
     search_parser.add_argument("--page", type=int, default=1)
     search_parser.add_argument("--page-size", type=int, default=20)
+    
+    sub.add_parser("export-md", help="Trigger manual markdown export")
 
     cleanup_parser = sub.add_parser("cleanup-low-signal", help="Dry-run or delete historical low-signal website contents")
     cleanup_parser.add_argument("--apply", action="store_true", help="Delete matched contents instead of dry-run only")
     cleanup_parser.add_argument("--source-id")
     cleanup_parser.add_argument("--preview-limit", type=int, default=20)
+
+    sub.add_parser("delete", help="Delete a content item").add_argument("id")
+
+    reader_parser = sub.add_parser("reader", help="Fetch full reader view of a content item")
+    reader_parser.add_argument("id")
+    reader_parser.add_argument("--translate", action="store_true", help="Request translated content")
+
+    cleanup_junk_parser = sub.add_parser("cleanup-junk", help="Dry-run or delete junk contents (binary blobs, thin RSS rows)")
+    cleanup_junk_parser.add_argument("--apply", action="store_true", help="Delete matched contents instead of dry-run")
+    cleanup_junk_parser.add_argument("--source-id")
+    cleanup_junk_parser.add_argument("--preview-limit", type=int, default=30)
+    cleanup_junk_parser.add_argument("--no-binary", action="store_true", help="Skip embedded binary detection")
+    cleanup_junk_parser.add_argument("--no-thin-rss", action="store_true", help="Skip thin RSS text detection")
+
+    sub.add_parser("mark-read", help="Mark content as read").add_argument("id")
+    sub.add_parser("mark-unread", help="Mark content as unread").add_argument("id")
+    sub.add_parser("favorite", help="Toggle content favorite on").add_argument("id")
+    sub.add_parser("unfavorite", help="Toggle content favorite off").add_argument("id")
+    sub.add_parser("archive", help="Archive content").add_argument("id")
+    sub.add_parser("unarchive", help="Unarchive content").add_argument("id")
 
 
 def _build_settings_parser(subparsers) -> None:
@@ -141,14 +174,83 @@ def _build_settings_parser(subparsers) -> None:
     sub = parser.add_subparsers(dest="command")
     sub.add_parser("get", help="Get current settings")
     sub.add_parser("limits", help="Get runtime limits")
+    
+    set_parser = sub.add_parser("set", help="Set a configuration setting")
+    set_parser.add_argument("--key", required=True, help="Setting key")
+    set_parser.add_argument("--value", required=True, help="Setting value")
+
+
+def _build_keywords_parser(subparsers) -> None:
+    parser = subparsers.add_parser("keywords", help="Manage keyword monitors")
+    sub = parser.add_subparsers(dest="command")
+
+    list_parser = sub.add_parser("list", help="List all keywords")
+    list_parser.add_argument("--enabled", choices=["true", "false"], help="Filter by enabled state")
+
+    sub.add_parser("get", help="Get a keyword by ID").add_argument("id")
+
+    add_parser = sub.add_parser("add", help="Create a keyword monitor")
+    add_parser.add_argument("keyword", help="Keyword text to monitor")
+    add_parser.add_argument("--match-type", default="contains",
+                            choices=["contains", "exact", "regex"],
+                            help="Match algorithm (default: contains)")
+    add_parser.add_argument("--match-scope", default="title_content",
+                            choices=["title", "content", "title_content"],
+                            help="Fields to search (default: title_content)")
+    add_parser.add_argument("--description")
+    add_parser.add_argument("--color", default="#3b82f6", help="Highlight color (hex)")
+    add_parser.add_argument("--case-sensitive", action="store_true")
+    add_parser.add_argument("--notify", action="store_true", help="Send in-app notification")
+    add_parser.add_argument("--notify-email", action="store_true", help="Send email notification")
+    add_parser.add_argument("--disabled", action="store_true")
+
+    batch_add_parser = sub.add_parser("batch-add", help="Create multiple keywords with shared settings")
+    batch_add_parser.add_argument("keywords", nargs="+", help="Space-separated keywords to add")
+    batch_add_parser.add_argument("--match-type", default="contains",
+                                  choices=["contains", "exact", "regex"])
+    batch_add_parser.add_argument("--match-scope", default="title_content",
+                                  choices=["title", "content", "title_content"])
+    batch_add_parser.add_argument("--description")
+    batch_add_parser.add_argument("--color", default="#3b82f6")
+    batch_add_parser.add_argument("--case-sensitive", action="store_true")
+    batch_add_parser.add_argument("--notify", action="store_true")
+    batch_add_parser.add_argument("--notify-email", action="store_true")
+    batch_add_parser.add_argument("--disabled", action="store_true")
+
+    update_parser = sub.add_parser("update", help="Update a keyword")
+    update_parser.add_argument("id")
+    update_parser.add_argument("--match-type", choices=["contains", "exact", "regex"])
+    update_parser.add_argument("--match-scope", choices=["title", "content", "title_content"])
+    update_parser.add_argument("--description")
+    update_parser.add_argument("--color")
+    update_parser.add_argument("--case-sensitive", choices=["true", "false"])
+    update_parser.add_argument("--notify", choices=["true", "false"])
+    update_parser.add_argument("--notify-email", choices=["true", "false"])
+    update_parser.add_argument("--enabled", choices=["true", "false"])
+
+    batch_update_parser = sub.add_parser("batch-update", help="Update shared fields across multiple keywords")
+    batch_update_parser.add_argument("ids", nargs="+", help="Keyword IDs to update")
+    batch_update_parser.add_argument("--enabled", choices=["true", "false"])
+    batch_update_parser.add_argument("--notify", choices=["true", "false"])
+    batch_update_parser.add_argument("--notify-email", choices=["true", "false"])
+    batch_update_parser.add_argument("--color")
+    batch_update_parser.add_argument("--match-type", choices=["contains", "exact", "regex"])
+    batch_update_parser.add_argument("--match-scope", choices=["title", "content", "title_content"])
+
+    sub.add_parser("delete", help="Delete a keyword").add_argument("id")
 
 
 def _build_digest_parser(subparsers) -> None:
     parser = subparsers.add_parser("digest", help="Inspect digest data")
     sub = parser.add_subparsers(dest="command")
     sub.add_parser("latest", help="Get today's digest")
+    sub.add_parser("stats", help="Get digest statistics for recent days")
+    hourly_list = sub.add_parser("hourly-list", help="List available hourly digests")
+    hourly_list.add_argument("--date", help="Date in YYYY-MM-DD format (default: today)")
     day = sub.add_parser("day", help="Get digest for a date")
-    day.add_argument("date")
+    day.add_argument("date", help="Date in YYYY-MM-DD format")
+    hour = sub.add_parser("hour", help="Get a single hourly digest by label")
+    hour.add_argument("hour", help="Hour in YYYY-MM-DDTHH format")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -195,6 +297,8 @@ def dispatch(args, *, as_json: bool) -> int:
         return handle_sources(args, client, as_json=as_json)
     if args.resource == "contents":
         return handle_contents(args, client, as_json=as_json)
+    if args.resource == "keywords":
+        return handle_keywords(args, client, as_json=as_json)
     if args.resource == "settings":
         return handle_settings(args, client, as_json=as_json)
     if args.resource == "digest":
@@ -211,7 +315,11 @@ def handle_auth(args, *, as_json: bool) -> int:
         server = args.server or _env_or_profile_server(config, profile_name)
         api_key = args.api_key or _env_or_profile_api_key(config, profile_name)
         if not api_key:
-            raise CLIError("missing_api_key", "Missing API key. Pass `--api-key` to save credentials.", 2)
+            raise CLIError(
+                "missing_api_key",
+                "API key not found. Is PIM running? Expected key at ~/.pim/data/runtime-secrets.json",
+                2,
+            )
 
         client = APIClient(server=server, api_key=api_key, timeout=args.timeout or 30)
         client.request("GET", "/api/system/queue")
@@ -291,9 +399,41 @@ def handle_system(args, client: APIClient, *, as_json: bool) -> int:
             data,
             as_json=as_json,
             meta=_build_meta(args, server=client.server),
-            renderer=lambda data: print_key_values([
-                ("Status", data.get("status")),
-            ]),
+            renderer=lambda data: print_key_values([("Status", data.get("status"))]),
+        )
+        return 0
+
+    if args.command == "health-check":
+        data = client.request("GET", "/health")
+        emit_success(
+            data,
+            as_json=as_json,
+            meta=_build_meta(args, server=client.server),
+            renderer=lambda data: (
+                print_key_values([("Status", data.get("status"))]),
+                print_key_values(
+                    [(f"  {k}", v) for k, v in (data.get("checks") or {}).items()]
+                ),
+            ),
+        )
+        return 0
+
+    if args.command == "metrics":
+        data = client.request("GET", "/api/system/metrics")
+        emit_success(
+            data,
+            as_json=as_json,
+            meta=_build_meta(args, server=client.server),
+            renderer=lambda data: (
+                print_key_values([
+                    ("Total Requests", (data.get("http") or {}).get("total_requests")),
+                    ("Avg Latency ms", (data.get("http") or {}).get("avg_latency_ms")),
+                    ("Max Latency ms", (data.get("http") or {}).get("max_latency_ms")),
+                    ("Scheduler Running", (data.get("scheduler") or {}).get("running")),
+                    ("Scheduler Jobs", (data.get("scheduler") or {}).get("job_count")),
+                    ("Source Count", len(data.get("sources") or {})),
+                ]),
+            ),
         )
         return 0
 
@@ -327,6 +467,21 @@ def handle_system(args, client: APIClient, *, as_json: bool) -> int:
         )
         return 0
 
+    if args.command == "search-rebuild":
+        data = client.request("POST", "/api/system/search/rebuild")
+        emit_success(data, as_json=as_json, meta=_build_meta(args, server=client.server))
+        return 0
+
+    if args.command == "doctor":
+        data = client.request("GET", "/api/system/doctor")
+        emit_success(
+            data,
+            as_json=as_json,
+            meta=_build_meta(args, server=client.server),
+            renderer=_render_doctor_report,
+        )
+        return 0
+
     raise CLIError("missing_command", "Missing system subcommand", 2)
 
 
@@ -336,7 +491,6 @@ def handle_sources(args, client: APIClient, *, as_json: bool) -> int:
             "page": args.page,
             "page_size": args.page_size,
             "type": args.type,
-            "category_id": args.category_id,
             "enabled": _optional_bool(args.enabled),
             "search": args.search,
         }
@@ -361,7 +515,14 @@ def handle_sources(args, client: APIClient, *, as_json: bool) -> int:
 
     if args.command == "get":
         data = client.request("GET", f"/api/sources/{args.id}")
-        emit_success(data, as_json=as_json, meta=_build_meta(args, server=client.server))
+        emit_success(
+            data,
+            as_json=as_json,
+            meta=_build_meta(args, server=client.server),
+            renderer=lambda d: print_key_values(
+                [(k, v) for k, v in d.items() if k not in ["metadata", "stats"]]
+            ),
+        )
         return 0
 
     if args.command == "add":
@@ -370,10 +531,8 @@ def handle_sources(args, client: APIClient, *, as_json: bool) -> int:
             "type": args.type,
             "url": args.url,
             "extra_urls": args.extra_url,
-            "category_id": args.category_id,
             "fetch_interval": args.fetch_interval,
             "enabled": not args.disabled,
-            "priority": args.priority,
             "auth_required": args.auth_required,
             "auth_config_id": args.auth_config_id,
             "metadata": {},
@@ -411,6 +570,25 @@ def handle_sources(args, client: APIClient, *, as_json: bool) -> int:
         emit_success(data, as_json=as_json, meta=_build_meta(args, server=client.server))
         return 0
 
+    if args.command == "update":
+        payload = {}
+        if args.name is not None:
+            payload["name"] = args.name
+        if args.url is not None:
+            payload["url"] = args.url
+        if args.fetch_interval is not None:
+            payload["fetch_interval"] = args.fetch_interval
+        if args.enabled is not None:
+            payload["enabled"] = _optional_bool(args.enabled)
+        data = client.request("PATCH", f"/api/sources/{args.id}", json_body=payload)
+        emit_success(data, as_json=as_json, meta=_build_meta(args, server=client.server))
+        return 0
+
+    if args.command == "export":
+        data = client.request("GET", "/api/sources/export")
+        emit_success(data, as_json=as_json, meta=_build_meta(args, server=client.server))
+        return 0
+
     raise CLIError("missing_command", "Missing sources subcommand", 2)
 
 
@@ -419,7 +597,6 @@ def handle_contents(args, client: APIClient, *, as_json: bool) -> int:
         params = {
             "source_id": args.source_id,
             "source_type": args.source_type,
-            "category_id": args.category_id,
             "read_status": _optional_bool(args.read),
             "favorited": _optional_bool(args.favorited),
             "archived": _optional_bool(args.archived),
@@ -450,7 +627,14 @@ def handle_contents(args, client: APIClient, *, as_json: bool) -> int:
 
     if args.command == "get":
         data = client.request("GET", f"/api/contents/{args.id}")
-        emit_success(data, as_json=as_json, meta=_build_meta(args, server=client.server))
+        emit_success(
+            data,
+            as_json=as_json,
+            meta=_build_meta(args, server=client.server),
+            renderer=lambda d: print_key_values(
+                [(k, v) for k, v in d.items() if k not in ["full_content", "summary", "source"]]
+            ),
+        )
         return 0
 
     if args.command == "search":
@@ -479,6 +663,48 @@ def handle_contents(args, client: APIClient, *, as_json: bool) -> int:
         )
         return 0
 
+    if args.command == "delete":
+        data = client.request("DELETE", f"/api/contents/{args.id}")
+        emit_success(data, as_json=as_json, meta=_build_meta(args, server=client.server))
+        return 0
+
+    if args.command == "reader":
+        params = {}
+        if args.translate:
+            params["translate"] = True
+        data = client.request("GET", f"/api/contents/{args.id}/reader", params=params or None)
+        emit_success(
+            data,
+            as_json=as_json,
+            meta=_build_meta(args, server=client.server),
+            renderer=lambda d: print_key_values([
+                ("ID", d.get("id")),
+                ("Title", d.get("title")),
+                ("Translated Title", d.get("translated_title")),
+                ("URL", d.get("original_url")),
+                ("Extracted", bool(d.get("full_content"))),
+                ("Translated", bool(d.get("translated_summary"))),
+            ]),
+        )
+        return 0
+
+    if args.command == "cleanup-junk":
+        params = {
+            "apply": args.apply,
+            "source_id": args.source_id,
+            "preview_limit": args.preview_limit,
+            "match_embedded_binary": not args.no_binary,
+            "match_rss_thin_text": not args.no_thin_rss,
+        }
+        data = client.request("POST", "/api/contents/cleanup-junk", params=params)
+        emit_success(
+            data,
+            as_json=as_json,
+            meta=_build_meta(args, server=client.server),
+            renderer=_render_cleanup_report,
+        )
+        return 0
+
     if args.command == "cleanup-low-signal":
         data = client.request(
             "POST",
@@ -497,7 +723,183 @@ def handle_contents(args, client: APIClient, *, as_json: bool) -> int:
         )
         return 0
 
+    if args.command == "export-md":
+        data = client.request("POST", "/api/contents/export-md")
+        emit_success(data, as_json=as_json, meta=_build_meta(args, server=client.server))
+        return 0
+
+    if args.command == "mark-read":
+        data = client.request("POST", f"/api/contents/{args.id}/read")
+        emit_success(data, as_json=as_json, meta=_build_meta(args, server=client.server))
+        return 0
+
+    if args.command == "mark-unread":
+        data = client.request("PATCH", f"/api/contents/{args.id}", json_body={"read_status": False})
+        emit_success(data, as_json=as_json, meta=_build_meta(args, server=client.server))
+        return 0
+
+    if args.command == "favorite":
+        data = client.request("PATCH", f"/api/contents/{args.id}/favorite", json_body={"favorited": True})
+        emit_success(data, as_json=as_json, meta=_build_meta(args, server=client.server))
+        return 0
+
+    if args.command == "unfavorite":
+        data = client.request("PATCH", f"/api/contents/{args.id}", json_body={"favorited": False})
+        emit_success(data, as_json=as_json, meta=_build_meta(args, server=client.server))
+        return 0
+
+    if args.command == "archive":
+        data = client.request("PATCH", f"/api/contents/{args.id}", json_body={"archived": True})
+        emit_success(data, as_json=as_json, meta=_build_meta(args, server=client.server))
+        return 0
+
+    if args.command == "unarchive":
+        data = client.request("PATCH", f"/api/contents/{args.id}", json_body={"archived": False})
+        emit_success(data, as_json=as_json, meta=_build_meta(args, server=client.server))
+        return 0
+
     raise CLIError("missing_command", "Missing contents subcommand", 2)
+
+
+def handle_keywords(args, client: APIClient, *, as_json: bool) -> int:
+    if args.command == "list":
+        params = {}
+        enabled = _optional_bool(getattr(args, "enabled", None))
+        if enabled is not None:
+            params["enabled"] = enabled
+        data = client.request("GET", "/api/keywords", params=params or None)
+        emit_success(
+            data,
+            as_json=as_json,
+            meta=_build_meta(args, server=client.server),
+            renderer=lambda data: print_table(
+                data.get("items") or [],
+                [
+                    ("ID", "id"),
+                    ("KEYWORD", "keyword"),
+                    ("TYPE", "match_type"),
+                    ("SCOPE", "match_scope"),
+                    ("ENABLED", "enabled"),
+                    ("NOTIFY", "notify"),
+                ],
+            ),
+        )
+        return 0
+
+    if args.command == "get":
+        data = client.request("GET", f"/api/keywords/{args.id}")
+        emit_success(
+            data,
+            as_json=as_json,
+            meta=_build_meta(args, server=client.server),
+            renderer=lambda d: print_key_values([
+                ("ID", d.get("id")),
+                ("Keyword", d.get("keyword")),
+                ("Match Type", d.get("match_type")),
+                ("Match Scope", d.get("match_scope")),
+                ("Case Sensitive", d.get("case_sensitive")),
+                ("Enabled", d.get("enabled")),
+                ("Notify", d.get("notify")),
+                ("Notify Email", d.get("notify_email")),
+                ("Color", d.get("color")),
+                ("Description", d.get("description")),
+            ]),
+        )
+        return 0
+
+    if args.command == "add":
+        payload = {
+            "keyword": args.keyword,
+            "match_type": args.match_type,
+            "match_scope": args.match_scope,
+            "case_sensitive": args.case_sensitive,
+            "notify": args.notify,
+            "notify_email": args.notify_email,
+            "color": args.color,
+            "enabled": not args.disabled,
+        }
+        if args.description:
+            payload["description"] = args.description
+        data = client.request("POST", "/api/keywords", json_body=payload)
+        emit_success(data, as_json=as_json, meta=_build_meta(args, server=client.server))
+        return 0
+
+    if args.command == "batch-add":
+        payload = {
+            "keywords": args.keywords,
+            "match_type": args.match_type,
+            "match_scope": args.match_scope,
+            "case_sensitive": args.case_sensitive,
+            "notify": args.notify,
+            "notify_email": args.notify_email,
+            "color": args.color,
+            "enabled": not args.disabled,
+        }
+        if args.description:
+            payload["description"] = args.description
+        data = client.request("POST", "/api/keywords/batch", json_body=payload)
+        emit_success(
+            data,
+            as_json=as_json,
+            meta=_build_meta(args, server=client.server),
+            renderer=lambda d: print_key_values([
+                ("Created", d.get("total")),
+                ("Skipped (duplicates)", len(d.get("skipped_keywords") or [])),
+            ]),
+        )
+        return 0
+
+    if args.command == "update":
+        payload: dict = {}
+        if args.match_type is not None:
+            payload["match_type"] = args.match_type
+        if args.match_scope is not None:
+            payload["match_scope"] = args.match_scope
+        if args.description is not None:
+            payload["description"] = args.description
+        if args.color is not None:
+            payload["color"] = args.color
+        if args.case_sensitive is not None:
+            payload["case_sensitive"] = _optional_bool(args.case_sensitive)
+        if args.notify is not None:
+            payload["notify"] = _optional_bool(args.notify)
+        if args.notify_email is not None:
+            payload["notify_email"] = _optional_bool(args.notify_email)
+        if args.enabled is not None:
+            payload["enabled"] = _optional_bool(args.enabled)
+        data = client.request("PATCH", f"/api/keywords/{args.id}", json_body=payload)
+        emit_success(data, as_json=as_json, meta=_build_meta(args, server=client.server))
+        return 0
+
+    if args.command == "batch-update":
+        payload = {"keyword_ids": args.ids}
+        if args.enabled is not None:
+            payload["enabled"] = _optional_bool(args.enabled)
+        if args.notify is not None:
+            payload["notify"] = _optional_bool(args.notify)
+        if args.notify_email is not None:
+            payload["notify_email"] = _optional_bool(args.notify_email)
+        if args.color is not None:
+            payload["color"] = args.color
+        if args.match_type is not None:
+            payload["match_type"] = args.match_type
+        if args.match_scope is not None:
+            payload["match_scope"] = args.match_scope
+        data = client.request("PATCH", "/api/keywords/batch", json_body=payload)
+        emit_success(
+            data,
+            as_json=as_json,
+            meta=_build_meta(args, server=client.server),
+            renderer=lambda d: print_key_values([("Updated", d.get("total"))]),
+        )
+        return 0
+
+    if args.command == "delete":
+        data = client.request("DELETE", f"/api/keywords/{args.id}")
+        emit_success(data, as_json=as_json, meta=_build_meta(args, server=client.server))
+        return 0
+
+    raise CLIError("missing_command", "Missing keywords subcommand", 2)
 
 
 def handle_settings(args, client: APIClient, *, as_json: bool) -> int:
@@ -524,6 +926,16 @@ def handle_settings(args, client: APIClient, *, as_json: bool) -> int:
             ]),
         )
         return 0
+
+    if args.command == "set":
+        val = args.value
+        if val.lower() == "true": val = True
+        elif val.lower() == "false": val = False
+        elif val.isdigit(): val = int(val)
+        data = client.request("PATCH", "/api/configs/settings", json_body={args.key: val})
+        emit_success(data, as_json=as_json, meta=_build_meta(args, server=client.server))
+        return 0
+
     raise CLIError("missing_command", "Missing settings subcommand", 2)
 
 
@@ -532,10 +944,53 @@ def handle_digest(args, client: APIClient, *, as_json: bool) -> int:
         data = client.request("GET", "/api/digest")
         emit_success(data, as_json=as_json, meta=_build_meta(args, server=client.server))
         return 0
+
+    if args.command == "stats":
+        data = client.request("GET", "/api/digest/stats")
+        emit_success(
+            data,
+            as_json=as_json,
+            meta=_build_meta(args, server=client.server),
+            renderer=lambda d: (
+                print_key_values([
+                    ("Period", f"{(d.get('period') or {}).get('start')} → {(d.get('period') or {}).get('end')}"),
+                    ("Unread", d.get("unread_count")),
+                    ("Favorited", d.get("favorited_count")),
+                ]),
+                print_table(
+                    d.get("daily_counts") or [],
+                    [("DATE", "date"), ("COUNT", "count")],
+                ),
+            ),
+        )
+        return 0
+
+    if args.command == "hourly-list":
+        params = {}
+        if getattr(args, "date", None):
+            params["date"] = args.date
+        data = client.request("GET", "/api/digest/hourly", params=params or None)
+        emit_success(
+            data,
+            as_json=as_json,
+            meta=_build_meta(args, server=client.server),
+            renderer=lambda items: print_table(
+                items if isinstance(items, list) else [],
+                [("HOUR", "hour"), ("COUNT", "item_count"), ("GENERATED", "generated_at")],
+            ),
+        )
+        return 0
+
     if args.command == "day":
         data = client.request("GET", "/api/digest", params={"date": args.date})
         emit_success(data, as_json=as_json, meta=_build_meta(args, server=client.server))
         return 0
+
+    if args.command == "hour":
+        data = client.request("GET", f"/api/digest/hourly/{args.hour}")
+        emit_success(data, as_json=as_json, meta=_build_meta(args, server=client.server))
+        return 0
+
     raise CLIError("missing_command", "Missing digest subcommand", 2)
 
 
@@ -562,7 +1017,11 @@ def _env_or_profile_server(config: dict[str, Any], profile_name: str) -> str:
 
 
 def _env_or_profile_api_key(config: dict[str, Any], profile_name: str) -> str | None:
-    return _env_value("PIM_API_KEY") or get_profile(config, profile_name).api_key
+    return (
+        _env_value("PIM_API_KEY")
+        or get_profile(config, profile_name).api_key
+        or read_local_runtime_key()
+    )
 
 
 def _env_value(name: str) -> str | None:
@@ -618,6 +1077,47 @@ def _render_cleanup_report(data: dict[str, Any]) -> None:
                 ("URL", "url"),
             ],
         )
+
+
+def _render_doctor_report(data: dict[str, Any]) -> None:
+    print("\n🩺 PIM System Diagnostic Report")
+    print("=" * 40)
+    
+    overall = data.get("overall_status", "unknown").upper()
+    status_icon = "✅" if overall == "OK" else "⚠️" if overall == "DEGRADED" else "❌"
+    print(f"Overall Status: {status_icon} {overall}")
+    print(f"Timestamp:      {data.get('timestamp')}")
+    print("-" * 40)
+
+    categories = [
+        ("Database", "database", "🗄️"),
+        ("Environment", "environment", "🌍"),
+        ("Workers", "workers", "👷"),
+        ("Collectors", "collectors", "🕷️"),
+        ("Integrations", "integrations", "🔌"),
+    ]
+
+    for label, key, icon in categories:
+        cat_data = data.get(key)
+        if not cat_data:
+            continue
+        
+        status = cat_data.get("status", "unknown")
+        c_icon = "✅" if status == "ok" else "⚠️" if status == "warning" else "❌"
+        print(f"\n{icon} {label}: {c_icon} {status.upper()}")
+        
+        for k, v in cat_data.items():
+            if k in ["status", "message"]:
+                continue
+            print(f"  - {k.replace('_', ' ').title()}: {v}")
+            
+        if cat_data.get("message"):
+            print(f"  ! {cat_data['message']}")
+
+    print("\n" + "=" * 40)
+    if overall != "OK":
+        print("💡 Suggestion: Check logs or run 'pimctl system doctor' again after fixing reported issues.")
+    print()
 
 
 def _normalize_global_args(argv: list[str]) -> list[str]:

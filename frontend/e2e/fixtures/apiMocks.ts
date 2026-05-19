@@ -50,6 +50,9 @@ const sources = [
     fetch_status: 'ok',
     fetch_strategy: 'scrape',
     fetch_status_message: '可抓取',
+    probe_status: 'ok',
+    probe_strategy: 'scrape',
+    probe_message: '探测通过',
     created_at: now,
     updated_at: now,
     last_fetched_at: now,
@@ -69,6 +72,9 @@ const sources = [
     fetch_status: 'ok',
     fetch_strategy: 'scrape',
     fetch_status_message: '可抓取',
+    probe_status: 'ok',
+    probe_strategy: 'scrape',
+    probe_message: '探测通过',
     created_at: now,
     updated_at: now,
     last_fetched_at: now,
@@ -88,6 +94,9 @@ const sources = [
     fetch_status: 'ok',
     fetch_strategy: 'api',
     fetch_status_message: '可抓取',
+    probe_status: 'ok',
+    probe_strategy: 'api',
+    probe_message: '探测通过',
     created_at: now,
     updated_at: now,
     last_fetched_at: now,
@@ -186,12 +195,21 @@ const systemSettings = {
   auto_translate_language: 'zh-CN',
   summarization_enabled: true,
   email_notifications_enabled: false,
-  translation_cloud_fallback_enabled: false,
-  summarization_cloud_fallback_enabled: false,
+  translation_fallback_enabled: false,
+  translation_fallback: { provider: 'openai', model: 'gpt-4o-mini' },
+  summarization_fallback_enabled: false,
+  summarization_fallback: { provider: 'openai', model: 'gpt-4o-mini' },
   limits: {
     max_sources: 200,
     max_digest_candidates: 12,
     max_hourly_digest_input_items: 200,
+  },
+  hourly_digest: {
+    prompt:
+      '【选稿】从候选中挑出最值得进入本小时综述的条目。\n\n【综述】写成私人秘书式中文综述，并用 /reader/ 链接引用素材。',
+    prompt_effective:
+      '【选稿】从候选中挑出最值得进入本小时综述的条目。\n\n【综述】写成私人秘书式中文综述，并用 /reader/ 链接引用素材。',
+    content_types: ['website', 'rss'],
   },
 }
 
@@ -424,16 +442,16 @@ export const mockApi = async (page: Page) => {
       })
     }
 
-    if (method === 'GET' && path === '/api/categories') {
-      return response(route, 200, [])
-    }
-
     if (method === 'GET' && path === '/api/configs/auth-configs') {
       return response(route, 200, authConfigs)
     }
 
     if (method === 'GET' && path === '/api/configs/api-keys') {
       return response(route, 200, apiKeys)
+    }
+
+    if (method === 'GET' && path === '/api/configs/browser-sessions') {
+      return response(route, 200, [])
     }
 
     if (method === 'GET' && path === '/api/configs/settings') {

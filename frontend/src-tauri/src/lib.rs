@@ -230,6 +230,44 @@ fn clear_api_key(_app: AppHandle) -> Result<(), String> {
     }
 }
 
+/// Resolve the PIM data directory — mirrors backend logic in `app/config.py`.
+fn resolve_data_dir() -> Option<PathBuf> {
+    if let Ok(raw) = std::env::var("DATA_DIR") {
+        let trimmed = raw.trim();
+        if !trimmed.is_empty() {
+            return Some(PathBuf::from(shellexpand::tilde(trimmed).into_owned()));
+        }
+    }
+    if let Some(home) = dirs::home_dir() {
+        return Some(home.join(".pim").join("data"));
+    }
+    None
+}
+
+/// Read ``BOOTSTRAP_TOKEN`` from the backend's runtime-secrets.json (mode 0600).
+/// Returns ``Ok(None)`` if the file is missing so the frontend can fall back to
+/// manual API-Key input without surfacing an error.
+#[tauri::command]
+fn get_bootstrap_token(_app: AppHandle) -> Result<Option<String>, String> {
+    let Some(data_dir) = resolve_data_dir() else {
+        return Ok(None);
+    };
+    let path = data_dir.join("runtime-secrets.json");
+    if !path.exists() {
+        return Ok(None);
+    }
+    let raw = std::fs::read_to_string(&path)
+        .map_err(|e| format!("读取 runtime-secrets.json 失败: {e}"))?;
+    let value: serde_json::Value = serde_json::from_str(&raw)
+        .map_err(|e| format!("解析 runtime-secrets.json 失败: {e}"))?;
+    let token = value
+        .get("BOOTSTRAP_TOKEN")
+        .and_then(|v| v.as_str())
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
+    Ok(token)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -245,7 +283,12 @@ pub fn run() {
             });
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![get_api_key, set_api_key, clear_api_key])
+        .invoke_handler(tauri::generate_handler![
+            get_api_key,
+            set_api_key,
+            clear_api_key,
+            get_bootstrap_token
+        ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         .run(|app_handle, event| {

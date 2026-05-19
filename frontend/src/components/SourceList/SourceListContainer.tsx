@@ -10,6 +10,7 @@ import {
   Empty,
   Input,
   Tooltip,
+  Dropdown,
 } from 'antd'
 import {
   PlusOutlined,
@@ -17,22 +18,36 @@ import {
   DeleteOutlined,
   SyncOutlined,
   UploadOutlined,
+  DownloadOutlined,
+  DownOutlined,
   RadarChartOutlined,
   SearchOutlined,
 } from '@ant-design/icons'
+import { Database } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
 import { sourcesApi } from '../../services/sources'
 import { sourceKeys } from '../../services/queryKeys'
 import { isXCookieProfile, getDefaultSharedXAuthConfigId } from '../../utils/sourceAuth'
-import type { Source, SourceType } from '../../types'
+import type { Source } from '../../types'
 import { formatLocalDateTime } from '../../utils/datetime'
 import FetchStatusIcon from './FetchStatusIcon'
-import SectionNote from '../ui/SectionNote'
+import CategoryPillTabs from '../common/CategoryPillTabs'
 import SourceEditorModal from './SourceEditorModal'
 import SourceImportModal from './SourceImportModal'
 import { useSourceList, typeFilters } from './hooks/useSourceList'
 import { useSourceEditor } from './hooks/useSourceEditor'
 import { useSourceImport } from './hooks/useSourceImport'
+import { downloadSourceBackup, type SourceBackupFormat } from './exportUtils'
+
+const exportFormatLabel: Record<SourceBackupFormat, string> = {
+  csv: 'CSV',
+  json: 'JSON',
+}
+
+const exportMenuItems = [
+  { key: 'csv', label: 'CSV（Excel 可直接打开）' },
+  { key: 'json', label: 'JSON（完整备份，可无损恢复）' },
+]
 
 const typeColors: Record<string, string> = {
   website: 'blue',
@@ -52,8 +67,18 @@ const strategyLabels: Record<string, string> = {
   unknown: '-',
 }
 
+/** 与分类胶囊、资讯顶栏一致的圆角工具条按钮 */
+const sourceToolbarBtnSecondary =
+  '!inline-flex !h-auto !items-center !gap-1 !rounded-full !border !border-[rgba(88,100,118,0.1)] !bg-white !px-3.5 !py-2 !text-[12px] !font-medium !leading-none !text-[#5f6f82] !shadow-sm hover:!border-[#49A8C9]/35 hover:!text-[#2c3a50] disabled:!opacity-50'
+const sourceToolbarBtnPrimary =
+  '!inline-flex !h-auto !items-center !gap-1 !rounded-full !border !border-[#49A8C9]/28 !bg-[#49A8C9] !px-3.5 !py-2 !text-[12px] !font-medium !leading-none !text-white !shadow-sm !shadow-[#49A8C9]/15 hover:!bg-[#3d94b3] disabled:!opacity-50'
+
+const toolbarIconStroke = 1.5
+
 const SourceListContainer: React.FC = () => {
   const queryClient = useQueryClient()
+  const [isExportingAll, setIsExportingAll] = React.useState(false)
+  const [isExportingSelected, setIsExportingSelected] = React.useState(false)
 
   const listState = useSourceList()
   const {
@@ -74,7 +99,6 @@ const SourceListContainer: React.FC = () => {
     isError,
     isFetching,
     refetchSources,
-    categories,
     authConfigs,
     sourceCount,
     maxSources,
@@ -93,7 +117,6 @@ const SourceListContainer: React.FC = () => {
     authConfigs: authConfigs || [],
     sourceLimitReached,
     maxSources,
-    sharedXAuthConfigs,
     defaultSharedXAuthConfigId,
   })
   const {
@@ -101,6 +124,8 @@ const SourceListContainer: React.FC = () => {
     setIsModalOpen,
     editingSource,
     setEditingSource,
+    submitError,
+    setSubmitError,
     form,
     createMutation,
     updateMutation,
@@ -148,6 +173,48 @@ const SourceListContainer: React.FC = () => {
     }
   }
 
+  const handleExportAll = async (format: SourceBackupFormat) => {
+    if (isExportingAll) return
+    setIsExportingAll(true)
+    try {
+      const all = await sourcesApi.listAll()
+      if (all.length === 0) {
+        message.warning('没有可导出的监控源')
+        return
+      }
+      const filename = downloadSourceBackup(all, { format })
+      message.success(
+        `已导出 ${all.length} 个监控源（${exportFormatLabel[format]}）· ${filename}`,
+      )
+    } catch {
+      message.error('导出备份失败')
+    } finally {
+      setIsExportingAll(false)
+    }
+  }
+
+  const handleExportSelected = async (format: SourceBackupFormat) => {
+    if (selectedRowKeys.length === 0 || isExportingSelected) return
+    setIsExportingSelected(true)
+    try {
+      const idSet = new Set(selectedRowKeys.map((key) => String(key)))
+      // 当前选中项一定在本页 `sources` 中（翻页 / 筛选切换时会重置选择）
+      const selected = sources.filter((s) => idSet.has(s.id))
+      if (selected.length === 0) {
+        message.warning('选中项已不存在，请刷新列表后重试')
+        return
+      }
+      const filename = downloadSourceBackup(selected, { selected: true, format })
+      message.success(
+        `已导出 ${selected.length} 个选中监控源（${exportFormatLabel[format]}）· ${filename}`,
+      )
+    } catch {
+      message.error('导出选中监控源失败')
+    } finally {
+      setIsExportingSelected(false)
+    }
+  }
+
   const columns = [
     { title: '名称', dataIndex: 'name', key: 'name', width: 180 },
     {
@@ -158,10 +225,38 @@ const SourceListContainer: React.FC = () => {
       render: (type: string) => <Tag color={typeColors[type] || 'default'}>{type}</Tag>,
     },
     {
-      title: '可抓取',
-      key: 'fetch_status',
-      width: 80,
+      title: '探测',
+      key: 'probe_status',
+      width: 72,
       align: 'center' as const,
+      onHeaderCell: () => ({ style: { whiteSpace: 'nowrap' } }),
+      sorter: (a: Source, b: Source) => {
+        const order: Record<string, number> = {
+          ok: 0,
+          warning: 1,
+          pending: 2,
+          error: 3,
+          failed: 3,
+          not_probed: 4,
+          unknown: 5,
+        }
+        return (order[a.probe_status] ?? 5) - (order[b.probe_status] ?? 5)
+      },
+      render: (_: unknown, record: Source) => (
+        <FetchStatusIcon
+          probeMode
+          status={record.probe_status}
+          message={record.probe_message}
+          strategy={record.probe_strategy}
+        />
+      ),
+    },
+    {
+      title: '抓取',
+      key: 'fetch_status',
+      width: 72,
+      align: 'center' as const,
+      onHeaderCell: () => ({ style: { whiteSpace: 'nowrap' } }),
       sorter: (a: Source, b: Source) => {
         const order: Record<string, number> = { ok: 0, warning: 1, error: 2, unknown: 3 }
         return (order[a.fetch_status] ?? 3) - (order[b.fetch_status] ?? 3)
@@ -176,11 +271,11 @@ const SourceListContainer: React.FC = () => {
     },
     {
       title: '策略',
-      key: 'fetch_strategy',
+      key: 'probe_strategy',
       width: 90,
       render: (_: unknown, record: Source) => (
         <span style={{ fontSize: 12, color: '#666' }}>
-          {strategyLabels[record.fetch_strategy] || record.fetch_strategy || '-'}
+          {strategyLabels[record.probe_strategy] || record.probe_strategy || '-'}
         </span>
       ),
     },
@@ -188,16 +283,33 @@ const SourceListContainer: React.FC = () => {
       title: 'URL',
       dataIndex: 'url',
       key: 'url',
+      width: 280,
       ellipsis: true,
       render: (url: string, record: Source) => (
-        <>
-          <a href={url} target="_blank" rel="noopener noreferrer">{url}</a>
-          {Array.isArray(record.extra_urls) && record.extra_urls.length > 0 ? (
-            <span style={{ marginLeft: 8, color: '#999', fontSize: 12 }}>
-              + {record.extra_urls.length} 个附加 URL
-            </span>
-          ) : null}
-        </>
+        <Tooltip
+          title={
+            <>
+              {url}
+              {Array.isArray(record.extra_urls) && record.extra_urls.length > 0
+                ? `（另有 ${record.extra_urls.length} 个附加 URL）`
+                : ''}
+            </>
+          }
+        >
+          <span className="block min-w-0">
+            <a
+              href={url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="block truncate text-[13px] text-[#49A8C9] hover:text-[#3d94b3]"
+            >
+              {url}
+            </a>
+            {Array.isArray(record.extra_urls) && record.extra_urls.length > 0 ? (
+              <span className="text-[12px] text-[#8a96a5]">+{record.extra_urls.length}</span>
+            ) : null}
+          </span>
+        </Tooltip>
       ),
     },
     {
@@ -222,21 +334,26 @@ const SourceListContainer: React.FC = () => {
     {
       title: '操作',
       key: 'actions',
-      width: 240,
+      width: 292,
+      fixed: 'right' as const,
+      align: 'center' as const,
+      onCell: () => ({ style: { whiteSpace: 'nowrap' } }),
       render: (_: unknown, record: Source) => (
-        <Space>
+        <div className="inline-flex flex-nowrap items-center justify-center gap-1">
           <Tooltip title="探测可抓取性">
             <Button
+              type="text"
               icon={<RadarChartOutlined />}
               size="small"
+              className="!text-[#5f6f82] hover:!text-[#49A8C9]"
               onClick={() => probeMutation.mutate(record.id)}
               loading={probeMutation.isPending && probeMutation.variables === record.id}
             />
           </Tooltip>
-          <Button icon={<SyncOutlined />} size="small" onClick={() => fetchMutation.mutate(record.id)}>
+          <Button type="link" size="small" className="!px-1" icon={<SyncOutlined />} onClick={() => fetchMutation.mutate(record.id)}>
             抓取
           </Button>
-          <Button icon={<EditOutlined />} size="small" onClick={() => handleEdit(record)}>
+          <Button type="link" size="small" className="!px-1" icon={<EditOutlined />} onClick={() => handleEdit(record)}>
             编辑
           </Button>
           <Popconfirm
@@ -245,9 +362,11 @@ const SourceListContainer: React.FC = () => {
             okText="确定"
             cancelText="取消"
           >
-            <Button icon={<DeleteOutlined />} size="small" danger>删除</Button>
+            <Button type="link" size="small" danger className="!px-1" icon={<DeleteOutlined />}>
+              删除
+            </Button>
           </Popconfirm>
-        </Space>
+        </div>
       ),
     },
   ]
@@ -258,7 +377,7 @@ const SourceListContainer: React.FC = () => {
   }
 
   return (
-    <div data-testid="source-manager">
+    <div className="min-w-0" data-testid="source-manager">
       <input
         type="file"
         accept=".csv"
@@ -267,90 +386,122 @@ const SourceListContainer: React.FC = () => {
         onChange={handleFileSelect}
       />
 
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          gap: 12,
-          marginBottom: 16,
-          flexWrap: 'wrap',
-        }}
-      >
-        <div style={{ display: 'flex', gap: 0, flexWrap: 'wrap' }}>
-          {typeFilters.map((filter, idx) => (
-            <button
-              key={filter.key}
-              onClick={() => { setActiveTypeFilter(filter.key); setSelectedRowKeys([]) }}
-              data-testid={`source-filter-${filter.key}`}
-              style={{
-                padding: '10px 16px',
-                fontSize: 14,
-                fontWeight: activeTypeFilter === filter.key ? 600 : 400,
-                color: activeTypeFilter === filter.key ? '#6b7c3f' : '#666',
-                backgroundColor: activeTypeFilter === filter.key ? '#f5f8ef' : 'transparent',
-                border: '1px solid #eee',
-                borderRight: idx === typeFilters.length - 1 ? '1px solid #eee' : 'none',
-                cursor: 'pointer',
+      <div className="mb-5 min-w-0 border-b border-[rgba(88,100,118,0.08)] pb-4 sm:mb-6 sm:pb-5">
+        {/* 筛选行：类型分类与搜索（同属「筛选信息」） */}
+        <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+          <div className="min-w-0 flex-1">
+            <CategoryPillTabs
+              items={typeFilters.map((f) => ({ key: f.key, label: f.label }))}
+              activeKey={activeTypeFilter}
+              getCount={getTypeCount}
+              onSelect={(key) => {
+                setActiveTypeFilter(key)
+                setSelectedRowKeys([])
               }}
-            >
-              {filter.label}
-              <span style={{ marginLeft: 6, fontSize: 12, color: '#999' }}>
-                ({getTypeCount(filter.key)})
-              </span>
-            </button>
-          ))}
-        </div>
-
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-          <Tooltip title="检测所有源的可抓取性">
-            <Button
-              icon={<RadarChartOutlined />}
-              onClick={() => probeAllMutation.mutate()}
-              loading={probeAllMutation.isPending}
-              size="small"
-            >
-              全部探测
-            </Button>
-          </Tooltip>
-          <Button
-            icon={<UploadOutlined />}
-            onClick={() => fileInputRef.current?.click()}
-            size="small"
-            disabled={sourceLimitReached}
-          >
-            导入 CSV
-          </Button>
-          <Button
-            type="primary"
-            icon={<PlusOutlined />}
-            onClick={handleAdd}
-            size="small"
-            disabled={sourceLimitReached}
-            style={{ backgroundColor: '#6b7c3f', borderColor: '#6b7c3f' }}
-          >
-            添加监控源
-          </Button>
+              borderless
+              layoutId="source-manager-tab-pill"
+              getTabTestId={(key) => `source-filter-${key}`}
+            />
+          </div>
           <Input
             allowClear
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
-            placeholder="搜索信源名称或 URL"
-            prefix={<SearchOutlined style={{ color: '#999' }} />}
+            placeholder="搜索监控源名称或 URL"
+            prefix={<SearchOutlined className="text-[#94a3b8]" />}
             data-testid="source-search-input"
-            style={{ width: 240 }}
+            className="w-full min-w-0 !rounded-full !border !border-[rgba(88,100,118,0.1)] !bg-white/95 !px-3 !py-1.5 !text-[13px] !shadow-sm sm:max-w-[min(22rem,100%)] sm:shrink-0"
           />
         </div>
-      </div>
 
-      <SectionNote
-        tone={sourceLimitReached ? 'caution' : 'neutral'}
-        style={{ marginBottom: 12 }}
-      >
-        {sourceLimitReached
-          ? `监控源数量已达上限（${sourceCount}/${maxSources}）。新增和批量导入会被阻止。`
-          : `监控源配额：${sourceCount}/${maxSources}，还可新增 ${remainingSources} 个。`}
-      </SectionNote>
+        {/* 第二行：配额（与资讯页统计块同款）+ 操作按钮 */}
+        <div className="mt-3.5 flex min-w-0 flex-col gap-3 sm:mt-4 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
+          <div
+            className={`flex w-fit max-w-full flex-wrap items-center gap-2 rounded-lg border px-2.5 py-1.5 shadow-sm ${
+              sourceLimitReached
+                ? 'border-amber-200/80 bg-amber-50/95'
+                : 'border-[rgba(88,100,118,0.08)] bg-white/90'
+            }`}
+            title={
+              sourceLimitReached
+                ? `监控源数量已达上限（${sourceCount}/${maxSources}）。新增和批量导入会被阻止。`
+                : `监控源配额 ${sourceCount}/${maxSources}，还可新增 ${remainingSources} 个。`
+            }
+            data-testid="source-quota-inline"
+          >
+            <Database
+              className={`h-3.5 w-3.5 shrink-0 ${sourceLimitReached ? 'text-amber-700' : 'text-[#3a9eb8]'}`}
+              strokeWidth={toolbarIconStroke}
+              aria-hidden
+            />
+            <span className={`text-[12px] ${sourceLimitReached ? 'text-amber-900/90' : 'text-[#5f6f82]'}`}>配额</span>
+            <span
+              className={`text-[14px] font-semibold tabular-nums ${sourceLimitReached ? 'text-amber-950' : 'text-[#2c3a50]'}`}
+            >
+              {sourceCount}/{maxSources}
+            </span>
+            {sourceLimitReached ? (
+              <span className="text-[12px] font-medium text-amber-800">已达上限</span>
+            ) : (
+              <>
+                <span className="text-[12px] text-[#94a3b8]">·</span>
+                <span className="text-[12px] text-[#5f6f82]">还可 {remainingSources} 个</span>
+              </>
+            )}
+          </div>
+
+          <div className="flex flex-wrap items-center justify-end gap-2 sm:justify-end">
+            <Tooltip title="检测所有源的可抓取性">
+              <Button
+                type="default"
+                icon={<RadarChartOutlined className="text-[13px]" />}
+                onClick={() => probeAllMutation.mutate()}
+                loading={probeAllMutation.isPending}
+                className={sourceToolbarBtnSecondary}
+              >
+                全部探测
+              </Button>
+            </Tooltip>
+            <Button
+              type="default"
+              icon={<UploadOutlined className="text-[13px]" />}
+              onClick={() => fileInputRef.current?.click()}
+              disabled={sourceLimitReached}
+              className={sourceToolbarBtnSecondary}
+            >
+              导入 CSV
+            </Button>
+            <Dropdown
+              trigger={['click']}
+              disabled={sourceCount === 0 || isExportingAll}
+              menu={{
+                items: exportMenuItems,
+                onClick: ({ key }) => handleExportAll(key as SourceBackupFormat),
+              }}
+            >
+              <Button
+                type="default"
+                icon={<DownloadOutlined className="text-[13px]" />}
+                loading={isExportingAll}
+                disabled={sourceCount === 0}
+                className={sourceToolbarBtnSecondary}
+                data-testid="source-export-all"
+              >
+                导出备份 <DownOutlined className="!ml-1 !text-[10px]" />
+              </Button>
+            </Dropdown>
+            <Button
+              type="default"
+              icon={<PlusOutlined className="text-[13px]" />}
+              onClick={handleAdd}
+              disabled={sourceLimitReached}
+              className={sourceToolbarBtnPrimary}
+            >
+              添加监控源
+            </Button>
+          </div>
+        </div>
+      </div>
 
       {isError && (
         <Alert
@@ -404,6 +555,23 @@ const SourceListContainer: React.FC = () => {
             <Button icon={<SyncOutlined />} size="small" onClick={handleBulkFetch}>
               批量抓取
             </Button>
+            <Dropdown
+              trigger={['click']}
+              disabled={isExportingSelected}
+              menu={{
+                items: exportMenuItems,
+                onClick: ({ key }) => handleExportSelected(key as SourceBackupFormat),
+              }}
+            >
+              <Button
+                icon={<DownloadOutlined />}
+                size="small"
+                loading={isExportingSelected}
+                data-testid="source-export-selected"
+              >
+                导出选中 <DownOutlined className="!ml-1 !text-[10px]" />
+              </Button>
+            </Dropdown>
             <Popconfirm
               title={`确定要删除选中的 ${selectedRowKeys.length} 个监控源吗？`}
               onConfirm={handleBulkDelete}
@@ -416,13 +584,14 @@ const SourceListContainer: React.FC = () => {
         </div>
       )}
 
-      <div data-testid="source-table">
+      <div className="min-w-0 overflow-x-auto pb-1" data-testid="source-table">
         <Table
           rowSelection={rowSelection}
           columns={columns}
           dataSource={sources}
           loading={isLoading}
           rowKey="id"
+          scroll={{ x: 1348 }}
           locale={{
             emptyText: (
               <Empty
@@ -450,15 +619,17 @@ const SourceListContainer: React.FC = () => {
       </div>
 
       <SourceEditorModal
-        open={isModalOpen}
-        editingSource={editingSource}
-        form={form}
-        categories={categories}
-        sharedXAuthConfigs={sharedXAuthConfigs}
-        isSubmitting={createMutation.isPending || updateMutation.isPending}
-        onTypeChange={handleTypeChange}
+          open={isModalOpen}
+          editingSource={editingSource}
+          form={form}
+          authConfigs={authConfigs || []}
+          sharedXAuthConfigs={sharedXAuthConfigs}
+          isSubmitting={createMutation.isPending || updateMutation.isPending}
+          submitError={submitError}
+          onTypeChange={handleTypeChange}
         onSubmit={handleSubmit}
         onClose={() => {
+          setSubmitError(null)
           setIsModalOpen(false)
           setEditingSource(null)
           form.resetFields()

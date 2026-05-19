@@ -1,111 +1,188 @@
-import React from 'react'
-import { KEYWORD_MONITORING_ENABLED } from '../../config/features'
-import type { DigestItem } from '../../types'
+import React from 'react';
+import { Link } from 'react-router-dom';
+import {
+  ExternalLink,
+  Clock,
+  Tag,
+  CheckCircle2,
+  FileText,
+  Gauge,
+  Star,
+} from 'lucide-react';
+import { motion } from 'framer-motion';
+import { KEYWORD_MONITORING_ENABLED } from '../../config/features';
+import type { DigestItem } from '../../types';
+import {
+  buildReaderPath,
+  capDashboardListPreview,
+  digestSummaryPlain,
+  getDigestItemFinalScore,
+  getDigestItemFulltextStatusLabel,
+  getDigestItemRecommendationReason,
+  getDigestItemSourceStars,
+  renderDashboardTimePair,
+} from './dashboardUtils';
 
 interface DashboardItemCardProps {
-  item: DigestItem
-  timeText: string
-  translationAction?: React.ReactNode
+  item: DigestItem;
+  /** 当前资讯分类，用于阅读页返回时恢复 `?tab=` */
+  activeTab: string;
+  /** 若来自搜索列表，用于返回时恢复 `?search=`（优先于 tab） */
+  searchReturnQuery?: string;
 }
 
-const DashboardItemCard: React.FC<DashboardItemCardProps> = ({ item, timeText, translationAction }) => (
-  <article
-    key={item.id}
-    data-testid={`dashboard-item-${item.id}`}
-    style={{
-      padding: '20px 0',
-      borderBottom: '1px solid #f0f0f0',
-    }}
-  >
-    <div style={{
-      display: 'flex',
-      alignItems: 'center',
-      gap: 12,
-      marginBottom: 8,
-    }}>
-      <span style={{
-        fontSize: 13,
-        color: '#6b7c3f',
-        fontWeight: 500,
-      }}>
-        {item.source_name}
-      </span>
-      <span style={{
-        fontSize: 12,
-        color: '#999',
-      }}>
-        {timeText}
-      </span>
-      {item.read_status && (
-        <span style={{
-          fontSize: 11,
-          color: '#999',
-          backgroundColor: '#f5f5f5',
-          padding: '1px 6px',
-          borderRadius: 3,
-        }}>
-          已读
-        </span>
+function splitSummaryLink(summary?: string): { text: string; hasInlineLink: boolean } {
+  const raw = (summary || '').trim();
+  if (!raw) return { text: '', hasInlineLink: false };
+  const normalized = raw.replace(/\s*(?:\.{3}|…)?\s*(查看全文|查看原文)\s*$/, '').trimEnd();
+  return { text: normalized, hasInlineLink: normalized !== raw };
+}
+
+const DashboardItemCard: React.FC<DashboardItemCardProps> = ({
+  item,
+  activeTab,
+  searchReturnQuery,
+}) => {
+  const readerOpts = searchReturnQuery
+    ? { search: searchReturnQuery }
+    : { tab: activeTab };
+  const rawSummary = item.translated_summary || item.summary || '';
+  const plainSummary = digestSummaryPlain(rawSummary);
+  const { text: summaryText, hasInlineLink } = splitSummaryLink(plainSummary || rawSummary);
+  const bodyPreview = (item.body_preview || '').trim();
+  // 正文摘录优先；否则用去 HTML 后的摘要（避免 RSS 摘要带标签导致空白）
+  const previewToShow = bodyPreview || summaryText;
+  const displayPreview = previewToShow ? capDashboardListPreview(previewToShow) : '';
+  const showReadFullLink =
+    hasInlineLink || (!!bodyPreview && !summaryText);
+  const timeText = renderDashboardTimePair(item.publish_time, item.fetched_at || item.publish_time);
+  const finalScore = getDigestItemFinalScore(item);
+  const sourceStars = getDigestItemSourceStars(item);
+  const fulltextLabel = getDigestItemFulltextStatusLabel(item);
+  const recommendationReason = getDigestItemRecommendationReason(item);
+
+  const hasKeywords =
+    KEYWORD_MONITORING_ENABLED && item.keyword_matches && item.keyword_matches.length > 0;
+
+  return (
+    <motion.article
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="group relative overflow-hidden rounded-2xl border border-[rgba(88,100,118,0.1)] bg-white/95 p-5 shadow-[0_8px_28px_-12px_rgba(41,56,89,0.12)] transition-all hover:border-[#49A8C9]/22 hover:bg-white hover:shadow-[0_12px_36px_-14px_rgba(41,56,89,0.14)]"
+    >
+      {!item.read_status && (
+        <div className="absolute left-0 top-0 h-full w-1 bg-[#49A8C9]" />
       )}
-    </div>
 
-    <h2 style={{
-      fontSize: 17,
-      fontWeight: 500,
-      color: item.read_status ? '#999' : '#333',
-      margin: '0 0 8px',
-      lineHeight: 1.5,
-    }}>
-      <a
-        href={item.url}
-        target="_blank"
-        rel="noopener noreferrer"
-        style={{
-          color: 'inherit',
-          textDecoration: 'none',
-        }}
-        onMouseEnter={(e) => {
-          e.currentTarget.style.color = '#6b7c3f'
-        }}
-        onMouseLeave={(e) => {
-          e.currentTarget.style.color = item.read_status ? '#999' : '#333'
-        }}
-      >
-        {item.translated_title || item.title}
-      </a>
-      {translationAction}
-    </h2>
+      <div className="flex flex-col gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-2 text-[12px]">
+          <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
+            <span className="font-medium tracking-tight text-[#7a7358]">
+              {item.source_name}
+            </span>
+            {sourceStars ? (
+              <span className="inline-flex items-center gap-1 rounded-full border border-[#8C866A]/18 bg-[#8C866A]/8 px-2 py-0.5 text-[#7a7358]">
+                <Star size={11} className="shrink-0 fill-current" strokeWidth={1.5} />
+                {sourceStars}星
+              </span>
+            ) : null}
+            {finalScore !== undefined ? (
+              <span className="inline-flex items-center gap-1 rounded-full border border-[#49A8C9]/18 bg-[#49A8C9]/8 px-2 py-0.5 text-[#3a8da9]">
+                <Gauge size={11} className="shrink-0" strokeWidth={1.5} />
+                {Math.round(finalScore)}分
+              </span>
+            ) : null}
+            {fulltextLabel ? (
+              <span className="inline-flex items-center gap-1 rounded-full border border-[#5f6f82]/14 bg-[#eef4f8] px-2 py-0.5 text-[#5f6f82]">
+                <FileText size={11} className="shrink-0" strokeWidth={1.5} />
+                {fulltextLabel}
+              </span>
+            ) : null}
+            <span className="flex items-center gap-1 text-[#5f6f82]">
+              <Clock size={12} />
+              {timeText}
+            </span>
+            <span className="hidden text-[#d0d5db] sm:inline" aria-hidden>
+              ·
+            </span>
+            <a
+              href={item.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-0.5 text-[12px] font-normal text-[#a8b0ba] underline-offset-2 hover:text-[#49A8C9] hover:underline"
+            >
+              原始出处
+              <ExternalLink size={10} className="shrink-0 opacity-70" aria-hidden />
+            </a>
+          </div>
+          {item.read_status && (
+            <span className="flex items-center gap-1 text-[#8a96a5]">
+              <CheckCircle2 size={12} />
+              已读
+            </span>
+          )}
+        </div>
 
-    {(item.translated_summary || item.summary) && (
-      <p style={{
-        fontSize: 14,
-        color: '#666',
-        lineHeight: 1.7,
-        margin: 0,
-        display: '-webkit-box',
-        WebkitLineClamp: 2,
-        WebkitBoxOrient: 'vertical',
-        overflow: 'hidden',
-      }}>
-        {item.translated_summary || item.summary}
-      </p>
-    )}
-    {KEYWORD_MONITORING_ENABLED && item.keyword_matches?.length > 0 && (
-      <div style={{ marginTop: 10, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-        {item.keyword_matches.map((kw) => (
-          <span key={kw.id} style={{
-            fontSize: 11,
-            padding: '2px 8px',
-            backgroundColor: `${kw.color || '#ff4d4f'}15`,
-            color: kw.color || '#ff4d4f',
-            borderRadius: 3,
-          }}>
-            {kw.keyword}
-          </span>
-        ))}
+        <h2 className="text-[17px] font-semibold leading-snug tracking-tight sm:text-[18px]">
+          <Link
+            to={buildReaderPath(item.id, readerOpts)}
+            data-testid={`dashboard-title-link-${item.id}`}
+            className={`transition-colors hover:text-[#49A8C9] ${
+              item.read_status ? 'text-[#5f6f82]' : 'text-[#2c3a50]'
+            }`}
+          >
+            {item.translated_title || item.title}
+          </Link>
+        </h2>
+
+        <div className="flex flex-wrap items-start gap-x-2 gap-y-1">
+          <p className="line-clamp-2 min-w-0 max-w-full flex-1 basis-0 break-words text-[14px] leading-relaxed sm:text-[15px]">
+            {displayPreview ? (
+              <span className="text-[#5f6f82]">{displayPreview}</span>
+            ) : (
+              <span className="text-[#a8b0ba]">
+                未展示摘要，可点标题或「阅读全文」查看本地正文。
+              </span>
+            )}
+          </p>
+          {(showReadFullLink && displayPreview) || !displayPreview ? (
+            <Link
+              to={buildReaderPath(item.id, readerOpts)}
+              className="inline-flex shrink-0 items-center gap-1 text-[14px] font-semibold text-[#49A8C9] hover:text-[#3d94b3] sm:text-[15px]"
+            >
+              阅读全文
+            </Link>
+          ) : null}
+        </div>
+
+        {recommendationReason?.why_matters ? (
+          <p className="line-clamp-2 rounded-lg border border-[rgba(88,100,118,0.08)] bg-[#f6fafc] px-3 py-2 text-[12px] leading-relaxed text-[#5f6f82]">
+            <span className="font-semibold text-[#7a7358]">理由</span>
+            <span className="ml-1">{recommendationReason.why_matters}</span>
+          </p>
+        ) : null}
+
+        {hasKeywords && (
+          <div className="mt-0.5 flex flex-wrap gap-2 border-t border-[rgba(88,100,118,0.08)] pt-3">
+            {item.keyword_matches?.map((kw) => (
+              <span
+                key={kw.id}
+                className="flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[12px] font-semibold"
+                style={{
+                  backgroundColor: `${kw.color || '#49A8C9'}18`,
+                  color: kw.color || '#49A8C9',
+                  border: `1px solid ${kw.color || '#49A8C9'}30`,
+                }}
+              >
+                <Tag size={10} />
+                {kw.keyword}
+              </span>
+            ))}
+          </div>
+        )}
       </div>
-    )}
-  </article>
-)
+    </motion.article>
+  );
+};
 
-export default DashboardItemCard
+export default DashboardItemCard;

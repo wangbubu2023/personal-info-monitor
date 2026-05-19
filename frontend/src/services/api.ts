@@ -1,6 +1,6 @@
 import axios from 'axios'
 import { promptApiKey } from '../components/ui/ApiKeyModal'
-import { clearApiKey, readApiKey, writeApiKey } from './apiKeyStore'
+import { clearApiKey, readApiKey, readBootstrapToken, writeApiKey } from './apiKeyStore'
 
 declare global {
   interface Window {
@@ -105,6 +105,67 @@ function withApiKeyHeader<T extends { headers?: unknown }>(config: T, apiKey: st
   }
 }
 
+// Resolve the backend origin for out-of-band requests like /local-token.
+//
+// Production (FastAPI serves the SPA): the frontend is on the same origin as the
+// backend, so a relative path is correct and avoids any CORS issue regardless of
+// whether the user typed "localhost" or "127.0.0.1" in the address bar.
+//
+// Dev (Vite proxy on :3000): VITE_API_URL is not set, but the Vite proxy only
+// covers /api — call the backend directly. CORS allows localhost:3000 → 127.0.0.1:8000.
+//
+// Tauri: always direct loopback.
+function backendOrigin(): string {
+  const viteApiUrl = (import.meta.env.VITE_API_URL as string | undefined) || ''
+  if (viteApiUrl) {
+    // Explicit override (e.g. custom dev backend) — strip /api suffix.
+    return viteApiUrl.replace(/\/api\/?$/, '').replace(/\/$/, '')
+  }
+  if (import.meta.env.TAURI_ENV_PLATFORM) {
+    return 'http://127.0.0.1:8000'
+  }
+  if (import.meta.env.DEV) {
+    // Vite dev server: /local-token is not proxied, go direct to backend.
+    return 'http://127.0.0.1:8000'
+  }
+  // Production: FastAPI serves this file, so we're on the same origin.
+  return ''
+}
+
+/**
+ * Silently fetch the API key from the local-only /local-token endpoint.
+ *
+ * The endpoint requires a bootstrap token which the Tauri shell reads from
+ * runtime-secrets.json (0600), and the web client picks up from a one-shot
+ * ?bootstrap_token=... URL param. Without a token, we return null and the
+ * caller falls back to a manual prompt — this is the expected path when a
+ * new browser opens the app without the bootstrap URL.
+ *
+ * Returns null (and never throws) on any failure.
+ */
+async function tryAutoProvision(): Promise<string | null> {
+  try {
+    const token = await readBootstrapToken()
+    if (!token) return null
+
+    const resp = await fetch(`${backendOrigin()}/local-token`, {
+      headers: { 'X-Bootstrap-Token': token },
+      signal: AbortSignal.timeout(3000),
+    })
+    if (!resp.ok) return null
+    const data = await resp.json()
+    const key = typeof data?.api_key === 'string' ? data.api_key.trim() : null
+    if (key) {
+      // Auto-provision implies an established trust boundary (Tauri runtime or
+      // one-shot bootstrap URL), so we can safely persist across restarts.
+      await writeApiKey(key, { remember: true })
+    }
+    return key || null
+  } catch {
+    return null
+  }
+}
+
 function requestApiKeyOnce(): Promise<string | null> {
   const activePrompt = getPromptPromise()
   if (activePrompt) {
@@ -117,6 +178,8 @@ function requestApiKeyOnce(): Promise<string | null> {
     if (!trimmed) {
       return null
     }
+    // Manual input defaults to session-only storage; a future UI checkbox can
+    // opt the user into { remember: true } for long-lived persistence.
     return writeApiKey(trimmed).then(() => trimmed)
   })().finally(() => {
     setPromptPromise(null)
@@ -131,6 +194,9 @@ export async function ensureApiKey(): Promise<string | null> {
   if (existing && existing.trim()) {
     return existing.trim()
   }
+  // Try silent auto-provision before showing any prompt to the user.
+  const auto = await tryAutoProvision()
+  if (auto) return auto
   return requestApiKeyOnce()
 }
 
@@ -154,6 +220,10 @@ async function recoverApiKey(failedApiKey: string | null): Promise<string | null
     if (latestApiKey && failedApiKey && latestApiKey === failedApiKey) {
       await clearApiKey()
     }
+
+    // Key changed on server (e.g. secrets file was recreated) — re-fetch silently.
+    const refreshed = await tryAutoProvision()
+    if (refreshed) return refreshed
 
     return requestApiKeyOnce()
   })().finally(() => {

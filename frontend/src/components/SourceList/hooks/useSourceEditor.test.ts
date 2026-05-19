@@ -26,8 +26,6 @@ vi.mock('../../../utils/sourceAuth', () => ({
   }),
   resolveSiteUrlForAuth: vi.fn((v?: string) => v || ''),
   isXCookieProfile: vi.fn(() => false),
-  getAuthConfigDisplayName: vi.fn(() => 'display'),
-  getDefaultSharedXAuthConfigId: vi.fn(() => undefined),
 }))
 
 import { useSourceEditor } from './useSourceEditor'
@@ -41,26 +39,213 @@ describe('useSourceEditor', () => {
   beforeEach(() => vi.clearAllMocks())
 
   it('initialises with isModalOpen=false and editingSource=null', () => {
-    const { result } = renderHook(() => useSourceEditor({ authConfigs: [], sourceLimitReached: false, maxSources: 200, sharedXAuthConfigs: [], defaultSharedXAuthConfigId: undefined }), { wrapper })
+    const { result } = renderHook(() => useSourceEditor({ authConfigs: [], sourceLimitReached: false, maxSources: 200, defaultSharedXAuthConfigId: undefined }), { wrapper })
     expect(result.current.isModalOpen).toBe(false)
     expect(result.current.editingSource).toBeNull()
   })
 
   it('handleAdd opens modal and resets editingSource', () => {
-    const { result } = renderHook(() => useSourceEditor({ authConfigs: [], sourceLimitReached: false, maxSources: 200, sharedXAuthConfigs: [], defaultSharedXAuthConfigId: undefined }), { wrapper })
+    const { result } = renderHook(() => useSourceEditor({ authConfigs: [], sourceLimitReached: false, maxSources: 200, defaultSharedXAuthConfigId: undefined }), { wrapper })
     act(() => { result.current.handleAdd() })
     expect(result.current.isModalOpen).toBe(true)
     expect(result.current.editingSource).toBeNull()
   })
 
   it('handleAdd does not open modal when sourceLimitReached=true', () => {
-    const { result } = renderHook(() => useSourceEditor({ authConfigs: [], sourceLimitReached: true, maxSources: 200, remainingSources: 0, sharedXAuthConfigs: [], defaultSharedXAuthConfigId: undefined }), { wrapper })
+    const { result } = renderHook(() => useSourceEditor({ authConfigs: [], sourceLimitReached: true, maxSources: 200, defaultSharedXAuthConfigId: undefined }), { wrapper })
     act(() => { result.current.handleAdd() })
     expect(result.current.isModalOpen).toBe(false)
   })
 
   it('matchAuthConfigByHost returns undefined for empty configs', () => {
-    const { result } = renderHook(() => useSourceEditor({ authConfigs: [], sourceLimitReached: false, maxSources: 200, sharedXAuthConfigs: [], defaultSharedXAuthConfigId: undefined }), { wrapper })
+    const { result } = renderHook(() => useSourceEditor({ authConfigs: [], sourceLimitReached: false, maxSources: 200, defaultSharedXAuthConfigId: undefined }), { wrapper })
     expect(result.current.matchAuthConfigByHost('https://example.com', [])).toBeUndefined()
+  })
+
+  // ---------------------------------------------------------------------
+  // rss_only metadata toggle
+  //
+  // These tests verify the "仅 RSS 摘要" switch round-trips correctly
+  // through metadata.rss_only so operators can disable Playwright
+  // hydration for DataDome-walled sites without losing the config.
+  // ---------------------------------------------------------------------
+  it('writes metadata.rss_only=true when rss_only_enabled is on (create)', async () => {
+    const { sourcesApi } = await import('../../../services/sources')
+    const { result } = renderHook(
+      () => useSourceEditor({ authConfigs: [], sourceLimitReached: false, maxSources: 200, defaultSharedXAuthConfigId: undefined }),
+      { wrapper },
+    )
+    await act(async () => {
+      await result.current.handleSubmit({
+        name: 'NYT',
+        type: 'website',
+        url: 'https://www.nytimes.com',
+        enabled: true,
+        fetch_interval: 60,
+        use_keyword_filter: false,
+        auth_required: false,
+        paywall_enabled: false,
+        rss_only_enabled: true,
+      } as any)
+    })
+    expect(sourcesApi.create).toHaveBeenCalledTimes(1)
+    const payload = (sourcesApi.create as any).mock.calls[0][0]
+    expect(payload.metadata).toMatchObject({ rss_only: true })
+  })
+
+  it('writes source quality metadata from editor fields', async () => {
+    const { sourcesApi } = await import('../../../services/sources')
+    const { result } = renderHook(
+      () => useSourceEditor({ authConfigs: [], sourceLimitReached: false, maxSources: 200, defaultSharedXAuthConfigId: undefined }),
+      { wrapper },
+    )
+    await act(async () => {
+      await result.current.handleSubmit({
+        name: 'OpenAI Blog',
+        type: 'rss',
+        url: 'https://openai.com/news/rss.xml',
+        enabled: true,
+        fetch_interval: 60,
+        use_keyword_filter: false,
+        auth_required: false,
+        source_stars: 3,
+        authority_type: 'official_blog',
+        domain_focus_text: 'AI\nmodel, developer',
+        source_weight: 1.2,
+      } as any)
+    })
+
+    const payload = (sourcesApi.create as any).mock.calls[0][0]
+    expect(payload.metadata).toMatchObject({
+      source_stars: 3,
+      authority_type: 'official_blog',
+      domain_focus: ['AI', 'model', 'developer'],
+      source_weight: 1.2,
+    })
+  })
+
+  it('omits metadata.rss_only when toggle is off on new source', async () => {
+    const { sourcesApi } = await import('../../../services/sources')
+    const { result } = renderHook(
+      () => useSourceEditor({ authConfigs: [], sourceLimitReached: false, maxSources: 200, defaultSharedXAuthConfigId: undefined }),
+      { wrapper },
+    )
+    await act(async () => {
+      await result.current.handleSubmit({
+        name: 'Plain',
+        type: 'website',
+        url: 'https://example.com',
+        enabled: true,
+        fetch_interval: 60,
+        use_keyword_filter: false,
+        auth_required: false,
+        paywall_enabled: false,
+        rss_only_enabled: false,
+      } as any)
+    })
+    const payload = (sourcesApi.create as any).mock.calls[0][0]
+    expect(payload.metadata).not.toHaveProperty('rss_only')
+  })
+
+  it('strips metadata.rss_only for non-website source types', async () => {
+    const { sourcesApi } = await import('../../../services/sources')
+    const { result } = renderHook(
+      () => useSourceEditor({ authConfigs: [], sourceLimitReached: false, maxSources: 200, defaultSharedXAuthConfigId: undefined }),
+      { wrapper },
+    )
+    await act(async () => {
+      // Even if the form value somehow leaks onto an rss source (e.g. user
+      // switched types after flipping the toggle), metadata stays clean.
+      await result.current.handleSubmit({
+        name: 'Some RSS',
+        type: 'rss',
+        url: 'https://example.com/feed',
+        enabled: true,
+        fetch_interval: 60,
+        use_keyword_filter: false,
+        auth_required: false,
+        rss_only_enabled: true,
+      } as any)
+    })
+    const payload = (sourcesApi.create as any).mock.calls[0][0]
+    expect(payload.metadata).not.toHaveProperty('rss_only')
+  })
+
+  it('handleEdit hydrates rss_only_enabled from metadata.rss_only', () => {
+    const { result } = renderHook(
+      () => useSourceEditor({ authConfigs: [], sourceLimitReached: false, maxSources: 200, defaultSharedXAuthConfigId: undefined }),
+      { wrapper },
+    )
+    act(() => {
+      result.current.handleEdit({
+        id: 'src-1',
+        name: 'NYT',
+        type: 'website',
+        url: 'https://www.nytimes.com',
+        enabled: true,
+        fetch_interval: 60,
+        use_keyword_filter: false,
+        auth_required: false,
+        auth_config_id: null,
+        extra_urls: [],
+        metadata: { rss_only: true },
+      } as any)
+    })
+    expect(result.current.form.getFieldValue('rss_only_enabled')).toBe(true)
+  })
+
+  it('handleEdit hydrates source quality fields from metadata', () => {
+    const { result } = renderHook(
+      () => useSourceEditor({ authConfigs: [], sourceLimitReached: false, maxSources: 200, defaultSharedXAuthConfigId: undefined }),
+      { wrapper },
+    )
+    act(() => {
+      result.current.handleEdit({
+        id: 'src-quality',
+        name: 'OpenAI Blog',
+        type: 'rss',
+        url: 'https://openai.com/news/rss.xml',
+        enabled: true,
+        fetch_interval: 60,
+        use_keyword_filter: false,
+        auth_required: false,
+        auth_config_id: null,
+        extra_urls: [],
+        metadata: {
+          source_stars: 3,
+          authority_type: 'official_blog',
+          domain_focus: ['AI', 'model'],
+          source_weight: 1.2,
+        },
+      } as any)
+    })
+
+    expect(result.current.form.getFieldValue('source_stars')).toBe(3)
+    expect(result.current.form.getFieldValue('authority_type')).toBe('official_blog')
+    expect(result.current.form.getFieldValue('domain_focus_text')).toBe('AI\nmodel')
+    expect(result.current.form.getFieldValue('source_weight')).toBe(1.2)
+  })
+
+  it('handleEdit defaults rss_only_enabled to false when metadata is silent', () => {
+    const { result } = renderHook(
+      () => useSourceEditor({ authConfigs: [], sourceLimitReached: false, maxSources: 200, defaultSharedXAuthConfigId: undefined }),
+      { wrapper },
+    )
+    act(() => {
+      result.current.handleEdit({
+        id: 'src-2',
+        name: 'Generic',
+        type: 'website',
+        url: 'https://example.com',
+        enabled: true,
+        fetch_interval: 60,
+        use_keyword_filter: false,
+        auth_required: false,
+        auth_config_id: null,
+        extra_urls: [],
+        metadata: {},
+      } as any)
+    })
+    expect(result.current.form.getFieldValue('rss_only_enabled')).toBe(false)
   })
 })

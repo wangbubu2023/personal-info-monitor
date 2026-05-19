@@ -1,5 +1,12 @@
 import api from './api'
-import type { Keyword, KeywordCreate } from '../types'
+import type {
+  Keyword,
+  KeywordBatchCreate,
+  KeywordBatchCreateResponse,
+  KeywordBatchUpdate,
+  KeywordBatchUpdateResponse,
+  KeywordCreate,
+} from '../types'
 
 export const keywordsApi = {
   // List keywords
@@ -17,6 +24,18 @@ export const keywordsApi = {
   // Create keyword
   create: async (data: KeywordCreate): Promise<Keyword> => {
     const response = await api.post('/keywords', data)
+    return response.data
+  },
+
+  // Batch create keywords
+  createBatch: async (data: KeywordBatchCreate): Promise<KeywordBatchCreateResponse> => {
+    const response = await api.post('/keywords/batch', data)
+    return response.data
+  },
+
+  // Batch update keywords
+  updateBatch: async (data: KeywordBatchUpdate): Promise<KeywordBatchUpdateResponse> => {
+    const response = await api.patch('/keywords/batch', data)
     return response.data
   },
 

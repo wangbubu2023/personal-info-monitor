@@ -40,6 +40,13 @@ export interface AuthConfig {
   updated_at: string
   has_credentials: boolean
   bound_source_count: number
+  bound_sources?: number
+  saved_username?: string
+  has_password?: boolean
+  has_cookies?: boolean
+  cookie_count?: number
+  cookie_mode?: string
+  cookie_updated_at?: string
 }
 
 export interface AuthConfigCreate {
@@ -52,6 +59,7 @@ export interface AuthConfigCreate {
   cookies?: Record<string, string> | string
   login_url?: string
   login_selectors?: Record<string, string>
+  bind_all_x_sources?: boolean
 }
 
 // AI Model types
@@ -102,8 +110,14 @@ export const configsApi = {
     return response.data
   },
 
-  deleteAuthConfig: async (id: string): Promise<void> => {
-    await api.delete(`/configs/auth-configs/${id}`)
+  deleteAuthConfig: async (
+    id: string,
+  ): Promise<{ sources_unlinked: number; browser_sessions_unlinked: number }> => {
+    const response = await api.delete(`/configs/auth-configs/${id}`)
+    return {
+      sources_unlinked: Number(response.data?.sources_unlinked || 0),
+      browser_sessions_unlinked: Number(response.data?.browser_sessions_unlinked || 0),
+    }
   },
 
   // System Settings

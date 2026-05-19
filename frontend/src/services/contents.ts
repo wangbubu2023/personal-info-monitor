@@ -6,7 +6,6 @@ export interface ListContentsParams {
   page_size?: number
   source_id?: string
   source_type?: string
-  category_id?: string
   read_status?: boolean
   favorited?: boolean
   archived?: boolean
@@ -19,6 +18,10 @@ export interface ContentUpdate {
   read_status?: boolean
   favorited?: boolean
   archived?: boolean
+  is_user_edited?: boolean
+  title?: string
+  summary?: string
+  full_content?: string
 }
 
 export interface ReaderPayload {
@@ -176,9 +179,9 @@ export const contentsApi = {
     await api.post(`/contents/${id}/read`)
   },
 
-  // Toggle favorite
-  toggleFavorite: async (id: string): Promise<{ favorited: boolean }> => {
-    const response = await api.post(`/contents/${id}/favorite`)
+  /** Set favorite explicitly (idempotent). Pass desired state after reading current item. */
+  setFavorite: async (id: string, favorited: boolean): Promise<{ favorited: boolean }> => {
+    const response = await api.patch(`/contents/${id}/favorite`, { favorited })
     return response.data
   },
 
