@@ -182,8 +182,8 @@ async def run_fetch_pipeline(db: Session, source: Source, manual_trigger: bool =
     """
     # Import stages lazily to avoid circular import (fetch_tasks → coordinator → collector → … → fetch_tasks).
     from app.pipeline.collector_stage import CollectorStage
-    from app.pipeline.normalizer_stage import NormalizerStage
-    from app.pipeline.storage_stage import StorageStage
+    from app.domains.ingest.normalizer import NormalizerStage
+    from app.domains.ingest.storage import StorageStage
 
     # 1. Collector Stage
     raw_contents, merged_warning, primary_warning = await CollectorStage.execute(db, source)

@@ -8,7 +8,9 @@ here:
   imported by ``normalizer_stage``, ``coordinator``,
   ``collectors/website_parser`` and ``api/contents_cleanup``)
 * ``domains/ingest/dedupe.py``, ``normalizer.py``, ``storage.py`` — moved
-  from ``app/pipeline``
+  from ``app/pipeline`` in Phase 3 step 2 (legacy ``app.pipeline.*`` paths
+  remain as re-export shims so existing test ``patch`` targets keep
+  resolving through Phase 7).
 * ``domains/ingest/build_content.py`` — split from
   ``processors/content_processor.py`` (LLM-free portion only)
 * ``domains/ingest/extractor.py``, ``keywords/`` — moved from

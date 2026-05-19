@@ -375,7 +375,7 @@ class TestStorageStage:
         nested_ctx.__enter__ = MagicMock(return_value=nested_ctx)
         nested_ctx.__exit__ = MagicMock(return_value=False)
 
-        with patch("app.pipeline.storage_stage.normalize_external_id", side_effect=lambda x: x):
+        with patch("app.domains.ingest.storage.normalize_external_id", side_effect=lambda x: x):
             saved, marker = StorageStage.execute(db, [c1, c2])
 
         assert saved == 2
@@ -396,7 +396,7 @@ class TestStorageStage:
         nested_ctx.__exit__ = MagicMock(return_value=False)
         db.add.side_effect = IntegrityError("dup", {}, None)
 
-        with patch("app.pipeline.storage_stage.normalize_external_id", side_effect=lambda x: x):
+        with patch("app.domains.ingest.storage.normalize_external_id", side_effect=lambda x: x):
             saved, marker = StorageStage.execute(db, [c1])
 
         assert saved == 0
@@ -423,7 +423,7 @@ class TestStorageStage:
         nested_ctx.__enter__ = MagicMock(return_value=nested_ctx)
         nested_ctx.__exit__ = MagicMock(return_value=False)
 
-        with patch("app.pipeline.storage_stage.normalize_external_id", return_value="first-id"):
+        with patch("app.domains.ingest.storage.normalize_external_id", return_value="first-id"):
             saved, marker = StorageStage.execute(db, [c1])
 
         assert saved == 1
