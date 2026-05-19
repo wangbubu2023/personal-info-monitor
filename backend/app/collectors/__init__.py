@@ -2,12 +2,12 @@
 
 from app.domains.fetch.collectors import (
     BaseCollector,
+    PodcastCollector,
     RSSCollector,
     WebsiteCollector,
     XCollector,
+    YouTubeCollector,
 )
-from app.collectors.youtube import YouTubeCollector
-from app.collectors.podcast import PodcastCollector
 from app.features import PODCAST_DISABLED_DETAIL, PODCAST_SOURCES_ENABLED
 
 

@@ -1,21 +1,33 @@
 """fetch-domain collector package.
 
-Phase 2.6 onwards moves the per-source-type collectors out of
-``app.collectors`` and into this package. Migration order (one PR each):
+All per-source-type collectors live here as of Phase 2.9:
 
-* Phase 2.6 — ``base`` + ``rss``
-* Phase 2.7 — ``website``
-* Phase 2.8 — ``x``
-* Phase 2.9 — ``youtube`` + ``podcast``
+* ``base``           — shared :class:`BaseCollector` (Phase 2.6)
+* ``rss``            — :class:`RSSCollector` (Phase 2.6)
+* ``website``        — :class:`WebsiteCollector` + helpers/parser (Phase 2.7)
+* ``x_twitter``      — :class:`XCollector` + text/formatters (Phase 2.8)
+* ``youtube``        — :class:`YouTubeCollector` (Phase 2.9)
+* ``podcast``        — :class:`PodcastCollector` (Phase 2.9)
 
-Until every collector lives here, ``app.collectors.*`` keeps re-export
-shims pointing back to the new locations so existing imports and test
-``unittest.mock.patch`` targets keep working through Phase 7.
+The legacy ``app.collectors.*`` modules remain as re-export shims so
+existing imports and test ``unittest.mock.patch`` targets keep working
+through Phase 7. New code should import from
+``app.domains.fetch.collectors`` or use the ``app.collectors.get_collector``
+factory.
 """
 
 from app.domains.fetch.collectors.base import BaseCollector
+from app.domains.fetch.collectors.podcast import PodcastCollector
 from app.domains.fetch.collectors.rss import RSSCollector
 from app.domains.fetch.collectors.website import WebsiteCollector
 from app.domains.fetch.collectors.x_twitter import XCollector
+from app.domains.fetch.collectors.youtube import YouTubeCollector
 
-__all__ = ["BaseCollector", "RSSCollector", "WebsiteCollector", "XCollector"]
+__all__ = [
+    "BaseCollector",
+    "PodcastCollector",
+    "RSSCollector",
+    "WebsiteCollector",
+    "XCollector",
+    "YouTubeCollector",
+]
