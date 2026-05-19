@@ -288,38 +288,22 @@ class ContentProcessor:
         self,
         content: Content,
         regenerate_summary: bool = False,
-        retranslate: bool = False
+        retranslate: bool = False,
     ) -> Content:
-        """
-        Reprocess an existing content item.
-        
-        Args:
-            content: Existing Content model instance
-            regenerate_summary: Whether to regenerate the summary
-            retranslate: Whether to retranslate
-        
-        Returns:
-            Updated Content instance
-        """
-        if regenerate_summary and content.full_content:
-            content.summary = await self.summarizer.summarize(content.full_content)
+        """Deprecated wrapper around :func:`app.domains.enrich.content.reprocess.reprocess_content`.
 
-        if retranslate:
-            if content.title and not self.translator.is_chinese(content.title):
-                content.translated_title = await self.translator.translate(
-                    content.title, "zh-CN"
-                )
-            if content.summary and not self.translator.is_chinese(content.summary):
-                content.translated_summary = await self.translator.translate(
-                    content.summary, "zh-CN"
-                )
+        Phase 4 step 4 of the module-refactor blueprint extracted this
+        manual-reprocess flow into the enrich domain. The method body
+        now just forwards to that standalone function with this
+        instance's summariser/translator so existing callers keep
+        working unchanged (Phase 7 will retire the wrapper).
+        """
+        from app.domains.enrich.content.reprocess import reprocess_content as _reprocess
 
-        content.metadata_ = merge_content_quality_metadata(
-            content.metadata_ or {},
-            title=content.title or "",
-            full_content=content.full_content,
-            summary=content.summary,
-            translated_summary=content.translated_summary,
+        return await _reprocess(
+            content,
+            regenerate_summary=regenerate_summary,
+            retranslate=retranslate,
+            summarizer=self.summarizer,
+            translator=self.translator,
         )
-        content.updated_at = utcnow_naive()
-        return content

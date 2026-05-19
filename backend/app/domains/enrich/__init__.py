@@ -28,4 +28,10 @@ Phase progress:
   reverse-depending on ``app.api``; the legacy
   ``app.api.content_shared`` path keeps the same symbols as re-exports
   through Phase 7.
+* ``domains/enrich/content/reprocess.py`` — extracted from
+  ``ContentProcessor.reprocess_content`` in Phase 4 step 4 (manual
+  UI-triggered summary regeneration / re-translation of an existing
+  Content row). The legacy method on ``ContentProcessor`` is now a
+  thin wrapper that delegates here; ``tasks/process_tasks.process_content``
+  keeps calling ``ContentProcessor().reprocess_content(...)`` unchanged.
 """
