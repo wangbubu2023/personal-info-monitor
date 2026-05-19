@@ -16,7 +16,7 @@ from app.tasks.fetch_auth_helpers import (
     maybe_refresh_auth_cookies,
     try_parse_auth_credentials,
 )
-from app.tasks.fetch_orchestrator import merge_warning_messages
+from app.domains.sources.status import merge_warning_messages
 from app.pipeline.utils import get_source_urls, dedupe_raw_contents
 
 logger = get_logger(__name__)

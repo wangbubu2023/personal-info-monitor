@@ -18,7 +18,7 @@ from app.domains.sources.scheduling import (
 from app.features import PODCAST_SOURCES_ENABLED
 from app.models.source import SourceType
 from app.pipeline.coordinator import run_fetch_pipeline
-from app.tasks.fetch_orchestrator import persist_fetch_task_exception
+from app.domains.sources.status import persist_fetch_task_exception
 from app.utils.logger import get_logger, bind_job_id, restore_job_id
 from app.utils.url import normalize_host
 

@@ -113,7 +113,7 @@ def _update_source_status(
     message: str,
 ):
     """Centralised helper to update source metadata after a fetch attempt."""
-    from app.tasks.fetch_orchestrator import set_last_fetch_outcome
+    from app.domains.sources.status import set_last_fetch_outcome
 
     source.last_fetched_at = utcnow_naive()
     source.last_error = merged_warning

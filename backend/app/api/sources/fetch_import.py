@@ -1,16 +1,17 @@
 # backend/app/api/sources/fetch_import.py
 """Fetch trigger and bulk import routes."""
 
-import asyncio
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.background import fetch_lock
 from app.database import get_async_db
 from app.models import Source
 from app.schemas.source import SourceBulkImport
+from app.tasks.task_queue import task_queue
 from app.utils.logger import get_logger
 from ._helpers import (
     _ensure_supported_source_type,
@@ -83,24 +84,51 @@ async def bulk_import_sources(import_data: SourceBulkImport, db: AsyncSession = 
 
 @router.post("/fetch-all")
 async def trigger_fetch_all(db: AsyncSession = Depends(get_async_db)):
+    """Enqueue a manual fetch for every visible, enabled source.
+
+    Phase 1 of the refactor replaced ``asyncio.create_task(fetch_all_sources(...))``
+    with explicit ``task_queue.enqueue_fetch`` calls so the bounded queue's
+    back-pressure (DLQ on overflow) applies to manual fetch-all just like to
+    the scheduled tick.
+    """
     result = await db.execute(_exclude_disabled_source_types(select(Source).filter(Source.enabled == True)))
     sources = result.scalars().all()
     if not sources:
         return {"message": "No active sources to fetch", "source_count": 0}
-    from app.tasks.fetch_tasks import fetch_all_sources
-    asyncio.create_task(fetch_all_sources(manual_trigger=True))
-    return {"message": "Fetch all dispatched", "source_count": len(sources)}
+
+    scheduled = 0
+    dropped = 0
+    for source in sources:
+        sid = str(source.id)
+        if fetch_lock.is_locked(sid):
+            continue
+        if await task_queue.enqueue_fetch(sid, manual_trigger=True):
+            scheduled += 1
+        else:
+            dropped += 1
+
+    return {
+        "message": "Fetch all dispatched",
+        "source_count": len(sources),
+        "scheduled": scheduled,
+        "dropped": dropped,
+    }
 
 
 @router.post("/{source_id}/fetch")
 async def trigger_fetch(source_id: UUID, db: AsyncSession = Depends(get_async_db)):
+    """Enqueue a manual fetch for one source via the bounded task queue."""
     result = await db.execute(select(Source).filter(Source.id == source_id))
     source = result.scalar_one_or_none()
     if not source or not _source_is_visible(source):
         raise HTTPException(status_code=404, detail="Source not found")
-    from app.background import fetch_lock
-    from app.tasks.fetch_tasks import fetch_source
-    if fetch_lock.is_locked(str(source_id)):
-        return {"message": "Fetch already running", "source_id": str(source_id)}
-    asyncio.create_task(fetch_source(str(source_id), manual_trigger=True))
-    return {"message": "Fetch task dispatched", "source_id": str(source_id)}
+    sid = str(source_id)
+    if fetch_lock.is_locked(sid):
+        return {"message": "Fetch already running", "source_id": sid}
+    accepted = await task_queue.enqueue_fetch(sid, manual_trigger=True)
+    if not accepted:
+        raise HTTPException(
+            status_code=503,
+            detail="Fetch queue is full; try again shortly",
+        )
+    return {"message": "Fetch task dispatched", "source_id": sid}

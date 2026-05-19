@@ -8,7 +8,7 @@ from fastapi.responses import PlainTextResponse
 
 from app.background import task_tracker
 from app.config import get_settings
-from app.data.source_types import source_type_catalog
+from app.domains.sources.source_types import source_type_catalog
 from app.database import SessionLocal
 from app.scheduler import scheduler
 from app.services.monitor_service import MonitorService
