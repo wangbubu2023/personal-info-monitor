@@ -2,7 +2,6 @@
 
 import asyncio
 import random
-from datetime import timedelta
 from uuid import uuid4
 
 from app.background import (
@@ -12,14 +11,22 @@ from app.background import (
     task_tracker,
 )
 from app.config import get_settings
+from app.domains.sources.scheduling import (
+    effective_due_interval_minutes,
+    list_due_source_ids,
+)
 from app.features import PODCAST_SOURCES_ENABLED
 from app.models.source import SourceType
 from app.pipeline.coordinator import run_fetch_pipeline
 from app.tasks.fetch_orchestrator import persist_fetch_task_exception
-from app.utils.datetime import utcnow_naive
-from app.utils.human_timing import jittered_interval_minutes
 from app.utils.logger import get_logger, bind_job_id, restore_job_id
 from app.utils.url import normalize_host
+
+# Backwards-compatible alias — Phase 1 moved the canonical implementation
+# to ``app.domains.sources.scheduling``. Existing tests that import the
+# private name from this module continue to work; Phase 7 removes both
+# this alias and the underlying lazy imports.
+_effective_due_interval_minutes = effective_due_interval_minutes
 
 logger = get_logger(__name__)
 settings = get_settings()
@@ -169,50 +176,22 @@ async def fetch_all_sources(manual_trigger: bool = False):
 _STARTUP_JITTER_SECONDS = 30.0
 
 
-def _effective_due_interval_minutes(source) -> float:
-    """Base interval × exponential error backoff × ±10% deterministic jitter.
-
-    The jitter is keyed on ``(source_id, last_fetched_at)`` so the SQL-free
-    due check, the status API, and the scheduler all agree on the same
-    ``next_fetch_at``; it rerolls the moment a fetch lands.
-    """
-    base = int(source.fetch_interval or 60)
-    backoff = 1 << min(int(source.error_count or 0), 5)  # 2**n
-    base_with_backoff = base * backoff
-    return jittered_interval_minutes(
-        str(source.id),
-        base_with_backoff,
-        source.last_fetched_at,
-        jitter_pct=0.1,
-    )
-
-
 async def check_and_fetch_due_sources():
-    """Scheduled job: check for sources due for fetching and dispatch."""
+    """Scheduled job: check for sources due for fetching and dispatch.
+
+    The due check itself is owned by
+    :func:`app.domains.sources.scheduling.list_due_source_ids`; this
+    function only handles the async dispatch concern (semaphore, lock,
+    jittered enqueue).
+    """
     logger.info("Checking for sources due for fetching")
 
     from app.database import SessionLocal
-    from app.models import Source
 
     def _query_due():
         db = SessionLocal()
         try:
-            now = utcnow_naive()
-            query = db.query(Source).filter(Source.enabled.is_(True))
-            if not PODCAST_SOURCES_ENABLED:
-                query = query.filter(Source.type != SourceType.PODCAST)
-            # Due check runs in Python so we can apply deterministic per-cycle
-            # interval jitter — SQLite can't hash, and pushing randomness into
-            # the query would destabilize the due window between ticks.
-            due: list[str] = []
-            for source in query.all():
-                if source.last_fetched_at is None:
-                    due.append(str(source.id))
-                    continue
-                interval_min = _effective_due_interval_minutes(source)
-                if now >= source.last_fetched_at + timedelta(minutes=interval_min):
-                    due.append(str(source.id))
-            return due
+            return list_due_source_ids(db)
         finally:
             db.close()
 

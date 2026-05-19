@@ -1,12 +1,11 @@
 """Monitoring service for managing source fetching."""
 
-from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 from uuid import UUID
 
 from sqlalchemy.orm import Session
 
-from app.utils.datetime import utcnow_naive
+from app.domains.sources.scheduling import get_due_sources, next_fetch_at_for
 from app.models import Source
 from app.utils.logger import get_logger
 
@@ -15,51 +14,28 @@ logger = get_logger(__name__)
 
 class MonitorService:
     """Service for managing content monitoring."""
-    
+
     def __init__(self, db: Session):
         self.db = db
-    
+
     def get_due_sources(self) -> List[Source]:
-        """Get sources that are due for fetching. Failed sources use exponential backoff."""
-        from app.tasks.fetch_tasks import _effective_due_interval_minutes
+        """Get sources that are due for fetching. Failed sources use exponential backoff.
 
-        now = utcnow_naive()
-        sources = self.db.query(Source).filter(Source.enabled == True).all()
+        Delegates to :func:`app.domains.sources.scheduling.get_due_sources` so
+        the read-side and the scheduler share the same jittered interval and
+        next-fetch instant.
+        """
+        return get_due_sources(self.db)
 
-        due_sources = []
-        for source in sources:
-            if not source.last_fetched_at:
-                due_sources.append(source)
-            else:
-                # Share the jittered interval with the scheduler so both
-                # code paths agree on the same "next due" instant.
-                interval_minutes = _effective_due_interval_minutes(source)
-                next_fetch = source.last_fetched_at + timedelta(minutes=interval_minutes)
-                if now >= next_fetch:
-                    due_sources.append(source)
-
-        return due_sources
-    
     def get_source_status(self, source_id: UUID) -> Dict:
         """Get detailed status of a source."""
         source = self.db.query(Source).filter(Source.id == source_id).first()
-        
+
         if not source:
             return {"error": "Source not found"}
-        
-        # Calculate next fetch time (with backoff when error_count > 0).
-        # Mirror the scheduler's per-cycle jitter so the displayed
-        # ``next_fetch_at`` matches the instant at which the due check
-        # actually fires — otherwise the UI shows e.g. "13:53" and the
-        # fetch lands at "13:56" for no visible reason.
-        next_fetch = None
-        if source.last_fetched_at:
-            from app.tasks.fetch_tasks import _effective_due_interval_minutes
 
-            interval_minutes = _effective_due_interval_minutes(source)
-            next_fetch = source.last_fetched_at + timedelta(minutes=interval_minutes)
-        
-        # Get content count
+        next_fetch = next_fetch_at_for(source)
+
         from app.models import Content
         content_count = self.db.query(Content).filter(Content.source_id == source_id).count()
         
