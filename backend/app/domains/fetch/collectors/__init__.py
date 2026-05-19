@@ -15,5 +15,6 @@ shims pointing back to the new locations so existing imports and test
 
 from app.domains.fetch.collectors.base import BaseCollector
 from app.domains.fetch.collectors.rss import RSSCollector
+from app.domains.fetch.collectors.website import WebsiteCollector
 
-__all__ = ["BaseCollector", "RSSCollector"]
+__all__ = ["BaseCollector", "RSSCollector", "WebsiteCollector"]

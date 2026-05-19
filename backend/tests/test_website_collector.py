@@ -567,7 +567,7 @@ class TestParseHtml:
             <p>Summary text for article two</p>
         </article>
         </body></html>"""
-        with patch("app.collectors.website_parser.get_website_content_reject_reason", return_value=None):
+        with patch("app.domains.fetch.collectors.website_parser.get_website_content_reject_reason", return_value=None):
             results = collector._parse_html(html, source)
             assert len(results) >= 1
 
@@ -589,7 +589,7 @@ class TestParseHtml:
             <p>Custom content</p>
         </div>
         </body></html>"""
-        with patch("app.collectors.website_parser.get_website_content_reject_reason", return_value=None):
+        with patch("app.domains.fetch.collectors.website_parser.get_website_content_reject_reason", return_value=None):
             results = collector._parse_html(html, source)
             assert len(results) >= 1
 
@@ -608,7 +608,7 @@ class TestParseArticleCandidate:
         source = _make_source(url="https://example.com")
         html = '<div><h2><a href="/news/slug">Title</a></h2><p>Content</p></div>'
         article = BeautifulSoup(html, "html.parser").div
-        with patch("app.collectors.website_parser.get_website_content_reject_reason", return_value=None):
+        with patch("app.domains.fetch.collectors.website_parser.get_website_content_reject_reason", return_value=None):
             result = self.collector._parse_article_candidate(
                 article, source=source,
                 title_selector="h2", link_selector="a",
@@ -647,7 +647,7 @@ class TestParseArticleCandidate:
         source = _make_source(url="https://example.com")
         html = '<div><h2><a href="/post/my-article">Title</a></h2></div>'
         article = BeautifulSoup(html, "html.parser").div
-        with patch("app.collectors.website_parser.get_website_content_reject_reason", return_value=None):
+        with patch("app.domains.fetch.collectors.website_parser.get_website_content_reject_reason", return_value=None):
             result = self.collector._parse_article_candidate(
                 article, source=source,
                 title_selector="h2", link_selector="a",
@@ -660,7 +660,7 @@ class TestParseArticleCandidate:
         source = _make_source(url="https://example.com")
         html = '<div><h2><a href="/news/slug">Title</a></h2><p>Content</p></div>'
         article = BeautifulSoup(html, "html.parser").div
-        with patch("app.collectors.website_parser.get_website_content_reject_reason", return_value="too_short"):
+        with patch("app.domains.fetch.collectors.website_parser.get_website_content_reject_reason", return_value="too_short"):
             result = self.collector._parse_article_candidate(
                 article, source=source,
                 title_selector="h2", link_selector="a",
@@ -673,7 +673,7 @@ class TestParseArticleCandidate:
         source = _make_source(url="https://example.com")
         html = '<div><h2><a href="/news/slug">Title</a></h2><time datetime="2025-01-15T10:00:00Z">Jan 15</time></div>'
         article = BeautifulSoup(html, "html.parser").div
-        with patch("app.collectors.website_parser.get_website_content_reject_reason", return_value=None):
+        with patch("app.domains.fetch.collectors.website_parser.get_website_content_reject_reason", return_value=None):
             result = self.collector._parse_article_candidate(
                 article, source=source,
                 title_selector="h2", link_selector="a",
@@ -783,11 +783,11 @@ class TestHydrateDirectArticlesPacing:
         with patch.object(collector, "_fetch_article_html", side_effect=fake_fetch), \
              patch.object(
                  collector.__module__ and
-                 __import__("app.collectors.website", fromlist=["_helpers"])._helpers,
+                 __import__("app.domains.fetch.collectors.website", fromlist=["_helpers"])._helpers,
                  "looks_like_article_url",
                  return_value=True,
              ), \
-             patch("app.collectors.website.human_inter_request_pause", side_effect=fake_pause):
+             patch("app.domains.fetch.collectors.website.human_inter_request_pause", side_effect=fake_pause):
             hydrated, diag = await collector._hydrate_direct_articles(
                 source,
                 contents,
@@ -817,11 +817,11 @@ class TestHydrateDirectArticlesPacing:
 
         with patch.object(collector, "_fetch_article_html", side_effect=fake_fetch), \
              patch.object(
-                 __import__("app.collectors.website", fromlist=["_helpers"])._helpers,
+                 __import__("app.domains.fetch.collectors.website", fromlist=["_helpers"])._helpers,
                  "looks_like_article_url",
                  return_value=True,
              ), \
-             patch("app.collectors.website.human_inter_request_pause", new_callable=AsyncMock):
+             patch("app.domains.fetch.collectors.website.human_inter_request_pause", new_callable=AsyncMock):
             _hydrated, diag = await collector._hydrate_direct_articles(
                 source,
                 contents,
@@ -852,11 +852,11 @@ class TestHydrateDirectArticlesPacing:
 
         with patch.object(collector, "_fetch_article_html", side_effect=fake_fetch), \
              patch.object(
-                 __import__("app.collectors.website", fromlist=["_helpers"])._helpers,
+                 __import__("app.domains.fetch.collectors.website", fromlist=["_helpers"])._helpers,
                  "looks_like_article_url",
                  return_value=True,
              ), \
-             patch("app.collectors.website.human_inter_request_pause", new_callable=AsyncMock) as pause_mock:
+             patch("app.domains.fetch.collectors.website.human_inter_request_pause", new_callable=AsyncMock) as pause_mock:
             _hydrated, diag = await collector._hydrate_direct_articles(
                 source,
                 contents,
@@ -894,11 +894,11 @@ class TestHydrateDirectArticlesPacing:
 
         with patch.object(collector, "_fetch_article_html", side_effect=fake_fetch), \
              patch.object(
-                 __import__("app.collectors.website", fromlist=["_helpers"])._helpers,
+                 __import__("app.domains.fetch.collectors.website", fromlist=["_helpers"])._helpers,
                  "looks_like_article_url",
                  return_value=True,
              ), \
-             patch("app.collectors.website.human_inter_request_pause", side_effect=fake_pause):
+             patch("app.domains.fetch.collectors.website.human_inter_request_pause", side_effect=fake_pause):
             hydrated, diag = await collector._hydrate_direct_articles(
                 source,
                 contents,

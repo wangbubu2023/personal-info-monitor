@@ -1,7 +1,6 @@
 """Data collectors for different source types."""
 
-from app.domains.fetch.collectors import BaseCollector, RSSCollector
-from app.collectors.website import WebsiteCollector
+from app.domains.fetch.collectors import BaseCollector, RSSCollector, WebsiteCollector
 from app.collectors.x_twitter import XCollector
 from app.collectors.youtube import YouTubeCollector
 from app.collectors.podcast import PodcastCollector
