@@ -12,7 +12,17 @@ from app import models  # noqa: F401  # Ensure model metadata is registered
 config = context.config
 
 if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
+    # When migrations run embedded inside the FastAPI lifespan (see
+    # ``app.main``), ``app.utils.logger`` has already configured a JSON stdout
+    # handler + rotating file handler. ``fileConfig`` would both disable every
+    # pre-existing logger AND strip all handlers off the root logger before
+    # adding the ini-defined ones, leaving the app completely mute for the
+    # rest of the process. So: only apply ``alembic.ini`` logging when no
+    # application handlers are present (i.e. a plain ``alembic`` CLI run).
+    import logging as _logging
+
+    if not _logging.getLogger().handlers:
+        fileConfig(config.config_file_name, disable_existing_loggers=False)
 
 bootstrap_runtime_environment()
 settings = get_settings()
