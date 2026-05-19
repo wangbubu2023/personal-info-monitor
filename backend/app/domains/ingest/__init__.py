@@ -22,9 +22,14 @@ here:
   shim; wrapper-internal helpers (``strip_html_tags`` etc.) live next to the
   implementation and must be patched at
   ``app.domains.ingest.build_content.<name>``.
-* ``domains/ingest/extractor.py``, ``keywords/``, ``scoring.py`` — to be
-  moved from ``app/processors`` and ``app/services`` in the remaining
-  Phase 3 step-4 cuts.
+* ``domains/ingest/extractor.py`` — moved from
+  ``app.processors.extractor`` in Phase 3 step 4 (HTML → main-content
+  text extraction; readability + trafilatura + BeautifulSoup
+  fallbacks). The legacy ``app.processors.extractor`` path remains as a
+  re-export shim so test ``patch`` targets stay valid.
+* ``domains/ingest/keywords/``, ``scoring.py`` — to be moved from
+  ``app/processors`` and ``app/services`` in the remaining Phase 3
+  step-4 cuts.
 
 The ingest domain MUST NOT import LLM providers, the summariser or the
 translator; that boundary is enforced by ``check_domain_imports.py`` from
