@@ -311,7 +311,7 @@ async def _probe_urls(
     cookies: Optional[Dict[str, str]] = None,
 ):
     import asyncio
-    from app.services.probe_service import ProbeService
+    from app.domains.sources.probe import ProbeService
     _probe_service = ProbeService()
     tasks = [_probe_service.probe(url, source_type, cookies=cookies) for url in urls]
     probe_results = await asyncio.gather(*tasks, return_exceptions=True)
