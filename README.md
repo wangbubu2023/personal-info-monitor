@@ -188,7 +188,10 @@ cat ~/.pim/data/runtime-secrets.json
 |------|--------|------|
 | `DATA_DIR` | `~/.pim/data` | SQLite 数据库与日志目录 |
 | `FETCH_CONCURRENCY` | `20` | 并发抓取数 |
-| `AI_PROCESSING_ENABLED` | `true` | 是否启用 AI 摘要/翻译（与 `backend/app/config.py` 默认值一致） |
+| `AI_PROCESSING_ENABLED` | `true` | AI 总开关（已 deprecated，Phase 7 移除；保留作为 master kill switch） |
+| `ENRICH_AUTO_ON_INGEST` | `false` | ingest 完成时是否自动触发 enrich 流水线（Phase 4 step 8） |
+| `ENRICH_SUMMARY_ENABLED` | `true` | 是否允许 Summarizer 调 LLM 生成摘要 |
+| `ENRICH_TRANSLATE_ENABLED` | `true` | 是否允许 Translator 调 LLM 做翻译 |
 | `OPENAI_API_KEY` | — | 云端模型（可选） |
 | `RSSHUB_URL` | `https://rsshub.app` | RSSHub 实例地址 |
 | `CORS_ORIGINS` | 见下 | 允许的前端来源 |

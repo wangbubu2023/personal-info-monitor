@@ -3,6 +3,7 @@
 import json
 import os
 import secrets
+import warnings
 from functools import lru_cache
 from pathlib import Path
 from typing import Optional
@@ -94,10 +95,26 @@ class Settings(BaseSettings):
     local_token_rate_limit_per_minute: int = 30
 
     # Master switch for outbound LLM calls (summaries, translation, digest selection, etc.)
+    # NOTE: deprecated alias retained through Phase 7 for back-compat. New deployments
+    # should prefer the per-feature ``ENRICH_*`` toggles below; this flag stays as a
+    # master kill switch that's checked in addition to the per-feature gates.
     ai_processing_enabled: bool = True
     #: Rough daily cap on *estimated* LLM tokens (prompt + max output). ``0`` = unlimited.
     ai_daily_token_budget: int = 0
     cloud_fallback_enabled: bool = True
+
+    # Phase 4 step 8 introduces the ``ENRICH_*`` family — per-feature toggles for the
+    # post-ingest enrichment pipeline. Defaults match historical behavior:
+    #
+    # * ``enrich_auto_on_ingest`` — whether the ingest finalizer should enqueue an
+    #   automatic summary/translate pass for every freshly-inserted Content row.
+    #   Default ``False`` matches current production (the auto-enrich pipeline
+    #   does not yet exist; Phase 4/5 will wire it up).
+    # * ``enrich_summary_enabled`` — gate for :class:`Summarizer` text generation.
+    # * ``enrich_translate_enabled`` — gate for :class:`Translator` LLM calls.
+    enrich_auto_on_ingest: bool = False
+    enrich_summary_enabled: bool = True
+    enrich_translate_enabled: bool = True
 
     #: After this many consecutive fetch *errors*, auto-disable the source (``0`` = never).
     fetch_error_disable_threshold: int = 12
@@ -107,6 +124,22 @@ class Settings(BaseSettings):
 
         # Expand ~ but leave filesystem bootstrap to explicit runtime entrypoints.
         self.data_dir = os.path.expanduser(self.data_dir)
+
+        # Deprecation notice for the legacy master-kill flag. Emitted only once per
+        # process (uses a stash in os.environ to suppress repeat warnings inside
+        # ``get_settings.cache_clear()`` loops triggered by tests / monkeypatch).
+        if (
+            os.environ.get("AI_PROCESSING_ENABLED") is not None
+            and not os.environ.get("_PIM_AI_DEPRECATION_LOGGED")
+        ):
+            warnings.warn(
+                "AI_PROCESSING_ENABLED is deprecated and will be removed in Phase 7. "
+                "Use the ENRICH_* family (ENRICH_AUTO_ON_INGEST / ENRICH_SUMMARY_ENABLED "
+                "/ ENRICH_TRANSLATE_ENABLED) instead — see backend/.env.example.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            os.environ["_PIM_AI_DEPRECATION_LOGGED"] = "1"
 
         # Default SQLite paths if not explicitly set
         db_path = os.path.join(self.data_dir, "pim.db")

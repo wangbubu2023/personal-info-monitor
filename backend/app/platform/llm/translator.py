@@ -267,7 +267,7 @@ class Translator:
         target_language: str,
         trans_settings: Optional[dict] = None,
     ) -> Optional[str]:
-        if not self.settings.ai_processing_enabled:
+        if not self.settings.ai_processing_enabled or not self.settings.enrich_translate_enabled:
             return None
         model_cfg = trans_settings if isinstance(trans_settings, dict) else {}
         model = str(model_cfg.get("model") or "").strip() or "gpt-4o-mini"
@@ -324,7 +324,7 @@ class Translator:
         """Translate text to target language."""
         if not text or len(text.strip()) < 5:
             return None
-        if not self.settings.ai_processing_enabled:
+        if not self.settings.ai_processing_enabled or not self.settings.enrich_translate_enabled:
             return None
 
         if source_language is None:

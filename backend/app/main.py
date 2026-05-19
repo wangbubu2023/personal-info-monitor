@@ -117,7 +117,16 @@ async def lifespan(app: FastAPI):
     print(f"\n  PIM API Key: {_mask_secret(settings.pim_api_key)}")
     print(f"  Data dir:    {settings.data_dir}")
     print(f"  Fetch concurrency: {settings.fetch_concurrency}")
-    print(f"  AI processing: {'enabled' if settings.ai_processing_enabled else 'disabled'}")
+    _enrich_flags = (
+        f"auto_on_ingest={settings.enrich_auto_on_ingest}, "
+        f"summary={settings.enrich_summary_enabled}, "
+        f"translate={settings.enrich_translate_enabled}"
+    )
+    print(
+        "  AI processing: "
+        f"{'enabled' if settings.ai_processing_enabled else 'disabled'} "
+        f"(enrich: {_enrich_flags})"
+    )
     print(
         "  Bootstrap URL (web auto-provision): run `./pim bootstrap-url` to print"
     )

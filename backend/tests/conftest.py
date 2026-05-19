@@ -17,6 +17,14 @@ def _test_default_ai_settings(monkeypatch):
     """Tests must not inherit a developer's .env that disables AI (breaks processor unit tests)."""
     monkeypatch.setenv("AI_PROCESSING_ENABLED", "true")
     monkeypatch.setenv("AI_DAILY_TOKEN_BUDGET", "0")
+    # Phase 4 step 8: pin ENRICH_* feature toggles to their default-on state so unit
+    # tests can rely on summarizer/translator behavior regardless of the developer
+    # shell env. Pre-stash _PIM_AI_DEPRECATION_LOGGED so each Settings() rebuild
+    # doesn't spam DeprecationWarning during cache_clear loops.
+    monkeypatch.setenv("ENRICH_AUTO_ON_INGEST", "false")
+    monkeypatch.setenv("ENRICH_SUMMARY_ENABLED", "true")
+    monkeypatch.setenv("ENRICH_TRANSLATE_ENABLED", "true")
+    monkeypatch.setenv("_PIM_AI_DEPRECATION_LOGGED", "1")
     from app.config import get_settings
 
     get_settings.cache_clear()

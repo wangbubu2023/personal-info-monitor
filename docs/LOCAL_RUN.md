@@ -99,7 +99,10 @@ uvicorn app.main:app --host 127.0.0.1 --port 8000
 | `JWT_SECRET_KEY` | JWT/签名密钥 |
 | `DATA_DIR` | SQLite 数据目录 |
 | `FETCH_CONCURRENCY` | 抓取并发 |
-| `AI_PROCESSING_ENABLED` | 是否启用 AI 处理 |
+| `AI_PROCESSING_ENABLED` | AI 总开关（deprecated；Phase 7 移除） |
+| `ENRICH_AUTO_ON_INGEST` | ingest 完成是否自动触发 enrich（默认 false） |
+| `ENRICH_SUMMARY_ENABLED` | Summarizer LLM 摘要开关（默认 true） |
+| `ENRICH_TRANSLATE_ENABLED` | Translator LLM 翻译开关（默认 true） |
 | `OPENAI_API_KEY` | 可选，云端模型 Key |
 | `RSSHUB_URL` | 可选，RSSHub 地址 |
 
