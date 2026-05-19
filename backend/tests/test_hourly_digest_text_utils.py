@@ -1,11 +1,11 @@
-"""Unit tests for :mod:`app.services.hourly_digest.text_utils`."""
+"""Unit tests for :mod:`app.domains.enrich.hourly.text_utils`."""
 
 from __future__ import annotations
 
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
-from app.services.hourly_digest.text_utils import (
+from app.domains.enrich.hourly.text_utils import (
     SYSTEM_TZ,
     classify_digest_category,
     clean_digest_text,

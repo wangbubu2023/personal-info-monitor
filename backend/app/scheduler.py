@@ -24,7 +24,7 @@ scheduler = AsyncIOScheduler(timezone="Asia/Shanghai")
 def setup_scheduler():
     """Register all scheduled jobs."""
     from app.tasks.fetch_tasks import check_and_fetch_due_sources
-    from app.tasks.hourly_digest_tasks import generate_previous_hour_digest
+    from app.domains.enrich.hourly.tasks import generate_previous_hour_digest
     from app.tasks.maintenance_tasks import (
         cleanup_old_content,
         cleanup_error_logs,
@@ -119,7 +119,7 @@ def setup_scheduler():
 
 def trigger_startup_jobs() -> None:
     """Best-effort startup catch-up for time-sensitive jobs."""
-    from app.tasks.hourly_digest_tasks import generate_previous_hour_digest
+    from app.domains.enrich.hourly.tasks import generate_previous_hour_digest
 
     try:
         loop = asyncio.get_running_loop()

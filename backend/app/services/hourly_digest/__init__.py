@@ -1,12 +1,10 @@
-"""Hourly digest domain package.
+"""Backwards-compatible facade for the hourly digest pipeline.
 
-Pipeline:
+Phase 4 step 6 of the module-refactor blueprint moved the implementation
+into :mod:`app.domains.enrich.hourly`. This package now contains only
+thin re-export shims (``text_utils``, ``selection``, ``synthesis``,
+``repository``) so any out-of-tree consumer importing
+``app.services.hourly_digest.<module>`` keeps resolving.
 
-- :mod:`.text_utils`  – pure text / category / limit helpers
-- :mod:`.selection`   – LLM selection + local-ranking fallback
-- :mod:`.synthesis`   – LLM synthesis + rule-based fallback rendering
-- :mod:`.repository`  – DB reads / upserts + window computation
-
-The orchestrator lives at ``app.tasks.hourly_digest_tasks`` and stays
-thin: load context → pick → synthesize → store.
+Phase 7 will retire this facade entirely.
 """

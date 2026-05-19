@@ -1,9 +1,9 @@
 from datetime import datetime
 import asyncio
 
-from app.services.hourly_digest import synthesis as digest_synthesis
-from app.services.hourly_digest import text_utils as digest_text
-from app.tasks import hourly_digest_tasks as digest_tasks
+from app.domains.enrich.hourly import synthesis as digest_synthesis
+from app.domains.enrich.hourly import tasks as digest_tasks
+from app.domains.enrich.hourly import text_utils as digest_text
 
 
 def _cluster_item(idx: int) -> dict:
