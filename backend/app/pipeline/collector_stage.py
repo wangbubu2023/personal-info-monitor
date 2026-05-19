@@ -9,13 +9,13 @@ import app.utils.url as url_utils
 from app.utils.logger import get_logger
 from app.collectors import get_collector
 
-from app.tasks.fetch_auth_helpers import (
+from app.domains.fetch.auth import (
     auth_warning_entry,
-    build_browser_session_runtime,
     cookie_hydration_warning_entry,
     maybe_refresh_auth_cookies,
     try_parse_auth_credentials,
 )
+from app.platform.browser import build_browser_session_runtime
 from app.domains.sources.status import merge_warning_messages
 from app.pipeline.utils import get_source_urls, dedupe_raw_contents
 

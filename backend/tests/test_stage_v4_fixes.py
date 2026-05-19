@@ -93,7 +93,10 @@ async def test_maybe_refresh_auth_cookies_manual_mode_returns_stale_cookie_warni
     async def _fake_cookies_appear_valid(site_url, cookies):
         return False
 
-    monkeypatch.setattr(fetch_auth_helpers, "cookies_appear_valid", _fake_cookies_appear_valid)
+    monkeypatch.setattr(
+        "app.domains.fetch.auth.refresh.cookies_appear_valid",
+        _fake_cookies_appear_valid,
+    )
 
     updated, warning = await fetch_auth_helpers.maybe_refresh_auth_cookies(db=object(), source=source, creds=creds)
 

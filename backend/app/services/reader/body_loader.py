@@ -26,7 +26,7 @@ from app.config import get_settings
 from app.models import Content, Source
 from app.processors.extractor import ContentExtractor
 from app.processors.translator import Translator
-from app.tasks.fetch_auth_helpers import try_parse_auth_credentials
+from app.domains.fetch.auth import try_parse_auth_credentials
 from app.utils.cookies import normalize_cookie_dict
 from app.utils.datetime import utcnow_naive
 from app.utils.http import permissive_session_kwargs

@@ -191,7 +191,7 @@ async def _load_source_probe_cookies(
     if auth_config is None:
         return {}
 
-    from app.tasks.fetch_auth_helpers import try_parse_auth_credentials
+    from app.domains.fetch.auth import try_parse_auth_credentials
 
     creds = try_parse_auth_credentials(auth_config)
     cookies = creds.get("cookies") if isinstance(creds, dict) else None

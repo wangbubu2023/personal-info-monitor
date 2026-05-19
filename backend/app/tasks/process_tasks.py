@@ -39,7 +39,7 @@ async def _process_new_content_async(content_id: str):
     from app.processors.keyword_matcher import KeywordMatcher
     from app.services.content_quality_service import merge_content_quality_metadata
     from app.services.scoring_service import merge_baseline_scoring_metadata
-    from app.tasks.fetch_auth_helpers import try_parse_auth_credentials
+    from app.domains.fetch.auth import try_parse_auth_credentials
     from app.utils.cookies import normalize_cookie_dict
 
     db = SessionLocal()

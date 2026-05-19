@@ -305,7 +305,7 @@ class XCollector(BaseCollector):
             return []
 
         try:
-            from app.tasks.fetch_auth_helpers import cookies_appear_valid
+            from app.platform.auth.cookies import cookies_appear_valid
 
             if not await cookies_appear_valid("https://x.com", cookies):
                 self.logger.warning(f"GraphQL: X Cookie 可能已失效，跳过 @{username}")
