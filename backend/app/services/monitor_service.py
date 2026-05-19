@@ -21,21 +21,23 @@ class MonitorService:
     
     def get_due_sources(self) -> List[Source]:
         """Get sources that are due for fetching. Failed sources use exponential backoff."""
+        from app.tasks.fetch_tasks import _effective_due_interval_minutes
+
         now = utcnow_naive()
         sources = self.db.query(Source).filter(Source.enabled == True).all()
-        
+
         due_sources = []
         for source in sources:
             if not source.last_fetched_at:
                 due_sources.append(source)
             else:
-                # Backoff: wait longer after consecutive errors (2^min(error_count, 5) * interval)
-                multiplier = 2 ** min(source.error_count or 0, 5)
-                interval_minutes = (source.fetch_interval or 60) * multiplier
+                # Share the jittered interval with the scheduler so both
+                # code paths agree on the same "next due" instant.
+                interval_minutes = _effective_due_interval_minutes(source)
                 next_fetch = source.last_fetched_at + timedelta(minutes=interval_minutes)
                 if now >= next_fetch:
                     due_sources.append(source)
-        
+
         return due_sources
     
     def get_source_status(self, source_id: UUID) -> Dict:
@@ -45,11 +47,16 @@ class MonitorService:
         if not source:
             return {"error": "Source not found"}
         
-        # Calculate next fetch time (with backoff when error_count > 0)
+        # Calculate next fetch time (with backoff when error_count > 0).
+        # Mirror the scheduler's per-cycle jitter so the displayed
+        # ``next_fetch_at`` matches the instant at which the due check
+        # actually fires — otherwise the UI shows e.g. "13:53" and the
+        # fetch lands at "13:56" for no visible reason.
         next_fetch = None
         if source.last_fetched_at:
-            multiplier = 2 ** min(source.error_count or 0, 5)
-            interval_minutes = (source.fetch_interval or 60) * multiplier
+            from app.tasks.fetch_tasks import _effective_due_interval_minutes
+
+            interval_minutes = _effective_due_interval_minutes(source)
             next_fetch = source.last_fetched_at + timedelta(minutes=interval_minutes)
         
         # Get content count

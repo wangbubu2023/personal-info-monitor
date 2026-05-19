@@ -1,23 +1,26 @@
-"""YouTube probe strategy mixin."""
+"""YouTube probe strategy (standalone, no mixin)."""
+
+from __future__ import annotations
 
 import re
-from typing import List, Optional
+from typing import Any, List, Optional
 from urllib.parse import parse_qs, urlparse
 
-from app.utils.logger import get_logger
 from app.services.probe_strategies.result import ProbeResult
+from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
 
 class YouTubeProbeStrategy:
+    def __init__(self, helpers: Any):
+        self.helpers = helpers
 
-    async def _probe_youtube(self, url: str):
-        """Probe a YouTube URL."""
-        playlist_id = self._extract_youtube_playlist_id(url)
+    async def probe(self, url: str) -> ProbeResult:
+        playlist_id = self.extract_playlist_id(url)
         if playlist_id:
             feed_url = f"https://www.youtube.com/feeds/videos.xml?playlist_id={playlist_id}"
-            result = await self._test_rss_feed(feed_url)
+            result = await self.helpers._test_rss_feed(feed_url)
             if result.status == "ok":
                 return ProbeResult(
                     status="ok",
@@ -32,17 +35,16 @@ class YouTubeProbeStrategy:
                 message="YouTube 播放列表 RSS 不可用",
             )
 
-        # Channel RSS path (no API key required)
-        channel_id = self._extract_youtube_channel_id(url)
+        channel_id = self.extract_channel_id(url)
         if not channel_id:
-            channel_id = await self._resolve_youtube_channel_id_from_page(url)
+            channel_id = await self.resolve_channel_id_from_page(url)
         if not channel_id:
-            hint = self._extract_youtube_channel_hint(url)
+            hint = self.extract_channel_hint(url)
             if hint:
-                channel_id = await self._resolve_youtube_channel_id_from_search(hint)
+                channel_id = await self.resolve_channel_id_from_search(hint)
         if channel_id:
             feed_url = f"https://www.youtube.com/feeds/videos.xml?channel_id={channel_id}"
-            result = await self._test_rss_feed(feed_url)
+            result = await self.helpers._test_rss_feed(feed_url)
             if result.status == "ok":
                 return ProbeResult(
                     status="ok",
@@ -52,11 +54,10 @@ class YouTubeProbeStrategy:
                     sample_count=result.sample_count,
                 )
 
-        # Legacy /c/<name> or /user/<name> style feed
-        username = self._extract_youtube_feed_username(url)
+        username = self.extract_feed_username(url)
         if username:
             feed_url = f"https://www.youtube.com/feeds/videos.xml?user={username}"
-            result = await self._test_rss_feed(feed_url)
+            result = await self.helpers._test_rss_feed(feed_url)
             if result.status == "ok":
                 return ProbeResult(
                     status="ok",
@@ -82,20 +83,18 @@ class YouTubeProbeStrategy:
             message="YouTube RSS 不可用，且未配置有效 YOUTUBE_API_KEY",
         )
 
-    def _extract_youtube_channel_id(self, url: str) -> Optional[str]:
-        """Extract channel ID from YouTube URL if present."""
+    @staticmethod
+    def extract_channel_id(url: str) -> Optional[str]:
         match = re.search(r"youtube\.com/channel/([a-zA-Z0-9_-]+)", url)
         if match:
             return match.group(1)
         return None
 
-    async def _resolve_youtube_channel_id_from_page(self, url: str) -> Optional[str]:
-        """Resolve channel ID by parsing the public YouTube page."""
-        for page_url in self._youtube_channel_page_candidates(url):
-            html = await self._http_get(page_url, timeout=20)
+    async def resolve_channel_id_from_page(self, url: str) -> Optional[str]:
+        for page_url in self.channel_page_candidates(url):
+            html = await self.helpers._http_get(page_url, timeout=20)
             if not html:
                 continue
-
             patterns = [
                 r'"channelId":"(UC[a-zA-Z0-9_-]{22})"',
                 r'"externalId":"(UC[a-zA-Z0-9_-]{22})"',
@@ -108,13 +107,12 @@ class YouTubeProbeStrategy:
                     return m.group(1)
         return None
 
-    async def _resolve_youtube_channel_id_from_search(self, hint: str) -> Optional[str]:
-        """Resolve channel id from YouTube search results page."""
+    async def resolve_channel_id_from_search(self, hint: str) -> Optional[str]:
         if not hint:
             return None
         query = hint.strip().replace(" ", "+")
         search_url = f"https://www.youtube.com/results?search_query={query}&sp=EgIQAg%253D%253D"
-        html = await self._http_get(search_url, timeout=20)
+        html = await self.helpers._http_get(search_url, timeout=20)
         if not html:
             return None
         m = re.search(r'"channelId":"(UC[a-zA-Z0-9_-]{22})"', html)
@@ -122,26 +120,22 @@ class YouTubeProbeStrategy:
             return m.group(1)
         return None
 
-    def _normalize_youtube_channel_page_url(self, url: str) -> str:
-        """Normalize channel-like URL for page parsing."""
+    @staticmethod
+    def normalize_channel_page_url(url: str) -> str:
         if not url.startswith("http"):
             url = f"https://www.youtube.com/{url.lstrip('/')}"
         url = re.sub(r"/videos/?$", "", url)
         url = re.sub(r"/featured/?$", "", url)
         return url
 
-    def _youtube_channel_page_candidates(self, url: str) -> List[str]:
-        """Build candidate URLs for channel-page probing."""
-        normalized = self._normalize_youtube_channel_page_url(url)
+    def channel_page_candidates(self, url: str) -> List[str]:
+        normalized = self.normalize_channel_page_url(url)
         candidates = [normalized]
-
-        # Legacy custom URLs like /c/<name> and /user/<name> may 404 now.
         match = re.search(r"youtube\.com/(?:c|user)/([a-zA-Z0-9_-]+)", normalized)
         if match:
             handle_url = f"https://www.youtube.com/@{match.group(1)}"
             candidates.append(handle_url)
             candidates.append(f"{handle_url}/videos")
-
         deduped: List[str] = []
         seen = set()
         for item in candidates:
@@ -150,8 +144,8 @@ class YouTubeProbeStrategy:
                 deduped.append(item)
         return deduped
 
-    def _extract_youtube_playlist_id(self, url: str) -> Optional[str]:
-        """Extract playlist ID from YouTube playlist URL."""
+    @staticmethod
+    def extract_playlist_id(url: str) -> Optional[str]:
         try:
             parsed = urlparse(url)
             if "youtube.com" in parsed.netloc:
@@ -159,20 +153,20 @@ class YouTubeProbeStrategy:
                 playlist_id = query.get("list", [None])[0]
                 if playlist_id:
                     return playlist_id
-        except Exception as exc:
+        except ValueError as exc:
             logger.debug("YouTube playlist ID extraction failed for %s: %s", url, exc)
             return None
         return None
 
-    def _extract_youtube_feed_username(self, url: str) -> Optional[str]:
-        """Extract legacy user feed identifier from channel URL."""
+    @staticmethod
+    def extract_feed_username(url: str) -> Optional[str]:
         match = re.search(r"youtube\.com/(?:c|user)/([a-zA-Z0-9_-]+)", url)
         if match:
             return match.group(1)
         return None
 
-    def _extract_youtube_channel_hint(self, url: str) -> Optional[str]:
-        """Extract channel hint for search-based fallback."""
+    @staticmethod
+    def extract_channel_hint(url: str) -> Optional[str]:
         for pattern in [
             r"youtube\.com/@([a-zA-Z0-9_-]+)",
             r"youtube\.com/(?:c|user)/([a-zA-Z0-9_-]+)",

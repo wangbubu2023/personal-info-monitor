@@ -6,11 +6,10 @@ Import: from app.api.sources import router
 
 from fastapi import APIRouter
 
-from app.services.system_settings import get_system_settings_async  # noqa: F401 – kept for test monkeypatching
-from ._helpers import (  # noqa: F401 – re-exported for backward-compat test monkeypatching
-    _probe_urls,
-    _invalidate_source_cache,
+from ._helpers import (  # noqa: F401 – re-exported for backward-compat
     _ensure_source_quota,
+    _invalidate_source_cache,
+    _probe_urls,
     serialize_source,
 )
 

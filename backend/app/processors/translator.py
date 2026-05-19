@@ -18,36 +18,78 @@ logger = get_logger(__name__)
 def get_translation_settings():
     """Get translation model settings from system config."""
     try:
+        from app.services.api_config_credentials import enrich_model_settings_from_api_config
         from app.services.system_settings import get_system_settings_sync
 
         settings = get_system_settings_sync()
         model_settings = settings.get("translation_model", {})
-        return model_settings if isinstance(model_settings, dict) else {}
+        if not isinstance(model_settings, dict):
+            return {}
+        return enrich_model_settings_from_api_config(model_settings)
     except Exception as exc:
         logger.warning("Translation config parsing failed: %s", exc)
         return {}
 
 
 def is_translation_cloud_fallback_enabled() -> bool:
-    """Whether cloud fallback (OpenAI/Google) is enabled for translation."""
+    """Whether fallback translation is enabled (any configured provider)."""
     try:
         from app.services.system_settings import get_system_settings_sync
 
-        settings = get_system_settings_sync()
+        settings = get_system_settings_sync() or {}
+        if "translation_fallback_enabled" in settings:
+            return bool(settings.get("translation_fallback_enabled"))
         return bool(settings.get("translation_cloud_fallback_enabled", False))
     except Exception as exc:
-        logger.debug("Translation availability check failed: %s", exc)
+        logger.debug("Translation fallback flag read failed: %s", exc)
         return False
+
+
+def is_translation_fallback_enabled() -> bool:
+    """Preferred name; delegates to :func:`is_translation_cloud_fallback_enabled` for patch compatibility."""
+    return is_translation_cloud_fallback_enabled()
+
+
+def get_translation_fallback_model_settings() -> dict:
+    """Enriched provider/model dict for translation fallback from 模型接入."""
+    try:
+        from app.services.api_config_credentials import enrich_model_settings_from_api_config
+        from app.services.system_settings import get_system_settings_sync
+
+        s = get_system_settings_sync() or {}
+        if not is_translation_cloud_fallback_enabled():
+            return {}
+        fb = s.get("translation_fallback") or {}
+        if not isinstance(fb, dict):
+            return {}
+        prov = str(fb.get("provider") or "").strip()
+        mod = str(fb.get("model") or "").strip()
+        if not prov or not mod:
+            return {}
+        return enrich_model_settings_from_api_config(dict(fb))
+    except Exception as exc:
+        logger.warning("Translation fallback model settings failed: %s", exc)
+        return {}
+
+
+def _provider_model_pair(cfg: dict) -> tuple[str, str]:
+    if not isinstance(cfg, dict):
+        return ("", "")
+    return (
+        str(cfg.get("provider") or "").strip().lower(),
+        str(cfg.get("model") or "").strip(),
+    )
 
 
 def get_translation_cloud_fallback_openai_settings() -> dict:
     """Resolve OpenAI-compatible cloud fallback settings."""
     try:
+        from app.services.api_config_credentials import enrich_model_settings_from_api_config
         from app.services.system_settings import get_system_settings_sync
 
         settings = get_system_settings_sync()
-        trans_model = settings.get("translation_model", {}) or {}
-        ai_model = settings.get("ai_model", {}) or {}
+        trans_model = enrich_model_settings_from_api_config(settings.get("translation_model", {}) or {})
+        ai_model = enrich_model_settings_from_api_config(settings.get("ai_model", {}) or {})
 
         model = trans_model.get("fallback_model") or ai_model.get("model") or "gpt-4o-mini"
         api_base = trans_model.get("fallback_api_base")
@@ -73,6 +115,14 @@ def get_translation_cloud_fallback_openai_settings() -> dict:
             "temperature": 0.1,
             "max_tokens": 1200,
         }
+
+
+def _resolve_translation_fallback_settings(primary: dict) -> dict:
+    """Explicit fallback from settings, or legacy merge from primary/ai model."""
+    fb = get_translation_fallback_model_settings()
+    if fb:
+        return fb
+    return get_translation_cloud_fallback_openai_settings()
 
 
 class Translator:
@@ -217,6 +267,8 @@ class Translator:
         target_language: str,
         trans_settings: Optional[dict] = None,
     ) -> Optional[str]:
+        if not self.settings.ai_processing_enabled:
+            return None
         model_cfg = trans_settings if isinstance(trans_settings, dict) else {}
         model = str(model_cfg.get("model") or "").strip() or "gpt-4o-mini"
         api_base = str(model_cfg.get("api_base") or "").strip() or None
@@ -252,6 +304,17 @@ class Translator:
             logger.warning(f"OpenAI-compatible translation failed: {e}")
             return None
 
+    async def _translate_with_provider_settings(
+        self,
+        text: str,
+        target_language: str,
+        cfg: dict,
+    ) -> Optional[str]:
+        provider = str(cfg.get("provider") or "ollama").strip().lower()
+        if provider == "ollama":
+            return await self._translate_with_ollama(text, target_language, cfg)
+        return await self._translate_with_openai(text, target_language, cfg)
+
     async def translate(
         self,
         text: str,
@@ -261,6 +324,8 @@ class Translator:
         """Translate text to target language."""
         if not text or len(text.strip()) < 5:
             return None
+        if not self.settings.ai_processing_enabled:
+            return None
 
         if source_language is None:
             source_language = self.detect_language(text)
@@ -269,38 +334,53 @@ class Translator:
 
         trans_settings = get_translation_settings()
         provider = str(trans_settings.get("provider") or "ollama").strip().lower()
-        cloud_fallback_enabled = is_translation_cloud_fallback_enabled()
+        fallback_enabled = is_translation_cloud_fallback_enabled()
+
+        async def try_fallback() -> Optional[str]:
+            if not fallback_enabled:
+                return None
+            fallback_settings = _resolve_translation_fallback_settings(trans_settings)
+            if not fallback_settings:
+                return None
+            if _provider_model_pair(trans_settings) == _provider_model_pair(fallback_settings):
+                logger.info("Translation fallback skipped: same provider/model as primary")
+                return None
+            return await self._translate_with_provider_settings(text, target_language, fallback_settings)
 
         if provider == "ollama":
             translated = await self._translate_with_ollama(text, target_language, trans_settings)
             if translated:
                 return translated
-            if not cloud_fallback_enabled:
+
+            if not fallback_enabled:
+                logger.info("Ollama translation failed and translation fallback is disabled")
                 return None
 
-            fallback_settings = get_translation_cloud_fallback_openai_settings()
-            return await self._translate_with_openai(text, target_language, fallback_settings)
+            logger.info("Ollama translation failed; trying fallback model")
+            return await try_fallback()
 
         translated = await self._translate_with_openai(text, target_language, trans_settings)
         if translated:
             return translated
-        if not cloud_fallback_enabled:
-            return None
-        fallback_settings = get_translation_cloud_fallback_openai_settings()
-        return await self._translate_with_openai(text, target_language, fallback_settings)
+        return await try_fallback()
 
     async def translate_with_fallback(
         self,
         text: str,
         target_language: str = "zh-CN",
     ) -> Optional[str]:
-        """Public fallback translation using cloud OpenAI-compatible provider.
+        """Last-resort translation when primary output is unusable.
 
-        Intended as a last-resort attempt when ``translate()`` returns an
-        invalid result.  Always uses the cloud fallback OpenAI settings
-        regardless of the user's ``cloud_fallback_enabled`` flag.
+        Uses the same fallback model as :meth:`translate` (when enabled).
         """
         if not text or len(text.strip()) < 5:
             return None
-        fallback_settings = get_translation_cloud_fallback_openai_settings()
-        return await self._translate_with_openai(text, target_language, fallback_settings)
+        if not is_translation_cloud_fallback_enabled():
+            return None
+        trans_settings = get_translation_settings()
+        fallback_settings = _resolve_translation_fallback_settings(trans_settings)
+        if not fallback_settings:
+            return None
+        if _provider_model_pair(trans_settings) == _provider_model_pair(fallback_settings):
+            return None
+        return await self._translate_with_provider_settings(text, target_language, fallback_settings)

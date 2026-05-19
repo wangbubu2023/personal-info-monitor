@@ -7,17 +7,41 @@ from typing import Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.api.content_shared import _serialize_content
 from app.database import get_async_db
-from app.models import Content, Source
-from app.schemas.content import ContentListResponse, ContentResponse, ContentUpdate
+from app.models import Content
+from app.schemas.content import ContentListResponse, ContentResponse, ContentUpdate, FavoriteBody
+from app.utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 router = APIRouter()
 MAX_CONTENTS_PAGE_SIZE = 200
+
+
+def _content_ilike_search_clause(search: str):
+    """Substring match on indexed text columns (covers CJK where FTS5 MATCH is unreliable)."""
+    safe = (search or "").strip()[:120].replace("%", "").replace("_", "")
+    if not safe:
+        return None
+    pat = f"%{safe}%"
+    return or_(
+        Content.title.ilike(pat),
+        Content.summary.ilike(pat),
+        Content.translated_title.ilike(pat),
+        Content.translated_summary.ilike(pat),
+        Content.full_content.ilike(pat),
+    )
+
+
+async def _sqlite_has_content_fts(db: AsyncSession) -> bool:
+    """True when FTS5 virtual table exists (fresh DBs / tests may omit migrations)."""
+    r = await db.execute(text("SELECT 1 FROM sqlite_master WHERE name = 'content_fts' LIMIT 1"))
+    return r.first() is not None
 
 
 @router.get("", response_model=ContentListResponse)
@@ -26,7 +50,6 @@ async def list_contents(
     page_size: int = Query(20, ge=1, le=MAX_CONTENTS_PAGE_SIZE),
     source_id: Optional[UUID] = None,
     source_type: Optional[str] = None,
-    category_id: Optional[UUID] = None,
     read_status: Optional[bool] = None,
     favorited: Optional[bool] = None,
     archived: Optional[bool] = None,
@@ -45,9 +68,6 @@ async def list_contents(
     if source_type:
         query = query.filter(Content.content_type == source_type)
         count_query = count_query.filter(Content.content_type == source_type)
-    if category_id:
-        query = query.join(Source).filter(Source.category_id == category_id)
-        count_query = count_query.join(Source).filter(Source.category_id == category_id)
     if read_status is not None:
         query = query.filter(Content.read_status == read_status)
         count_query = count_query.filter(Content.read_status == read_status)
@@ -64,13 +84,30 @@ async def list_contents(
         query = query.filter(Content.publish_time <= date_to)
         count_query = count_query.filter(Content.publish_time <= date_to)
     if search:
-        search_filter = or_(
-            Content.title.ilike(f"%{search}%"),
-            Content.summary.ilike(f"%{search}%"),
-            Content.full_content.ilike(f"%{search}%"),
-        )
-        query = query.filter(search_filter)
-        count_query = count_query.filter(search_filter)
+        from app.utils.fts_query import build_sqlite_fts5_match_expression
+
+        like_clause = _content_ilike_search_clause(search)
+        match_expr = build_sqlite_fts5_match_expression(search)
+        fts_ok = await _sqlite_has_content_fts(db)
+
+        # FTS5 对中文分词/短语与索引一致性依赖较强，常与「标题里明明有却搜不到」并存；
+        # 与 ILIKE 子串 OR：任一路命中即可（英文仍可由 FTS 提相关度，此处未排序加权）。
+        if fts_ok and match_expr is not None:
+            fts_subquery = (
+                select(text("id"))
+                .select_from(text("content_fts"))
+                .where(text("content_fts MATCH :search_term"))
+            )
+            if like_clause is not None:
+                combined = or_(Content.id.in_(fts_subquery), like_clause)
+                query = query.filter(combined).params(search_term=match_expr)
+                count_query = count_query.filter(combined).params(search_term=match_expr)
+            else:
+                query = query.filter(Content.id.in_(fts_subquery)).params(search_term=match_expr)
+                count_query = count_query.filter(Content.id.in_(fts_subquery)).params(search_term=match_expr)
+        elif like_clause is not None:
+            query = query.filter(like_clause)
+            count_query = count_query.filter(like_clause)
 
     total = await db.scalar(count_query) or 0
     offset = (page - 1) * page_size
@@ -123,12 +160,55 @@ async def update_content(
     if not content:
         raise HTTPException(status_code=404, detail="Content not found")
 
-    for field, value in content_data.model_dump(exclude_unset=True).items():
+    payload = content_data.model_dump(exclude_unset=True)
+    explicit_user_edited = "is_user_edited" in payload
+    text_fields = ("title", "summary", "full_content")
+    content_text_changed = False
+
+    for field, value in payload.items():
+        if field == "is_user_edited":
+            continue
+        old = getattr(content, field)
         setattr(content, field, value)
+        if field in text_fields and value != old:
+            content_text_changed = True
+
+    if explicit_user_edited:
+        content.is_user_edited = bool(payload["is_user_edited"])
+    elif content_text_changed:
+        content.is_user_edited = True
 
     await db.commit()
     await db.refresh(content)
+
     return ContentResponse(**_serialize_content(content))
+
+
+@router.post("/export-md")
+async def manual_export_markdown(db: AsyncSession = Depends(get_async_db)):
+    """Manually trigger incremental markdown export."""
+    from datetime import timedelta
+    from app.utils.datetime import utcnow_naive
+    from app.services.system_settings import get_system_settings_async
+    from app.exporters.markdown_exporter import MarkdownExporter
+
+    settings = await get_system_settings_async(db)
+    if not settings.get("markdown_export_enabled"):
+        raise HTTPException(status_code=400, detail="Markdown export is disabled in settings.")
+
+    export_dir = settings.get("markdown_export_dir") or "~/.pim/knowledge-base"
+    exporter = MarkdownExporter(export_dir)
+    since = utcnow_naive() - timedelta(hours=24)
+    
+    try:
+        count = await exporter.export_incremental(db, since)
+        return {"status": "success", "exported_count": count, "dir": export_dir}
+    except Exception:
+        logger.exception("Markdown export failed")
+        raise HTTPException(
+            status_code=500,
+            detail="Markdown export failed; see server logs for details.",
+        ) from None
 
 
 @router.post("/{content_id}/read")
@@ -146,19 +226,20 @@ async def mark_as_read(
     return {"message": "Content marked as read"}
 
 
-@router.post("/{content_id}/favorite")
-async def toggle_favorite(
+@router.patch("/{content_id}/favorite")
+async def set_favorite(
     content_id: UUID,
+    body: FavoriteBody,
     db: AsyncSession = Depends(get_async_db),
 ):
-    """Toggle content favorite status."""
+    """Set favorite status (idempotent)."""
     content = await db.scalar(select(Content).filter(Content.id == content_id))
     if not content:
         raise HTTPException(status_code=404, detail="Content not found")
 
-    content.favorited = not content.favorited
+    content.favorited = body.favorited
     await db.commit()
-    return {"message": "Favorite toggled", "favorited": content.favorited}
+    return {"message": "Favorite updated", "favorited": content.favorited}
 
 
 @router.delete("/{content_id}")

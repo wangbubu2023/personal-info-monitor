@@ -1,10 +1,10 @@
 """Pydantic schemas for API and Auth configuration."""
 
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Literal, Optional, Union
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 # API Config Schemas
@@ -16,9 +16,17 @@ class APIConfigBase(BaseModel):
 
 class APIConfigCreate(APIConfigBase):
     """Schema for creating API Config."""
-    api_key: str = Field(..., description="The API key (will be encrypted)")
+    api_key: Optional[str] = Field(None, description="The API key (will be encrypted); omit for Ollama")
     api_secret: Optional[str] = Field(None, description="API secret if required")
     additional_config: Optional[Dict[str, Any]] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def require_api_key_unless_ollama(self):
+        plat = (self.platform or "").strip().lower()
+        key = (self.api_key or "").strip()
+        if plat != "ollama" and not key:
+            raise ValueError("api_key is required for this platform")
+        return self
 
 
 class APIConfigUpdate(BaseModel):
@@ -58,6 +66,7 @@ class AuthConfigCreate(AuthConfigBase):
     username: Optional[str] = None
     password: Optional[str] = None
     cookies: Optional[Union[Dict[str, str], str]] = None
+    bind_all_x_sources: bool = False
     login_selectors: Optional[Dict[str, str]] = Field(
         default_factory=dict,
         description="CSS selectors for login form elements"
@@ -75,6 +84,7 @@ class AuthConfigUpdate(BaseModel):
     login_url: Optional[str] = None
     login_selectors: Optional[Dict[str, str]] = None
     is_shared: Optional[bool] = None
+    bind_all_x_sources: bool = False
 
 
 class AuthConfigResponse(AuthConfigBase):
@@ -102,11 +112,18 @@ class BrowserSessionCreate(BaseModel):
 
 
 class BrowserSessionOpenLoginRequest(BaseModel):
-    """Bootstrap persistent browser profile (MVP: optional cookie seeding + page open)."""
+    """Bootstrap persistent browser profile (MVP: optional cookie seeding + page open).
+
+    When ``headless`` is False, ``dwell_seconds`` is the **upper bound**: the
+    server waits until the user closes the browser window (capturing the
+    login state), or until the timeout fires. Bump the default/upper limit
+    for manual-login flows (NYT, WSJ, …) that need time for captchas/2FA.
+    """
 
     headless: bool = True
     bootstrap_auth_cookies: bool = True
-    dwell_seconds: int = Field(default=8, ge=0, le=120)
+    dwell_seconds: int = Field(default=180, ge=0, le=900)
+    sync_cookies_to_auth_config: bool = True
 
 
 class BrowserSessionValidateRequest(BaseModel):
@@ -185,6 +202,40 @@ class SystemLimitsConfig(BaseModel):
     max_hourly_digest_input_items: int = Field(default=200, ge=20, le=2000)
 
 
+HourlyDigestContentType = Literal["website", "rss", "x", "youtube", "podcast"]
+
+
+class HourlyDigestSettings(BaseModel):
+    """简报窗口：统一任务提示词（选稿+综述）、扫描类型与窗口长度。"""
+
+    prompt: str = Field(
+        default="",
+        max_length=8000,
+        description="选稿与写综述时模型须遵循的说明；空则后端使用内置默认。",
+    )
+    prompt_effective: str | None = Field(
+        default=None,
+        description="API 响应只读：合并自定义/旧版字段/内置默认后的实际任务提示词。",
+    )
+    content_types: List[HourlyDigestContentType] = Field(
+        default_factory=lambda: ["website", "rss"],
+        description="参与简报扫描的入库类型（content_type）。",
+    )
+    window_hours: int = Field(
+        default=3,
+        ge=1,
+        le=24,
+        description="简报覆盖的已完成小时窗口，默认 3 小时。",
+    )
+
+
+class FallbackModelPick(BaseModel):
+    """Provider + model id for fallback paths (credentials via 模型接入)."""
+
+    provider: str = "openai"
+    model: str = "gpt-4o-mini"
+
+
 class SystemSettings(BaseModel):
     """Schema for system-wide settings."""
     ai_model: AIModelConfig
@@ -192,10 +243,15 @@ class SystemSettings(BaseModel):
     translation_enabled: bool = True
     auto_translate_language: str = "zh-CN"
     summarization_enabled: bool = True
+    translation_fallback_enabled: bool = False
+    translation_fallback: FallbackModelPick = Field(default_factory=FallbackModelPick)
+    summarization_fallback_enabled: bool = False
+    summarization_fallback: FallbackModelPick = Field(default_factory=FallbackModelPick)
     translation_cloud_fallback_enabled: bool = False
     summarization_cloud_fallback_enabled: bool = False
     email_notifications_enabled: bool = False
     limits: SystemLimitsConfig = Field(default_factory=SystemLimitsConfig)
+    hourly_digest: HourlyDigestSettings = Field(default_factory=HourlyDigestSettings)
 
 
 class SystemSettingsResponse(BaseModel):
@@ -205,7 +261,12 @@ class SystemSettingsResponse(BaseModel):
     translation_enabled: bool
     auto_translate_language: str
     summarization_enabled: bool
+    translation_fallback_enabled: bool
+    translation_fallback: FallbackModelPick
+    summarization_fallback_enabled: bool
+    summarization_fallback: FallbackModelPick
     translation_cloud_fallback_enabled: bool
     summarization_cloud_fallback_enabled: bool
     email_notifications_enabled: bool
     limits: SystemLimitsConfig
+    hourly_digest: HourlyDigestSettings

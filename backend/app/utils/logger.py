@@ -111,10 +111,14 @@ def _configure_logging() -> None:
     log_dir = os.environ.get("PIM_LOG_DIR", ".pim-local-logs")
     if log_dir:
         os.makedirs(log_dir, exist_ok=True)
+        max_bytes = _positive_int_env(
+            "PIM_LOG_MAX_BYTES", default=10 * 1024 * 1024, minimum=64 * 1024
+        )
+        backup_count = _non_negative_int_env("PIM_LOG_BACKUP_COUNT", default=5, maximum=100)
         file_handler = RotatingFileHandler(
             os.path.join(log_dir, "backend.log"),
-            maxBytes=10 * 1024 * 1024,  # 10MB per file
-            backupCount=5,
+            maxBytes=max_bytes,
+            backupCount=backup_count,
             encoding="utf-8",
         )
         file_handler.setLevel(level)
@@ -123,6 +127,36 @@ def _configure_logging() -> None:
         root_logger.addHandler(file_handler)
 
     _logging_configured = True
+
+
+def _positive_int_env(name: str, *, default: int, minimum: int) -> int:
+    """Parse a positive integer env var, falling back to ``default`` on error.
+
+    Values below ``minimum`` are clamped up so operators can't accidentally
+    DoS themselves with a 100-byte rotation threshold.
+    """
+    raw = os.environ.get(name)
+    if raw is None or not raw.strip():
+        return default
+    try:
+        value = int(raw.strip())
+    except ValueError:
+        return default
+    return max(minimum, value)
+
+
+def _non_negative_int_env(name: str, *, default: int, maximum: int) -> int:
+    """Parse a non-negative integer env var capped at ``maximum``."""
+    raw = os.environ.get(name)
+    if raw is None or not raw.strip():
+        return default
+    try:
+        value = int(raw.strip())
+    except ValueError:
+        return default
+    if value < 0:
+        return default
+    return min(maximum, value)
 
 
 def get_logger(name: Optional[str] = None) -> logging.Logger:

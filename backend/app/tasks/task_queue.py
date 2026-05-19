@@ -6,9 +6,40 @@ instead of being silently heap-allocated.
 """
 
 import asyncio
+import logging
+import os
+from logging.handlers import RotatingFileHandler
+
 from app.utils.logger import get_logger
+from app.utils.metrics import task_queue_metrics
 
 logger = get_logger(__name__)
+
+_dlq_logger: logging.Logger | None = None
+
+
+def _dropped_task_logger() -> logging.Logger:
+    global _dlq_logger
+    if _dlq_logger is not None:
+        return _dlq_logger
+    from app.config import get_settings
+
+    settings = get_settings()
+    log_path = os.path.join(settings.data_dir, "dropped_tasks.log")
+    lg = logging.getLogger("pim.taskqueue.dlq")
+    lg.setLevel(logging.INFO)
+    lg.handlers.clear()
+    handler = RotatingFileHandler(
+        log_path,
+        maxBytes=10 * 1024 * 1024,
+        backupCount=5,
+        encoding="utf-8",
+    )
+    handler.setFormatter(logging.Formatter("%(message)s"))
+    lg.addHandler(handler)
+    lg.propagate = False
+    _dlq_logger = lg
+    return lg
 
 
 class BoundedTaskQueue:
@@ -18,6 +49,16 @@ class BoundedTaskQueue:
         self._fetch_queue: asyncio.Queue = asyncio.Queue(maxsize=fetch_maxsize)
         self._process_queue: asyncio.Queue = asyncio.Queue(maxsize=process_maxsize)
         self._workers: list[asyncio.Task] = []
+
+    def _record_dropped_task(self, task_type: str, item_id: str, details: str = ""):
+        """Record dropped task to a rotating DLQ log under ``data_dir``."""
+        import datetime
+
+        ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        try:
+            _dropped_task_logger().info("[%s] DROPPED %s: %s | %s", ts, task_type, item_id, details)
+        except Exception:
+            logger.error("Failed to write dropped-task DLQ log", exc_info=True)
 
     async def enqueue_fetch(self, source_id: str, manual_trigger: bool = False) -> bool:
         """Enqueue a fetch job. Returns False (and logs) if queue is full."""
@@ -29,6 +70,8 @@ class BoundedTaskQueue:
                 "fetch queue full (maxsize=%d), dropping source_id=%s",
                 self._fetch_maxsize, source_id,
             )
+            self._record_dropped_task("FETCH", source_id, f"manual={manual_trigger}")
+            task_queue_metrics.record_dropped("fetch")
             return False
 
     async def enqueue_process(self, content_id: str, job_id: str | None = None) -> bool:
@@ -41,6 +84,8 @@ class BoundedTaskQueue:
                 "process queue full (maxsize=%d), dropping content_id=%s",
                 self._process_maxsize, content_id,
             )
+            self._record_dropped_task("PROCESS", content_id, f"job_id={job_id}")
+            task_queue_metrics.record_dropped("process")
             return False
 
     async def start_workers(self, fetch_workers: int = 4, process_workers: int = 4) -> None:

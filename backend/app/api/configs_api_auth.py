@@ -3,15 +3,18 @@
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.database import get_async_db
 from app.models.auth_config import APIConfig, AuthConfig, AuthStatus, AuthType
+from app.models.browser_session import BrowserSession
+from app.models.source import Source
 from app.schemas.config import (
     APIConfigCreate,
     APIConfigUpdate,
@@ -22,6 +25,7 @@ from app.utils.datetime import utcnow_naive
 from app.utils.encryption import decrypt_data, encrypt_data
 from app.utils.url import normalize_host
 from app.api.configs_common import (
+    bind_auth_config_to_all_x_sources,
     bind_auth_config_to_sources,
     normalize_cookies_input,
     serialize_api_config,
@@ -31,20 +35,31 @@ from app.api.configs_common import (
 router = APIRouter()
 
 
-def _load_existing_credentials(encrypted_payload: str | None) -> dict:
-    """Best-effort decode of encrypted credential payloads."""
+@dataclass(frozen=True)
+class _DecodedCredentials:
+    """Result of decrypting stored credentials."""
+
+    data: dict
+    decrypt_failed: bool = False
+
+
+def _load_existing_credentials(encrypted_payload: str | None) -> _DecodedCredentials:
+    """Decode encrypted credential payloads; distinguish failure from empty."""
     if not encrypted_payload:
-        return {}
+        return _DecodedCredentials({})
     try:
         raw_creds = decrypt_data(encrypted_payload)
         if isinstance(raw_creds, dict):
-            return raw_creds
+            return _DecodedCredentials(raw_creds)
         if isinstance(raw_creds, str):
             parsed = json.loads(raw_creds)
-            return parsed if isinstance(parsed, dict) else {}
+            return _DecodedCredentials(parsed if isinstance(parsed, dict) else {})
     except Exception:
-        return {}
-    return {}
+        from app.utils.logger import get_logger
+
+        get_logger(__name__).exception("Failed to decrypt stored credentials")
+        return _DecodedCredentials({}, decrypt_failed=True)
+    return _DecodedCredentials({})
 
 
 def _apply_cookie_update(
@@ -72,7 +87,14 @@ def _apply_cookie_update(
 
 
 def _merge_api_credentials(config, config_data: APIConfigUpdate) -> None:
-    existing_creds = _load_existing_credentials(config.encrypted_credentials)
+    load = _load_existing_credentials(config.encrypted_credentials)
+    if load.decrypt_failed:
+        raise HTTPException(
+            status_code=503,
+            detail="Stored credentials could not be decrypted (encryption key mismatch?). "
+            "Fix PIM_ENCRYPTION_KEY / runtime-secrets.json before updating this entry.",
+        )
+    existing_creds = load.data
     if config_data.api_key is not None:
         existing_creds["api_key"] = config_data.api_key
     if config_data.api_secret is not None:
@@ -83,7 +105,14 @@ def _merge_api_credentials(config, config_data: APIConfigUpdate) -> None:
 
 
 def _merge_auth_credentials(config, config_data: AuthConfigUpdate) -> None:
-    existing_creds = _load_existing_credentials(config.credentials)
+    load = _load_existing_credentials(config.credentials)
+    if load.decrypt_failed:
+        raise HTTPException(
+            status_code=503,
+            detail="Stored credentials could not be decrypted (encryption key mismatch?). "
+            "Fix encryption key before updating this auth config.",
+        )
+    existing_creds = load.data
     if config_data.username is not None:
         existing_creds["username"] = config_data.username
     if config_data.password is not None:
@@ -110,7 +139,7 @@ async def create_api_config(
     db: AsyncSession = Depends(get_async_db),
 ):
     """Create a new API configuration."""
-    credentials = {"api_key": config_data.api_key}
+    credentials = {"api_key": (config_data.api_key or "").strip()}
     if config_data.api_secret:
         credentials["api_secret"] = config_data.api_secret
     if config_data.additional_config:
@@ -229,6 +258,8 @@ async def create_auth_config(
     db.add(config)
     await db.flush()
     bound_sources = await bind_auth_config_to_sources(db, config)
+    if config_data.bind_all_x_sources:
+        bound_sources += await bind_auth_config_to_all_x_sources(db, config)
     await db.commit()
     result = await db.execute(
         select(AuthConfig).options(selectinload(AuthConfig.sources)).filter(AuthConfig.id == config.id)
@@ -288,6 +319,8 @@ async def update_auth_config(
         _merge_auth_credentials(config, config_data)
 
     bound_sources = await bind_auth_config_to_sources(db, config)
+    if config_data.bind_all_x_sources:
+        bound_sources += await bind_auth_config_to_all_x_sources(db, config)
     await db.commit()
     result = await db.execute(
         select(AuthConfig).options(selectinload(AuthConfig.sources)).filter(AuthConfig.id == config_id)
@@ -304,12 +337,39 @@ async def delete_auth_config(
     config_id: UUID,
     db: AsyncSession = Depends(get_async_db),
 ):
-    """Delete an authentication configuration."""
+    """Delete an authentication configuration.
+
+    When the config is still referenced by monitoring sources or browser
+    sessions, a plain ``DELETE`` would blow up on the FK constraint. Instead of
+    refusing the request (and leaving users with no path forward through the
+    UI), we unlink those referencing rows first and report the counts back, so
+    the caller knows exactly what was cleaned up. This mirrors the "legacy
+    cleanup" intent exposed in the frontend.
+    """
+    config_id_str = str(config_id)
     result = await db.execute(select(AuthConfig).filter(AuthConfig.id == config_id))
     config = result.scalar_one_or_none()
     if not config:
         raise HTTPException(status_code=404, detail="Auth config not found")
 
+    src_result = await db.execute(
+        update(Source)
+        .where(Source.auth_config_id == config_id_str)
+        .values(auth_config_id=None, auth_required=False)
+    )
+    sources_unlinked = src_result.rowcount or 0
+
+    session_result = await db.execute(
+        update(BrowserSession)
+        .where(BrowserSession.auth_config_id == config_id_str)
+        .values(auth_config_id=None)
+    )
+    sessions_unlinked = session_result.rowcount or 0
+
     await db.delete(config)
     await db.commit()
-    return {"message": "Auth config deleted successfully"}
+    return {
+        "message": "Auth config deleted successfully",
+        "sources_unlinked": sources_unlinked,
+        "browser_sessions_unlinked": sessions_unlinked,
+    }

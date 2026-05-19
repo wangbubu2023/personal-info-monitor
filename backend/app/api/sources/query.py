@@ -30,7 +30,6 @@ async def list_sources(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=MAX_SOURCES_PAGE_SIZE),
     type: Optional[str] = None,
-    category_id: Optional[UUID] = None,
     enabled: Optional[bool] = None,
     search: Optional[str] = None,
     scope: Optional[str] = None,
@@ -41,7 +40,7 @@ async def list_sources(
 
     cache_key = (
         f"sources:page={page}:size={page_size}:type={type or ''}:"
-        f"category={category_id or ''}:enabled={enabled!r}:search={search or ''}"
+        f"enabled={enabled!r}:search={search or ''}"
     )
     cached = _source_cache.get(cache_key)
     if cached is not None:
@@ -53,9 +52,6 @@ async def list_sources(
     if type:
         query = query.filter(Source.type == type)
         count_query = count_query.filter(Source.type == type)
-    if category_id:
-        query = query.filter(Source.category_id == category_id)
-        count_query = count_query.filter(Source.category_id == category_id)
     if enabled is not None:
         query = query.filter(Source.enabled == enabled)
         count_query = count_query.filter(Source.enabled == enabled)
@@ -67,7 +63,7 @@ async def list_sources(
     total_result = await db.execute(count_query)
     total = total_result.scalar()
     offset = (page - 1) * page_size
-    query = query.order_by(Source.priority.desc(), Source.name).offset(offset).limit(page_size)
+    query = query.order_by(Source.name).offset(offset).limit(page_size)
     result = await db.execute(query)
     sources = result.scalars().all()
     total_pages = (total + page_size - 1) // page_size

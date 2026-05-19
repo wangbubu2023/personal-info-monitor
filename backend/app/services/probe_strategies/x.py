@@ -1,28 +1,30 @@
-"""X (Twitter) probe strategy mixin."""
+"""X (Twitter) probe strategy (standalone, no mixin)."""
+
+from __future__ import annotations
 
 import re
-from typing import Optional
+from typing import Any, Optional
 
 import feedparser
 
-from app.utils.logger import get_logger
 from app.services.probe_strategies.result import ProbeResult
+from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
 
 class XProbeStrategy:
+    def __init__(self, helpers: Any):
+        self.helpers = helpers
 
-    async def _probe_x(self, url: str):
-        """Probe an X/Twitter URL."""
-        username = self._extract_x_username(url)
+    async def probe(self, url: str) -> ProbeResult:
+        username = self.extract_username(url)
         if not username:
             return ProbeResult(status="error", message=f"无法从 URL 中提取用户名: {url}")
 
         from app.config import get_settings
         settings = get_settings()
 
-        # 1. 尝试 twikit GraphQL（最高优先级）
         auth_token = getattr(settings, "x_auth_token", None)
         ct0_token = getattr(settings, "x_ct0_token", None)
         if auth_token and ct0_token:
@@ -39,14 +41,12 @@ class XProbeStrategy:
                     )
             except ImportError:
                 logger.warning("twikit 未安装，跳过 GraphQL 探测")
-            except Exception as e:
-                logger.warning(f"GraphQL 探测 @{username} 失败: {e}")
+            except Exception as exc:  # noqa: BLE001 - twikit raises mixed errors
+                logger.warning(f"GraphQL 探测 @{username} 失败: {exc}")
 
-        # 2. 尝试 RSSHub
         rsshub_url = getattr(settings, "rsshub_url", "https://rsshub.app")
         feed_url = f"{rsshub_url}/twitter/user/{username}"
-
-        text = await self._http_get(feed_url, timeout=20)
+        text = await self.helpers._http_get(feed_url, timeout=20)
         if text:
             feed = feedparser.parse(text)
             if feed.entries:
@@ -56,7 +56,6 @@ class XProbeStrategy:
                     sample_count=len(feed.entries),
                 )
 
-        # 3. 尝试 Nitter
         raw_nitter = getattr(settings, "nitter_instances", None) or ""
         if raw_nitter:
             nitter_instances = [u.strip().rstrip("/") for u in raw_nitter.split(",") if u.strip()]
@@ -68,7 +67,7 @@ class XProbeStrategy:
             ]
         for inst in nitter_instances:
             nitter_feed = f"{inst}/{username}/rss"
-            text = await self._http_get(nitter_feed, timeout=10)
+            text = await self.helpers._http_get(nitter_feed, timeout=10)
             if text:
                 feed = feedparser.parse(text)
                 if feed.entries:
@@ -78,27 +77,24 @@ class XProbeStrategy:
                         sample_count=len(feed.entries),
                     )
 
-        # 4. 检查 Bearer Token
         bearer = getattr(settings, "x_bearer_token", None)
         if bearer and bearer not in ("", "xxx"):
             return ProbeResult(
                 status="warning", strategy="api",
-                message=f"RSSHub/Nitter 均不可用，将使用官方 API（需 Bearer Token）",
+                message="RSSHub/Nitter 均不可用，将使用官方 API（需 Bearer Token）",
             )
 
-        # 5. 提示用户配置 Cookie
         if not (auth_token and ct0_token):
             return ProbeResult(
                 status="error", strategy="none",
                 message=f"@{username} 无法抓取：未配置 X_AUTH_TOKEN/X_CT0_TOKEN，且 RSSHub/Nitter 不可用",
             )
-
         return ProbeResult(
             status="error", strategy="none",
             message=f"@{username} 无法抓取：所有策略均失败",
         )
 
-    def _extract_x_username(self, url: str) -> Optional[str]:
+    def extract_username(self, url: str) -> Optional[str]:
         if url.startswith("@"):
             return url[1:]
         match = re.search(r"(?:twitter\.com|x\.com)/(@)?([a-zA-Z0-9_]+)", url)

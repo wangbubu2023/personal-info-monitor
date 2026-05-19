@@ -6,6 +6,62 @@ from typing import Any, Dict, List, Optional
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
+from urllib.parse import urlparse
+
+from app.utils.url import normalize_source_url_input
+
+_MAX_FETCH_LAG_MIN = 1
+_MAX_FETCH_LAG_MAX = 525600  # 365 days
+
+
+def _normalize_source_quality_metadata(meta: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    if not meta:
+        return meta
+    out = dict(meta)
+
+    if "source_stars" in out and out.get("source_stars") is not None:
+        try:
+            out["source_stars"] = max(1, min(3, int(out["source_stars"])))
+        except (TypeError, ValueError) as exc:
+            raise ValueError("metadata.source_stars must be 1, 2, or 3") from exc
+
+    if "source_weight" in out and out.get("source_weight") is not None:
+        try:
+            weight = float(out["source_weight"])
+        except (TypeError, ValueError) as exc:
+            raise ValueError("metadata.source_weight must be a number") from exc
+        out["source_weight"] = max(0.5, min(1.5, weight))
+
+    if "domain_focus" in out and out.get("domain_focus") is not None:
+        raw_focus = out.get("domain_focus")
+        if isinstance(raw_focus, str):
+            focus = [x.strip() for x in re.split(r"[,\n，、]+", raw_focus) if x.strip()]
+        elif isinstance(raw_focus, list):
+            focus = [str(x).strip() for x in raw_focus if str(x).strip()]
+        else:
+            raise ValueError("metadata.domain_focus must be a list or comma-separated string")
+        out["domain_focus"] = focus[:20]
+
+    if "authority_type" in out and out.get("authority_type") is not None:
+        out["authority_type"] = str(out["authority_type"]).strip()[:80]
+
+    return out
+
+
+def _validate_max_fetch_lag_in_metadata(meta: Optional[Dict[str, Any]]) -> None:
+    if not meta:
+        return
+    lag = meta.get("max_fetch_lag_minutes")
+    if lag is None:
+        return
+    try:
+        n = int(lag)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("metadata.max_fetch_lag_minutes must be an integer") from exc
+    if n < _MAX_FETCH_LAG_MIN or n > _MAX_FETCH_LAG_MAX:
+        raise ValueError(
+            f"metadata.max_fetch_lag_minutes must be between {_MAX_FETCH_LAG_MIN} and {_MAX_FETCH_LAG_MAX}"
+        )
 
 
 class SourceBase(BaseModel):
@@ -15,21 +71,28 @@ class SourceBase(BaseModel):
     type: str = Field(..., pattern="^(website|rss|x|youtube|podcast)$")
     url: str = Field(..., min_length=1)
     extra_urls: List[str] = Field(default_factory=list)
-    category_id: Optional[UUID] = None
     fetch_interval: int = Field(default=60, ge=15, le=1440)  # 15 min to 24 hours
     enabled: bool = True
-    priority: int = Field(default=0, ge=0, le=100)
     use_keyword_filter: bool = False
     auth_required: bool = False
     auth_config_id: Optional[UUID] = None
     metadata_: Optional[Dict[str, Any]] = Field(default_factory=dict, alias="metadata")
 
+    @field_validator("metadata_")
+    @classmethod
+    def validate_metadata_lag(cls, v: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+        v = _normalize_source_quality_metadata(v)
+        _validate_max_fetch_lag_in_metadata(v)
+        return v
+
     @field_validator("url")
     @classmethod
     def validate_url_format(cls, v: str) -> str:
-        v = v.strip()
-        if not re.match(r"^https?://", v, re.IGNORECASE):
-            raise ValueError("URL must start with http:// or https://")
+        v = normalize_source_url_input(v)
+        if not v:
+            raise ValueError("URL is required")
+        if not urlparse(v).netloc:
+            raise ValueError("URL must include a valid host")
         return v
 
     @field_validator("extra_urls")
@@ -37,9 +100,11 @@ class SourceBase(BaseModel):
     def validate_extra_urls_format(cls, v: List[str]) -> List[str]:
         out: List[str] = []
         for item in v:
-            item = item.strip()
-            if not re.match(r"^https?://", item, re.IGNORECASE):
-                raise ValueError("Each extra URL must start with http:// or https://")
+            item = normalize_source_url_input(item)
+            if not item:
+                continue
+            if not urlparse(item).netloc:
+                raise ValueError("Each extra URL must include a valid host")
             out.append(item)
         return out
 
@@ -56,23 +121,30 @@ class SourceUpdate(BaseModel):
     type: Optional[str] = Field(None, pattern="^(website|rss|x|youtube|podcast)$")
     url: Optional[str] = Field(None, min_length=1)
     extra_urls: Optional[List[str]] = None
-    category_id: Optional[UUID] = None
     fetch_interval: Optional[int] = Field(None, ge=15, le=1440)
     enabled: Optional[bool] = None
-    priority: Optional[int] = Field(None, ge=0, le=100)
     use_keyword_filter: Optional[bool] = None
     auth_required: Optional[bool] = None
     auth_config_id: Optional[UUID] = None
     metadata_: Optional[Dict[str, Any]] = Field(None, alias="metadata")
+
+    @field_validator("metadata_")
+    @classmethod
+    def validate_metadata_lag_update(cls, v: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+        v = _normalize_source_quality_metadata(v)
+        _validate_max_fetch_lag_in_metadata(v)
+        return v
 
     @field_validator("url")
     @classmethod
     def validate_url_format(cls, v: Optional[str]) -> Optional[str]:
         if v is None:
             return v
-        v = v.strip()
-        if not re.match(r"^https?://", v, re.IGNORECASE):
-            raise ValueError("URL must start with http:// or https://")
+        v = normalize_source_url_input(v)
+        if not v:
+            raise ValueError("URL is required")
+        if not urlparse(v).netloc:
+            raise ValueError("URL must include a valid host")
         return v
 
     @field_validator("extra_urls")
@@ -82,9 +154,11 @@ class SourceUpdate(BaseModel):
             return v
         out: List[str] = []
         for item in v:
-            item = item.strip()
-            if not re.match(r"^https?://", item, re.IGNORECASE):
-                raise ValueError("Each extra URL must start with http:// or https://")
+            item = normalize_source_url_input(item)
+            if not item:
+                continue
+            if not urlparse(item).netloc:
+                raise ValueError("Each extra URL must include a valid host")
             out.append(item)
         return out
 

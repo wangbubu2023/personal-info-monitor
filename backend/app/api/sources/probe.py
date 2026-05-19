@@ -5,19 +5,24 @@ from typing import Dict, List, Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator
+from urllib.parse import urlparse
+
+from app.utils.url import normalize_source_url_input
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_async_db
 from app.models import Source
 from app.utils.logger import get_logger
+from . import _helpers
 from ._helpers import (
     _ensure_supported_source_type,
-    _source_is_visible,
-    _get_source_urls,
     _exclude_disabled_source_types,
+    _get_source_urls,
     _invalidate_source_cache,
+    _load_source_probe_cookies,
+    _source_is_visible,
     serialize_source,
 )
 
@@ -26,8 +31,21 @@ router = APIRouter()
 
 
 class ProbeRequest(BaseModel):
-    url: str
+    url: str = Field(
+        ...,
+        min_length=1,
+        max_length=2048,
+        description="HTTP(S) URL to probe",
+    )
     type: str = "website"
+
+    @field_validator("url")
+    @classmethod
+    def normalize_probe_url(cls, v: str) -> str:
+        v = normalize_source_url_input(v)
+        if not v or not urlparse(v).netloc:
+            raise ValueError("URL must include a valid host")
+        return v
 
 
 class ProbeResponse(BaseModel):
@@ -55,14 +73,14 @@ async def probe_all_sources(db: AsyncSession = Depends(get_async_db)):
     if not sources:
         return {"message": "No sources to probe", "total": 0, "failed_items": []}
 
-    import app.api.sources as _pkg
     updated = 0
     failed_items: List[Dict[str, str]] = []
     for s in sources:
         stype = _ensure_supported_source_type(s.type)
         urls = _get_source_urls(s)
+        cookies = await _load_source_probe_cookies(db, s)
         try:
-            probe_result, rss_urls, _ = await _pkg._probe_urls(urls, stype)
+            probe_result, rss_urls, _ = await _helpers._probe_urls(urls, stype, cookies=cookies)
         except Exception as exc:
             logger.warning("Batch probe failed for source %s: %s", s.id, exc)
             failed_items.append({"id": str(s.id), "error": str(exc)[:200]})
@@ -91,10 +109,10 @@ async def probe_source(source_id: UUID, db: AsyncSession = Depends(get_async_db)
     if not source or not _source_is_visible(source):
         raise HTTPException(status_code=404, detail="Source not found")
 
-    import app.api.sources as _pkg
     stype = _ensure_supported_source_type(source.type)
     urls = _get_source_urls(source)
-    probe_result, rss_urls, _ = await _pkg._probe_urls(urls, stype)
+    cookies = await _load_source_probe_cookies(db, source)
+    probe_result, rss_urls, _ = await _helpers._probe_urls(urls, stype, cookies=cookies)
 
     meta = dict(source.metadata_ or {})
     meta["probe"] = probe_result.to_dict()

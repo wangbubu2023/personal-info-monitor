@@ -25,7 +25,6 @@ class DigestService:
     def generate_daily_digest(
         self,
         date: date,
-        category_ids: Optional[List[UUID]] = None,
         keyword_ids: Optional[List[UUID]] = None,
         unread_only: bool = True,
         source_types: Optional[List[str]] = None
@@ -35,7 +34,6 @@ class DigestService:
         
         Args:
             date: Date for the digest
-            category_ids: Filter by category IDs
             keyword_ids: Filter by matched keyword IDs
             unread_only: Only include unread content
             source_types: Filter by source types
@@ -57,9 +55,6 @@ class DigestService:
         )
         
         # Apply filters
-        if category_ids:
-            query = query.filter(Source.category_id.in_(category_ids))
-        
         if unread_only:
             query = query.filter(Content.read_status == False)
         

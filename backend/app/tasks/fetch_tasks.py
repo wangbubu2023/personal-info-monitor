@@ -1,9 +1,9 @@
 """Tasks for fetching content from sources — high-concurrency async engine."""
 
 import asyncio
+import random
+from datetime import timedelta
 from uuid import uuid4
-
-from sqlalchemy import text
 
 from app.background import (
     domain_limiter,
@@ -17,6 +17,7 @@ from app.models.source import SourceType
 from app.pipeline.coordinator import run_fetch_pipeline
 from app.tasks.fetch_orchestrator import persist_fetch_task_exception
 from app.utils.datetime import utcnow_naive
+from app.utils.human_timing import jittered_interval_minutes
 from app.utils.logger import get_logger, bind_job_id, restore_job_id
 from app.utils.url import normalize_host
 
@@ -45,61 +46,69 @@ async def fetch_source(source_id: str, manual_trigger: bool = False):
 
 
 async def _do_fetch(source_id: str, manual_trigger: bool, job_id: str | None = None):
+    """执行单源抓取：同步线程查询 + 主循环 async pipeline。"""
     from app.database import SessionLocal
     from app.models import Source
 
     lock_ttl = 300
     lock_acquired = False
+    db = None
 
     try:
-        # Acquire per-source lock
-        def _query_and_fetch():
-            nonlocal lock_acquired, lock_ttl
+        # --- 阶段 1：在线程中执行同步 DB 查询和锁获取 ---
+        def _query_and_lock():
+            nonlocal lock_acquired, lock_ttl, db
             db = SessionLocal()
-            try:
-                source = db.query(Source).filter(Source.id == source_id).first()
-                if not source:
-                    logger.error(f"Source not found: {source_id}")
-                    return {"status": "error", "message": "Source not found"}
+            source = db.query(Source).filter(Source.id == source_id).first()
+            if not source:
+                return None, "Source not found"
 
-                lock_ttl = max(300, int((source.fetch_interval or 60) * 60))
-                lock_acquired = fetch_lock.acquire(source_id, lock_ttl)
-                if not lock_acquired:
-                    logger.info(f"Skip duplicate fetch for source: {source_id}")
-                    return {"status": "skipped", "message": "Already fetching"}
+            lock_ttl = max(300, int((source.fetch_interval or 60) * 60))
+            _lock_acquired = fetch_lock.acquire(source_id, lock_ttl)
+            if not _lock_acquired:
+                return None, "Already fetching"
 
-                if not source.enabled and not manual_trigger:
-                    return {"status": "skipped", "message": "Source is disabled"}
-                if not PODCAST_SOURCES_ENABLED:
-                    source_type = source.type.value if hasattr(source.type, "value") else str(source.type)
-                    if source_type == "podcast":
-                        return {"status": "skipped", "message": "Podcast sources are disabled"}
+            if not source.enabled and not manual_trigger:
+                fetch_lock.release(source_id)
+                return None, "Source is disabled"
 
-                # Domain rate limit
-                domain = normalize_host(source.url)
-                if not domain_limiter.acquire(domain):
-                    logger.info(f"Rate-limited domain for source: {source_id} ({domain})")
+            if not PODCAST_SOURCES_ENABLED:
+                source_type = source.type.value if hasattr(source.type, "value") else str(source.type)
+                if source_type == "podcast":
                     fetch_lock.release(source_id)
-                    lock_acquired = False
-                    return {"status": "skipped", "message": "Domain rate limited"}
+                    return None, "Podcast sources are disabled"
 
-                result = asyncio.run(run_fetch_pipeline(db, source, manual_trigger))
+            # 域名限速检查
+            domain = normalize_host(source.url)
+            if not domain_limiter.acquire(domain):
+                logger.info(f"Rate-limited domain for source: {source_id} ({domain})")
+                fetch_lock.release(source_id)
+                return None, "Domain rate limited"
 
-                # Collect new content IDs for AI processing
-                new_ids = []
-                if result.get("saved", 0) > 0:
-                    new_ids = result.get("new_content_ids", [])
+            return source, None
 
-                return {**result, "new_content_ids": new_ids}
-            finally:
-                if lock_acquired:
-                    fetch_lock.release(source_id)
-                db.close()
+        source, skip_reason = await asyncio.to_thread(_query_and_lock)
 
-        result = await asyncio.to_thread(_query_and_fetch)
+        if skip_reason:
+            if skip_reason == "Source not found":
+                logger.error(f"Source not found: {source_id}")
+                return {"status": "error", "message": skip_reason}
+            logger.info(f"Skip fetch for source {source_id}: {skip_reason}")
+            return {"status": "skipped", "message": skip_reason}
+
+        lock_acquired = True
+
+        # --- 阶段 2：在主事件循环中直接 await pipeline（共享连接池/信号量） ---
+        result = await run_fetch_pipeline(db, source, manual_trigger)
+
+        # 收集新内容 ID 用于 AI 后处理
+        new_ids = []
+        if result.get("saved", 0) > 0:
+            new_ids = result.get("new_content_ids", [])
+
+        result = {**result, "new_content_ids": new_ids}
 
         # Dispatch non-blocking post-processing for new content.
-        new_ids = result.get("new_content_ids", [])
         if new_ids:
             from app.tasks.task_queue import task_queue
             for cid in new_ids:
@@ -110,6 +119,15 @@ async def _do_fetch(source_id: str, manual_trigger: bool, job_id: str | None = N
     except Exception as exc:
         logger.error(f"Fetch failed for {source_id}: {exc}")
         await asyncio.to_thread(persist_fetch_task_exception, source_id, exc)
+
+    finally:
+        # 确保锁释放和 DB 关闭在线程中执行（避免同步 I/O 阻塞事件循环）
+        def _cleanup():
+            if lock_acquired:
+                fetch_lock.release(source_id)
+            if db is not None:
+                db.close()
+        await asyncio.to_thread(_cleanup)
 
 
 async def fetch_all_sources(manual_trigger: bool = False):
@@ -144,6 +162,31 @@ async def fetch_all_sources(manual_trigger: bool = False):
     return {"status": "success", "total": len(source_ids), "scheduled": scheduled}
 
 
+# When multiple sources come due in the same scheduler tick we stagger their
+# enqueue by up to this many seconds so the target hosts don't see a wall of
+# synchronized requests. Kept tight enough that fetches still happen within
+# the same minute; long enough to visibly de-correlate starts.
+_STARTUP_JITTER_SECONDS = 30.0
+
+
+def _effective_due_interval_minutes(source) -> float:
+    """Base interval × exponential error backoff × ±10% deterministic jitter.
+
+    The jitter is keyed on ``(source_id, last_fetched_at)`` so the SQL-free
+    due check, the status API, and the scheduler all agree on the same
+    ``next_fetch_at``; it rerolls the moment a fetch lands.
+    """
+    base = int(source.fetch_interval or 60)
+    backoff = 1 << min(int(source.error_count or 0), 5)  # 2**n
+    base_with_backoff = base * backoff
+    return jittered_interval_minutes(
+        str(source.id),
+        base_with_backoff,
+        source.last_fetched_at,
+        jitter_pct=0.1,
+    )
+
+
 async def check_and_fetch_due_sources():
     """Scheduled job: check for sources due for fetching and dispatch."""
     logger.info("Checking for sources due for fetching")
@@ -155,30 +198,54 @@ async def check_and_fetch_due_sources():
         db = SessionLocal()
         try:
             now = utcnow_naive()
-            now_str = now.strftime("%Y-%m-%d %H:%M:%S")
             query = db.query(Source).filter(Source.enabled.is_(True))
             if not PODCAST_SOURCES_ENABLED:
                 query = query.filter(Source.type != SourceType.PODCAST)
-            # Push "due" window to SQL: same formula as prior Python loop
-            # (interval minutes = fetch_interval * 2^min(error_count,5)).
-            due_sql = text(
-                "last_fetched_at IS NULL OR :now_str >= datetime(last_fetched_at, '+' || "
-                "CAST((COALESCE(fetch_interval, 60) * (1 << MIN(COALESCE(error_count, 0), 5))) AS TEXT) || ' minutes')"
-            ).bindparams(now_str=now_str)
-            query = query.filter(due_sql)
-            sources = query.all()
-            return [str(s.id) for s in sources]
+            # Due check runs in Python so we can apply deterministic per-cycle
+            # interval jitter — SQLite can't hash, and pushing randomness into
+            # the query would destabilize the due window between ticks.
+            due: list[str] = []
+            for source in query.all():
+                if source.last_fetched_at is None:
+                    due.append(str(source.id))
+                    continue
+                interval_min = _effective_due_interval_minutes(source)
+                if now >= source.last_fetched_at + timedelta(minutes=interval_min):
+                    due.append(str(source.id))
+            return due
         finally:
             db.close()
 
     due_ids = await asyncio.to_thread(_query_due)
 
     from app.tasks.task_queue import task_queue
+
+    async def _delayed_enqueue(sid: str, delay_s: float) -> None:
+        try:
+            if delay_s > 0:
+                await asyncio.sleep(delay_s)
+            if fetch_lock.is_locked(sid):
+                return
+            await task_queue.enqueue_fetch(sid)
+        except Exception:  # noqa: BLE001 - best-effort; log and move on
+            logger.exception("Delayed enqueue failed for source %s", sid)
+
+    # Skip the jitter when a single source is due — no correlation risk
+    # and a user watching a lone feed shouldn't wait extra seconds for no
+    # reason. Above that, spread starts across [0, _STARTUP_JITTER_SECONDS).
     scheduled = 0
+    use_jitter = len(due_ids) > 1
     for sid in due_ids:
         if fetch_lock.is_locked(sid):
             continue
-        await task_queue.enqueue_fetch(sid)
+        delay = random.uniform(0.0, _STARTUP_JITTER_SECONDS) if use_jitter else 0.0
+        asyncio.create_task(_delayed_enqueue(sid, delay))
         scheduled += 1
 
-    logger.info(f"Scheduled {scheduled}/{len(due_ids)} due sources")
+    logger.info(
+        "Scheduled %s/%s due sources (startup_jitter=%ss%s)",
+        scheduled,
+        len(due_ids),
+        _STARTUP_JITTER_SECONDS if use_jitter else 0,
+        ", jittered" if use_jitter else "",
+    )

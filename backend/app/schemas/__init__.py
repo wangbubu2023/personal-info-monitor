@@ -11,11 +11,6 @@ from app.schemas.content import (
     ContentListResponse,
     ContentUpdate,
 )
-from app.schemas.category import (
-    CategoryCreate,
-    CategoryUpdate,
-    CategoryResponse,
-)
 from app.schemas.keyword import (
     KeywordCreate,
     KeywordUpdate,
@@ -31,9 +26,6 @@ __all__ = [
     "ContentResponse",
     "ContentListResponse",
     "ContentUpdate",
-    "CategoryCreate",
-    "CategoryUpdate",
-    "CategoryResponse",
     "KeywordCreate",
     "KeywordUpdate",
     "KeywordResponse",

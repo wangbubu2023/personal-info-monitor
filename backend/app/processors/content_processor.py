@@ -1,7 +1,8 @@
 """Main content processor that orchestrates all processing steps."""
 
+from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Mapping, Optional
 from urllib.parse import urlparse
 
 import aiohttp
@@ -15,12 +16,46 @@ from app.processors.summarizer import Summarizer
 from app.processors.translator import Translator
 from app.processors.extractor import ContentExtractor
 from app.processors.keyword_matcher import KeywordMatcher
+from app.services.content_quality_service import merge_content_quality_metadata
 from app.utils.cookies import normalize_cookie_dict
+from app.utils.http import permissive_session_kwargs
 from app.utils.logger import get_logger
 from app.utils.ssrf import check_before_fetch
 from app.utils.text import strip_html_tags, truncate_content
 
 logger = get_logger(__name__)
+
+
+@dataclass(frozen=True)
+class ContentTypeStrategy:
+    """Per-``content_type`` knobs used during processing.
+
+    Extracted into a small registry (audit 2026-04-20 §8.2) so that
+    ``ContentProcessor.process`` stays branch-free on source type, and
+    adding a new type is a one-line edit to :data:`_CONTENT_TYPE_STRATEGIES`.
+    """
+
+    #: Extractive summary character budget (upper bound).
+    summary_char_limit: int = 500
+    #: When true, website-style cookie full-text fallback is attempted
+    #: whenever the source carries runtime cookies.
+    wants_cookie_fulltext: bool = False
+
+
+_CONTENT_TYPE_STRATEGIES: Mapping[str, ContentTypeStrategy] = {
+    "website": ContentTypeStrategy(summary_char_limit=500, wants_cookie_fulltext=True),
+    "rss": ContentTypeStrategy(summary_char_limit=500),
+    "x": ContentTypeStrategy(summary_char_limit=500),
+    "youtube": ContentTypeStrategy(summary_char_limit=300),
+    "podcast": ContentTypeStrategy(summary_char_limit=500),
+}
+
+_DEFAULT_STRATEGY = ContentTypeStrategy()
+
+
+def strategy_for(content_type: str) -> ContentTypeStrategy:
+    """Look up the strategy for ``content_type``; unknown types fall back to defaults."""
+    return _CONTENT_TYPE_STRATEGIES.get(content_type, _DEFAULT_STRATEGY)
 
 
 class ContentProcessor:
@@ -77,7 +112,9 @@ class ContentProcessor:
                     continue
                 cookie_jar.update_cookies({str(key): str(value)}, response_url=url_obj)
 
-            async with aiohttp.ClientSession(cookie_jar=cookie_jar) as session:
+            async with aiohttp.ClientSession(
+                **permissive_session_kwargs(cookie_jar=cookie_jar)
+            ) as session:
                 async with session.get(
                     url,
                     headers=headers,
@@ -115,8 +152,9 @@ class ContentProcessor:
         main_text = raw_content.get("content", "")
         html = raw_content.get("html")
         source_type = source.type.value if hasattr(source.type, "value") else str(source.type)
+        strategy = strategy_for(source_type)
         runtime_cookies = self._get_runtime_cookies(source)
-        cookie_fulltext_required = source_type == "website" and bool(runtime_cookies)
+        cookie_fulltext_required = strategy.wants_cookie_fulltext and bool(runtime_cookies)
         
         if html and not main_text:
             main_text = await self.extractor.extract(html, raw_content.get("url"))
@@ -139,7 +177,7 @@ class ContentProcessor:
         _ = translate
         summary = None
         if main_text_clean and len(main_text_clean) >= 50:
-            limit = 300 if source_type == "youtube" else 500
+            limit = strategy.summary_char_limit
             summary = main_text_clean[:limit] + ("..." if len(main_text_clean) > limit else "")
             summary = strip_html_tags(summary)
 
@@ -151,9 +189,11 @@ class ContentProcessor:
         # Match keywords
         keyword_matches = []
         if KEYWORD_MONITORING_ENABLED and keywords:
-            # Match against both title and content
-            search_text = f"{raw_content.get('title', '')} {main_text}"
-            keyword_matches = self.keyword_matcher.match(search_text, keywords)
+            keyword_matches = self.keyword_matcher.match(
+                title,
+                main_text_clean,
+                keywords,
+            )
         
         # Parse publish time
         publish_time = raw_content.get("publish_time")
@@ -173,6 +213,13 @@ class ContentProcessor:
             metadata["cookie_fulltext_required"] = True
             metadata["cookie_fulltext_obtained"] = bool(main_text_clean and len(main_text_clean) >= 120)
             metadata["cookie_fulltext_length"] = len(main_text_clean or "")
+        metadata = merge_content_quality_metadata(
+            metadata,
+            title=title,
+            full_content=main_text_clean,
+            summary=summary,
+            translated_summary=translated_summary,
+        )
 
         content = Content(
             source_id=source.id,
@@ -267,5 +314,12 @@ class ContentProcessor:
                     content.summary, "zh-CN"
                 )
 
+        content.metadata_ = merge_content_quality_metadata(
+            content.metadata_ or {},
+            title=content.title or "",
+            full_content=content.full_content,
+            summary=content.summary,
+            translated_summary=content.translated_summary,
+        )
         content.updated_at = utcnow_naive()
         return content

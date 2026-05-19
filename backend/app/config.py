@@ -33,6 +33,12 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
+        # Operators often leave legacy/unknown keys in .env (JWT_SECRET_KEY
+        # from earlier iterations, custom DEBUG_* flags, etc). Failing startup
+        # on extras is needlessly brittle — we silently ignore them instead
+        # and let the dedicated runtime-secrets file own the authoritative
+        # security-sensitive values.
+        extra="ignore",
     )
 
     # Application
@@ -77,10 +83,24 @@ class Settings(BaseSettings):
     encryption_key: str = ""
     probe_disable_ssl_verify: bool = False
     pim_api_key: str = ""
+    # One-time shared secret guarding /local-token. Populated from runtime-secrets.json
+    # on startup; distributed to trusted local callers (Tauri shell, operator CLI) via
+    # the filesystem (file mode 0600), never exposed over HTTP.
+    bootstrap_token: str = ""
     cors_origins: str = _default_cors_origins()
+    # Per-IP (+ API key hint) sliding window for /api; 0 = disabled
+    api_rate_limit_per_minute: int = 120
+    #: Per-IP limit for ``GET /local-token`` (bootstrap); 0 = disabled
+    local_token_rate_limit_per_minute: int = 30
 
-    # AI processing (optional, can be enabled later)
-    ai_processing_enabled: bool = False
+    # Master switch for outbound LLM calls (summaries, translation, digest selection, etc.)
+    ai_processing_enabled: bool = True
+    #: Rough daily cap on *estimated* LLM tokens (prompt + max output). ``0`` = unlimited.
+    ai_daily_token_budget: int = 0
+    cloud_fallback_enabled: bool = True
+
+    #: After this many consecutive fetch *errors*, auto-disable the source (``0`` = never).
+    fetch_error_disable_threshold: int = 12
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -100,6 +120,8 @@ class Settings(BaseSettings):
             self.encryption_key = secrets.token_hex(16)
         if not self.pim_api_key:
             self.pim_api_key = secrets.token_urlsafe(32)
+        if not self.bootstrap_token:
+            self.bootstrap_token = secrets.token_urlsafe(32)
 
 
 _RUNTIME_SECRETS_FILENAME = "runtime-secrets.json"
@@ -122,6 +144,7 @@ def _read_runtime_secrets(path: Path) -> dict[str, str]:
     return {
         "ENCRYPTION_KEY": str(payload.get("ENCRYPTION_KEY") or "").strip(),
         "PIM_API_KEY": str(payload.get("PIM_API_KEY") or "").strip(),
+        "BOOTSTRAP_TOKEN": str(payload.get("BOOTSTRAP_TOKEN") or "").strip(),
     }
 
 
@@ -144,6 +167,8 @@ def _ensure_runtime_secrets(data_dir: str) -> dict[str, str]:
         merged["ENCRYPTION_KEY"] = secrets.token_hex(16)
     if not merged.get("PIM_API_KEY"):
         merged["PIM_API_KEY"] = secrets.token_urlsafe(32)
+    if not merged.get("BOOTSTRAP_TOKEN"):
+        merged["BOOTSTRAP_TOKEN"] = secrets.token_urlsafe(32)
 
     if merged != existing:
         _write_runtime_secrets(path, merged)
@@ -161,6 +186,7 @@ def bootstrap_runtime_environment() -> None:
     os.environ.setdefault("DATA_DIR", data_dir)
     os.environ.setdefault("ENCRYPTION_KEY", runtime_secrets["ENCRYPTION_KEY"])
     os.environ.setdefault("PIM_API_KEY", runtime_secrets["PIM_API_KEY"])
+    os.environ.setdefault("BOOTSTRAP_TOKEN", runtime_secrets["BOOTSTRAP_TOKEN"])
 
     get_settings.cache_clear()
 
@@ -171,8 +197,18 @@ def get_settings() -> Settings:
     return Settings()
 
 
+class CorsOriginConfigError(ValueError):
+    """Raised when CORS_ORIGINS contains insecure values."""
+
+
 def parse_cors_origins(raw: Optional[str]) -> list[str]:
-    """Parse comma or newline separated CORS origins from env."""
+    """Parse comma or newline separated CORS origins from env.
+
+    Raises CorsOriginConfigError on insecure values (``*`` wildcard or malformed
+    scheme). Since ``allow_credentials=True`` is required for the Tauri shell,
+    a wildcard ``*`` would either be silently neutered by Starlette or would
+    widen the auth surface dangerously — we fail-fast instead of both.
+    """
     if not raw:
         return []
 
@@ -182,6 +218,19 @@ def parse_cors_origins(raw: Optional[str]) -> list[str]:
         origin = chunk.strip()
         if not origin or origin in seen:
             continue
+        if origin == "*":
+            raise CorsOriginConfigError(
+                "CORS_ORIGINS contains a wildcard '*', which is incompatible with "
+                "allow_credentials=True. Please list explicit origins instead."
+            )
+        if "*" in origin:
+            raise CorsOriginConfigError(
+                f"CORS_ORIGINS entry '{origin}' contains a wildcard; only exact origins are supported."
+            )
+        if not (origin.startswith("http://") or origin.startswith("https://") or origin.startswith("tauri://")):
+            raise CorsOriginConfigError(
+                f"CORS_ORIGINS entry '{origin}' must start with http://, https:// or tauri://."
+            )
         seen.add(origin)
         origins.append(origin)
     return origins

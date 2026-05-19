@@ -3,15 +3,50 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import date
 from typing import Optional
 
 import httpx
 
 from app.config import get_settings
+from app.services.api_config_credentials import enrich_model_settings_from_api_config
 from app.services.system_settings import get_system_settings_sync
 from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+_token_meter_day: date | None = None
+_token_meter_total: int = 0
+
+
+def _reset_token_meter_if_needed() -> None:
+    global _token_meter_day, _token_meter_total
+
+    today = date.today()
+    if _token_meter_day != today:
+        _token_meter_day = today
+        _token_meter_total = 0
+
+
+def _reserve_ai_token_budget(estimated_tokens: int) -> bool:
+    """Return False when the rough daily budget would be exceeded."""
+    settings = get_settings()
+    cap = int(settings.ai_daily_token_budget or 0)
+    if cap <= 0:
+        return True
+    _reset_token_meter_if_needed()
+    global _token_meter_total
+    est = max(1, min(estimated_tokens, cap))
+    if _token_meter_total + est > cap:
+        logger.warning(
+            "AI daily token budget exceeded (used≈%s + est=%s > cap=%s)",
+            _token_meter_total,
+            est,
+            cap,
+        )
+        return False
+    _token_meter_total += est
+    return True
 
 
 @dataclass
@@ -47,6 +82,30 @@ def normalize_provider(provider: Optional[str], default_provider: str = "ollama"
     return normalized or default_provider
 
 
+def _provider_catalog_default_api_base(provider: str) -> Optional[str]:
+    """Look up ``default_api_base`` for *provider* from ``model_providers.json``.
+
+    Returns ``None`` when the provider is unknown or its entry has no
+    default base. Used so users can save a provider row without pasting the
+    endpoint and still get a sane URL at runtime (e.g. MiniMax → api.minimaxi.com/v1).
+    """
+    try:
+        from app.utils.model_catalog import load_model_providers
+    except Exception:
+        return None
+    plat = (provider or "").strip().lower()
+    if not plat:
+        return None
+    try:
+        for entry in load_model_providers():
+            if str(entry.get("id") or "").strip().lower() == plat:
+                base = str(entry.get("default_api_base") or "").strip().rstrip("/")
+                return base or None
+    except Exception:
+        return None
+    return None
+
+
 def normalize_model_runtime(
     model_settings: dict,
     *,
@@ -60,7 +119,14 @@ def normalize_model_runtime(
     """Build runtime from raw model settings."""
     provider = normalize_provider(model_settings.get("provider"), default_provider=default_provider)
     model = str(model_settings.get("model") or "").strip() or default_model
-    api_base = str(model_settings.get("api_base") or "").strip() or default_api_base
+    raw_api_base = str(model_settings.get("api_base") or "").strip()
+    if not raw_api_base:
+        # Prefer the provider's catalog default (e.g. MiniMax → api.minimaxi.com/v1)
+        # over the caller-supplied ``default_api_base`` which is typically Ollama's
+        # localhost URL. Falling back to ``default_api_base`` only when the provider
+        # is unknown keeps Ollama working without registering it in the catalog.
+        raw_api_base = _provider_catalog_default_api_base(provider) or (default_api_base or "")
+    api_base = raw_api_base or None
     api_key = str(model_settings.get("api_key") or "").strip() or fallback_api_key
     temperature = _coerce_float(model_settings.get("temperature"), default_temperature, min_value=0.0, max_value=2.0)
     max_tokens = _coerce_int(model_settings.get("max_tokens"), default_max_tokens, min_value=1, max_value=16000)
@@ -125,6 +191,7 @@ async def get_runtime_from_system_settings(
     model_settings = (runtime_settings.get(setting_key) or {}) if isinstance(runtime_settings, dict) else {}
     if not isinstance(model_settings, dict):
         model_settings = {}
+    model_settings = enrich_model_settings_from_api_config(model_settings)
 
     runtime = normalize_model_runtime(
         model_settings,
@@ -165,6 +232,15 @@ class ModelProviderClient:
         max_tokens: Optional[int] = None,
         timeout_seconds: float = 180.0,
     ) -> str:
+        settings = get_settings()
+        if not settings.ai_processing_enabled:
+            logger.info("AI processing disabled (ai_processing_enabled=false); skipping LLM call")
+            return ""
+        mt = max_tokens if max_tokens is not None else runtime.max_tokens
+        rough = len(prompt) // 4 + len(system_prompt or "") // 4 + int(mt or 500)
+        if not _reserve_ai_token_budget(rough):
+            return ""
+
         provider = runtime.provider
         if provider == "ollama":
             return await self._generate_with_ollama(

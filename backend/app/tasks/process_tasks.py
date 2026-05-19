@@ -37,6 +37,8 @@ async def _process_new_content_async(content_id: str):
     from app.models import Content, Keyword
     from app.processors import ContentProcessor
     from app.processors.keyword_matcher import KeywordMatcher
+    from app.services.content_quality_service import merge_content_quality_metadata
+    from app.services.scoring_service import merge_baseline_scoring_metadata
     from app.tasks.fetch_auth_helpers import try_parse_auth_credentials
     from app.utils.cookies import normalize_cookie_dict
 
@@ -74,12 +76,29 @@ async def _process_new_content_async(content_id: str):
             keywords = db.query(Keyword).filter(Keyword.enabled == True).all()
             if keywords:
                 matcher = KeywordMatcher()
-                search_text = f"{content.title} {content.full_content or content.summary or ''}"
-                content.keyword_matches = matcher.match(search_text, keywords)
+                content.keyword_matches = matcher.match(
+                    content.title or "",
+                    content.full_content or content.summary or "",
+                    keywords,
+                )
 
         # Clear pending flag
         meta = dict(content.metadata_ or {})
         meta.pop("ai_pending", None)
+        meta = merge_content_quality_metadata(
+            meta,
+            title=content.title or "",
+            full_content=content.full_content,
+            summary=content.summary,
+            translated_summary=content.translated_summary,
+        )
+        meta = merge_baseline_scoring_metadata(
+            meta,
+            title=content.title or "",
+            summary=content.translated_summary or content.summary,
+            full_content=content.full_content,
+            source_metadata=source.metadata_ if source else {},
+        )
         content.metadata_ = meta
 
         db.commit()
@@ -98,19 +117,19 @@ async def _process_new_content_async(content_id: str):
 def _dispatch_keyword_alerts(db, content):
     """Schedule keyword alert emails (fire-and-forget)."""
     from app.models import Keyword
+    from app.tasks.email_tasks import send_keyword_alert
+
+    async def _deliver_keyword_alert(keyword: str) -> None:
+        try:
+            await send_keyword_alert(str(content.id), keyword, content.title)
+        except Exception as exc:
+            logger.warning("Keyword alert dispatch failed for %s: %s", content.id, exc)
 
     for match in content.keyword_matches:
         keyword_obj = db.query(Keyword).filter(Keyword.id == match["id"]).first()
         if keyword_obj and keyword_obj.notify:
-            # Import here to avoid circular
-            import asyncio
-            from app.tasks.email_tasks import send_keyword_alert
             try:
-                loop = asyncio.get_running_loop()
-                loop.call_soon_threadsafe(
-                    asyncio.ensure_future,
-                    send_keyword_alert(str(content.id), match["keyword"], content.title)
-                )
+                asyncio.create_task(_deliver_keyword_alert(match["keyword"]))
             except RuntimeError:
                 # No running loop (shouldn't happen normally)
                 pass
@@ -124,9 +143,14 @@ async def process_content(content_id: str, regenerate_summary: bool = False, ret
 
 
 async def _process_content_async(content_id: str, regenerate_summary: bool, retranslate: bool):
+    from app.config import get_settings
     from app.database import SessionLocal
     from app.models import Content
     from app.processors import ContentProcessor
+
+    if (regenerate_summary or retranslate) and not get_settings().ai_processing_enabled:
+        logger.info("AI processing disabled; skip manual reprocess for %s", content_id)
+        return
 
     db = SessionLocal()
     try:
@@ -177,22 +201,29 @@ def _update_keyword_matches_sync():
         matcher = KeywordMatcher()
         updated_count = 0
         batch_size = 100
-        offset = 0
+        last_seen_id: str | None = None
 
         while True:
-            contents = db.query(Content).offset(offset).limit(batch_size).all()
+            query = db.query(Content).order_by(Content.id)
+            if last_seen_id is not None:
+                query = query.filter(Content.id > last_seen_id)
+            query = query.limit(batch_size)
+            contents = query.all()
             if not contents:
                 break
 
             for content in contents:
-                search_text = f"{content.title} {content.full_content or content.summary or ''}"
-                matches = matcher.match(search_text, keywords)
+                matches = matcher.match(
+                    content.title or "",
+                    content.full_content or content.summary or "",
+                    keywords,
+                )
                 if matches != content.keyword_matches:
                     content.keyword_matches = matches
                     updated_count += 1
 
             db.commit()
-            offset += batch_size
+            last_seen_id = contents[-1].id
 
         logger.info(f"Updated keyword matches for {updated_count} contents")
     finally:

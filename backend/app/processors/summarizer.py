@@ -1,11 +1,54 @@
 """Content summarization using OpenAI."""
 
-from typing import Optional
+from typing import Any, Optional
 
 from app.config import get_settings
 from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+
+def _is_summarization_fallback_enabled(runtime: dict) -> bool:
+    if not isinstance(runtime, dict):
+        return False
+    if "summarization_fallback_enabled" in runtime:
+        return bool(runtime.get("summarization_fallback_enabled"))
+    return bool(runtime.get("summarization_cloud_fallback_enabled", False))
+
+
+def get_summarization_fallback_model_settings(runtime: Optional[dict[str, Any]] = None) -> dict:
+    """Enriched provider/model dict for summarization fallback from 模型接入.
+
+    Pass ``runtime`` (e.g. from :meth:`Summarizer._get_runtime_settings`) so tests
+    and callers see the same flags as the summarize path without relying on sync cache.
+    """
+    try:
+        from app.services.api_config_credentials import enrich_model_settings_from_api_config
+        from app.services.system_settings import get_system_settings_sync
+
+        s = (runtime if runtime is not None else (get_system_settings_sync() or {})) or {}
+        if not _is_summarization_fallback_enabled(s):
+            return {}
+        fb = s.get("summarization_fallback") or {}
+        if not isinstance(fb, dict):
+            return {}
+        prov = str(fb.get("provider") or "").strip()
+        mod = str(fb.get("model") or "").strip()
+        if not prov or not mod:
+            return {}
+        return enrich_model_settings_from_api_config(dict(fb))
+    except Exception as exc:
+        logger.warning("Summarization fallback model settings failed: %s", exc)
+        return {}
+
+
+def _provider_model_pair(cfg: dict) -> tuple[str, str]:
+    if not isinstance(cfg, dict):
+        return ("", "")
+    return (
+        str(cfg.get("provider") or "").strip().lower(),
+        str(cfg.get("model") or "").strip(),
+    )
 
 
 class Summarizer:
@@ -25,6 +68,18 @@ class Summarizer:
             from app.services.system_settings import get_system_settings_sync
 
             return get_system_settings_sync()
+        except Exception:
+            return {}
+
+    def _get_ai_model_config(self) -> dict:
+        """ai_model with api_configs (模型接入) merged in."""
+        try:
+            from app.services.api_config_credentials import enrich_model_settings_from_api_config
+
+            raw = self._get_runtime_settings().get("ai_model") or {}
+            if not isinstance(raw, dict):
+                raw = {}
+            return enrich_model_settings_from_api_config(raw)
         except Exception:
             return {}
     
@@ -85,15 +140,41 @@ class Summarizer:
         if not text or len(text.strip()) < 50:
             return text
 
+        if not get_settings().ai_processing_enabled:
+            return text[:max_length] + "..." if len(text) > max_length else text
+
         runtime_settings = self._get_runtime_settings()
-        ai_model = runtime_settings.get("ai_model", {}) or {}
+        ai_model = self._get_ai_model_config()
         provider = ai_model.get("provider", "ollama")
         model = ai_model.get("model", "gpt-4.1-mini")
         api_base = ai_model.get("api_base", "http://localhost:11434")
         api_key = ai_model.get("api_key")
-        cloud_fallback_enabled = bool(
-            runtime_settings.get("summarization_cloud_fallback_enabled", False)
-        )
+        fallback_enabled = _is_summarization_fallback_enabled(runtime_settings)
+
+        def _truncate() -> str:
+            return text[:max_length] + "..." if len(text) > max_length else text
+
+        async def try_fallback() -> Optional[str]:
+            if not fallback_enabled:
+                return None
+            fb = get_summarization_fallback_model_settings(runtime_settings)
+            if not fb:
+                api_key = str(self.api_key or "").strip()
+                if not api_key:
+                    return None
+                fb = {
+                    "provider": "openai",
+                    "model": "gpt-4o-mini",
+                    "api_key": api_key,
+                    "api_base": None,
+                }
+            primary_pair = _provider_model_pair(ai_model)
+            fb_pair = _provider_model_pair(fb)
+            if primary_pair == fb_pair and primary_pair[0] and primary_pair[1]:
+                logger.info("Summarization fallback skipped: same provider/model as primary")
+                return None
+            logger.info("Trying summarization fallback model")
+            return await self._summarize_from_enriched_config(text, max_length, language, fb)
 
         try:
             if provider == "ollama":
@@ -106,11 +187,15 @@ class Summarizer:
                 )
                 if summary:
                     return summary
-                if not cloud_fallback_enabled:
-                    logger.info("Ollama summarization failed and cloud fallback is disabled")
-                    return text[:max_length] + "..." if len(text) > max_length else text
 
-            # Cloud path (OpenAI and OpenAI-compatible gateways)
+                if not fallback_enabled:
+                    logger.info("Ollama summarization failed and summarization fallback is disabled; using truncation")
+                    return _truncate()
+
+                logger.info("Ollama summarization failed; trying fallback model")
+                summary = await try_fallback()
+                return summary or _truncate()
+
             summary = await self._summarize_with_openai(
                 text=text,
                 max_length=max_length,
@@ -122,12 +207,12 @@ class Summarizer:
             if summary:
                 return summary
 
-            return text[:max_length] + "..." if len(text) > max_length else text
+            summary = await try_fallback()
+            return summary or _truncate()
 
         except Exception as e:
             logger.error(f"Error generating summary: {e}")
-            # Fall back to simple truncation
-            return text[:max_length] + "..." if len(text) > max_length else text
+            return _truncate()
 
     async def _summarize_with_ollama(
         self,
@@ -214,7 +299,35 @@ class Summarizer:
         except Exception as e:
             logger.error(f"OpenAI summarization error: {e}")
             return None
-    
+
+    async def _summarize_from_enriched_config(
+        self,
+        text: str,
+        max_length: int,
+        language: str,
+        cfg: dict,
+    ) -> Optional[str]:
+        provider = str(cfg.get("provider") or "ollama").strip().lower()
+        model = str(cfg.get("model") or "").strip() or "gpt-4o-mini"
+        api_base = str(cfg.get("api_base") or "").strip() or "http://localhost:11434"
+        api_key = cfg.get("api_key")
+        if provider == "ollama":
+            return await self._summarize_with_ollama(
+                text=text,
+                max_length=max_length,
+                language=language,
+                model=model,
+                api_base=api_base,
+            )
+        return await self._summarize_with_openai(
+            text=text,
+            max_length=max_length,
+            language=language,
+            model=model,
+            api_key=api_key,
+            api_base=api_base if provider != "openai" else None,
+        )
+
     async def extract_keywords(self, text: str, max_keywords: int = 5) -> list:
         """Extract key topics/keywords from text."""
         if not text or len(text.strip()) < 50:
@@ -222,7 +335,7 @@ class Summarizer:
         
         try:
             runtime_settings = self._get_runtime_settings()
-            ai_model = runtime_settings.get("ai_model", {}) or {}
+            ai_model = self._get_ai_model_config()
             provider = ai_model.get("provider", "ollama")
             model = ai_model.get("model", "gpt-4o-mini")
             api_base = ai_model.get("api_base")

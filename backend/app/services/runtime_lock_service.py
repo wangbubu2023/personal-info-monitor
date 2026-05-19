@@ -1,4 +1,9 @@
-"""Database-backed runtime locks for cross-process fetch coordination."""
+"""Database-backed runtime locks for cross-process fetch coordination.
+
+Rows use a fixed ``expires_at``; there is no automatic heartbeat/renewal.
+Workloads that can exceed the configured TTL should re-acquire explicitly or
+split work so each phase stays within the TTL.
+"""
 
 from __future__ import annotations
 
@@ -75,6 +80,20 @@ class RuntimeLockService:
                 db.commit()
                 return False
             return True
+
+    def purge_expired(self) -> int:
+        """Delete all expired lock rows. Returns number of rows removed."""
+        now = utcnow_naive()
+        with SessionLocal() as db:
+            deleted = (
+                db.query(RuntimeLock)
+                .filter(RuntimeLock.expires_at <= now)
+                .delete(synchronize_session=False)
+            )
+            db.commit()
+            if deleted:
+                logger.debug("Purged %d expired runtime lock(s)", deleted)
+            return int(deleted or 0)
 
 
 runtime_lock_service = RuntimeLockService()

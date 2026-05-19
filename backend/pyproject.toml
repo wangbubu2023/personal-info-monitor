@@ -1,5 +1,160 @@
+[project]
+name = "personal-info-monitor-backend"
+version = "0.1.0"
+description = "Personal Information Monitor — FastAPI backend, collectors, AI pipeline."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+
+# Runtime dependencies.
+#
+# `requirements.txt` is generated from this section via
+#   uv lock && uv export --no-hashes --no-dev -o requirements.txt
+# Do NOT hand-edit `requirements.txt` — update this list, re-lock, re-export.
+dependencies = [
+    # FastAPI and server
+    "fastapi>=0.115.6",
+    "uvicorn[standard]>=0.32.1",
+    "python-multipart>=0.0.6",
+    # Database (SQLite)
+    "sqlalchemy>=2.0.36",
+    "aiosqlite>=0.20.0",
+    "alembic>=1.14.0",
+    # Scheduler
+    "apscheduler>=3.10.4,<4",
+    # Pydantic
+    "pydantic>=2.5.3",
+    "pydantic-settings>=2.1.0",
+    # Web scraping
+    "playwright>=1.49.1",
+    "beautifulsoup4>=4.12.3",
+    "feedparser>=6.0.11",
+    "requests>=2.31.0",
+    "aiohttp>=3.11.11",
+    "trafilatura>=1.6.3",
+    "readability-lxml>=0.8.1",
+    "lxml>=5.3.0",
+    # AI/NLP (optional — needed for summarization/translation)
+    "openai>=1.57.0",
+    # Third-party APIs
+    "tweepy>=4.14.0",
+    "yt-dlp>=2026.1.0",
+    "twikit>=2.3.0",
+    "google-api-python-client>=2.115.0",
+    # Security
+    "cryptography>=44.0.0",
+    # Utils
+    "python-dotenv>=1.0.0",
+    "httpx>=0.28.1",
+    "tenacity>=8.2.3",
+    # Email
+    "aiosmtplib>=3.0.1",
+    "jinja2>=3.1.3",
+    # Export / markdown helpers
+    "markdownify>=0.14.1",
+    "python-frontmatter>=1.1.0",
+    "patchright>=1.58.2",
+]
+
+[project.optional-dependencies]
+# `uv sync --extra dev` or `pip install -e '.[dev]'` installs test + lint tooling.
+dev = [
+    "pytest>=7.4.4",
+    "pytest-asyncio>=0.23.3",
+    "pytest-cov>=5.0.0",
+    "ruff==0.6.9",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["app"]
+
 [tool.pytest.ini_options]
 pythonpath = ["."]
 testpaths = ["tests"]
 asyncio_mode = "auto"
 addopts = "--cov=app --cov-report=term-missing --cov-report=xml:coverage.xml"
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+extend-exclude = ["alembic/versions", "venv", ".venv"]
+
+[tool.ruff.lint]
+# Phase 2 (Q1): start narrow. We only gate on the rules the audit flagged as
+# real risks and leave generic style cleanups for a later sweep so the CI
+# signal stays meaningful.
+#   - BLE001  blind `except Exception:` swallowing the cause
+#   - B904    `raise Err(...)` inside except without `from` (lost traceback)
+#   - B023    function uses loop variable (closure capture bug)
+#   - F821    undefined name (likely a bug)
+#   - F811    redefined while unused (likely a bug)
+select = ["BLE001", "B904", "B023", "F821", "F811"]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests intentionally use broad except patterns for negative-path assertions
+# and monkey-patching; don't gate them on BLE001.
+"tests/**" = ["BLE001", "B", "I"]
+
+# Baseline: existing modules still contain the 154 blind-except sites the audit
+# called out. Rather than block the whole repo we freeze them here and plan to
+# burn the list down incrementally (see docs/AGENT_GUIDE.md, §Q1 lint debt).
+#
+# Rules for adding/removing entries:
+#   - Brand-new files MUST NOT be added to this list — they inherit the strict
+#     default and should use `logger.exception` or typed handlers from the start.
+#   - Removing an entry (preferred direction) means you've converted all blind
+#     excepts in that file. Confirm with `ruff check --select BLE001 <path>`.
+"app/ai/provider.py" = ["BLE001"]
+"app/api/configs_api_auth.py" = ["BLE001"]
+"app/api/configs_common.py" = ["BLE001"]
+"app/api/contents_crud.py" = ["BLE001"]
+"app/api/sources/_helpers.py" = ["BLE001"]
+"app/api/sources/fetch_import.py" = ["BLE001"]
+"app/api/sources/mutation.py" = ["BLE001"]
+"app/api/sources/probe.py" = ["BLE001"]
+"app/api/system.py" = ["BLE001"]
+"app/background.py" = ["BLE001"]
+"app/collectors/base.py" = ["BLE001"]
+"app/collectors/podcast.py" = ["BLE001"]
+"app/collectors/rss.py" = ["BLE001"]
+"app/collectors/youtube.py" = ["BLE001"]
+"app/exporters/markdown_exporter.py" = ["BLE001"]
+"app/main.py" = ["BLE001"]
+"app/pipeline/ai_stage.py" = ["BLE001"]
+"app/pipeline/collector_stage.py" = ["BLE001"]
+"app/pipeline/coordinator.py" = ["BLE001"]
+"app/pipeline/storage_stage.py" = ["BLE001"]
+"app/processors/content_processor.py" = ["BLE001"]
+"app/processors/extractor.py" = ["BLE001"]
+"app/processors/keyword_matcher.py" = ["BLE001"]
+"app/processors/summarizer.py" = ["BLE001"]
+"app/processors/translator.py" = ["BLE001"]
+"app/services/api_config_credentials.py" = ["BLE001"]
+"app/services/doctor_service.py" = ["BLE001"]
+"app/services/keyword_rules.py" = ["BLE001"]
+"app/services/probe_service.py" = ["BLE001"]
+"app/services/probe_strategies/rss.py" = ["BLE001"]
+"app/services/probe_strategies/website.py" = ["BLE001"]
+"app/services/probe_strategies/x.py" = ["BLE001"]
+"app/services/probe_strategies/youtube.py" = ["BLE001"]
+"app/services/system_settings.py" = ["BLE001"]
+"app/tasks/email_tasks.py" = ["BLE001"]
+"app/tasks/fetch_auth_helpers.py" = ["BLE001"]
+"app/tasks/fetch_orchestrator.py" = ["BLE001"]
+"app/tasks/fetch_tasks.py" = ["BLE001"]
+"app/tasks/maintenance.py" = ["BLE001"]
+"app/tasks/maintenance_tasks.py" = ["BLE001"]
+"app/tasks/process_tasks.py" = ["BLE001"]
+"app/tasks/task_queue.py" = ["BLE001"]
+"app/utils/cookies.py" = ["BLE001"]
+"app/utils/encryption.py" = ["BLE001"]
+"app/utils/model_catalog.py" = ["BLE001"]
+"app/utils/text.py" = ["BLE001"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["app"]
+combine-as-imports = true

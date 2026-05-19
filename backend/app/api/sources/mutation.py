@@ -10,53 +10,34 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_async_db
 from app.models import Source
 from app.schemas.source import SourceCreate, SourceUpdate
-from app.utils.logger import get_logger
+from . import _helpers
 from ._helpers import (
-    _ensure_supported_source_type,
-    _source_type_value,
-    _source_is_visible,
     _ensure_source_quota,
-    _normalize_extra_urls,
+    _ensure_supported_source_type,
     _find_matching_auth_config_id,
     _invalidate_source_cache,
+    _normalize_extra_urls,
+    _source_is_visible,
+    _source_type_value,
+    find_duplicate_source_by_normalized_url,
     serialize_source,
 )
 
-logger = get_logger(__name__)
 router = APIRouter()
 
 
 @router.post("")
 async def create_source(source_data: SourceCreate, db: AsyncSession = Depends(get_async_db)):
     _ensure_supported_source_type(source_data.type)
-    existing = await db.execute(
-        select(Source).filter(Source.url == source_data.url, Source.type == source_data.type)
-    )
-    if existing.scalars().first():
+    if await find_duplicate_source_by_normalized_url(db, source_data.url, source_data.type):
         raise HTTPException(status_code=409, detail="已存在相同类型和 URL 的监控源")
     await _ensure_source_quota(db, incoming_count=1)
 
     metadata = dict(source_data.metadata_ or {})
+    if metadata.get("max_fetch_lag_minutes") is None:
+        metadata.pop("max_fetch_lag_minutes", None)
     extra_urls = _normalize_extra_urls(source_data.extra_urls)
     metadata["extra_urls"] = extra_urls
-
-    try:
-        import app.api.sources as _pkg
-        all_urls = [source_data.url] + [u for u in extra_urls if u != source_data.url]
-        probe_result, rss_urls, _ = await _pkg._probe_urls(all_urls, source_data.type)
-        metadata["probe"] = probe_result.to_dict()
-        if source_data.type == "x" and probe_result.strategy in {"rsshub", "nitter", "api"}:
-            metadata["strategy"] = probe_result.strategy
-        if rss_urls:
-            metadata["rss_urls"] = rss_urls
-        if source_data.url in rss_urls:
-            metadata["rss_url"] = rss_urls[source_data.url]
-        elif probe_result.rss_url and "rss_url" not in metadata:
-            metadata["rss_url"] = probe_result.rss_url
-    except Exception as exc:
-        logger.warning("Probe failed for source %s: %s", source_data.url, exc)
-        metadata["probe"] = {"status": "failed", "strategy": "unknown", "rss_url": None,
-                              "message": str(exc)[:200], "sample_count": 0, "probed_at": None}
 
     auth_required = source_data.auth_required
     auth_config_id = source_data.auth_config_id
@@ -67,8 +48,8 @@ async def create_source(source_data: SourceCreate, db: AsyncSession = Depends(ge
 
     source = Source(
         name=source_data.name, type=source_data.type, url=source_data.url,
-        category_id=source_data.category_id, fetch_interval=source_data.fetch_interval,
-        enabled=source_data.enabled, priority=source_data.priority,
+        fetch_interval=source_data.fetch_interval,
+        enabled=source_data.enabled,
         auth_required=auth_required, auth_config_id=auth_config_id, metadata_=metadata,
     )
     db.add(source)
@@ -105,8 +86,19 @@ async def update_source(source_id: UUID, source_data: SourceUpdate, db: AsyncSes
 
     if metadata_patch is not None:
         merged = dict(source.metadata_ or {})
-        merged.update(metadata_patch)
+        for k, v in metadata_patch.items():
+            if k == "max_fetch_lag_minutes" and v is None:
+                merged.pop(k, None)
+            else:
+                merged[k] = v
         source.metadata_ = merged
+
+    dup = await find_duplicate_source_by_normalized_url(
+        db, target_url, target_type, exclude_source_id=source_id
+    )
+    if dup:
+        raise HTTPException(status_code=409, detail="已存在相同类型和 URL 的监控源")
+
     if extra_urls is not None:
         merged = dict(source.metadata_ or {})
         merged["extra_urls"] = _normalize_extra_urls(extra_urls)

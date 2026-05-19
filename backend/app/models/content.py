@@ -21,6 +21,8 @@ class Content(Base):
         Index('ix_content_created_at', 'created_at'),
         Index('ix_content_publish_time', 'publish_time'),
         Index('ix_content_fetched_at', 'fetched_at'),
+        Index('ix_content_updated_at', 'updated_at'),
+        Index('ix_content_original_url', 'original_url'),
     )
 
     id = Column(UUIDString, primary_key=True, default=lambda: str(uuid.uuid4()))
@@ -52,6 +54,7 @@ class Content(Base):
     read_status = Column(Boolean, default=False)
     favorited = Column(Boolean, default=False)
     archived = Column(Boolean, default=False)
+    is_user_edited = Column(Boolean, default=False)
 
     # Keyword matching results
     keyword_matches = Column(JSON, default=list)

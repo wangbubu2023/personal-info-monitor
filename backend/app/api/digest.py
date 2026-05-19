@@ -6,23 +6,91 @@ from uuid import UUID
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import func, select, extract
+from sqlalchemy import case, extract, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.database import get_async_db
-from app.models import Content, Source, HourlyDigest
+from app.models import Content, HourlyDigest
 from app.schemas.digest import (
     DigestResponse, DigestCategory, DigestItem,
     HourlyDigestSummary, HourlyDigestDetail,
 )
+from app.services.system_settings import (
+    get_system_settings_async,
+    normalize_hourly_digest_content_types,
+    normalize_hourly_digest_window_hours,
+)
 from app.utils.datetime import to_iso_z, utcnow_naive
 from app.utils.logger import get_logger
+from app.utils.text import strip_html_tags, text_looks_like_embedded_binary
 
 logger = get_logger(__name__)
 SYSTEM_TZ = ZoneInfo("Asia/Shanghai")
 
 router = APIRouter()
+
+# 列表预览：最短字符数（与前端 makeDigestBodyPreview 一致）；上限避免列表过长
+_DIGEST_SNIPPET_MIN = 12
+_DIGEST_SNIPPET_MAX = 280
+
+
+def _digest_snippet_from_text(raw: Optional[str]) -> Optional[str]:
+    """Strip HTML, enforce min length, truncate with word-ish break for dashboard list."""
+    if not raw or not str(raw).strip():
+        return None
+    if text_looks_like_embedded_binary(str(raw)):
+        return None
+    plain = strip_html_tags(str(raw)).strip()
+    if len(plain) < _DIGEST_SNIPPET_MIN:
+        return None
+    if len(plain) <= _DIGEST_SNIPPET_MAX:
+        return plain
+    cut = plain[:_DIGEST_SNIPPET_MAX]
+    last_space = cut.rfind(" ")
+    if last_space > _DIGEST_SNIPPET_MAX // 2:
+        cut = cut[:last_space]
+    return cut.rstrip() + "…"
+
+
+def _digest_list_preview(content: Content) -> Optional[str]:
+    """Prefer full_content, then translated summary, then summary (RSS 常无正文但有 description)."""
+    prev = _digest_snippet_from_text(content.full_content)
+    if prev:
+        return prev
+    prev = _digest_snippet_from_text(content.translated_summary)
+    if prev:
+        return prev
+    return _digest_snippet_from_text(content.summary)
+
+
+def _digest_item_from_content(content: Content) -> DigestItem:
+    body_prev = _digest_list_preview(content)
+    metadata = dict(content.metadata_ or {})
+    source_metadata = (
+        content.source.metadata_
+        if content.source and isinstance(content.source.metadata_, dict)
+        else {}
+    )
+    if "source_stars" not in metadata and source_metadata.get("source_stars") is not None:
+        metadata["source_stars"] = source_metadata.get("source_stars")
+
+    return DigestItem(
+        id=content.id,
+        source_name=content.source.name if content.source else "Unknown",
+        title=content.title,
+        translated_title=content.translated_title,
+        summary=content.summary,
+        translated_summary=content.translated_summary,
+        body_preview=body_prev,
+        url=content.original_url,
+        publish_time=content.publish_time,
+        fetched_at=content.fetched_at,
+        read_status=content.read_status,
+        favorited=content.favorited,
+        keyword_matches=content.keyword_matches or [],
+        metadata=metadata,
+    )
 
 
 def get_category_key(content_type: str) -> str:
@@ -40,7 +108,6 @@ def get_category_key(content_type: str) -> str:
 @router.get("", response_model=DigestResponse)
 async def get_daily_digest(
     digest_date: Optional[str] = Query(None, alias="date"),
-    category_ids: Optional[List[UUID]] = Query(None),
     keyword_ids: Optional[List[UUID]] = Query(None),
     unread_only: bool = True,
     source_types: Optional[List[str]] = Query(None),
@@ -65,9 +132,6 @@ async def get_daily_digest(
     )
     
     # Apply filters
-    if category_ids:
-        query = query.join(Source).filter(Source.category_id.in_(category_ids))
-    
     if unread_only:
         query = query.filter(Content.read_status == False)
     
@@ -77,7 +141,8 @@ async def get_daily_digest(
     # Note: keyword_ids filtering would require JSON query which is complex
     # For now, we filter after fetching
     
-    query = query.order_by(Content.publish_time.desc().nulls_last(), Content.fetched_at.desc())
+    # 与前端资讯列表一致：先按抓取日内的入库时间，再按文章发布时间（避免多源合并时老稿沉底）
+    query = query.order_by(Content.fetched_at.desc(), Content.publish_time.desc().nulls_last())
     
     result = await db.execute(query)
     contents = result.scalars().all()
@@ -109,23 +174,7 @@ async def get_daily_digest(
     
     for content in contents:
         category_key = get_category_key(content.content_type)
-        
-        item = DigestItem(
-            id=content.id,
-            source_name=content.source.name if content.source else "Unknown",
-            title=content.title,
-            translated_title=content.translated_title,
-            summary=content.summary,
-            translated_summary=content.translated_summary,
-            url=content.original_url,
-            publish_time=content.publish_time,
-            fetched_at=content.fetched_at,
-            read_status=content.read_status,
-            favorited=content.favorited,
-            keyword_matches=content.keyword_matches or [],
-            metadata=content.metadata_ or {}
-        )
-        
+        item = _digest_item_from_content(content)
         digest.categories[category_key].items.append(item)
         digest.categories[category_key].count += 1
     
@@ -147,56 +196,55 @@ async def get_digest_stats(
     stats_start_utc = datetime(start_date.year, start_date.month, start_date.day, tzinfo=SYSTEM_TZ).astimezone(timezone.utc).replace(tzinfo=None)
     stats_end_utc = datetime(end_date.year, end_date.month, end_date.day, tzinfo=SYSTEM_TZ).astimezone(timezone.utc).replace(tzinfo=None) + timedelta(days=1)
 
-    # Get content counts per day
-    result = await db.execute(
+    # Pull per-day + per-type counts in one pass, then aggregate in Python.
+    # On SQLite this collapses two index scans over the same range into one
+    # (P3 in the 2026-04-20 audit). The rollup GROUP BY is tiny (days * types)
+    # so Python-side reduction costs nothing.
+    range_result = await db.execute(
         select(
             func.date(Content.fetched_at).label("date"),
-            func.count(Content.id).label("count")
+            Content.content_type.label("content_type"),
+            func.count(Content.id).label("count"),
         )
         .filter(Content.fetched_at >= stats_start_utc, Content.fetched_at < stats_end_utc)
-        .group_by(func.date(Content.fetched_at))
+        .group_by(func.date(Content.fetched_at), Content.content_type)
         .order_by(func.date(Content.fetched_at))
     )
-    daily_counts = result.all()
+    daily_totals: "dict[str, int]" = {}
+    type_totals: "dict[str, int]" = {}
+    daily_order: list[str] = []
+    for row in range_result.all():
+        date_key = row.date.isoformat() if hasattr(row.date, "isoformat") else str(row.date)
+        if date_key not in daily_totals:
+            daily_totals[date_key] = 0
+            daily_order.append(date_key)
+        daily_totals[date_key] += int(row.count)
+        if row.content_type:
+            type_totals[row.content_type] = type_totals.get(row.content_type, 0) + int(row.count)
 
-    # Get counts by content type
-    result = await db.execute(
-        select(
-            Content.content_type,
-            func.count(Content.id).label("count")
+    # Global unread + favorited counts: one query via conditional aggregation
+    # instead of two separate COUNTs.
+    totals_row = (
+        await db.execute(
+            select(
+                func.sum(case((Content.read_status == False, 1), else_=0)).label("unread"),
+                func.sum(case((Content.favorited == True, 1), else_=0)).label("favorited"),
+            )
         )
-        .filter(Content.fetched_at >= stats_start_utc, Content.fetched_at < stats_end_utc)
-        .group_by(Content.content_type)
-    )
-    type_counts = result.all()
-    
-    # Get unread count
-    result = await db.execute(
-        select(func.count(Content.id))
-        .filter(Content.read_status == False)
-    )
-    unread_count = result.scalar()
-    
-    # Get favorited count
-    result = await db.execute(
-        select(func.count(Content.id))
-        .filter(Content.favorited == True)
-    )
-    favorited_count = result.scalar()
-    
+    ).one()
+
     return {
         "period": {
             "start": start_date.isoformat(),
             "end": end_date.isoformat(),
-            "days": days
+            "days": days,
         },
         "daily_counts": [
-            {"date": row.date.isoformat(), "count": row.count}
-            for row in daily_counts
+            {"date": date_key, "count": daily_totals[date_key]} for date_key in daily_order
         ],
-        "type_counts": {row.content_type: row.count for row in type_counts},
-        "unread_count": unread_count,
-        "favorited_count": favorited_count
+        "type_counts": type_totals,
+        "unread_count": int(totals_row.unread or 0),
+        "favorited_count": int(totals_row.favorited or 0),
     }
 
 
@@ -212,10 +260,16 @@ def _map_source_type_key(content_type: str) -> str:
     return mapping.get(content_type, "websites")
 
 
-def _completed_hour_label_to_utc_window(target_date: date, hour: int) -> tuple[datetime, datetime]:
+def _completed_hour_label_to_utc_window(
+    target_date: date,
+    hour: int,
+    *,
+    window_hours: int = 1,
+) -> tuple[datetime, datetime]:
     """Map a digest label hour to the completed local-hour window it summarizes."""
+    window_hours = max(1, int(window_hours or 1))
     end_local = datetime(target_date.year, target_date.month, target_date.day, hour, tzinfo=SYSTEM_TZ)
-    start_local = end_local - timedelta(hours=1)
+    start_local = end_local - timedelta(hours=window_hours)
     start_utc = start_local.astimezone(timezone.utc).replace(tzinfo=None)
     end_utc = end_local.astimezone(timezone.utc).replace(tzinfo=None)
     return start_utc, end_utc
@@ -294,34 +348,25 @@ async def get_hourly_digest_detail(
             generated_at=to_iso_z(utcnow_naive()),
         )
 
-    start_utc, end_utc = _completed_hour_label_to_utc_window(target_date, hour)
+    merged = await get_system_settings_async(db)
+    hourly_types = normalize_hourly_digest_content_types(merged)
+    window_hours = normalize_hourly_digest_window_hours(merged)
+    start_utc, end_utc = _completed_hour_label_to_utc_window(
+        target_date,
+        hour,
+        window_hours=window_hours,
+    )
     result = await db.execute(
         select(Content)
         .options(selectinload(Content.source))
-        .filter(Content.content_type == "website")
+        .filter(Content.content_type.in_(hourly_types))
         .filter(Content.fetched_at >= start_utc)
         .filter(Content.fetched_at < end_utc)
         .order_by(Content.publish_time.desc().nulls_last(), Content.fetched_at.desc())
     )
     contents = result.scalars().all()
 
-    items = []
-    for content in contents:
-        items.append(DigestItem(
-            id=content.id,
-            source_name=content.source.name if content.source else "Unknown",
-            title=content.title,
-            translated_title=content.translated_title,
-            summary=content.summary,
-            translated_summary=content.translated_summary,
-            url=content.original_url,
-            publish_time=content.publish_time,
-            fetched_at=content.fetched_at,
-            read_status=content.read_status,
-            favorited=content.favorited,
-            keyword_matches=content.keyword_matches or [],
-            metadata=content.metadata_ or {},
-        ))
+    items = [_digest_item_from_content(content) for content in contents]
 
     return HourlyDigestDetail(
         hour=hour,

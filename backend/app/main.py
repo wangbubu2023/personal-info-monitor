@@ -2,6 +2,8 @@
 
 import asyncio
 import os
+import re
+import secrets as _secrets
 import shutil
 from contextlib import asynccontextmanager
 from time import perf_counter
@@ -9,7 +11,8 @@ from uuid import uuid4
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse
+from html import escape as _html_escape
 from sqlalchemy import text
 
 from app.api import api_router
@@ -17,8 +20,9 @@ from app.auth import verify_api_key
 from app.config import bootstrap_runtime_environment, get_settings, parse_cors_origins
 from app.database import async_engine
 from app.migrations import run_migrations
+from app.middleware.api_rate_limit import APIRateLimitMiddleware, get_real_client_ip
 from app.utils.logger import clear_request_id, get_logger, set_request_id
-from app.utils.metrics import request_metrics
+from app.utils.metrics import persist_metrics, request_metrics, restore_metrics
 
 bootstrap_runtime_environment()
 settings = get_settings()
@@ -32,6 +36,27 @@ SPA_NO_CACHE_HEADERS = {
     "Expires": "0",
 }
 
+# Security headers applied to every SPA HTML response. We keep CSP lenient enough
+# that Ant Design's runtime-injected <style> tags and Google Fonts continue to
+# work, but block script sources we never legitimately pull from.
+_SPA_SECURITY_HEADERS = {
+    "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "no-referrer",
+    "X-Frame-Options": "DENY",
+    "Content-Security-Policy": (
+        "default-src 'self'; "
+        "script-src 'self'; "
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+        "font-src 'self' https://fonts.gstatic.com; "
+        "img-src 'self' data: blob: https:; "
+        "connect-src 'self' http://127.0.0.1:8000 http://localhost:8000; "
+        "frame-ancestors 'none'; "
+        "base-uri 'self'; "
+        "form-action 'self'"
+    ),
+}
+_REQUEST_ID_RE = re.compile(r"^[A-Za-z0-9-]{1,64}$")
+
 
 def _mask_secret(value: str, prefix: int = 4, suffix: int = 4) -> str:
     text = (value or "").strip()
@@ -42,11 +67,41 @@ def _mask_secret(value: str, prefix: int = 4, suffix: int = 4) -> str:
     return f"{text[:prefix]}...{text[-suffix:]}"
 
 
+def _normalize_request_id(raw_value: str | None) -> str:
+    candidate = (raw_value or "").strip()
+    if _REQUEST_ID_RE.fullmatch(candidate):
+        return candidate
+    return uuid4().hex
+
+
+def _request_route_label(request: Request) -> str:
+    route = request.scope.get("route")
+    if route is not None:
+        path_format = getattr(route, "path_format", None)
+        if isinstance(path_format, str) and path_format:
+            return path_format
+        path = getattr(route, "path", None)
+        if isinstance(path, str) and path:
+            return path
+    return request.url.path or "/"
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan events."""
-    # Apply DB migrations before serving traffic.
-    await asyncio.to_thread(run_migrations)
+    if os.environ.get("PIM_SKIP_MIGRATIONS", "").strip().lower() in {"1", "true", "yes", "on"}:
+        logger.warning(
+            "PIM_SKIP_MIGRATIONS is set — skipping Alembic migrations (development only; unsafe in production)"
+        )
+    else:
+        await asyncio.to_thread(run_migrations)
+
+    # Restore persisted metrics counters so rate() queries survive restarts.
+    try:
+        if restore_metrics():
+            logger.info("Restored persisted metrics counters from data_dir checkpoint")
+    except Exception as exc:  # noqa: BLE001 - observability best-effort
+        logger.warning("Failed to restore metrics checkpoint: %s", exc)
 
     # Start scheduler
     from app.scheduler import scheduler, setup_scheduler, trigger_startup_jobs
@@ -63,13 +118,63 @@ async def lifespan(app: FastAPI):
     print(f"  Data dir:    {settings.data_dir}")
     print(f"  Fetch concurrency: {settings.fetch_concurrency}")
     print(f"  AI processing: {'enabled' if settings.ai_processing_enabled else 'disabled'}")
+    print(
+        "  Bootstrap URL (web auto-provision): run `./pim bootstrap-url` to print"
+    )
     print()
+
+    if settings.probe_disable_ssl_verify and settings.debug:
+        logger.warning(
+            "SECURITY WARNING: probe_disable_ssl_verify=True — SSL certificate verification is "
+            "disabled for all outbound probe/fetch requests. This should never be enabled in "
+            "production as it exposes the service to man-in-the-middle attacks."
+        )
+    elif settings.probe_disable_ssl_verify:
+        logger.warning(
+            "Ignoring probe_disable_ssl_verify because debug mode is disabled; outbound probe/fetch "
+            "requests will continue to verify SSL certificates."
+        )
+
+    # Surface feature-flag posture so operators notice unsafe defaults in logs
+    # without needing to hit /api/system/doctor first.
+    from app.features import playwright_enabled, x_playwright_enabled
+
+    if not playwright_enabled():
+        logger.warning(
+            "PIM_FEATURE_PLAYWRIGHT is disabled — JS-heavy site collection and "
+            "cookie-login bootstrap will be skipped. Enable with PIM_FEATURE_PLAYWRIGHT=true."
+        )
+    else:
+        logger.info("Playwright feature is enabled (PIM_FEATURE_PLAYWRIGHT=true).")
+    if x_playwright_enabled():
+        logger.warning(
+            "PIM_FEATURE_X_PLAYWRIGHT=true — X (Twitter) logged-in Chromium hydration is active. "
+            "This feature touches X Terms of Service grey area (ADR-003); keep it off unless "
+            "you fully understand the risk."
+        )
 
     yield
 
     # Shutdown
     scheduler.shutdown(wait=False)
     await task_queue.stop_workers()
+
+    # Release the shared Playwright/Chromium process before dropping the DB
+    # engine so we never leak a Chromium child on graceful reload.
+    try:
+        from app.utils.browser import shutdown_browser_pool
+
+        await shutdown_browser_pool()
+    except Exception as exc:
+        logger.warning("Browser pool shutdown raised: %s", exc)
+
+    # Checkpoint metrics counters before dropping the process.
+    try:
+        if persist_metrics() is not None:
+            logger.info("Persisted metrics counters to data_dir checkpoint")
+    except Exception as exc:  # noqa: BLE001 - observability best-effort
+        logger.warning("Failed to persist metrics checkpoint: %s", exc)
+
     await async_engine.dispose()
 
 
@@ -90,6 +195,12 @@ app.add_middleware(
     allow_headers=["Content-Type", "Authorization", "X-API-Key"],
 )
 
+app.add_middleware(
+    APIRateLimitMiddleware,
+    requests_per_minute=settings.api_rate_limit_per_minute,
+    local_token_requests_per_minute=settings.local_token_rate_limit_per_minute,
+)
+
 # Include API routes
 app.include_router(api_router, prefix="/api")
 
@@ -97,7 +208,7 @@ app.include_router(api_router, prefix="/api")
 @app.middleware("http")
 async def request_observability_middleware(request: Request, call_next):
     """Attach request ids and basic latency metrics to every request."""
-    request_id = (request.headers.get("X-Request-ID") or "").strip() or uuid4().hex
+    request_id = _normalize_request_id(request.headers.get("X-Request-ID"))
     set_request_id(request_id)
     started = perf_counter()
 
@@ -107,7 +218,7 @@ async def request_observability_middleware(request: Request, call_next):
         duration_ms = (perf_counter() - started) * 1000
         request_metrics.record(
             method=request.method,
-            path=request.url.path,
+            path=_request_route_label(request),
             status_code=500,
             duration_ms=duration_ms,
         )
@@ -118,7 +229,7 @@ async def request_observability_middleware(request: Request, call_next):
     duration_ms = (perf_counter() - started) * 1000
     request_metrics.record(
         method=request.method,
-        path=request.url.path,
+        path=_request_route_label(request),
         status_code=response.status_code,
         duration_ms=duration_ms,
     )
@@ -131,6 +242,129 @@ async def request_observability_middleware(request: Request, call_next):
 async def livez():
     """Public liveness probe for local tooling and desktop bootstrap."""
     return {"status": "ok"}
+
+
+_ALLOWED_LOCAL_TOKEN_HOSTNAMES = frozenset(
+    {"127.0.0.1", "localhost", "::1", "[::1]"}
+)
+
+_BOOTSTRAP_META_NAME = "pim-bootstrap-token"
+
+
+def _inject_bootstrap_meta(html: str, request: Request, token: str) -> str:
+    """Stamp the bootstrap token into index.html for trusted loopback callers.
+
+    This is the single-machine-user shortcut that lets the SPA acquire its API
+    key without asking the user to type one. Callers that don't match the same
+    defence-in-depth gate as ``/local-token`` (loopback IP + allowed Host) get
+    the page back unchanged, so remote or Host-spoofed requests continue to
+    fall through to the manual prompt.
+    """
+    clean_token = (token or "").strip()
+    if not clean_token:
+        return html
+    try:
+        real_ip = get_real_client_ip(request)
+    except Exception:
+        return html
+    if real_ip not in ("127.0.0.1", "::1"):
+        return html
+    hostname = _hostname_of(request.headers.get("host"))
+    if hostname not in _ALLOWED_LOCAL_TOKEN_HOSTNAMES:
+        return html
+    meta_tag = (
+        f'<meta name="{_BOOTSTRAP_META_NAME}" '
+        f'content="{_html_escape(clean_token, quote=True)}">'
+    )
+    if "</head>" in html:
+        return html.replace("</head>", f"    {meta_tag}\n  </head>", 1)
+    return meta_tag + html
+
+
+def _hostname_of(host_header: str | None) -> str:
+    """Strip an optional ``:port`` from a Host header and lower-case."""
+    value = (host_header or "").strip().lower()
+    if not value:
+        return ""
+    # IPv6 literal like "[::1]:8000"
+    if value.startswith("["):
+        closing = value.find("]")
+        if closing == -1:
+            return value
+        return value[: closing + 1]
+    # host:port
+    if value.count(":") == 1:
+        return value.split(":", 1)[0]
+    return value
+
+
+def _origin_is_permitted(origin: str | None) -> bool:
+    """Only same-site or Tauri origins may call the bootstrap endpoint."""
+    candidate = (origin or "").strip().lower()
+    if not candidate:
+        # Missing Origin (e.g. curl / server-side call) is acceptable; the other
+        # checks (loopback, Host, bootstrap_token) still protect the endpoint.
+        return True
+    if candidate == "tauri://localhost":
+        return True
+    allowed = {item.lower() for item in parse_cors_origins(settings.cors_origins)}
+    return candidate in allowed
+
+
+def _bootstrap_token_matches(request: Request) -> bool:
+    expected = (settings.bootstrap_token or "").strip()
+    if not expected:
+        # Fail closed: a misconfigured server should not hand out API keys.
+        return False
+
+    header_token = request.headers.get("X-Bootstrap-Token", "")
+    query_token = request.query_params.get("bootstrap_token", "")
+    for provided in (header_token, query_token):
+        provided = (provided or "").strip()
+        if provided and _secrets.compare_digest(provided, expected):
+            return True
+    return False
+
+
+@app.get("/local-token")
+async def local_token(request: Request):
+    """Return the API key for trusted local callers only.
+
+    Defence-in-depth gates — every request must pass all of them:
+
+    1. Source IP must be loopback (or the configured trusted proxy).
+    2. ``Host`` header hostname must be ``localhost`` / ``127.0.0.1`` / ``::1``
+       to block DNS rebinding attacks where a malicious site forces the
+       browser to send requests to the loopback interface under its own domain.
+    3. ``Origin`` header, if present, must be a CORS-whitelisted origin or
+       ``tauri://localhost``. ``null`` / other origins are rejected.
+    4. A ``bootstrap_token`` (query string or ``X-Bootstrap-Token`` header)
+       must match the value stored in ``runtime-secrets.json``. The token is
+       distributed out-of-band via the filesystem (mode 0600) to the Tauri
+       shell and operator CLI, and is never echoed over HTTP.
+
+    Result: the endpoint is safe even when another unprivileged process on the
+    same host tries to scrape it, because the attacker cannot read the
+    0600-protected bootstrap token file.
+    """
+    real_ip = get_real_client_ip(request)
+    if real_ip not in ("127.0.0.1", "::1"):
+        raise HTTPException(status_code=403, detail="Local access only")
+
+    hostname = _hostname_of(request.headers.get("host"))
+    if hostname not in _ALLOWED_LOCAL_TOKEN_HOSTNAMES:
+        logger.warning("/local-token rejected: invalid Host header %r", request.headers.get("host"))
+        raise HTTPException(status_code=403, detail="Invalid host")
+
+    if not _origin_is_permitted(request.headers.get("origin")):
+        logger.warning("/local-token rejected: invalid Origin %r", request.headers.get("origin"))
+        raise HTTPException(status_code=403, detail="Invalid origin")
+
+    if not _bootstrap_token_matches(request):
+        logger.warning("/local-token rejected: missing or invalid bootstrap token")
+        raise HTTPException(status_code=401, detail="Missing or invalid bootstrap token")
+
+    return {"api_key": settings.pim_api_key}
 
 
 @app.get("/health", dependencies=[Depends(verify_api_key)])
@@ -192,8 +426,38 @@ if os.path.isdir(dist_dir) and not DEV_SERVER_MODE:
     if os.path.isdir(assets_dir):
         app.mount("/assets", StaticFiles(directory=assets_dir), name="assets")
 
+    _INDEX_HTML_PATH = os.path.join(dist_dir, "index.html")
+
+    def _render_index_html(request: Request) -> HTMLResponse:
+        """Serve index.html, stamping the bootstrap token for trusted local callers.
+
+        The /local-token endpoint hands the API key to any caller that can present
+        the bootstrap_token (a 0600-owned secret). On a single-machine install the
+        browser has no natural way to obtain that token, which is why visiting
+        http://localhost:8000 used to always trigger a manual "请输入 PIM API Key"
+        prompt. We now inline the bootstrap token into the SPA shell for loopback
+        callers with an allowed Host header; the frontend reads it, silently
+        calls /local-token, and persists the returned API key. Remote callers
+        and Host-header spoof attempts still receive a clean index.html with no
+        token, preserving the existing defence-in-depth.
+        """
+        try:
+            with open(_INDEX_HTML_PATH, "r", encoding="utf-8") as fh:
+                html = fh.read()
+        except OSError:
+            return FileResponse(
+                _INDEX_HTML_PATH,
+                headers={**SPA_NO_CACHE_HEADERS, **_SPA_SECURITY_HEADERS},
+            )
+
+        html = _inject_bootstrap_meta(html, request, settings.bootstrap_token)
+        return HTMLResponse(
+            content=html,
+            headers={**SPA_NO_CACHE_HEADERS, **_SPA_SECURITY_HEADERS},
+        )
+
     @app.get("/{full_path:path}")
-    async def serve_spa(full_path: str):
+    async def serve_spa(full_path: str, request: Request):
         if full_path.startswith("api/"):
             raise HTTPException(status_code=404, detail="API route not found")
 
@@ -204,10 +468,16 @@ if os.path.isdir(dist_dir) and not DEV_SERVER_MODE:
             raise HTTPException(status_code=403, detail="Forbidden")
 
         if full_path and os.path.isfile(resolved):
-            headers = SPA_NO_CACHE_HEADERS if resolved.endswith(".html") else None
+            if resolved == os.path.realpath(_INDEX_HTML_PATH):
+                return _render_index_html(request)
+            headers = (
+                {**SPA_NO_CACHE_HEADERS, **_SPA_SECURITY_HEADERS}
+                if resolved.endswith(".html")
+                else None
+            )
             return FileResponse(resolved, headers=headers)
 
-        return FileResponse(os.path.join(dist_dir, "index.html"), headers=SPA_NO_CACHE_HEADERS)
+        return _render_index_html(request)
 else:
     @app.get("/")
     async def root():

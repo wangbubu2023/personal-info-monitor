@@ -11,6 +11,7 @@ from typing import Dict, Any, List
 from sqlalchemy.orm import Session
 
 from app.models import Content, Source
+from app.services.content_quality_service import merge_content_quality_metadata
 from app.utils.datetime import utcnow_naive
 from app.utils.text import strip_html_tags, truncate_content
 from app.utils.logger import get_logger
@@ -18,7 +19,7 @@ from app.utils.logger import get_logger
 logger = get_logger(__name__)
 
 
-async def _build_raw_content_objects(raw_contents: List[dict], source: Source) -> List[Content]:
+async def _build_raw_content_objects(raw_contents: List[dict], source: Source) -> tuple[List[Content], int]:
     """Build Content ORM objects from raw dicts without any LLM calls.
 
     Only does local text extraction / cleanup so the fetch task stays fast.
@@ -30,6 +31,7 @@ async def _build_raw_content_objects(raw_contents: List[dict], source: Source) -
     extractor = ContentExtractor()
     source_type = source.type.value if hasattr(source.type, "value") else str(source.type)
     results: List[Content] = []
+    build_failed = 0
 
     for raw in raw_contents:
         try:
@@ -59,6 +61,27 @@ async def _build_raw_content_objects(raw_contents: List[dict], source: Source) -
             metadata = raw.get("metadata")
             if not isinstance(metadata, dict):
                 metadata = {}
+            metadata = merge_content_quality_metadata(
+                metadata,
+                title=title,
+                full_content=main_text_clean,
+                summary=summary,
+            )
+
+            # PROACTIVE SIGNAL FILTERING
+            from app.pipeline.utils import get_website_content_reject_reason
+            reject_reason = get_website_content_reject_reason(
+                source.url,
+                {
+                    "title": title,
+                    "content": main_text_clean,
+                    "url": raw.get("url", ""),
+                    "html": html or "",
+                }
+            )
+            if reject_reason:
+                logger.info(f"Pipeline: Dropping low-signal content from {source.url} ({reject_reason}): {title}")
+                continue
 
             results.append(Content(
                 source_id=source.id,
@@ -74,10 +97,11 @@ async def _build_raw_content_objects(raw_contents: List[dict], source: Source) -
                 fetched_at=utcnow_naive(),
             ))
         except Exception as exc:
+            build_failed += 1
             logger.error(f"Failed to build Content object for {raw.get('url', '?')}: {exc}")
             continue
 
-    return results
+    return results, build_failed
 
 
 def _update_source_status(
@@ -96,6 +120,21 @@ def _update_source_status(
     if primary_warning and primary_warning[1] == "error":
         source.error_count = (source.error_count or 0) + 1
         set_last_fetch_outcome(source, primary_warning[0], "error", merged_warning or primary_warning[2])
+        from app.config import get_settings
+
+        th = int(get_settings().fetch_error_disable_threshold or 0)
+        if th > 0 and (source.error_count or 0) >= th and source.enabled:
+            source.enabled = False
+            suffix = " [auto-disabled after repeated fetch errors — re-enable in Sources when fixed]"
+            base = (merged_warning or primary_warning[2] or "").strip()
+            source.last_error = (base + suffix)[:4000]
+            logger.warning(
+                "Auto-disabled source %s (id=%s) after error_count=%s (>=%s)",
+                source.name,
+                source.id,
+                source.error_count,
+                th,
+            )
     elif primary_warning:
         source.error_count = 0
         set_last_fetch_outcome(source, primary_warning[0], "warning", merged_warning or primary_warning[2])
@@ -111,15 +150,18 @@ def _apply_keyword_filter(db: Session, source: Source, content_objects: list[Con
 
     keywords = db.query(Keyword).filter(Keyword.enabled == True).all()
     if not keywords:
-        # No keywords configured = pass everything through
-        logger.warning("Source %s has keyword filter enabled but no keywords configured", source.name)
-        return content_objects, 0
+        # No keywords configured but filter enabled = block everything
+        logger.warning("Source %s has keyword filter enabled but no keywords configured; rejecting all", source.name)
+        return [], len(content_objects)
 
     matcher = KeywordMatcher()
     kept = []
     for content in content_objects:
-        search_text = f"{content.title or ''} {content.full_content or content.summary or ''}"
-        matches = matcher.match(search_text, keywords)
+        matches = matcher.match(
+            content.title or "",
+            content.full_content or content.summary or "",
+            keywords,
+        )
         if matches:
             content.keyword_matches = matches
             kept.append(content)
@@ -170,7 +212,7 @@ async def run_fetch_pipeline(db: Session, source: Source, manual_trigger: bool =
         return {"status": "success", "message": "All content up to date", "count": 0}
 
     # 3. Build lightweight Content objects (no LLM) and persist
-    content_objects = await _build_raw_content_objects(valid_raw_contents, source)
+    content_objects, build_failed = await _build_raw_content_objects(valid_raw_contents, source)
     keyword_filtered_count = 0
     if getattr(source, "use_keyword_filter", False):
         content_objects, keyword_filtered_count = _apply_keyword_filter(db, source, content_objects)
@@ -203,14 +245,19 @@ async def run_fetch_pipeline(db: Session, source: Source, manual_trigger: bool =
     new_content_ids = [str(c.id) for c in content_objects if c.id]
 
     logger.info(
-        f"Fetched {len(raw_contents)} items from {source.name}, "
-        f"saved={saved_count}, stale_skipped={stale_skipped}"
+        "Fetched %s items from %s, saved=%s, stale_skipped=%s, build_failed=%s",
+        len(raw_contents),
+        source.name,
+        saved_count,
+        stale_skipped,
+        build_failed,
     )
     return {
         "status": "success",
         "count": len(raw_contents),
         "saved": saved_count,
         "stale_skipped": stale_skipped,
+        "build_failed": build_failed,
         "keyword_filtered": keyword_filtered_count,
         "new_content_ids": new_content_ids,
     }

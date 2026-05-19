@@ -7,6 +7,12 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field
 
 
+class FavoriteBody(BaseModel):
+    """Idempotent favorite update (replaces toggle semantics)."""
+
+    favorited: bool
+
+
 class ContentBase(BaseModel):
     """Base schema for Content."""
     
@@ -29,6 +35,7 @@ class ContentResponse(ContentBase):
     read_status: bool = False
     favorited: bool = False
     archived: bool = False
+    is_user_edited: bool = False
     keyword_matches: List[Dict[str, Any]] = Field(default_factory=list)
     metadata_: Dict[str, Any] = Field(default_factory=dict, alias="metadata")
     fetched_at: datetime
@@ -57,6 +64,10 @@ class ContentUpdate(BaseModel):
     read_status: Optional[bool] = None
     favorited: Optional[bool] = None
     archived: Optional[bool] = None
+    is_user_edited: Optional[bool] = None
+    title: Optional[str] = None
+    summary: Optional[str] = None
+    full_content: Optional[str] = None
 
 
 class ContentSearchParams(BaseModel):
@@ -65,7 +76,6 @@ class ContentSearchParams(BaseModel):
     q: Optional[str] = None
     source_type: Optional[str] = None
     source_id: Optional[UUID] = None
-    category_id: Optional[UUID] = None
     date_from: Optional[datetime] = None
     date_to: Optional[datetime] = None
     read_status: Optional[bool] = None

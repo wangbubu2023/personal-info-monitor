@@ -1,6 +1,5 @@
 """Database models."""
 
-from app.models.category import Category
 from app.models.source import Source
 from app.models.content import Content
 from app.models.auth_config import AuthConfig, APIConfig
@@ -12,7 +11,6 @@ from app.models.system_setting import SystemSetting
 from app.models.runtime_lock import RuntimeLock
 
 __all__ = [
-    "Category",
     "Source",
     "Content",
     "AuthConfig",

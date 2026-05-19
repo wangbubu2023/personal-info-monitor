@@ -1,0 +1,204 @@
+"""Pure helpers for :mod:`app.collectors.website`.
+
+All functions here are safe to call without a :class:`WebsiteCollector`
+instance — they only depend on URL shape, cookie maps, or primitive browser
+session payloads. Moving them out keeps the collector focused on fetch
+orchestration and hydration state machines.
+"""
+
+from __future__ import annotations
+
+from copy import copy
+from datetime import datetime
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+from urllib.parse import quote, urlparse
+
+from app.utils.cookies import cookie_domains_for_host
+from app.utils.datetime import utcnow_naive
+from app.utils.logger import get_logger
+
+logger = get_logger(__name__)
+
+
+def wsj_fallback_rss(website_url: str) -> Optional[str]:
+    """Build a fresh WSJ fallback RSS using Google News site search."""
+    host = (urlparse(website_url).hostname or "").lower()
+    if "wsj.com" not in host:
+        return None
+    q = quote("site:wsj.com")
+    return f"https://news.google.com/rss/search?q={q}&hl=en-US&gl=US&ceid=US:en"
+
+
+def economist_fallback_rss(website_url: str) -> Optional[str]:
+    """Build Economist fallback RSS for root/topic URLs that are often challenge-protected."""
+    parsed = urlparse(website_url)
+    host = (parsed.hostname or "").lower()
+    if "economist.com" not in host:
+        return None
+
+    path = (parsed.path or "/").strip("/").lower()
+    if not path:
+        return "https://www.economist.com/international/rss.xml"
+
+    topic_map = {
+        "china": "https://www.economist.com/china/rss.xml",
+        "business": "https://www.economist.com/business/rss.xml",
+        "finance-and-economics": "https://www.economist.com/finance-and-economics/rss.xml",
+        "artificial-intelligence": "https://www.economist.com/science-and-technology/rss.xml",
+    }
+    if path.startswith("topics/"):
+        topic = path.split("/", 2)[1] if len(path.split("/", 2)) > 1 else ""
+        return topic_map.get(topic, "https://www.economist.com/international/rss.xml")
+
+    section = path.split("/", 1)[0]
+    if not section:
+        return "https://www.economist.com/international/rss.xml"
+    return f"https://www.economist.com/{section}/rss.xml"
+
+
+def source_with_url(source, url: str):
+    """Return a shallow copy of ``source`` with :attr:`url` overridden."""
+    cloned = copy(source)
+    cloned.url = url
+    return cloned
+
+
+def is_stale_rss_content(contents: List[Dict[str, Any]], max_age_days: int = 3) -> bool:
+    """Whether RSS content is stale by latest ``publish_time``."""
+    latest: Optional[datetime] = None
+    for item in contents:
+        pt = item.get("publish_time")
+        if isinstance(pt, datetime):
+            if not latest or pt > latest:
+                latest = pt
+    if not latest:
+        return True
+    age = utcnow_naive() - latest
+    return age.days >= max_age_days
+
+
+def same_site(source_url: str, candidate_url: str) -> bool:
+    source_host = (urlparse(source_url).hostname or "").lower().lstrip("www.")
+    candidate_host = (urlparse(candidate_url).hostname or "").lower().lstrip("www.")
+    if not source_host or not candidate_host:
+        return False
+    return candidate_host == source_host or candidate_host.endswith("." + source_host)
+
+
+def is_google_news_wrapper(article_url: str) -> bool:
+    try:
+        parsed = urlparse(article_url)
+        host = (parsed.hostname or "").lower()
+        path = parsed.path or ""
+        return host == "news.google.com" and "/rss/articles/" in path
+    except Exception as exc:  # noqa: BLE001 - URL libs can raise diverse errors
+        logger.warning("Failed to inspect Google News wrapper URL %s: %s", article_url, exc)
+        return False
+
+
+def looks_like_article_url(source_url: str, candidate_url: str) -> bool:
+    """Heuristic check for an article-shaped URL on the same site."""
+    if is_google_news_wrapper(candidate_url):
+        return True
+    if not candidate_url or not same_site(source_url, candidate_url):
+        return False
+    parsed = urlparse(candidate_url)
+    path = (parsed.path or "").strip().lower()
+    if not path or path == "/":
+        return False
+    non_article_prefixes = (
+        "/video",
+        "/videos",
+        "/podcasts",
+        "/newsletters",
+        "/livecoverage",
+        "/live",
+        "/search",
+        "/topics",
+        "/topic",
+        "/tag",
+        "/tags",
+        "/authors",
+        "/author",
+        "/account",
+        "/subscribe",
+        "/login",
+        "/signin",
+        "/category",
+        "/list",
+        "/channel",
+        "/channels",
+        "/special",
+        "/zhuanti",
+        "/fenlei",
+        "/pindao",
+    )
+    if any(path.startswith(prefix) for prefix in non_article_prefixes):
+        return False
+
+    segments = [s for s in path.split("/") if s]
+    if len(segments) < 1:
+        return False
+
+    tail = segments[-1]
+    # A bare tail without slug markers (dashes / dots / digits) typically
+    # belongs to a section hub page rather than a specific article.
+    if "-" not in tail and "." not in tail and not any(c.isdigit() for c in tail):
+        return False
+
+    return True
+
+
+def has_browser_session(runtime_session: Optional[Dict[str, Any]]) -> bool:
+    return bool(runtime_session and str(runtime_session.get("user_data_dir") or "").strip())
+
+
+def browser_session_auth_ready(runtime_session: Optional[Dict[str, Any]]) -> bool:
+    """Whether a browser session should be trusted for automated page fetches.
+
+    Older runtime payloads did not include ``auth_ready``. Treat a missing key
+    as usable for compatibility, but honor an explicit ``False`` from the
+    auth-helper validation chain so stale profiles do not keep launching
+    Chromium for guaranteed-failing paywall hydration.
+    """
+    return bool(has_browser_session(runtime_session) and runtime_session.get("auth_ready") is not False)
+
+
+def storage_state_path_for_playwright(browser_session: Optional[Dict[str, Any]]) -> Optional[str]:
+    """Use exported Playwright storage when no persistent user_data_dir profile is active."""
+    if not browser_session:
+        return None
+    if browser_session.get("auth_ready") is False:
+        return None
+    if has_browser_session(browser_session):
+        return None
+    raw = str(browser_session.get("storage_state_path") or "").strip()
+    if not raw:
+        return None
+    p = Path(raw)
+    return str(p.resolve()) if p.is_file() else None
+
+
+def cookie_items_for_hosts(hosts: set[str], cookies: Dict[str, str]) -> List[Dict[str, str]]:
+    """Build Playwright cookie payloads for all candidate hosts."""
+    cookie_items: List[Dict[str, str]] = []
+    for host in hosts:
+        for name, value in cookies.items():
+            if not name or value is None:
+                continue
+            for domain in cookie_domains_for_host(host):
+                cookie_items.append(
+                    {
+                        "name": str(name),
+                        "value": str(value),
+                        "domain": domain,
+                        "path": "/",
+                    }
+                )
+    return cookie_items
+
+
+def build_runtime_cookie_list(source_url: str, cookies: Dict[str, str]) -> List[Dict[str, str]]:
+    host = (urlparse(source_url).hostname or "").lower()
+    return cookie_items_for_hosts({host} if host else set(), cookies)

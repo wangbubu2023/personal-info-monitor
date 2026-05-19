@@ -1,4 +1,7 @@
-"""Maintenance tasks for data cleanup and housekeeping."""
+"""Scheduled maintenance jobs (cleanup, lock purge, markdown export).
+
+Ad-hoc helpers such as FTS rebuild live in :mod:`app.tasks.maintenance`.
+"""
 
 import asyncio
 from datetime import timedelta
@@ -67,3 +70,43 @@ async def cleanup_error_logs():
             db.close()
 
     await asyncio.to_thread(_cleanup)
+
+
+async def run_markdown_export(since_hours: int = 2):
+    """Run incremental markdown export task."""
+    from datetime import timedelta
+    from app.database import AsyncSessionLocal
+    from app.services.system_settings import get_system_settings_async
+    from app.exporters.markdown_exporter import MarkdownExporter
+
+    async with AsyncSessionLocal() as db:
+        try:
+            settings = await get_system_settings_async(db)
+            if not settings.get("markdown_export_enabled"):
+                return
+
+            export_dir = settings.get("markdown_export_dir")
+            if not export_dir:
+                export_dir = "~/.pim/knowledge-base"
+                
+            exporter = MarkdownExporter(export_dir)
+            since = utcnow_naive() - timedelta(hours=since_hours)
+            
+            count = await exporter.export_incremental(db, since)
+            if count > 0:
+                logger.info(f"Exported {count} contents to Markdown at {export_dir}")
+        except Exception as e:
+            logger.error(f"Error running markdown export: {e}")
+
+
+async def purge_expired_runtime_locks():
+    """Remove stale fetch coordination rows from runtime_locks."""
+
+    def _purge():
+        from app.services.runtime_lock_service import runtime_lock_service
+
+        n = runtime_lock_service.purge_expired()
+        if n:
+            logger.info("Purged %d expired runtime lock row(s)", n)
+
+    await asyncio.to_thread(_purge)

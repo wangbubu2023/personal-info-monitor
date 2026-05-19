@@ -10,8 +10,11 @@ import aiohttp
 from bs4 import BeautifulSoup
 
 from app.utils.datetime import utcnow_naive
+from app.utils.logger import get_logger
 
 _CN_TZ = ZoneInfo("Asia/Shanghai")
+
+logger = get_logger(__name__)
 
 
 def _to_utc_naive(dt: datetime, assume_cn_tz: bool = False) -> datetime:
@@ -72,10 +75,11 @@ def parse_publish_time_text(text: str) -> Optional[datetime]:
     for fmt in fmts:
         try:
             dt = datetime.strptime(cleaned, fmt)
-            # For date-only values, assume local CN midnight for CN-oriented sites.
-            return _to_utc_naive(dt, assume_cn_tz=True)
-        except Exception:
+        except ValueError:
+            # strptime only raises ValueError on format mismatch; keep trying.
             continue
+        # For date-only values, assume local CN midnight for CN-oriented sites.
+        return _to_utc_naive(dt, assume_cn_tz=True)
 
     # English month formats, e.g. "Feb 12, 2026 6:54 PM EST"
     tz_offsets = {
@@ -96,12 +100,12 @@ def parse_publish_time_text(text: str) -> Optional[datetime]:
         for fmt in ("%b %d, %Y %I:%M %p", "%B %d, %Y %I:%M %p"):
             try:
                 dt = datetime.strptime(dt_part, fmt)
-                if tz_abbr in tz_offsets:
-                    dt = dt.replace(tzinfo=timezone(timedelta(hours=tz_offsets[tz_abbr])))
-                    return dt.astimezone(timezone.utc).replace(tzinfo=None)
-                return _to_utc_naive(dt, assume_cn_tz=False)
-            except Exception:
+            except ValueError:
                 continue
+            if tz_abbr in tz_offsets:
+                dt = dt.replace(tzinfo=timezone(timedelta(hours=tz_offsets[tz_abbr])))
+                return dt.astimezone(timezone.utc).replace(tzinfo=None)
+            return _to_utc_naive(dt, assume_cn_tz=False)
 
     return None
 
@@ -133,7 +137,8 @@ def _extract_jsonld_publish_time(soup: BeautifulSoup) -> Optional[datetime]:
             continue
         try:
             obj = json.loads(text)
-        except Exception:
+        except json.JSONDecodeError:
+            # Many sites ship broken or comment-laden JSON-LD blocks; skip.
             continue
 
         candidates = obj if isinstance(obj, list) else [obj]
@@ -219,5 +224,8 @@ async def fetch_publish_time_from_url(url: str, timeout: int = 12) -> Optional[d
                     return None
                 html = await resp.text()
         return extract_publish_time_from_html(html)
-    except Exception:
+    except (aiohttp.ClientError, TimeoutError, UnicodeDecodeError) as exc:
+        # Network flakes and malformed responses are expected — log at debug
+        # so the fetch loop can move on without polluting the warning stream.
+        logger.debug("fetch_publish_time_from_url(%s) failed: %s", url, exc)
         return None

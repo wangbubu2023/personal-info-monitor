@@ -2,8 +2,6 @@
 
 import enum
 import uuid
-from datetime import datetime
-from typing import Optional
 
 from sqlalchemy import Boolean, Column, DateTime, Enum, ForeignKey, Index, Integer, JSON, String, Text
 from sqlalchemy.orm import relationship
@@ -34,13 +32,9 @@ class Source(Base):
     type = Column(Enum(SourceType), nullable=False)
     url = Column(Text, nullable=False)
 
-    # Category relationship
-    category_id = Column(UUIDString, ForeignKey("categories.id"), nullable=True)
-
     # Fetch settings
     fetch_interval = Column(Integer, default=60)  # Minutes
     enabled = Column(Boolean, default=True)
-    priority = Column(Integer, default=0)
     use_keyword_filter = Column(Boolean, default=False)
 
     # Authentication
@@ -60,8 +54,6 @@ class Source(Base):
     created_at = Column(DateTime, default=utcnow_naive)
     updated_at = Column(DateTime, default=utcnow_naive, onupdate=utcnow_naive)
 
-    # Relationships
-    category = relationship("Category", back_populates="sources")
     auth_config = relationship("AuthConfig", back_populates="sources")
     contents = relationship("Content", back_populates="source", cascade="all, delete-orphan")
 

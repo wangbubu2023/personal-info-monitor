@@ -60,6 +60,36 @@ cd backend
 ./.venv/bin/pytest -q
 ```
 
+## Lint & 技术债看板
+
+CI 在后端跑 `ruff check app`，目前只启用以下高信号规则：
+
+| 规则   | 说明                                                           |
+|--------|--------------------------------------------------------------|
+| BLE001 | 盲目 `except Exception:` 吞错（新代码一律禁止）               |
+| B904   | `except` 中 `raise Err(...)` 忘记 `from` 丢失 traceback        |
+| B023   | 闭包捕获循环变量                                              |
+| F821   | 引用未定义的名字                                              |
+| F811   | 未使用的重复定义                                              |
+
+### 存量 BLE001 baseline
+
+`pyproject.toml` 的 `[tool.ruff.lint.per-file-ignores]` 中列出了审计期（2026-04）仍存在盲目 except 的历史文件。新增的文件**不允许**进入这张列表。
+
+回收策略：一次修一个文件，把所有 `except Exception as exc:` 改成：
+
+- 明确捕获具体异常（如 `aiohttp.ClientError`、`sqlalchemy.exc.OperationalError`），或
+- 保留宽异常但改为 `logger.exception(...)` + 重新 raise 到合适的位置
+
+修复完后从 per-file-ignores 删除对应条目，跑 `ruff check --select BLE001 app/<path>` 确认本地零违规，再提 PR。
+
+本地运行：
+
+```bash
+cd backend
+./.venv/bin/ruff check app
+```
+
 ## 说明
 
 - 当前代码库不使用 Celery/Redis 作为主运行时。

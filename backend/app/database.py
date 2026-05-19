@@ -33,7 +33,9 @@ engine = create_engine(
     echo=settings.debug,
 )
 
-# Asynchronous engine (for FastAPI endpoints)
+# Asynchronous engine (for FastAPI endpoints).
+# SQLite + aiosqlite: SQLAlchemy's default async pool (``NullPool``-style
+# behaviour for sqlite) is appropriate — no TCP connection pool tuning needed.
 async_engine = create_async_engine(
     settings.async_database_url,
     echo=settings.debug,

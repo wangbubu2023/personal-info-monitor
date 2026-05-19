@@ -58,6 +58,7 @@ def load_model_providers() -> List[Dict[str, Any]]:
         models = item.get("models")
         item["models"] = models if isinstance(models, list) else []
         item["requires_api_key"] = bool(item.get("requires_api_key", True))
+        item["requires_access_config"] = bool(item.get("requires_access_config", False))
         sanitized.append(item)
 
     return sanitized

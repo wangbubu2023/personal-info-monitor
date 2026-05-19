@@ -22,6 +22,12 @@ def handle_external_id_duplicate(
 
     Returns True when the incoming row should be skipped (same-source duplicate).
     Cross-source matches are recorded in metadata but preserved.
+
+    The caller owns the surrounding transaction: this helper mutates ``existing``
+    (backfilling fulltext/metadata) through the attached session but does NOT
+    commit. ``run_fetch_pipeline`` issues a single commit after the normalize /
+    store stages run, so a duplicate batch no longer triggers N independent
+    write-ahead-log fsyncs.
     """
     existing = db.query(Content).filter(
         Content.source_id == source.id,
@@ -59,7 +65,8 @@ def handle_external_id_duplicate(
         existing.metadata_ = merged_meta
 
     if article_fulltext and raw_text and len(raw_text) >= 280:
-        should_upgrade = not existing.full_content or len(raw_text) > len(existing.full_content or "")
+        # Never overwrite content if user has manually edited it
+        should_upgrade = (not existing.is_user_edited) and (not existing.full_content or len(raw_text) > len(existing.full_content or ""))
         if should_upgrade:
             existing.full_content = truncate_content(raw_text, url=str(raw_content.get("url") or ""))
             if not existing.summary:
@@ -71,5 +78,7 @@ def handle_external_id_duplicate(
             existing.updated_at = utcnow_naive()
             logger.info("Backfilled article fulltext for duplicate content: %s", external_id)
 
-    db.commit()
+    # Intentionally no commit here — see docstring. The coordinator commits at
+    # the batch boundary so duplicate backfills share a transaction with the
+    # rest of the fetch pipeline.
     return True

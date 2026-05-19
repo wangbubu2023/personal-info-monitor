@@ -8,6 +8,7 @@ from urllib.parse import unquote, urlparse
 
 from app.utils.logger import get_logger
 from app.utils.text import strip_html_tags
+from app.utils.url import normalize_source_url_for_dedupe
 
 logger = get_logger(__name__)
 
@@ -50,6 +51,13 @@ _DOMAIN_WEBSITE_SECTION_TITLES = {
         "the better work project",
         "travel",
     },
+    "techmeme.com": {
+        "events",
+        "about",
+        "contact",
+        "sponsor",
+        "search",
+    },
 }
 
 _DOMAIN_NON_ARTICLE_PATH_SEGMENTS = {
@@ -70,9 +78,14 @@ _NON_ARTICLE_PATH_SEGMENTS = {
     "browse",
     "categories",
     "category",
+    "channel",
+    "channels",
     "collections",
+    "index",
     "latest",
     "library",
+    "list",
+    "lists",
     "login",
     "menu",
     "newsletters",
@@ -87,6 +100,11 @@ _NON_ARTICLE_PATH_SEGMENTS = {
     "tags",
     "topic",
     "topics",
+    # CJK Pinyin / Common patterns
+    "zhuanti",
+    "fenlei",
+    "pindao",
+    "huati",
 }
 
 def normalize_external_id(external_id: str | None) -> str | None:
@@ -140,14 +158,28 @@ def get_source_urls(source) -> List[str]:
             urls = deduped_urls
     return urls
 
+def _parse_iso_publish_time(value: str) -> datetime | None:
+    """Parse an ISO-8601 publish time string, tolerating the ``Z`` UTC suffix.
+
+    Returns ``None`` on any malformed input (the only exception ``fromisoformat``
+    raises). We log at debug — feed data is noisy and a bad timestamp on one
+    entry shouldn't taint the batch.
+    """
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00")).replace(tzinfo=None)
+    except ValueError as exc:
+        logger.debug("Discarding malformed ISO publish_time %r: %s", value, exc)
+        return None
+
+
 async def resolve_website_publish_time(raw_content: dict) -> datetime | None:
     """Resolve publish_time for website content with fallback to article page extraction."""
     publish_time = raw_content.get("publish_time")
     if isinstance(publish_time, str):
-        try:
-            return datetime.fromisoformat(publish_time.replace("Z", "+00:00")).replace(tzinfo=None)
-        except Exception:
-            publish_time = None
+        parsed = _parse_iso_publish_time(publish_time)
+        if parsed is not None:
+            return parsed
+        publish_time = None
 
     if isinstance(publish_time, datetime):
         return publish_time
@@ -156,14 +188,13 @@ async def resolve_website_publish_time(raw_content: dict) -> datetime | None:
     if metadata.get("publish_time_estimated"):
         url = raw_content.get("url")
         if url:
-            try:
-                from app.utils.publish_time import fetch_publish_time_from_url
-                resolved = await fetch_publish_time_from_url(url)
-                if resolved:
-                    return resolved
-            except Exception:
-                return None
+            from app.utils.publish_time import fetch_publish_time_from_url
+
+            # fetch_publish_time_from_url already swallows network / decode
+            # errors and returns None, so we don't need another layer here.
+            return await fetch_publish_time_from_url(url)
     return None
+
 
 async def normalize_publish_time(raw_content: dict, source_type: str) -> datetime | None:
     """Normalize publish_time from raw content for freshness checks."""
@@ -172,10 +203,7 @@ async def normalize_publish_time(raw_content: dict, source_type: str) -> datetim
 
     publish_time = raw_content.get("publish_time")
     if isinstance(publish_time, str):
-        try:
-            return datetime.fromisoformat(publish_time.replace("Z", "+00:00")).replace(tzinfo=None)
-        except Exception:
-            return None
+        return _parse_iso_publish_time(publish_time)
     if isinstance(publish_time, datetime):
         return publish_time
     return None
@@ -185,7 +213,10 @@ def dedupe_raw_contents(raw_contents: List[dict]) -> List[dict]:
     seen = set()
     deduped = []
     for item in raw_contents:
-        key = normalize_external_id(item.get("external_id")) or item.get("url") or item.get("title")
+        eid = normalize_external_id(item.get("external_id"))
+        url = (item.get("url") or "").strip()
+        url_key = normalize_source_url_for_dedupe(url) if url else ""
+        key = eid or url_key or item.get("title")
         if not key or key in seen:
             continue
         seen.add(key)
@@ -290,7 +321,12 @@ def get_website_content_reject_reason(source_url: str, raw_content: dict) -> str
     url = str(raw_content.get("url") or "").strip()
     text = strip_html_tags(str(raw_content.get("content") or "")).strip()
     html = str(raw_content.get("html") or "")
-    text_is_thin = len(text) < 140 and _word_count(text) < 24 and len(html) < 2000
+    
+    # RUTHLESS SIGNAL CHECK:
+    # 1. Very short text (< 250 chars) and few words (< 40) is likely noise.
+    # 2. Content that is just a verbatim repeat of the title? Drop it.
+    is_simple_repeat = title_key == _normalize_title_key(text) if text else False
+    text_is_thin = (len(text) < 250 and _word_count(text) < 40 and len(html) < 2000) or is_simple_repeat
     parsed = urlparse(url) if url else None
     segments = [unquote(seg).strip().lower() for seg in (parsed.path.split("/") if parsed else []) if seg.strip()]
     section_like_url = _looks_like_section_path(source_url, url)
@@ -311,13 +347,17 @@ def get_website_content_reject_reason(source_url: str, raw_content: dict) -> str
         return "blocked_section_hub_title"
 
     title_word_count = _word_count(title_key)
+    # INCREASED STRICTNESS for CJK and short-title nav links.
+    # We now block if title contains strong nav keywords even if it has digits/punctuation.
+    if section_like_url and (title_word_count <= 3 or re.search(r"[【】|\|]", title)):
+        return "blocked_cjk_nav_pattern"
+
     if (
-        section_like_url
+        (section_like_url or title_word_count <= 2)
         and text_is_thin
-        and title_word_count <= 2
-        and not any(ch.isdigit() for ch in title)
-        and not re.search(r"[?!:;]", title)
+        # If it's a section-like URL and thin text, we are MUCH more aggressive.
+        and (not any(ch.isdigit() for ch in title) or section_like_url)
     ):
-        return "section_hub_without_article_body"
+        return "low_content_single_phrase_link"
 
     return None

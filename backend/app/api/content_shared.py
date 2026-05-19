@@ -225,6 +225,7 @@ def _serialize_content(content: Content) -> dict:
         "read_status": content.read_status,
         "favorited": content.favorited,
         "archived": content.archived,
+        "is_user_edited": bool(getattr(content, "is_user_edited", False)),
         "keyword_matches": content.keyword_matches or [],
         "metadata": content.metadata_ or {},
         "fetched_at": content.fetched_at,

@@ -1,6 +1,5 @@
 """Pipeline stage for collecting raw contents from sources."""
 
-import copy
 from typing import List, Optional, Tuple, Any
 
 from sqlalchemy.orm import Session
@@ -21,6 +20,17 @@ from app.tasks.fetch_orchestrator import merge_warning_messages
 from app.pipeline.utils import get_source_urls, dedupe_raw_contents
 
 logger = get_logger(__name__)
+
+
+async def fetch_at_ephemeral_source_url(collector, source: Source, fetch_url: str):
+    """Run ``collector.fetch`` while temporarily overriding ``source.url`` (restored in ``finally``)."""
+    prev = source.url
+    source.url = fetch_url
+    try:
+        return await collector.fetch(source)
+    finally:
+        source.url = prev
+
 
 class CollectorStage:
     
@@ -52,12 +62,31 @@ class CollectorStage:
                         logger.info(f"Auto-bound auth config {cfg.id} to source {source.id}")
                         break
 
-        # Pass decrypted auth credentials to collector runtime context.
+        # Resolve browser_session first so we can short-circuit password
+        # auto-login when a logged-in on-disk profile is already available.
+        # Otherwise password auth on captcha-hard sites (WSJ et al.) runs a
+        # doomed auto-login that the site blocks with a challenge, poisoning
+        # the fetch with a false-positive ``auth_captcha`` warning even though
+        # the actual Playwright fetch later reads valid cookies from the
+        # persistent profile.
+        browser_session = None
+        if str(source_type).lower() in ("website", "x"):
+            browser_session = build_browser_session_runtime(db, source)
+
         runtime_auth = {}
         auth_warning = None
         if source.auth_config:
             creds = try_parse_auth_credentials(source.auth_config)
-            creds, auth_warning = await maybe_refresh_auth_cookies(db, source, creds)
+            session_auth_ready = bool(browser_session and browser_session.get("auth_ready"))
+            if session_auth_ready:
+                logger.info(
+                    "Skipping password auto-login for source %s: recently validated browser session %s "
+                    "already provides usable on-disk cookies",
+                    source.id,
+                    browser_session.get("id"),
+                )
+            else:
+                creds, auth_warning = await maybe_refresh_auth_cookies(db, source, creds)
             auth_type = source.auth_config.auth_type.value if hasattr(source.auth_config.auth_type, "value") else str(source.auth_config.auth_type).lower()
             runtime_auth.update({
                 "auth_type": auth_type,
@@ -66,10 +95,12 @@ class CollectorStage:
                 "login_selectors": source.auth_config.login_selectors or {},
             })
 
-        if str(source_type).lower() == "website":
-            browser_session = build_browser_session_runtime(db, source)
-            if browser_session:
-                runtime_auth["browser_session"] = browser_session
+        if browser_session:
+            # X 源沿用 runtime_auth.credentials.cookies 从 auth_config 里取 cookie
+            # （浏览器会话会自动把 profile 里的 cookies 同步过去）。这里把
+            # ``browser_session`` 也塞进 runtime_auth 只是为了后续 X collector
+            # 想直连 profile 时不用再改 pipeline。
+            runtime_auth["browser_session"] = browser_session
 
         if runtime_auth:
             setattr(source, "_runtime_auth", runtime_auth)
@@ -87,21 +118,15 @@ class CollectorStage:
         # Fetch content across primary + extra URLs.
         source_urls = get_source_urls(source)
         raw_contents = []
-        original_url = source.url
-        
-        try:
-            for fetch_url in source_urls:
-                try:
-                    source.url = fetch_url
-                    fetched = await collector.fetch(source)
-                    if fetched:
-                        raw_contents.extend(fetched)
-                except Exception as e:
-                    logger.error(f"Error fetching from URL {fetch_url}: {e}")
-                    continue
-        finally:
-            source.url = original_url
-            
+        for fetch_url in source_urls:
+            try:
+                fetched = await fetch_at_ephemeral_source_url(collector, source, fetch_url)
+                if fetched:
+                    raw_contents.extend(fetched)
+            except Exception as e:
+                logger.error(f"Error fetching from URL {fetch_url}: {e}")
+                continue
+
         raw_contents = dedupe_raw_contents(raw_contents)
         cookie_entry = cookie_hydration_warning_entry(source, runtime_auth)
         if cookie_entry:

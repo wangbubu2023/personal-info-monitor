@@ -1,11 +1,14 @@
 """Authentication helpers for fetch task orchestration."""
 
 import json
+from datetime import timedelta
+from pathlib import Path
 from typing import List
 from uuid import UUID
 
 from app.utils.cookies import normalize_cookie_dict
 from app.utils.datetime import utcnow_naive
+from app.utils.http import permissive_session_kwargs
 from app.utils.logger import get_logger
 from app.utils.url import normalize_host
 
@@ -14,6 +17,8 @@ logger = get_logger(__name__)
 _DEFAULT_LOGIN_URLS = {
     "wsj.com": "https://www.wsj.com/login",
 }
+
+_BROWSER_SESSION_AUTH_TTL_DAYS = 7
 
 _DEFAULT_USERNAME_SELECTORS = [
     'input[name="username"]',
@@ -65,14 +70,60 @@ def build_browser_session_runtime(db, source) -> dict | None:
     if not session:
         return None
 
+    session_meta = session.metadata_ if isinstance(session.metadata_, dict) else {}
+    last_validation = session_meta.get("last_validation") if isinstance(session_meta.get("last_validation"), dict) else {}
+    user_data_dir = str(session.user_data_dir or "").strip()
+    storage_state_path = str(session.storage_state_path or "").strip()
+    profile_exists = bool(user_data_dir and Path(user_data_dir).is_dir())
+    storage_state_exists = bool(storage_state_path and Path(storage_state_path).is_file())
+    status = session.status.value if hasattr(session.status, "value") else str(session.status)
+    last_validated_at = session.last_validated_at
+    validation_fresh = bool(
+        last_validated_at
+        and utcnow_naive() - last_validated_at <= timedelta(days=_BROWSER_SESSION_AUTH_TTL_DAYS)
+    )
+    validation_cookie_count = int(last_validation.get("cookie_count") or 0)
+    validation_paragraph_count = int(last_validation.get("paragraph_count") or 0)
+    auth_ready = bool(
+        str(status).lower() == "active"
+        and profile_exists
+        and validation_fresh
+        and validation_cookie_count > 0
+        and validation_paragraph_count > 0
+    )
+
+    auth_warning = None
+    if str(status).lower() != "active":
+        auth_warning = f"浏览器会话未激活（status={status}），需要重新登录/校验"
+    elif not profile_exists:
+        auth_warning = "浏览器会话 profile 目录不存在，需要重新登录"
+    elif not last_validated_at:
+        auth_warning = "浏览器会话尚未完成正文校验，需要重新登录或校验"
+    elif not validation_fresh:
+        auth_warning = f"浏览器会话正文校验已超过 {_BROWSER_SESSION_AUTH_TTL_DAYS} 天，需要重新校验"
+    elif validation_cookie_count <= 0:
+        auth_warning = "浏览器会话校验未捕获站点 cookies，需要重新登录"
+    elif validation_paragraph_count <= 0:
+        auth_warning = "浏览器会话校验未确认可读取正文段落，需要重新校验"
+    elif storage_state_path and not storage_state_exists:
+        auth_warning = "浏览器会话 storage_state.json 不存在，将仅使用 Chrome profile"
+
     return {
         "id": str(session.id),
         "site_url": session.site_url,
         "site_host": session.site_host,
         "profile_name": session.profile_name,
-        "user_data_dir": session.user_data_dir,
-        "storage_state_path": session.storage_state_path,
-        "status": session.status.value if hasattr(session.status, "value") else str(session.status),
+        "user_data_dir": user_data_dir,
+        "storage_state_path": storage_state_path,
+        "status": status,
+        "last_validated_at": last_validated_at,
+        "profile_exists": profile_exists,
+        "storage_state_exists": storage_state_exists,
+        "validation_fresh": validation_fresh,
+        "validation_cookie_count": validation_cookie_count,
+        "validation_paragraph_count": validation_paragraph_count,
+        "auth_ready": auth_ready,
+        "auth_warning": auth_warning,
     }
 
 
@@ -159,7 +210,13 @@ async def _login_and_capture_cookies(
     password: str,
     login_selectors: dict | None = None,
 ) -> dict:
-    from playwright.async_api import async_playwright
+    from app.features import PlaywrightDisabledError, playwright_enabled
+    from app.utils.playwright_runtime import async_playwright
+
+    if not playwright_enabled():
+        raise PlaywrightDisabledError(
+            "Automated login flow requires Playwright (PIM_FEATURE_PLAYWRIGHT=true)."
+        )
 
     selectors = login_selectors or {}
     username_candidates = [selectors.get("username")] + _DEFAULT_USERNAME_SELECTORS
@@ -254,7 +311,9 @@ async def cookies_appear_valid(site_url: str, cookies: dict) -> bool:
                 continue
             cookie_jar.update_cookies({key: str(value)}, response_url=url_obj)
 
-        async with aiohttp.ClientSession(timeout=timeout, cookie_jar=cookie_jar) as session:
+        async with aiohttp.ClientSession(
+            **permissive_session_kwargs(timeout=timeout, cookie_jar=cookie_jar)
+        ) as session:
             async with session.get(
                 site_url,
                 allow_redirects=True,
@@ -367,19 +426,31 @@ def cookie_hydration_warning_entry(source, runtime_auth: dict | None) -> tuple[s
     cookies = normalize_cookie_dict(creds.get("cookies"))
     browser_session = runtime_auth.get("browser_session") if isinstance(runtime_auth.get("browser_session"), dict) else {}
     has_browser_session = bool(str(browser_session.get("user_data_dir") or "").strip())
-    if not cookies and not has_browser_session:
+    raw_storage = str(browser_session.get("storage_state_path") or "").strip()
+    has_storage_export = False
+    if raw_storage:
+        from pathlib import Path
+
+        has_storage_export = Path(raw_storage).is_file()
+    if not cookies and not has_browser_session and not has_storage_export:
         return None
+    session_warning = str(browser_session.get("auth_warning") or "").strip()
+    session_warning_entry = (
+        ("browser_session_stale", "warning", session_warning)
+        if session_warning and not browser_session.get("auth_ready")
+        else None
+    )
 
     diag = getattr(source, "_runtime_fetch_diag", None)
     if not isinstance(diag, dict):
-        return None
+        return session_warning_entry
     attempted = int(diag.get("attempted") or 0)
     hydrated = int(diag.get("hydrated") or 0)
     failures = diag.get("failures") if isinstance(diag.get("failures"), dict) else {}
     if attempted <= 0:
-        return None
+        return session_warning_entry
     if hydrated >= attempted:
-        return None
+        return session_warning_entry
 
     shell_fail = int(failures.get("shell_page", 0))
     wrapper_fail = int(failures.get("wrapper_unresolved", 0))

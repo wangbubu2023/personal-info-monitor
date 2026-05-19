@@ -1,6 +1,6 @@
 """Pydantic schemas for Digest."""
 
-from datetime import date, datetime
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 from uuid import UUID
 
@@ -16,6 +16,10 @@ class DigestItem(BaseModel):
     translated_title: Optional[str] = None
     summary: Optional[str] = None
     translated_summary: Optional[str] = None
+    body_preview: Optional[str] = Field(
+        default=None,
+        description="无有效摘要时由正文截取的列表预览（纯文本）",
+    )
     url: str
     publish_time: Optional[datetime] = None
     fetched_at: Optional[datetime] = None
@@ -40,6 +44,7 @@ class DigestResponse(BaseModel):
     categories: Dict[str, DigestCategory]
     # {
     #     "websites": { "count": 10, "items": [...] },
+    #     "rss": { "count": 3, "items": [...] },
     #     "x_accounts": { "count": 5, "items": [...] },
     #     "youtube": { "count": 3, "items": [...] },
     #     "podcasts": { "count": 2, "items": [...] }
@@ -50,7 +55,6 @@ class DigestParams(BaseModel):
     """Schema for digest query parameters."""
     
     date: Optional[str] = None  # YYYY-MM-DD format
-    category_ids: Optional[List[UUID]] = None
     keyword_ids: Optional[List[UUID]] = None
     unread_only: bool = True
     source_types: Optional[List[str]] = None

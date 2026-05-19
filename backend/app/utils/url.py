@@ -1,6 +1,41 @@
 """URL/host normalization helpers."""
 
-from urllib.parse import urlparse
+import re
+from urllib.parse import urlparse, urlunparse
+
+_SCHEME_RE = re.compile(r"^https?://", re.IGNORECASE)
+
+
+def normalize_source_url_input(url: str | None) -> str:
+    """Normalize user-entered monitoring URLs (prepend https:// when scheme omitted)."""
+    s = (url or "").strip()
+    if not s:
+        return ""
+    if not _SCHEME_RE.match(s):
+        s = f"https://{s}"
+    return s
+
+
+def normalize_source_url_for_dedupe(url: str | None) -> str:
+    """Canonical URL for monitoring-source duplicate checks.
+
+    Treats ``https://a.com`` and ``https://a.com/`` as the same; lowercases scheme and host;
+    normalizes root path. Query string is preserved (distinct feeds may differ only by query).
+    """
+    s = (url or "").strip()
+    if not s:
+        return ""
+    p = urlparse(s)
+    if not p.scheme or not p.netloc:
+        return s.lower()
+    scheme = p.scheme.lower()
+    netloc = p.netloc.lower()
+    path = p.path or ""
+    if path in ("", "/"):
+        canon_path = "/"
+    else:
+        canon_path = "/" + path.strip("/").replace("//", "/")
+    return urlunparse((scheme, netloc, canon_path, "", p.query, ""))
 
 
 def normalize_host(url_or_host: str | None) -> str:

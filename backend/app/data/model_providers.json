@@ -21,6 +21,7 @@
         { "id": "translategemma:12b", "name": "translategemma:12b" }
       ],
       "requires_api_key": false,
+      "requires_access_config": true,
       "default_api_base": "http://localhost:11434",
       "model_source": "installed"
     },

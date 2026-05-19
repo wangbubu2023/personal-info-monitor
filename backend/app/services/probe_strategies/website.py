@@ -1,103 +1,91 @@
-"""Website probe strategy mixin."""
+"""Website probe strategy (standalone, no mixin)."""
 
-from app.utils.logger import get_logger
+from __future__ import annotations
+
+from typing import Any
+
 from bs4 import BeautifulSoup
+
 from app.services.probe_strategies.result import ProbeResult
+from app.services.probe_strategies.rss import _UNFETCHABLE, _USE_SCRAPING
+from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
-# Special sentinel values (must match rss.py)
-_UNFETCHABLE = "__UNFETCHABLE__"
-_USE_SCRAPING = "__SCRAPING__"
-
 
 class WebsiteProbeStrategy:
+    """Probe a generic website URL (RSS discovery → scraping fallback)."""
 
-    async def _probe_website(self, url: str):
-        """Probe a website URL."""
-        # 1. Check known RSS feeds first
-        known = self._check_known_feeds(url)
+    def __init__(self, helpers: Any):
+        self.helpers = helpers
+
+    async def probe(self, url: str) -> ProbeResult:
+        known = self.helpers._check_known_feeds(url)
         if known is not None:
             if known == _UNFETCHABLE:
-                # Give site-specific messages
                 if "facebook.com" in url:
                     msg = "Facebook 个人页面不支持 RSS 或网页抓取"
                 elif "theinformation.com" in url:
                     msg = "The Information 为付费订阅站，Feed 需要认证，暂不支持免费抓取"
                 else:
                     msg = "该平台不支持自动抓取"
-                return ProbeResult(
-                    status="error",
-                    strategy="none",
-                    message=msg,
-                )
+                return ProbeResult(status="error", strategy="none", message=msg)
             if known == _USE_SCRAPING:
-                # Skip RSS attempts, go directly to scraping
-                scrape_result = await self._test_scrape(url)
+                scrape_result = await self.helpers._test_scrape(url)
                 if scrape_result.sample_count > 0:
                     return scrape_result
-                # If scraping also fails, continue to the normal flow
             else:
-                # Test the known feed
-                result = await self._test_rss_feed(known)
+                result = await self.helpers._test_rss_feed(known)
                 if result.status == "ok":
                     return result
 
-        # 2. Try to discover RSS feed from page
-        rss_url = await self._discover_rss(url)
+        rss_url = await self.helpers._discover_rss(url)
         if rss_url:
-            result = await self._test_rss_feed(rss_url)
+            result = await self.helpers._test_rss_feed(rss_url)
             if result.status == "ok":
                 return result
 
-        # 3. Try common RSS paths
-        rss_url = await self._try_common_rss_paths(url)
+        rss_url = await self.helpers._try_common_rss_paths(url)
         if rss_url:
-            result = await self._test_rss_feed(rss_url)
+            result = await self.helpers._test_rss_feed(rss_url)
             if result.status == "ok":
                 return result
 
-        # 4. Try static scraping
-        scrape_result = await self._test_scrape(url)
+        scrape_result = await self.helpers._test_scrape(url)
         if scrape_result.status == "ok":
             return scrape_result
 
-        # 5. Nothing worked
         return ProbeResult(
-            status="error",
-            strategy="none",
+            status="error", strategy="none",
             message="无法通过 RSS 或网页抓取获取内容，可能需要 JS 渲染或该站有反爬保护",
         )
 
-    async def _test_scrape(self, url: str):
-        """Test if we can scrape articles from the page."""
+    async def test_scrape(self, url: str) -> ProbeResult:
         try:
-            html = await self._http_get(url)
+            html = await self.helpers._http_get(url)
             if not html:
-                return ProbeResult(status="error", strategy="scrape",
-                                   message="网页无法访问")
-
+                return ProbeResult(
+                    status="error", strategy="scrape", message="网页无法访问",
+                )
             soup = BeautifulSoup(html, "html.parser")
-            # Try to find article-like elements (covers both English & Chinese sites)
             selectors = [
                 "article", ".post", ".entry", "main article",
                 "[class*='article']", "[class*='post']", "[class*='story']",
                 "[class*='news']", "[class*='item']", "[class*='card']",
                 ".list-item", ".feed-item", ".content-item",
-                "li[class]>a[href]",  # common list-based layouts
+                "li[class]>a[href]",
             ]
             articles = []
             for sel in selectors:
                 try:
                     articles = soup.select(sel)
-                except Exception as exc:
+                except (ValueError, TypeError) as exc:
                     logger.debug("BS4 select failed: %s", exc)
                     continue
                 if len(articles) >= 3:
                     break
 
             if not articles:
-                # Try finding links with titles
                 links = soup.select("a[href]")
                 article_links = [
                     a for a in links
@@ -123,6 +111,8 @@ class WebsiteProbeStrategy:
                 message=f"网页抓取可用，发现 {len(articles)} 篇文章",
                 sample_count=len(articles),
             )
-        except Exception as e:
-            return ProbeResult(status="error", strategy="scrape",
-                               message=f"网页抓取测试失败: {e}")
+        except Exception as exc:  # noqa: BLE001 - BeautifulSoup / aiohttp raise mixed types
+            return ProbeResult(
+                status="error", strategy="scrape",
+                message=f"网页抓取测试失败: {exc}",
+            )

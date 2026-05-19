@@ -14,8 +14,11 @@ from bs4 import BeautifulSoup
 
 from app.collectors.base import BaseCollector
 from app.models import Source
+from app.utils.logger import get_logger
 from app.utils.ssrf import check_before_fetch
-from app.utils.text import strip_html_tags
+from app.utils.text import strip_html_tags, text_looks_like_embedded_binary
+
+logger = get_logger(__name__)
 
 
 class RSSCollector(BaseCollector):
@@ -23,6 +26,8 @@ class RSSCollector(BaseCollector):
     
     def __init__(self):
         super().__init__()
+        # Cap parallel per-entry page fetches (summary hydration) per feed
+        self._entry_hydrate_sem = asyncio.Semaphore(6)
         self.user_agents = [
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
             "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -40,7 +45,7 @@ class RSSCollector(BaseCollector):
                 cookie_header = "; ".join([f"{k}={v}" for k, v in cookies.items() if k and v])
                 if cookie_header:
                     request_headers = {"Cookie": cookie_header}
-            feed = feedparser.parse(source.url, request_headers=request_headers)
+            feed = await asyncio.to_thread(feedparser.parse, source.url, request_headers=request_headers)
             
             if feed.bozo and not feed.entries:
                 self.logger.error(f"Failed to parse RSS feed: {feed.bozo_exception}")
@@ -67,7 +72,25 @@ class RSSCollector(BaseCollector):
         except Exception as e:
             self.logger.error(f"Error fetching RSS feed: {e}")
             return []
-    
+
+    def validate_content(self, content: Dict[str, Any]) -> bool:
+        """Require title/url plus meaningful description (filters channel hub rows with empty body)."""
+        if not super().validate_content(content):
+            return False
+        blob = str(content.get("content") or "")
+        if text_looks_like_embedded_binary(blob):
+            self.logger.debug("Skipping RSS entry with embedded binary in body: %s", (content.get("title") or "")[:60])
+            return False
+        plain = strip_html_tags(blob).strip()
+        if len(plain) < 20:
+            self.logger.debug(
+                "Skipping RSS entry with insufficient plain text (%s chars): %s",
+                len(plain),
+                (content.get("title") or "")[:80],
+            )
+            return False
+        return True
+
     async def _parse_entry_with_summary(self, entry, source: Source) -> Dict[str, Any]:
         """Parse a single feed entry and fetch summary if needed."""
         content = self._parse_entry(entry)
@@ -78,7 +101,8 @@ class RSSCollector(BaseCollector):
         
         if url and not self._is_google_news_article_link(url) and (not summary or len(strip_html_tags(summary)) < 50):
             self.logger.info(f"Summary too short, fetching from page: {url}")
-            page_summary = await self._fetch_page_summary(url, source)
+            async with self._entry_hydrate_sem:
+                page_summary = await self._fetch_page_summary(url, source)
             if page_summary:
                 content["content"] = page_summary
                 self.logger.info(f"Got page summary: {page_summary[:100]}...")
