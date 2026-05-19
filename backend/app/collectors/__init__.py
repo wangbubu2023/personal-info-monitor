@@ -1,7 +1,11 @@
 """Data collectors for different source types."""
 
-from app.domains.fetch.collectors import BaseCollector, RSSCollector, WebsiteCollector
-from app.collectors.x_twitter import XCollector
+from app.domains.fetch.collectors import (
+    BaseCollector,
+    RSSCollector,
+    WebsiteCollector,
+    XCollector,
+)
 from app.collectors.youtube import YouTubeCollector
 from app.collectors.podcast import PodcastCollector
 from app.features import PODCAST_DISABLED_DETAIL, PODCAST_SOURCES_ENABLED
