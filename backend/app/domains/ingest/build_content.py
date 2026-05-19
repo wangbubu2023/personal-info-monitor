@@ -22,11 +22,11 @@ from datetime import datetime
 from typing import List
 
 from app.models import Content, Source
-from app.services.content_quality_service import merge_content_quality_metadata
 from app.utils.datetime import utcnow_naive
 from app.utils.logger import get_logger
 from app.utils.text import strip_html_tags, truncate_content
 from app.domains.ingest.quality import get_website_content_reject_reason
+from app.domains.ingest.quality_metadata import merge_content_quality_metadata
 
 logger = get_logger(__name__)
 
