@@ -103,7 +103,7 @@ async def purge_expired_runtime_locks():
     """Remove stale fetch coordination rows from runtime_locks."""
 
     def _purge():
-        from app.services.runtime_lock_service import runtime_lock_service
+        from app.platform.locks import runtime_lock_service
 
         n = runtime_lock_service.purge_expired()
         if n:

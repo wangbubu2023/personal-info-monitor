@@ -8,7 +8,7 @@ import time
 from contextlib import asynccontextmanager
 from typing import Optional
 
-from app.services.runtime_lock_service import runtime_lock_service
+from app.platform.locks import runtime_lock_service
 from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
