@@ -38,8 +38,11 @@ here:
   ``processors.translator.Translator`` lazily inside the function — at
   module-import time the ingest domain stays free of any LLM dependency,
   keeping the Phase 3 boundary check clean.
-* ``domains/ingest/scoring.py`` — to be moved from
-  ``app/services/scoring_service.py`` in the last Phase 3 step-4 cut.
+* ``domains/ingest/scoring.py`` — moved from
+  ``app.services.scoring_service`` in Phase 3 step 4 (deterministic
+  baseline scoring: dimension/score-confidence calc, structured
+  recommendation reasons, final-score + selection-status pipeline).
+  Pure functions, no LLM. Legacy path is a re-export shim.
 
 The ingest domain MUST NOT import LLM providers, the summariser or the
 translator; that boundary is enforced by ``check_domain_imports.py`` from
