@@ -1,138 +1,34 @@
-"""Tasks for post-fetch content processing (non-blocking enrichment).
+"""Backwards-compatible facade for post-fetch content processing tasks.
 
-Runs after fetch so the fetch pipeline stays fast.
+The non-LLM ingest-finalization path (formerly ``process_new_content`` +
+``_process_new_content_async`` + ``_dispatch_keyword_alerts``) moved to
+:mod:`app.domains.ingest.finish` in Phase 3 step 5 of the
+module-refactor blueprint. Those callables are re-exported here under
+their legacy names so existing callers — ``task_queue._process_worker``
+(now using ``finish_content`` directly), ``app.tasks.__init__``, and
+the keyword-alert / process-task tests — keep resolving without churn.
+
+LLM-bearing manual reprocess paths (``process_content`` /
+``_process_content_async``) and the keyword-refresh batch
+(``update_keyword_matches`` / ``_update_keyword_matches_sync``) stay
+here for now; they will move to ``tasks/enrich_jobs.py`` in Phase 4
+once enrich is collapsed.
 """
+
+from __future__ import annotations
 
 import asyncio
 
-from app.features import KEYWORD_MONITORING_ENABLED
-from app.background import get_llm_semaphore, task_tracker
-from app.utils.logger import get_logger, bind_job_id, restore_job_id
-from app.utils.text import truncate_content
+from app.background import get_llm_semaphore, task_tracker  # noqa: F401 — patch target for tests
+from app.domains.ingest.finish import (  # noqa: F401 — re-exported under legacy names
+    _dispatch_keyword_alerts,
+    _finish_content_async as _process_new_content_async,
+    finish_content as process_new_content,
+)
+from app.features import KEYWORD_MONITORING_ENABLED  # noqa: F401 — patch target for tests
+from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
-
-
-async def process_new_content(content_id: str, job_id: str | None = None):
-    """Process a freshly saved content item (cookie full-text + keywords)."""
-    token = bind_job_id(job_id) if job_id else None
-    try:
-        sem = get_llm_semaphore()
-        async with sem:
-            await task_tracker.start_process()
-            try:
-                await _process_new_content_async(content_id)
-            finally:
-                await task_tracker.end_process()
-    finally:
-        if token is not None:
-            restore_job_id(token)
-
-
-async def _process_new_content_async(content_id: str):
-    """Async implementation of content processing."""
-    from sqlalchemy.orm import joinedload
-
-    from app.database import SessionLocal
-    from app.models import Content, Keyword
-    from app.processors import ContentProcessor
-    from app.processors.keyword_matcher import KeywordMatcher
-    from app.services.content_quality_service import merge_content_quality_metadata
-    from app.services.scoring_service import merge_baseline_scoring_metadata
-    from app.domains.fetch.auth import try_parse_auth_credentials
-    from app.utils.cookies import normalize_cookie_dict
-
-    db = SessionLocal()
-    try:
-        content = (
-            db.query(Content)
-            .options(joinedload(Content.source))
-            .filter(Content.id == content_id)
-            .first()
-        )
-        if not content:
-            logger.error(f"Content not found: {content_id}")
-            return
-
-        source = content.source
-        processor = ContentProcessor()
-
-        # Cookie full-text enrichment
-        if source and source.auth_config_id:
-            try:
-                creds = try_parse_auth_credentials(source.auth_config)
-                cookies = normalize_cookie_dict(creds.get("cookies"))
-                if cookies and (not content.full_content or len(content.full_content) < 600):
-                    fetched = await processor._fetch_full_text_with_cookies(
-                        content.original_url, cookies
-                    )
-                    if fetched and len(fetched) > len(content.full_content or ""):
-                        content.full_content = truncate_content(fetched, url=content.original_url or "")
-            except Exception as exc:
-                logger.debug(f"Cookie enrichment skipped for {content_id}: {exc}")
-
-        # Keyword matching
-        if KEYWORD_MONITORING_ENABLED:
-            keywords = db.query(Keyword).filter(Keyword.enabled == True).all()
-            if keywords:
-                matcher = KeywordMatcher()
-                content.keyword_matches = matcher.match(
-                    content.title or "",
-                    content.full_content or content.summary or "",
-                    keywords,
-                )
-
-        # Clear pending flag
-        meta = dict(content.metadata_ or {})
-        meta.pop("ai_pending", None)
-        meta = merge_content_quality_metadata(
-            meta,
-            title=content.title or "",
-            full_content=content.full_content,
-            summary=content.summary,
-            translated_summary=content.translated_summary,
-        )
-        meta = merge_baseline_scoring_metadata(
-            meta,
-            title=content.title or "",
-            summary=content.translated_summary or content.summary,
-            full_content=content.full_content,
-            source_metadata=source.metadata_ if source else {},
-        )
-        content.metadata_ = meta
-
-        db.commit()
-        logger.info(f"Post-processed content: {content.title[:50]}")
-
-        # Keyword alert notifications
-        if KEYWORD_MONITORING_ENABLED and content.keyword_matches:
-            _dispatch_keyword_alerts(db, content)
-
-    except Exception as exc:
-        logger.error(f"process_new_content failed for {content_id}: {exc}")
-    finally:
-        db.close()
-
-
-def _dispatch_keyword_alerts(db, content):
-    """Schedule keyword alert emails (fire-and-forget)."""
-    from app.models import Keyword
-    from app.tasks.email_tasks import send_keyword_alert
-
-    async def _deliver_keyword_alert(keyword: str) -> None:
-        try:
-            await send_keyword_alert(str(content.id), keyword, content.title)
-        except Exception as exc:
-            logger.warning("Keyword alert dispatch failed for %s: %s", content.id, exc)
-
-    for match in content.keyword_matches:
-        keyword_obj = db.query(Keyword).filter(Keyword.id == match["id"]).first()
-        if keyword_obj and keyword_obj.notify:
-            try:
-                asyncio.create_task(_deliver_keyword_alert(match["keyword"]))
-            except RuntimeError:
-                # No running loop (shouldn't happen normally)
-                pass
 
 
 async def process_content(content_id: str, regenerate_summary: bool = False, retranslate: bool = False):
@@ -174,7 +70,7 @@ async def batch_process_contents(content_ids: list, regenerate_summary: bool = F
     from app.tasks.task_queue import task_queue
     logger.info(f"Batch processing {len(content_ids)} contents")
     for content_id in content_ids:
-        await task_queue.enqueue_process(content_id, job_id=None)
+        await task_queue.enqueue_ingest_finish(content_id, job_id=None)
 
 
 async def update_keyword_matches():
@@ -193,7 +89,7 @@ def _update_keyword_matches_sync():
 
     db = SessionLocal()
     try:
-        keywords = db.query(Keyword).filter(Keyword.enabled == True).all()
+        keywords = db.query(Keyword).filter(Keyword.enabled == True).all()  # noqa: E712 — SQLAlchemy boolean
         if not keywords:
             logger.info("No active keywords to match")
             return
@@ -228,3 +124,18 @@ def _update_keyword_matches_sync():
         logger.info(f"Updated keyword matches for {updated_count} contents")
     finally:
         db.close()
+
+
+__all__ = [
+    "process_new_content",
+    "_process_new_content_async",
+    "_dispatch_keyword_alerts",
+    "process_content",
+    "batch_process_contents",
+    "update_keyword_matches",
+    "_update_keyword_matches_sync",
+    "get_llm_semaphore",
+    "task_tracker",
+    "KEYWORD_MONITORING_ENABLED",
+    "logger",
+]

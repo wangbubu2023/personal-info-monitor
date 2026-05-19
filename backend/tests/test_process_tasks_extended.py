@@ -23,8 +23,8 @@ async def test_process_new_content_content_not_found():
     mock_db.query.return_value.options.return_value.filter.return_value.first.return_value = None
     mock_db.close = MagicMock()
 
-    with patch("app.tasks.process_tasks.get_llm_semaphore", return_value=mock_sem):
-        with patch("app.tasks.process_tasks.task_tracker", mock_tracker):
+    with patch("app.domains.ingest.finish.get_llm_semaphore", return_value=mock_sem):
+        with patch("app.domains.ingest.finish.task_tracker", mock_tracker):
             with patch("app.database.SessionLocal", return_value=mock_db):
                 from app.tasks.process_tasks import process_new_content
                 await process_new_content("nonexistent-id")  # Must not raise
@@ -62,13 +62,13 @@ async def test_process_new_content_keyword_matching():
     mock_db.close = MagicMock()
     mock_db.commit = MagicMock()
 
-    with patch("app.tasks.process_tasks.get_llm_semaphore", return_value=mock_sem):
-        with patch("app.tasks.process_tasks.task_tracker", mock_tracker):
-            with patch("app.tasks.process_tasks.KEYWORD_MONITORING_ENABLED", True):
+    with patch("app.domains.ingest.finish.get_llm_semaphore", return_value=mock_sem):
+        with patch("app.domains.ingest.finish.task_tracker", mock_tracker):
+            with patch("app.domains.ingest.finish.KEYWORD_MONITORING_ENABLED", True):
                 with patch("app.database.SessionLocal", return_value=mock_db):
                     with patch("app.processors.keyword_matcher.KeywordMatcher") as MockMatcher:
                         MockMatcher.return_value.match.return_value = [{"id": "kw-1", "keyword": "test"}]
-                        with patch("app.tasks.process_tasks._dispatch_keyword_alerts"):
+                        with patch("app.domains.ingest.finish._dispatch_keyword_alerts"):
                             from app.tasks.process_tasks import process_new_content
                             await process_new_content("content-1")
 
@@ -100,9 +100,9 @@ async def test_process_new_content_no_keywords_when_disabled():
     mock_db.close = MagicMock()
     mock_db.commit = MagicMock()
 
-    with patch("app.tasks.process_tasks.get_llm_semaphore", return_value=mock_sem):
-        with patch("app.tasks.process_tasks.task_tracker", mock_tracker):
-            with patch("app.tasks.process_tasks.KEYWORD_MONITORING_ENABLED", False):
+    with patch("app.domains.ingest.finish.get_llm_semaphore", return_value=mock_sem):
+        with patch("app.domains.ingest.finish.task_tracker", mock_tracker):
+            with patch("app.domains.ingest.finish.KEYWORD_MONITORING_ENABLED", False):
                 with patch("app.database.SessionLocal", return_value=mock_db):
                     with patch("app.processors.keyword_matcher.KeywordMatcher") as MockMatcher:
                         from app.tasks.process_tasks import process_new_content
@@ -140,9 +140,9 @@ async def test_process_new_content_stamps_baseline_score():
     mock_db.close = MagicMock()
     mock_db.commit = MagicMock()
 
-    with patch("app.tasks.process_tasks.get_llm_semaphore", return_value=mock_sem):
-        with patch("app.tasks.process_tasks.task_tracker", mock_tracker):
-            with patch("app.tasks.process_tasks.KEYWORD_MONITORING_ENABLED", False):
+    with patch("app.domains.ingest.finish.get_llm_semaphore", return_value=mock_sem):
+        with patch("app.domains.ingest.finish.task_tracker", mock_tracker):
+            with patch("app.domains.ingest.finish.KEYWORD_MONITORING_ENABLED", False):
                 with patch("app.database.SessionLocal", return_value=mock_db):
                     from app.tasks.process_tasks import process_new_content
                     await process_new_content("content-1")

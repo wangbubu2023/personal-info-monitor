@@ -58,6 +58,17 @@ here:
   module, so the existing
   ``api.contents → api.contents_cleanup`` re-export chain that
   ``tests/test_content_quality_filters.py`` relies on stays intact.
+* ``domains/ingest/finish.py`` — moved from
+  ``app.tasks.process_tasks.process_new_content`` in Phase 3 step 5
+  (post-fetch non-LLM finalization: cookie full-text top-up + keyword
+  matching + quality-metadata stamp + baseline scoring + keyword-alert
+  dispatch). Function is renamed ``finish_content`` to match the
+  blueprint's ingest vocabulary; ``tasks.process_tasks`` keeps the
+  legacy ``process_new_content`` / ``_process_new_content_async`` /
+  ``_dispatch_keyword_alerts`` symbols as re-exports.
+  ``BoundedTaskQueue`` gained ``enqueue_ingest_finish`` as the
+  canonical dispatch method (``enqueue_process`` is now a thin
+  deprecation alias, retired in Phase 7).
 
 The ingest domain MUST NOT import LLM providers, the summariser or the
 translator; that boundary is enforced by ``check_domain_imports.py`` from

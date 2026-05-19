@@ -115,11 +115,11 @@ async def _do_fetch(source_id: str, manual_trigger: bool, job_id: str | None = N
 
         result = {**result, "new_content_ids": new_ids}
 
-        # Dispatch non-blocking post-processing for new content.
+        # Dispatch non-blocking ingest-finalization for new content.
         if new_ids:
             from app.tasks.task_queue import task_queue
             for cid in new_ids:
-                await task_queue.enqueue_process(str(cid), job_id=job_id)
+                await task_queue.enqueue_ingest_finish(str(cid), job_id=job_id)
 
         return result
 

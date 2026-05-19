@@ -1,5 +1,6 @@
 """Background tasks package (APScheduler + asyncio)."""
 
+from app.domains.ingest.finish import finish_content
 from app.tasks.fetch_tasks import fetch_source, fetch_all_sources, check_and_fetch_due_sources
 from app.tasks.process_tasks import process_new_content, process_content, update_keyword_matches
 from app.tasks.email_tasks import send_daily_digest_emails, send_keyword_alert
@@ -13,6 +14,7 @@ __all__ = [
     "fetch_source",
     "fetch_all_sources",
     "check_and_fetch_due_sources",
+    "finish_content",
     "process_new_content",
     "process_content",
     "update_keyword_matches",

@@ -74,8 +74,14 @@ class BoundedTaskQueue:
             task_queue_metrics.record_dropped("fetch")
             return False
 
-    async def enqueue_process(self, content_id: str, job_id: str | None = None) -> bool:
-        """Enqueue a process job. Returns False (and logs) if queue is full."""
+    async def enqueue_ingest_finish(self, content_id: str, job_id: str | None = None) -> bool:
+        """Enqueue an ingest-finalization job (LLM-free post-fetch enrichment).
+
+        Renamed from ``enqueue_process`` in Phase 3 step 5 of the
+        module-refactor blueprint to match the ``ingest.finish_content``
+        target it dispatches to. The legacy ``enqueue_process`` name is
+        kept as a thin alias below (Phase 7 will retire it).
+        """
         try:
             self._process_queue.put_nowait((content_id, job_id))
             return True
@@ -87,6 +93,16 @@ class BoundedTaskQueue:
             self._record_dropped_task("PROCESS", content_id, f"job_id={job_id}")
             task_queue_metrics.record_dropped("process")
             return False
+
+    async def enqueue_process(self, content_id: str, job_id: str | None = None) -> bool:
+        """Deprecated alias for :meth:`enqueue_ingest_finish`.
+
+        .. deprecated::
+           Use :meth:`enqueue_ingest_finish` instead. This alias keeps
+           legacy callers (and the matching ``test_task_queue.py``
+           assertions) working through Phase 7.
+        """
+        return await self.enqueue_ingest_finish(content_id, job_id=job_id)
 
     async def start_workers(self, fetch_workers: int = 4, process_workers: int = 4) -> None:
         """Start worker coroutines. Call once from app lifespan startup."""
@@ -121,12 +137,12 @@ class BoundedTaskQueue:
                 break
 
     async def _process_worker(self) -> None:
-        from app.tasks.process_tasks import process_new_content
+        from app.domains.ingest.finish import finish_content
         while True:
             try:
                 content_id, job_id = await self._process_queue.get()
                 try:
-                    await process_new_content(content_id, job_id=job_id)
+                    await finish_content(content_id, job_id=job_id)
                 except Exception:
                     logger.exception("process worker error for content_id=%s", content_id)
                 finally:
