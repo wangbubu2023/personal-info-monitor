@@ -2,16 +2,27 @@
 """PIM — Personal Info Monitor CLI.
 
 Usage:
-    ./pim setup          First-time setup (venv, deps, runtime config, frontend build)
-    ./pim start          Start dev server (backend + frontend dev)
-    ./pim start --prod   Start production server (single process)
-    ./pim stop           Stop background PIM server
-    ./pim status         Show running status
-    ./pim fetch          Trigger a full fetch now
-    ./pim backup         Create a SQLite backup and archive local config
-    ./pim rollback <rev> Downgrade Alembic schema to a target revision
-    ./pim logs           Tail the log file
-    ./pim cleanup        Remove Celery remnants, rotated logs, and Python __pycache__
+    ./pim up                One-shot: ensure deps + fresh frontend + daemonize.
+                            On macOS uses LaunchAgent (survives reboot/logout);
+                            elsewhere uses detached uvicorn with a PID file.
+    ./pim up --server       Backend only (skip frontend build; for VPS).
+    ./pim up --rebuild      Force rebuild of frontend/dist regardless of mtime.
+    ./pim up --foreground   Run uvicorn in foreground (useful in containers).
+
+    ./pim setup             First-time setup (venv, deps, runtime config, frontend build)
+    ./pim install-service   Install macOS LaunchAgent (auto-starts on login, runs in background)
+    ./pim uninstall-service Remove LaunchAgent and stop the service
+    ./pim start             Start dev server (backend + frontend Vite :3000)
+    ./pim start --prod      Start production server as background process (single :8000)
+    ./pim stop              Stop the server (launchd-aware, falls back to pid scan)
+    ./pim status            Show running status
+    ./pim fetch             Trigger a full fetch now
+    ./pim backup            Create a SQLite backup and archive local config
+    ./pim rollback <rev>    Downgrade Alembic schema to a target revision
+    ./pim logs              Tail the log file
+    ./pim cleanup           Remove stale caches, rotated logs, and Python __pycache__
+    ./pim bootstrap-url     Print a one-shot URL containing the bootstrap token
+                            for auto-provisioning a fresh web browser session
 """
 
 import json
@@ -35,6 +46,17 @@ LOG_FILE = Path.home() / ".pim" / "data" / "pim.log"
 BACKUP_DIR = Path.home() / ".pim" / "backups"
 ENV_FILE = BACKEND / ".env"
 ENV_EXAMPLE_FILE = BACKEND / ".env.example"
+PLIST_NAME = "com.pim.server"
+PLIST_PATH = Path.home() / "Library" / "LaunchAgents" / f"{PLIST_NAME}.plist"
+
+
+def _mask_secret(value: str, prefix: int = 4, suffix: int = 4) -> str:
+    text = (value or "").strip()
+    if not text:
+        return "(not set)"
+    if len(text) <= prefix + suffix:
+        return "*" * len(text)
+    return f"{text[:prefix]}...{text[-suffix:]}"
 
 
 def _python():
@@ -115,6 +137,31 @@ def _bootstrap_runtime_api_key() -> Optional[str]:
     return output.strip() or None
 
 
+def _bootstrap_token() -> Optional[str]:
+    """Return the bootstrap token guarding /local-token (initializes on first call)."""
+    if not VENV.exists():
+        return None
+
+    try:
+        output = subprocess.check_output(
+            [
+                _python(),
+                "-c",
+                (
+                    "from app.config import bootstrap_runtime_environment, get_settings; "
+                    "bootstrap_runtime_environment(); "
+                    "print(get_settings().bootstrap_token, end='')"
+                ),
+            ],
+            cwd=str(BACKEND),
+            text=True,
+        )
+    except Exception:
+        return None
+
+    return output.strip() or None
+
+
 def _read_runtime_metadata() -> dict:
     """Read resolved runtime settings that depend on bootstrap logic."""
     if not VENV.exists():
@@ -160,6 +207,104 @@ def _build_frontend():
     subprocess.check_call(["npm", "install"], cwd=str(FRONTEND))
     print("Building frontend ...")
     subprocess.check_call(["npm", "run", "build"], cwd=str(FRONTEND))
+
+
+# Files/dirs whose mtime rules whether `frontend/dist` is considered out of date.
+# Node modules and the dist itself are intentionally excluded: the former is
+# managed by `npm install`, the latter is the build output we're comparing against.
+_FRONTEND_STALE_INPUTS = (
+    "src",
+    "public",
+    "index.html",
+    "package.json",
+    "package-lock.json",
+    "vite.config.ts",
+    "vite.config.js",
+    "tsconfig.json",
+    "tsconfig.app.json",
+    "tailwind.config.js",
+    "postcss.config.js",
+)
+
+
+def _latest_mtime(root: Path) -> float:
+    """Return the newest mtime under *root* (inclusive). 0 if nothing exists."""
+    if not root.exists():
+        return 0.0
+    if root.is_file():
+        return root.stat().st_mtime
+    latest = root.stat().st_mtime
+    for entry in root.rglob("*"):
+        try:
+            if entry.is_file():
+                latest = max(latest, entry.stat().st_mtime)
+        except OSError:
+            continue
+    return latest
+
+
+def _frontend_dist_stale() -> tuple[bool, str]:
+    """Return (is_stale, reason). Reason is a human-readable hint for logs."""
+    dist_html = FRONTEND / "dist" / "index.html"
+    if not dist_html.exists():
+        return True, "dist/index.html missing"
+
+    dist_mtime = dist_html.stat().st_mtime
+    for rel in _FRONTEND_STALE_INPUTS:
+        source_mtime = _latest_mtime(FRONTEND / rel)
+        if source_mtime > dist_mtime:
+            return True, f"{rel} is newer than dist"
+    return False, "dist is up to date"
+
+
+def _ensure_frontend_built(rebuild: bool) -> bool:
+    """Rebuild frontend/dist when missing or stale. Returns True if work was done.
+
+    Skips gracefully when `frontend/package.json` or `npm` is unavailable —
+    that's the "this is a server, no UI needed" case.
+    """
+    if not (FRONTEND / "package.json").exists():
+        print("  Frontend sources not found; skipping build.")
+        return False
+    if shutil.which("npm") is None:
+        print("  npm not found on PATH; skipping frontend build.")
+        return False
+
+    if rebuild:
+        stale, reason = True, "forced rebuild"
+    else:
+        stale, reason = _frontend_dist_stale()
+
+    if not stale:
+        print(f"  Frontend dist/ is fresh ({reason}).")
+        return False
+
+    print(f"  Frontend needs rebuild: {reason}")
+    if not (FRONTEND / "node_modules").exists():
+        print("  Installing frontend dependencies (first run) ...")
+        subprocess.check_call(["npm", "install"], cwd=str(FRONTEND))
+    print("  Building frontend ...")
+    subprocess.check_call(["npm", "run", "build"], cwd=str(FRONTEND))
+    return True
+
+
+def _service_env() -> dict:
+    """Environment vars shared by every backend launch path."""
+    env = os.environ.copy()
+    env["VIRTUAL_ENV"] = str(VENV)
+    env["PATH"] = str(VENV / "bin") + ":" + env.get("PATH", "")
+    env.setdefault("HOME", str(Path.home()))
+    env.setdefault("LANG", "en_US.UTF-8")
+    return env
+
+
+def _wait_for_port_8000(timeout_seconds: float = 12.0) -> bool:
+    deadline = time.time() + timeout_seconds
+    while time.time() < deadline:
+        if _is_port_8000_open():
+            return True
+        time.sleep(0.3)
+    return False
 
 
 def cmd_setup():
@@ -261,6 +406,186 @@ def _find_prod_uvicorn_pids() -> list[int]:
     return pids
 
 
+def _ensure_runtime_ready() -> str | None:
+    """Guarantee venv/deps/.env exist; return the active API key when available."""
+    if not VENV.exists():
+        _ensure_venv()
+        _install_deps()
+    _ensure_env_file()
+    return _bootstrap_runtime_api_key()
+
+
+def _is_launchd_backed() -> bool:
+    """True when the macOS LaunchAgent plist has been installed."""
+    return sys.platform == "darwin" and PLIST_PATH.exists()
+
+
+def _currently_running_pid() -> int | None:
+    """Best-effort discovery of the currently-running prod uvicorn PID.
+
+    Covers three discovery paths: launchd (authoritative on macOS), our own
+    pid file, and a process-table scan. Returns None when we can't confidently
+    identify a live prod server.
+    """
+    if _is_launchd_backed():
+        try:
+            out = subprocess.check_output(
+                ["launchctl", "list", PLIST_NAME],
+                text=True, stderr=subprocess.DEVNULL,
+            )
+        except subprocess.CalledProcessError:
+            out = ""
+        for line in out.splitlines():
+            line = line.strip()
+            if line.startswith('"PID"'):
+                raw = line.split("=", 1)[-1].strip().rstrip(";").strip()
+                if raw.isdigit():
+                    return int(raw)
+
+    if PID_FILE.exists():
+        try:
+            pid = int(PID_FILE.read_text().strip())
+        except ValueError:
+            pid = 0
+        if pid and _is_prod_uvicorn_pid(pid):
+            return pid
+
+    for pid in _find_prod_uvicorn_pids():
+        if _is_prod_uvicorn_pid(pid):
+            return pid
+
+    return None
+
+
+def cmd_up():
+    """One-shot bring-up: deps + fresh frontend + daemonized backend.
+
+    Intended to cover both fresh installs and "nothing is running right now"
+    restarts. It is intentionally idempotent — running it twice when the server
+    is already up just reports the running PID and exits.
+    """
+    args = sys.argv[2:]
+    server_only = any(flag in args for flag in ("--server", "--no-frontend"))
+    rebuild = "--rebuild" in args
+    foreground = "--foreground" in args
+
+    print("=== PIM up ===")
+    api_key = _ensure_runtime_ready()
+
+    if server_only:
+        print("  Skipping frontend build (--server).")
+    else:
+        _ensure_frontend_built(rebuild=rebuild)
+
+    if foreground:
+        print("  Running in foreground (Ctrl+C to stop).")
+        if api_key:
+            print(f"  API Key: {_mask_secret(api_key)}")
+        # service-run execs uvicorn in the current process — perfect for
+        # `docker run` / `systemd Type=exec` style supervisors.
+        cmd_service_run()
+        return  # not reached; execve replaces the process
+
+    # Short-circuit when the service is already healthy. Reinstalling the
+    # plist (macOS) or respawning uvicorn (Linux) is not harmful, but it
+    # briefly interrupts an otherwise happy server; idempotent re-runs of
+    # `./pim up` should feel like a no-op.
+    already_running_pid = _currently_running_pid()
+    if already_running_pid and _is_port_8000_open():
+        print(f"  Already running (PID {already_running_pid}); no restart needed.")
+        if not server_only and (FRONTEND / "dist" / "index.html").exists():
+            print("  Web UI: http://127.0.0.1:8000/  (served by backend from frontend/dist)")
+        if api_key:
+            print(f"  API Key: {_mask_secret(api_key)}")
+        return
+
+    # Daemonize. On macOS the LaunchAgent provides auto-restart + login
+    # persistence; on Linux/other we fall back to a detached uvicorn + PID
+    # file, which survives the parent shell but won't come back after reboot.
+    if sys.platform == "darwin":
+        print("  Platform: macOS → using LaunchAgent (auto-restart + login start).")
+        cmd_install_service()
+    else:
+        print("  Platform: non-macOS → using detached uvicorn + PID file.")
+        pid = _launch_detached_backend()
+        if pid is not None:
+            print(f"  PID: {pid}")
+
+    if _wait_for_port_8000():
+        print("  Backend is healthy on http://127.0.0.1:8000")
+    else:
+        print("  Warning: port 8000 not listening yet; inspect ./pim logs")
+
+    if not server_only and (FRONTEND / "dist" / "index.html").exists():
+        print("  Web UI: http://127.0.0.1:8000/  (served by backend from frontend/dist)")
+    if api_key:
+        print(f"  API Key: {_mask_secret(api_key)}")
+
+    if sys.platform != "darwin":
+        print("  Note: no process supervisor installed; after reboot rerun ./pim up.")
+
+
+def _launch_detached_backend() -> int | None:
+    """Spawn uvicorn as a detached background process and write the PID file.
+
+    Returns the new PID, or None when the server was already running /
+    another process holds :8000. Callers are responsible for printing
+    human-readable context around this low-level primitive.
+    """
+    PID_FILE.parent.mkdir(parents=True, exist_ok=True)
+    LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
+
+    if PID_FILE.exists():
+        try:
+            existing_pid = int(PID_FILE.read_text().strip())
+        except Exception:
+            existing_pid = 0
+        if existing_pid and _is_prod_uvicorn_pid(existing_pid):
+            print(f"  Already running (PID {existing_pid})")
+            return None
+        PID_FILE.unlink(missing_ok=True)
+
+    existing_pids = _find_prod_uvicorn_pids()
+    if existing_pids:
+        print(f"  Detected existing unmanaged server PID(s): {', '.join(str(p) for p in existing_pids)}")
+        PID_FILE.write_text(str(existing_pids[0]))
+        print(f"  Recovered PID file with PID {existing_pids[0]}")
+        return existing_pids[0]
+
+    if _is_port_8000_open():
+        print("  Port 8000 is already in use by another process. Abort start.")
+        return None
+
+    log_handle = open(LOG_FILE, "a", encoding="utf-8")
+    proc = subprocess.Popen(
+        [
+            _uvicorn(),
+            "app.main:app",
+            "--host", "127.0.0.1",
+            "--port", "8000",
+        ],
+        cwd=str(BACKEND),
+        env=_service_env(),
+        stdout=log_handle,
+        stderr=log_handle,
+        stdin=subprocess.DEVNULL,
+        start_new_session=True,
+    )
+    log_handle.close()
+    PID_FILE.write_text(str(proc.pid))
+    time.sleep(0.8)
+    if proc.poll() is not None:
+        print("  Failed to start. Last logs:")
+        try:
+            tail = subprocess.check_output(["tail", "-n", "30", str(LOG_FILE)], text=True)
+            print(tail)
+        except Exception:
+            pass
+        PID_FILE.unlink(missing_ok=True)
+        sys.exit(1)
+    return proc.pid
+
+
 def cmd_start():
     prod = "--prod" in sys.argv
 
@@ -274,71 +599,18 @@ def cmd_start():
         print("Starting PIM (production mode) ...")
         print("  URL: http://127.0.0.1:8000")
         if api_key:
-            print(f"  API Key: {api_key}")
+            print(f"  API Key: {_mask_secret(api_key)}")
 
-        # Ensure pid dir exists
-        PID_FILE.parent.mkdir(parents=True, exist_ok=True)
-        LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
-
-        if PID_FILE.exists():
-            try:
-                existing_pid = int(PID_FILE.read_text().strip())
-            except Exception:
-                existing_pid = 0
-            if existing_pid and _is_prod_uvicorn_pid(existing_pid):
-                print(f"  Already running (PID {existing_pid})")
-                return
-            PID_FILE.unlink(missing_ok=True)
-
-        existing_pids = _find_prod_uvicorn_pids()
-        if existing_pids:
-            print(f"  Detected existing unmanaged server PID(s): {', '.join(str(p) for p in existing_pids)}")
-            PID_FILE.write_text(str(existing_pids[0]))
-            print(f"  Recovered PID file with PID {existing_pids[0]}")
-            return
-
-        if _is_port_8000_open():
-            print("  Port 8000 is already in use by another process. Abort start.")
-            return
-
-        env = os.environ.copy()
-        env["VIRTUAL_ENV"] = str(VENV)
-        env["PATH"] = str(VENV / "bin") + ":" + env.get("PATH", "")
-
-        log_handle = open(LOG_FILE, "a", encoding="utf-8")
-        proc = subprocess.Popen(
-            [
-                _uvicorn(),
-                "app.main:app",
-                "--host", "127.0.0.1",
-                "--port", "8000",
-            ],
-            cwd=str(BACKEND),
-            env=env,
-            stdout=log_handle,
-            stderr=log_handle,
-            start_new_session=True,
-        )
-        log_handle.close()
-        PID_FILE.write_text(str(proc.pid))
-        print(f"  PID: {proc.pid}")
-        time.sleep(0.8)
-        if proc.poll() is not None:
-            print("  Failed to start. Last logs:")
-            try:
-                tail = subprocess.check_output(["tail", "-n", "30", str(LOG_FILE)], text=True)
-                print(tail)
-            except Exception:
-                pass
-            PID_FILE.unlink(missing_ok=True)
-            sys.exit(1)
-        print("  Started in background.")
+        pid = _launch_detached_backend()
+        if pid is not None:
+            print(f"  PID: {pid}")
+            print("  Started in background.")
     else:
         print("Starting PIM (dev mode) ...")
         print("  Backend: http://127.0.0.1:8000")
         print("  Frontend: http://127.0.0.1:3000")
         if api_key:
-            print(f"  API Key: {api_key}")
+            print(f"  API Key: {_mask_secret(api_key)}")
 
         env = os.environ.copy()
         env["VIRTUAL_ENV"] = str(VENV)
@@ -376,6 +648,24 @@ def cmd_start():
 
 
 def cmd_stop():
+    # When the LaunchAgent is installed, unloading it both stops the process
+    # and prevents launchd from restarting it.  A plain kill would just cause
+    # launchd to respawn the server.
+    if PLIST_PATH.exists():
+        result = subprocess.run(["launchctl", "unload", str(PLIST_PATH)],
+                                capture_output=True)
+        if result.returncode == 0:
+            print("PIM service stopped (LaunchAgent unloaded).")
+            print("To start again: ./pim start --prod  or  ./pim install-service")
+        else:
+            print("launchctl unload failed; attempting direct kill as fallback.")
+            _stop_by_pid()
+        return
+
+    _stop_by_pid()
+
+
+def _stop_by_pid():
     stopped_any = False
     handled_pids: set[int] = set()
 
@@ -406,6 +696,34 @@ def cmd_stop():
 
 
 def cmd_status():
+    # Check launchd-managed state first
+    if PLIST_PATH.exists():
+        result = subprocess.run(
+            ["launchctl", "list", PLIST_NAME],
+            capture_output=True, text=True,
+        )
+        if result.returncode == 0:
+            # launchctl list <label> returns a plist-style dict.
+            # Extract "PID" value if present (service is running).
+            pid_match = None
+            for line in result.stdout.splitlines():
+                line = line.strip()
+                if line.startswith('"PID"'):
+                    # e.g.  "PID" = 12345;
+                    pid_match = line.split("=", 1)[-1].strip().rstrip(";").strip()
+                    break
+            if pid_match and pid_match.isdigit():
+                print(f"PIM is running via LaunchAgent (PID {pid_match})")
+                print(f"  URL: http://127.0.0.1:8000")
+                print(f"  Logs: {LOG_FILE}")
+            else:
+                print("PIM LaunchAgent is installed but the server is not running.")
+                print("  Check logs: ./pim logs")
+            return
+        print("PIM LaunchAgent is installed but not loaded.")
+        return
+
+    # Fallback: PID file / process scan
     if PID_FILE.exists():
         try:
             pid = int(PID_FILE.read_text().strip())
@@ -569,26 +887,80 @@ def cmd_rollback():
     print(f"Alembic downgraded to {revision}")
 
 
+def cmd_service_run():
+    """[Internal] Run uvicorn in the foreground — called by the LaunchAgent plist.
+
+    Loads .env, sets up the venv environment, then exec()s uvicorn so that
+    launchd tracks the actual server process (not a Python wrapper).
+    """
+    if not VENV.exists():
+        print("venv not found. Run: ./pim setup", file=sys.stderr)
+        sys.exit(1)
+
+    env = os.environ.copy()
+    env["VIRTUAL_ENV"] = str(VENV)
+    env["PATH"] = str(VENV / "bin") + ":" + env.get("PATH", "")
+    env.setdefault("HOME", str(Path.home()))
+    env.setdefault("LANG", "en_US.UTF-8")
+
+    # Load .env into the environment (values already in env take priority)
+    if ENV_FILE.exists():
+        for line in ENV_FILE.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            k, _, v = line.partition("=")
+            k = k.strip()
+            v = v.strip().strip('"').strip("'")
+            # Skip empty values — they must not shadow runtime-secrets.json
+            # (e.g. PIM_API_KEY= in .env would block bootstrap from setting the real key)
+            if k and v:
+                env.setdefault(k, v)
+
+    LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
+    os.chdir(str(BACKEND))
+    uvicorn_bin = str(_uvicorn())
+    # exec() replaces this process — launchd tracks uvicorn's PID directly
+    os.execve(uvicorn_bin, [
+        uvicorn_bin,
+        "app.main:app",
+        "--host", "127.0.0.1",
+        "--port", "8000",
+    ], env)
+
+
 def cmd_install_service():
-    """Install macOS LaunchAgent for auto-start."""
-    plist_name = "com.pim.server"
-    plist_dir = Path.home() / "Library" / "LaunchAgents"
-    plist_path = plist_dir / f"{plist_name}.plist"
+    """Install (or reinstall) a macOS LaunchAgent that keeps PIM running in the background.
 
-    plist_dir.mkdir(parents=True, exist_ok=True)
+    After installation PIM starts immediately and auto-restarts on login.
+    Use './pim uninstall-service' to remove it.
+    """
+    if not VENV.exists():
+        print("venv not found. Run: ./pim setup first.")
+        sys.exit(1)
 
+    PLIST_PATH.parent.mkdir(parents=True, exist_ok=True)
+    LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
+
+    # If an old plist is already loaded, unload it before overwriting
+    if PLIST_PATH.exists():
+        subprocess.run(["launchctl", "unload", str(PLIST_PATH)],
+                       capture_output=True)
+
+    # The plist calls `./pim service-run` which exec()s uvicorn in the foreground.
+    # launchd therefore owns the uvicorn process directly and KeepAlive works correctly.
     plist_content = f"""<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
   "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>{plist_name}</string>
+    <string>{PLIST_NAME}</string>
     <key>ProgramArguments</key>
     <array>
+        <string>{VENV / "bin" / "python3"}</string>
         <string>{ROOT / "pim"}</string>
-        <string>start</string>
-        <string>--prod</string>
+        <string>service-run</string>
     </array>
     <key>RunAtLoad</key>
     <true/>
@@ -600,27 +972,58 @@ def cmd_install_service():
     <string>{LOG_FILE}</string>
     <key>StandardErrorPath</key>
     <string>{LOG_FILE}</string>
+    <key>ThrottleInterval</key>
+    <integer>10</integer>
 </dict>
 </plist>
 """
-    plist_path.write_text(plist_content)
-    subprocess.run(["launchctl", "load", str(plist_path)])
-    print(f"Installed LaunchAgent: {plist_path}")
-    print("PIM will start automatically on login.")
+    PLIST_PATH.write_text(plist_content, encoding="utf-8")
+    result = subprocess.run(["launchctl", "load", str(PLIST_PATH)])
+    if result.returncode == 0:
+        print(f"LaunchAgent installed: {PLIST_PATH}")
+        print("PIM is now running in the background and will auto-start on login.")
+        print(f"Logs: {LOG_FILE}")
+        print("To stop: ./pim uninstall-service")
+    else:
+        print("launchctl load failed. Check Console.app for errors.")
+        sys.exit(1)
 
 
 def cmd_uninstall_service():
-    plist_name = "com.pim.server"
-    plist_path = Path.home() / "Library" / "LaunchAgents" / f"{plist_name}.plist"
-    if plist_path.exists():
-        subprocess.run(["launchctl", "unload", str(plist_path)])
-        plist_path.unlink()
-        print("LaunchAgent removed.")
-    else:
-        print("LaunchAgent not found.")
+    """Remove the LaunchAgent and stop the service."""
+    if not PLIST_PATH.exists():
+        print("LaunchAgent not installed.")
+        return
+    subprocess.run(["launchctl", "unload", str(PLIST_PATH)],
+                   capture_output=True)
+    PLIST_PATH.unlink()
+    print("LaunchAgent removed. PIM will no longer auto-start on login.")
+    print("Any currently running instance has been stopped.")
+
+
+def cmd_bootstrap_url():
+    """Print a one-shot URL for auto-provisioning a fresh browser session.
+
+    The URL carries the bootstrap token as a query param; the frontend reads it
+    once, exchanges it with /local-token for the API Key, then strips the token
+    from the address bar. Because the token lives in a 0600 file under
+    ``runtime-secrets.json``, only the local user can print it.
+    """
+    token = _bootstrap_token()
+    if not token:
+        print("Bootstrap token unavailable. Run: ./pim setup", file=sys.stderr)
+        sys.exit(1)
+
+    host = os.environ.get("PIM_PUBLIC_ORIGIN", "http://localhost:8000").rstrip("/")
+    url = f"{host}/?bootstrap_token={token}"
+    print(url)
+    print()
+    print("Open this URL once in your browser. After the first load, the", file=sys.stderr)
+    print("API Key is cached locally and the token is stripped from history.", file=sys.stderr)
 
 
 COMMANDS = {
+    "up": cmd_up,
     "setup": cmd_setup,
     "start": cmd_start,
     "stop": cmd_stop,
@@ -632,6 +1035,8 @@ COMMANDS = {
     "cleanup": cmd_cleanup,
     "install-service": cmd_install_service,
     "uninstall-service": cmd_uninstall_service,
+    "service-run": cmd_service_run,
+    "bootstrap-url": cmd_bootstrap_url,
 }
 
 
