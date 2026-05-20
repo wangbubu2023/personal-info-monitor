@@ -1,287 +1,198 @@
 # Personal Info Monitor (PIM)
 
-个人化资讯监控与摘要系统：聚合网站、RSS、X、YouTube、播客等内容源，支持抓取探测、关键词监控、摘要与翻译，以及日报/小时报展示。
+> 本地优先的资讯监控与摘要系统：聚合 **RSS / 网站 / X / YouTube / Podcast** 等
+> 内容源，按调度抓取，自动去重 / 关键词匹配 / 摘要 / 翻译，生成日报与
+> 3 小时简报，并通过桌面端 / 浏览器 / `pimctl` CLI 三个入口消费。
 
-## 架构
+## 一句话架构
 
-```
-后端  FastAPI + SQLAlchemy + SQLite + APScheduler  →  http://127.0.0.1:8000
-前端  Vite + React + Ant Design                   →  http://localhost:3000  (仅 dev 模式)
-桌面  Tauri                                        →  tauri.localhost / localhost:1420
-```
-
-**固定端口**（不会变）：
-
-| 服务 | 地址 | 说明 |
-|------|------|------|
-| 后端 API | `http://127.0.0.1:8000` | dev / prod / 服务模式均相同 |
-| 前端 dev server | `http://localhost:3000` | 仅开发模式，`strictPort: true` |
-| Tauri 桌面应用 | `http://tauri.localhost` | 桌面端，连接同一后端 |
+- **后端** — FastAPI + SQLAlchemy 2 + SQLite (FTS5) + APScheduler，按
+  `interfaces / domains / platform` 三层组织，导入边界由 CI 静态强制。
+- **前端** — Vite + React + Ant Design，Tauri 提供可选桌面壳。
+- **CLI** — `pimctl`（Click 包），通过 HTTP+`X-API-Key` 调用后端，不直接访问数据库。
+- **数据** — 单一 SQLite 数据库（`~/.pim/data/pim.db` 默认）+ `data_dir/` 下
+  cookies / Playwright storage-state / metrics checkpoint 等文件。
 
 ```mermaid
 flowchart LR
-    A["domains/fetch<br/>(collectors)"] --> B["domains/ingest<br/>(normalize/dedupe/finish)"]
-    B --> C["domains/enrich<br/>(summary/translate/reader/digest)"]
-    B -. 旁路 .-> J["domains/atoms<br/>（可选）"]
-    C --> D["SQLite + FTS5"]
-    D --> E["interfaces/http<br/>FastAPI :8000"]
-    E --> F["React :3000 / Tauri"]
-    G["APScheduler"] --> A
-    G --> C
-    H["platform<br/>(auth/config/locks/llm/...)"] -.- A
-    H -.- B
-    H -.- C
-    H -.- E
+  A["domains/fetch<br/>collectors"] --> B["domains/ingest<br/>normalize · dedupe · quality · finish"]
+  B --> C["domains/enrich<br/>summary · translate · reader · digest · notify"]
+  B -. 可选旁路 .-> J["domains/atoms<br/>（结构化原子事件）"]
+  C --> D[("SQLite + FTS5")]
+  D --> E["interfaces/http<br/>FastAPI :8000"]
+  E --> F["React :3000 / Tauri"]
+  G[APScheduler] --> A
+  G --> C
+  P["platform<br/>auth · config · llm · workers · locks · ..."] -.- A
+  P -.- B
+  P -.- C
+  P -.- E
 ```
 
----
+详细层次见 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)；模块边界一页纸见
+[`docs/MODULE_BOUNDARIES.md`](docs/MODULE_BOUNDARIES.md)；每个文件/文件夹的
+作用见 [`docs/PROJECT_STRUCTURE.md`](docs/PROJECT_STRUCTURE.md)。
 
-## 启动方式
+## 固定端口
 
-### 方式一：后台服务（推荐日常使用）
+| 端口 | 服务 | 说明 |
+|---|---|---|
+| `127.0.0.1:8000` | 后端 API | dev / prod / 服务模式相同 |
+| `localhost:3000` | 前端 dev server | 仅 `pim start` 开发模式 |
+| `tauri.localhost` | Tauri 桌面应用 | 复用同一后端 |
 
-**一次性安装**，之后登录自动启动，无需打开终端：
+## 快速开始
+
+### 首次安装
+
+要求：Python 3.11+、Node.js 18+、npm。Tauri 桌面端额外需要 Rust 工具链。
 
 ```bash
-./pim setup            # 首次安装依赖（只需执行一次）
-./pim install-service  # 注册 macOS LaunchAgent，立即启动
+git clone <repo-url> personal-info-monitor
+cd personal-info-monitor
+./pim setup       # 创建 backend/venv、装依赖、Playwright Chromium、前端依赖
 ```
 
-安装后服务在后台持续运行，关闭终端不受影响，重新登录自动恢复。
+`./pim setup` 同时生成 `backend/.env` 模板与 `~/.pim/data/runtime-secrets.json`
+（含 `PIM_API_KEY` 与 `ENCRYPTION_KEY`，不会回写到 `.env`）。
 
-常用管理命令：
+### 日常启动（推荐：后台服务）
 
 ```bash
-./pim status             # 查看运行状态（含 PID）
-./pim stop               # 暂停服务（不卸载，下次登录仍会自动启动）
-./pim install-service    # 恢复/重装服务
-./pim uninstall-service  # 彻底移除，不再自动启动
-./pim logs               # 实时查看日志
+./pim install-service   # 注册 macOS LaunchAgent，立即启动
+./pim status            # PID / 启动时间 / 健康状态
+./pim logs              # 实时日志
+./pim stop              # 暂停服务（重启仍会自动恢复）
+./pim uninstall-service # 彻底卸载
 ```
 
-服务启动后访问：`http://127.0.0.1:8000`
-
----
-
-### 方式二：手动启动（终端）
-
-**开发模式**（前后端热重载，推荐开发时使用）：
+### 开发模式（前后端热重载）
 
 ```bash
-./pim start
+./pim start         # 前端 :3000 + 后端 :8000 同终端启动
+./pim start --prod  # 后台运行，FastAPI 同时提供 API 与已构建的前端静态资源
 ```
 
-- 后端：`http://127.0.0.1:8000`（带 `--reload`）
-- 前端：`http://localhost:3000`（Vite dev server，`/api` 自动代理到后端）
-- 关闭终端后进程停止
-
-**生产模式**（后台运行，不依赖终端）：
-
-```bash
-./pim start --prod   # 后台启动，日志写入 ~/.pim/data/pim.log
-./pim stop           # 停止
-./pim status         # 查看状态
-./pim logs           # 查看日志
-```
-
-- 单进程，FastAPI 同时提供 API 与已构建的前端静态资源
-- 访问：`http://127.0.0.1:8000`
-
----
-
-### 方式三：手动逐步启动（不使用 pim 脚本）
-
-**后端**：
-
-```bash
-cd backend
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-.venv/bin/alembic upgrade head
-uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
-```
-
-**前端**（另开终端）：
-
-```bash
-cd frontend
-npm install
-npm run dev       # → http://localhost:3000
-# 生产构建：
-npm run build     # 构建到 dist/，由后端 FastAPI 提供
-```
-
----
-
-## 初始化（首次）
-
-要求：Python 3.11+、Node.js 18+、npm
-
-```bash
-./pim setup
-```
-
-完成：创建 `.venv`、安装后端依赖、安装 Playwright Chromium、生成 `backend/.env` 模板、初始化运行时密钥、安装并构建前端。
-
----
-
-## pimctl — Agent / 脚本调用
-
-`pimctl` 是面向脚本和 Agent 的业务命令层，直接调用 API，不需要进入项目目录。
-
-**前置：确认服务已在运行**（任意方式启动均可）：
-
-```bash
-curl http://127.0.0.1:8000/livez   # → {"status":"ok"}
-```
-
-**认证**：
-
-```bash
-./pimctl auth login --server http://127.0.0.1:8000 --api-key <your-key>
-# API Key 查看方式：
-./pim logs | grep "API Key"
-# 或直接读取：
-cat ~/.pim/data/runtime-secrets.json
-```
-
-**常用命令**：
-
-```bash
-# 系统
-./pimctl system health --json
-./pimctl system metrics --json
-
-# 内容源
-./pimctl sources list --json
-./pimctl sources add --url https://example.com/feed --type rss
-
-# 内容
-./pimctl contents search "openai" --json
-./pimctl contents list --unread --json
-
-# 设置
-./pimctl settings get --json
-./pimctl settings limits --json
-```
-
-完整规格见 [docs/CLI_SPEC.md](docs/CLI_SPEC.md)。
-
----
-
-## API
-
-- Swagger UI：`http://127.0.0.1:8000/docs`
-- ReDoc：`http://127.0.0.1:8000/redoc`
-- 探活：`GET /livez`
-- 健康检查：`GET /health`（需要 `X-API-Key`）
-- 运行指标：`GET /api/system/metrics`（需要 `X-API-Key`）
-- Prometheus：`GET /metrics`（需要 `X-API-Key`）
-- 手写 API 指南：`docs/API_GUIDE.md`
-
-所有 `/api` 路由均需要 `X-API-Key` header。
-
----
+完整运维细节见 [`docs/LOCAL_RUN.md`](docs/LOCAL_RUN.md) 与
+[`docs/VPS_DEPLOY.md`](docs/VPS_DEPLOY.md)。
 
 ## 配置
 
-主配置文件：`backend/.env`（从 `backend/.env.example` 复制）。
+主配置：`backend/.env`（从 `backend/.env.example` 复制）。运行时密钥
+（`PIM_API_KEY`、`ENCRYPTION_KEY`）自动生成在 `~/.pim/data/runtime-secrets.json`，
+**不会写回 `.env`**。
 
-运行时密钥（`PIM_API_KEY`、`ENCRYPTION_KEY`）自动生成并保存在 `~/.pim/data/runtime-secrets.json`，不写回 `.env`。
+| 变量 | 默认 | 说明 |
+|---|---|---|
+| `DATA_DIR` | `~/.pim/data` | SQLite 主库与日志目录 |
+| `FETCH_CONCURRENCY` | `20` | 并发抓取上限 |
+| `AI_PROCESSING_ENABLED` | `true` | LLM master kill switch（与 `ENRICH_*` 同时检查） |
+| `ENRICH_AUTO_ON_INGEST` | `false` | ingest 完成后是否自动触发 enrich 流水线 |
+| `ENRICH_SUMMARY_ENABLED` | `true` | 允许 Summarizer 调 LLM 生成摘要 |
+| `ENRICH_TRANSLATE_ENABLED` | `true` | 允许 Translator 调 LLM 做翻译 |
+| `ATOMS_ENABLED` | `false` | 可选 atoms 结构化原子事件层（Phase 6） |
+| `OPENAI_API_KEY` | — | 云端模型凭据（可选） |
+| `RSSHUB_URL` | `https://rsshub.app` | RSSHub 实例 |
+| `CORS_ORIGINS` | 内置三组 | 允许的前端来源 |
+| `TRUSTED_PROXY_IPS` | — | 反向代理 IP（VPS 必填） |
+| `API_RATE_LIMIT_PER_MINUTE` | `120` | 每分钟每 IP 限速，`0` 关闭 |
 
-| 变量 | 默认值 | 说明 |
-|------|--------|------|
-| `DATA_DIR` | `~/.pim/data` | SQLite 数据库与日志目录 |
-| `FETCH_CONCURRENCY` | `20` | 并发抓取数 |
-| `AI_PROCESSING_ENABLED` | `true` | LLM 总开关（master kill switch）；与 `ENRICH_*` 同时检查，新部署优先用 `ENRICH_*` 系列做细粒度控制 |
-| `ENRICH_AUTO_ON_INGEST` | `false` | ingest 完成时是否自动触发 enrich 流水线（Phase 4 step 8） |
-| `ENRICH_SUMMARY_ENABLED` | `true` | 是否允许 Summarizer 调 LLM 生成摘要 |
-| `ENRICH_TRANSLATE_ENABLED` | `true` | 是否允许 Translator 调 LLM 做翻译 |
-| `OPENAI_API_KEY` | — | 云端模型（可选） |
-| `RSSHUB_URL` | `https://rsshub.app` | RSSHub 实例地址 |
-| `CORS_ORIGINS` | 见下 | 允许的前端来源 |
-| `TRUSTED_PROXY_IPS` | — | 可信反向代理 IP（逗号分隔），设置后从 `X-Real-IP` 读取真实客户端 IP，VPS 部署时必填，见 `docs/VPS_DEPLOY.md` |
-| `API_RATE_LIMIT_PER_MINUTE` | `120` | 每分钟每 IP 最大请求数，`0` 表示关闭 |
+默认 CORS 白名单已覆盖 `http://localhost:3000`、`http://127.0.0.1:3000`、
+`http://tauri.localhost`、`https://tauri.localhost`、`http://localhost:1420`。
 
-默认 CORS 白名单（已覆盖所有启动模式）：
-- `http://localhost:3000`、`http://127.0.0.1:3000`（前端 dev）
-- `http://tauri.localhost`、`https://tauri.localhost`、`http://localhost:1420`（Tauri 桌面）
-
----
-
-## 数据库迁移
-
-应用启动时自动执行 Alembic 迁移。手动执行：
+## pimctl — 给 Agent / 脚本调用
 
 ```bash
-cd backend && .venv/bin/alembic upgrade head
+./pimctl auth login --server http://127.0.0.1:8000 --api-key <key>
+# 查 API Key
+cat ~/.pim/data/runtime-secrets.json | jq -r .api_key
+
+./pimctl system health --json
+./pimctl sources list --json
+./pimctl sources add --url https://example.com/feed --type rss
+./pimctl contents search "openai" --json
+./pimctl settings get --json
 ```
 
-回滚：
+完整命令树见 [`docs/PIMCTL_REFERENCE.md`](docs/PIMCTL_REFERENCE.md) 与
+[`docs/CLI_SPEC.md`](docs/CLI_SPEC.md)。Agent 集成方式见
+[`docs/AGENT_GUIDE.md`](docs/AGENT_GUIDE.md)。
+
+## API
+
+| 端点 | 鉴权 | 用途 |
+|---|---|---|
+| `GET /livez` | 否 | 探活 |
+| `GET /health` | `X-API-Key` | 健康检查 |
+| `GET /api/system/metrics` | `X-API-Key` | JSON 指标 |
+| `GET /metrics` | `X-API-Key` | Prometheus 文本 |
+| `GET /docs` / `GET /redoc` | 否 | Swagger / ReDoc |
+
+所有 `/api/*` 路由都要求 `X-API-Key` header；指南与 `rate()` 查询样例见
+[`docs/API_GUIDE.md`](docs/API_GUIDE.md)。
+
+## 数据库 / 备份 / 回滚
 
 ```bash
-./pim rollback <revision>
+./pim backup                 # SQLite 热备份 + .env + runtime-secrets 归档到 ~/.pim/backups/
+./pim rollback <revision>    # 回滚到指定 Alembic revision
+cd backend && alembic upgrade head   # 手动升级到最新 schema
 ```
 
----
+应用启动时会自动执行 `alembic upgrade head`。
 
-## 备份
-
-```bash
-./pim backup
-```
-
-生成 SQLite 热备份并归档 `.env` 与 `runtime-secrets.json` 到 `~/.pim/backups/`。
-
----
-
-## 测试
+## 测试与质量门
 
 ```bash
-# 后端（覆盖率 ≥ 60%）
-cd backend && .venv/bin/pytest -q --cov=app
+# 后端
+cd backend
+./venv/bin/pytest -q --no-cov           # 全部 914 个测试
+./venv/bin/ruff check app               # lint
+./venv/bin/python scripts/check_domain_imports.py --phase=7   # 架构边界
 
 # 前端
-cd frontend && npm test && npm run build
+cd frontend
+npm test           # Vitest
+npm run build      # 类型检查 + 产物
+npx playwright test   # E2E
 ```
 
----
+CI 在 [`.github/workflows/ci.yml`](.github/workflows/ci.yml) 中串行执行
+ruff / mypy(stub) / domain-import 静态边界 / pytest / vitest / playwright，
+全部通过才允许合并。
 
-## 文档
+## 文档地图
 
-| 文档 | 路径 |
-|------|------|
+| 用途 | 文档 |
+|---|---|
 | **架构总览** | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) |
-| **模块边界一页纸** | [`docs/MODULE_BOUNDARIES.md`](docs/MODULE_BOUNDARIES.md) |
-| **模块化重构记录**（Phase 0–7） | [`docs/MODULE_REFACTOR_PLAN.md`](docs/MODULE_REFACTOR_PLAN.md) |
+| **每个文件/文件夹做什么** | [`docs/PROJECT_STRUCTURE.md`](docs/PROJECT_STRUCTURE.md) |
+| **模块边界（一页纸）** | [`docs/MODULE_BOUNDARIES.md`](docs/MODULE_BOUNDARIES.md) |
+| **重构 Phase 0–7 记录** | [`docs/MODULE_REFACTOR_PLAN.md`](docs/MODULE_REFACTOR_PLAN.md) |
+| **架构决策记录** | `docs/ADR-001-local-monolith.md` … `docs/ADR-005-module-boundaries.md` |
 | **用户使用指南** | [`docs/USER_GUIDE.md`](docs/USER_GUIDE.md) |
-| **Agent 集成指南** | [`docs/AGENT_GUIDE.md`](docs/AGENT_GUIDE.md) |
+| **Agent 集成** | [`docs/AGENT_GUIDE.md`](docs/AGENT_GUIDE.md) |
 | **pimctl 命令参考** | [`docs/PIMCTL_REFERENCE.md`](docs/PIMCTL_REFERENCE.md) |
-| 本地运行详细说明 | `docs/LOCAL_RUN.md` |
-| VPS 部署 | `docs/VPS_DEPLOY.md` |
-| API 使用指南 | `docs/API_GUIDE.md` |
-| CLI 规格 | `docs/CLI_SPEC.md` |
-| 故障排查 | `docs/TROUBLESHOOTING.md` |
-| 架构决策记录 | `docs/ADR-001-local-monolith.md` ～ `docs/ADR-005-module-boundaries.md` |
-| 后端说明 | `backend/README.md` |
-| 历史审计与归档 | `docs/reviews/` |
+| **CLI 设计规格** | [`docs/CLI_SPEC.md`](docs/CLI_SPEC.md) |
+| **本地运行细节** | [`docs/LOCAL_RUN.md`](docs/LOCAL_RUN.md) |
+| **VPS 部署** | [`docs/VPS_DEPLOY.md`](docs/VPS_DEPLOY.md) |
+| **API 指南 + Prometheus** | [`docs/API_GUIDE.md`](docs/API_GUIDE.md) |
+| **故障排查** | [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md) |
+| **后端 README** | [`backend/README.md`](backend/README.md) |
+| **前端 README** | [`frontend/README.md`](frontend/README.md) |
+| **历史审计与归档** | [`docs/reviews/README.md`](docs/reviews/README.md) |
 
----
+## 故障排查速查
 
-## 故障排查
-
-| 问题 | 处理 |
-|------|------|
-| 服务没起来 | `./pim logs` 查看最近错误 |
-| 端口 8000 被占用 | `lsof -i :8000` 找占用进程，kill 后服务自动恢复 |
+| 现象 | 处理 |
+|---|---|
+| 服务没起来 | `./pim logs` 看最近错误；`./pim status` 看 PID |
+| 8000 端口被占 | `lsof -i :8000` 杀掉占用进程，服务自动恢复 |
 | API Key 忘了 | `cat ~/.pim/data/runtime-secrets.json` |
-| pimctl 认证失败 | `./pimctl auth login` 重新登录 |
-| LaunchAgent 没启动 | `./pim status` 查状态，`./pim logs` 看日志 |
+| `pimctl` 认证失败 | `./pimctl auth login` 重新登录 |
+| 数据库 schema 不一致 | `cd backend && alembic upgrade head` 或 `./pim rollback <rev>` |
 
-详见 [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)。
-
----
+详尽案例见 [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md)。
 
 ## 许可证
 
