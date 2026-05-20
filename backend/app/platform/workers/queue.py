@@ -37,7 +37,7 @@ def _dropped_task_logger() -> logging.Logger:
     global _dlq_logger
     if _dlq_logger is not None:
         return _dlq_logger
-    from app.config import get_settings
+    from app.platform.config.settings import get_settings
 
     settings = get_settings()
     log_path = os.path.join(settings.data_dir, "dropped_tasks.log")

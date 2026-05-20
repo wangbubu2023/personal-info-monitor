@@ -1,18 +1,19 @@
 """Platform-level configuration primitives.
 
-Phase 5 step 2 of the refactor relocates ``app.services.system_settings``
-(DB-backed user-tunable settings + in-memory cache + hourly-digest prompt
-helpers) into the platform layer. The legacy
-:mod:`app.services.system_settings` path remains as a re-export shim
-through Phase 7 so existing imports (and the dozens of
-``patch("app.services.system_settings.*")`` references) keep working
-while we migrate callers one at a time.
+Phase 5 of the refactor relocates the application's configuration layer
+into the platform package. As of Phase 5 step 10 this includes:
 
-Future siblings of :mod:`app.platform.config.system_settings` planned
-under this package:
+* :mod:`app.platform.config.settings` — canonical home for the
+  environment-driven ``Settings`` model, the cached ``get_settings``
+  accessor, the runtime-secrets bootstrap, and the CORS origin parser.
+  Previously lived at ``app.config``; that module is preserved as a
+  re-export shim through Phase 7.
+* :mod:`app.platform.config.system_settings` — DB-backed user-tunable
+  settings + in-memory cache + hourly-digest prompt helpers. Previously
+  lived at ``app.services.system_settings`` (also kept as a shim).
 
-* ``platform.config.settings`` — eventual destination for ``app.config``
-  (``Settings`` / ``get_settings`` / ``ENRICH_*`` toggles).
+Future siblings planned under this package:
+
 * ``platform.config.features`` — eventual destination for
   ``app.features`` runtime flags.
 """

@@ -11,7 +11,7 @@ from contextvars import ContextVar, Token
 from datetime import datetime, timezone
 from typing import Optional
 
-from app.config import get_settings
+from app.platform.config.settings import get_settings
 
 _request_id: ContextVar[str | None] = ContextVar("request_id", default=None)
 _job_id: ContextVar[str | None] = ContextVar("job_id", default=None)

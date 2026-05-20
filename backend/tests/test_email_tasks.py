@@ -31,7 +31,7 @@ class TestSendEmail:
 
     @pytest.mark.asyncio
     async def test_smtp_not_configured(self):
-        with patch("app.config.get_settings") as mock_settings:
+        with patch("app.platform.config.settings.get_settings") as mock_settings:
             settings = MagicMock()
             settings.smtp_user = ""
             settings.smtp_password = ""
@@ -41,7 +41,7 @@ class TestSendEmail:
 
     @pytest.mark.asyncio
     async def test_successful_send(self):
-        with patch("app.config.get_settings") as mock_settings:
+        with patch("app.platform.config.settings.get_settings") as mock_settings:
             settings = MagicMock()
             settings.smtp_user = "sender@example.com"
             settings.smtp_password = "password"
@@ -55,7 +55,7 @@ class TestSendEmail:
 
     @pytest.mark.asyncio
     async def test_send_failure(self):
-        with patch("app.config.get_settings") as mock_settings:
+        with patch("app.platform.config.settings.get_settings") as mock_settings:
             settings = MagicMock()
             settings.smtp_user = "sender@example.com"
             settings.smtp_password = "password"
@@ -68,7 +68,7 @@ class TestSendEmail:
 
     @pytest.mark.asyncio
     async def test_custom_from_email(self):
-        with patch("app.config.get_settings") as mock_settings:
+        with patch("app.platform.config.settings.get_settings") as mock_settings:
             settings = MagicMock()
             settings.smtp_user = "default@example.com"
             settings.smtp_password = "password"
@@ -84,7 +84,7 @@ class TestSendEmail:
 
     @pytest.mark.asyncio
     async def test_smtp_user_none(self):
-        with patch("app.config.get_settings") as mock_settings:
+        with patch("app.platform.config.settings.get_settings") as mock_settings:
             settings = MagicMock()
             settings.smtp_user = None
             settings.smtp_password = "password"

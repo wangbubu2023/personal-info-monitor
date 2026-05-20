@@ -237,7 +237,7 @@ _PERSIST_FILENAME = "metrics-checkpoint.json"
 def _resolve_persist_path(override: Optional[str | os.PathLike[str]] = None) -> Path:
     if override is not None:
         return Path(override)
-    from app.config import get_settings
+    from app.platform.config.settings import get_settings
 
     data_dir = Path(get_settings().data_dir).expanduser().resolve()
     return data_dir / _PERSIST_FILENAME

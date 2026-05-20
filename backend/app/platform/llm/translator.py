@@ -9,7 +9,7 @@ from app.ai.provider import (
     list_ollama_models,
     normalize_model_runtime,
 )
-from app.config import get_settings
+from app.platform.config.settings import get_settings
 from app.platform.observability.logger import get_logger
 
 logger = get_logger(__name__)

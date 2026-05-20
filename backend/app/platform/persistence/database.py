@@ -22,7 +22,7 @@ class UUIDString(TypeDecorator):
     def process_result_value(self, value, dialect):
         return value  # keep as string
 
-from app.config import get_settings
+from app.platform.config.settings import get_settings
 
 settings = get_settings()
 

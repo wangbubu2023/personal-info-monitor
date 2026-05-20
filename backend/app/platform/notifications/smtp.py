@@ -34,7 +34,7 @@ async def send_email(
 
     import aiosmtplib
 
-    from app.config import get_settings
+    from app.platform.config.settings import get_settings
     settings = get_settings()
 
     if not settings.smtp_user or not settings.smtp_password:

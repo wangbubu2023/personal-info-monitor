@@ -2,7 +2,7 @@
 
 from typing import Any, Optional
 
-from app.config import get_settings
+from app.platform.config.settings import get_settings
 from app.platform.observability.logger import get_logger
 
 logger = get_logger(__name__)
