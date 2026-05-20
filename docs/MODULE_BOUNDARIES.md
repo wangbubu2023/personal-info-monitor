@@ -57,6 +57,9 @@ sources → fetch → ingest → [atoms] → enrich
 
 ## 配置分组（`.env`）
 
-- `FETCH_*` → fetch  
-- `ATOMS_*` → atoms（默认关）  
-- `ENRICH_*` → enrich（替代 `AI_PROCESSING_ENABLED`）  
+- `FETCH_*` → fetch
+- `ATOMS_ENABLED` → atoms 旁路开关，默认 `false`
+- `ENRICH_AUTO_ON_INGEST` / `ENRICH_SUMMARY_ENABLED` / `ENRICH_TRANSLATE_ENABLED` → enrich 细粒度控制
+- `AI_PROCESSING_ENABLED` → LLM 全局 kill switch（保留，但优先用 `ENRICH_*` 做细粒度控制）
+
+校验：`backend/scripts/check_domain_imports.py --phase=7` 会在 CI 中静态强制全部依赖方向，新增违反规则的 import 会在 PR 阶段拒绝合并。

@@ -396,27 +396,23 @@ sequenceDiagram
 
 每个 Phase 独立 PR，**pytest + 前端 build 全绿** 再合并下一 Phase。
 
-| Phase | 内容 | 风险 | 用户可见变化 |
+| Phase | 状态 | 内容 | 用户可见变化 |
 |-------|------|------|----------------|
-| **0** | `MODULE_REFACTOR_PLAN.md`、ADR-005、import 门禁、删除 `ai_stage` | 低 | 无 |
-| **1** | `domains/sources`：scheduling 单源、瘦身 `_helpers` | 低 | 无 |
-| **2** | `domains/fetch`：迁入 collectors、产出 `FetchBatch` | 中 | 无 |
-| **3** | `domains/ingest`：迁入 pipeline 后半、`finish_content` | 中 | 无 |
-| **4** | `domains/enrich`：迁入 LLM/reader/digest/email；修复 `ENRICH_*` 配置 | 中 | 配置项更名（兼容别名一版） |
-| **5** | `platform/` 收口；`interfaces/http` 薄化；`tasks/` 仅编排 | 中 | 无 |
-| **6** | `domains/atoms` 骨架 + 表迁移 + `enqueue_atomize`（默认 off） | 低 | 无（直至显式开启） |
-| **7** | 文档与 README 全面切换；废弃 re-export 删除 | 低 | 文档路径更新 |
+| **0** | ✅ 已合并 | `MODULE_REFACTOR_PLAN.md`、ADR-005、import 门禁、删除 `pipeline/ai_stage` | 无 |
+| **1** | ✅ 已合并 | `domains/sources`：scheduling 单源、瘦身 `_helpers` | 无 |
+| **2** | ✅ 已合并 | `domains/fetch`：迁入 collectors、产出 `FetchBatch` | 无 |
+| **3** | ✅ 已合并 | `domains/ingest`：迁入 pipeline 后半、`finish_content` | 无 |
+| **4** | ✅ 已合并 | `domains/enrich`：迁入 LLM/reader/digest/email；新增 `ENRICH_*` 配置族 | 配置项细化；`AI_PROCESSING_ENABLED` 保留为 master kill switch |
+| **5** | ✅ 已合并 | `platform/` 收口；`interfaces/http` 薄化；`tasks/` 仅编排；`app/api → app/interfaces/http` 通过 `sys.modules` 别名共存 | 无 |
+| **6** | ✅ 已合并 | `domains/atoms` 骨架 + 表迁移 + best-effort 旁路；`ATOMS_ENABLED` 开关，默认 off | 无（直至显式开启） |
+| **7** | ✅ 已合并 | 清扫 `process_new_content`/`_dispatch_keyword_alerts`/`enqueue_process`/`_build_raw_content_objects`/`_effective_due_interval_minutes` 等历史别名；删除 `configs_common` facade；裁剪 `tasks/processors/services/__init__.py` 的再导出 | 无 |
+| **post-Phase-7 audit** | ✅ 已合并 | 仓库整体复盘：删除 22 个无 caller 的 re-export shim（`app.collectors.{podcast,website_helpers,x_twitter_formatters}` / `app.data.source_types` / `app.exporters.markdown_exporter` / `app.services.{hourly_digest,reader,runtime_lock_service,system_settings}` / `app.tasks.{email_tasks,fetch_orchestrator,hourly_digest_tasks}` / `app.utils.{ssrf,tracing}`）+ 8 个 `tests/manual/tmp_*.py` 临时调试脚本；归档 `audit/` 历史快照与 2026-05 的 plan；对齐 README/ARCHITECTURE/MODULE_BOUNDARIES/ADR-005 等运维文档与最新代码事实 | 无 |
 
-### Phase 0 清单
+### Phase 7 与后续兼容性
 
-- [ ] 添加 [ADR-005-module-boundaries.md](./ADR-005-module-boundaries.md)
-- [ ] CI：`scripts/check_domain_imports.py`
-- [ ] 删除或断言未使用 `pipeline/ai_stage.py`
-
-### Phase 7 前兼容性
-
-- 旧 import 路径保留薄 re-export（如 `from app.pipeline.coordinator import run_fetch_pipeline` → 调 `ingest` + `fetch`）
-- 环境变量：`AI_PROCESSING_ENABLED` 读入时映射到 `ENRICH_AUTO_ON_INGEST` 并打 DeprecationWarning
+- 仍保留为 patch-target shim：`app.config` / `app.database` / `app.auth` / `app.background` / `app.collectors.{base,rss,youtube,x_twitter,website,...}` / `app.utils.{logger,metrics,encryption,browser}` / `app.processors.content_processor`。这些 shim 有真实测试 patch target 或运行时 caller，不能轻易删除。
+- `app.api → app.interfaces.http` 通过 `sys.modules` 别名共存。`app/main.py` 仍走 `from app.api import api_router`；如要删除别名，需先在 `main.py` 与所有测试中改 import 路径。
+- 环境变量：`AI_PROCESSING_ENABLED` 保留为 master kill switch（与 `ENRICH_*` 同时检查）；并未按原计划改为 mapping 到 `ENRICH_AUTO_ON_INGEST`，新部署优先使用 `ENRICH_*` 系列做细粒度控制。
 
 ---
 

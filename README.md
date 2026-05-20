@@ -20,12 +20,18 @@
 
 ```mermaid
 flowchart LR
-    A["Collectors"] --> B["Pipeline"]
-    B --> C["Processors"]
-    C --> D["SQLite"]
-    D --> E["FastAPI :8000"]
+    A["domains/fetch<br/>(collectors)"] --> B["domains/ingest<br/>(normalize/dedupe/finish)"]
+    B --> C["domains/enrich<br/>(summary/translate/reader/digest)"]
+    B -. 旁路 .-> J["domains/atoms<br/>（可选）"]
+    C --> D["SQLite + FTS5"]
+    D --> E["interfaces/http<br/>FastAPI :8000"]
     E --> F["React :3000 / Tauri"]
     G["APScheduler"] --> A
+    G --> C
+    H["platform<br/>(auth/config/locks/llm/...)"] -.- A
+    H -.- B
+    H -.- C
+    H -.- E
 ```
 
 ---
@@ -246,8 +252,9 @@ cd frontend && npm test && npm run build
 
 | 文档 | 路径 |
 |------|------|
-| **模块化重构方案**（五领域模块 + 迁移计划） | [`docs/MODULE_REFACTOR_PLAN.md`](docs/MODULE_REFACTOR_PLAN.md) |
+| **架构总览** | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) |
 | **模块边界一页纸** | [`docs/MODULE_BOUNDARIES.md`](docs/MODULE_BOUNDARIES.md) |
+| **模块化重构记录**（Phase 0–7） | [`docs/MODULE_REFACTOR_PLAN.md`](docs/MODULE_REFACTOR_PLAN.md) |
 | **用户使用指南** | [`docs/USER_GUIDE.md`](docs/USER_GUIDE.md) |
 | **Agent 集成指南** | [`docs/AGENT_GUIDE.md`](docs/AGENT_GUIDE.md) |
 | **pimctl 命令参考** | [`docs/PIMCTL_REFERENCE.md`](docs/PIMCTL_REFERENCE.md) |
@@ -256,8 +263,9 @@ cd frontend && npm test && npm run build
 | API 使用指南 | `docs/API_GUIDE.md` |
 | CLI 规格 | `docs/CLI_SPEC.md` |
 | 故障排查 | `docs/TROUBLESHOOTING.md` |
-| 架构决策记录 | `docs/ADR-001-local-monolith.md` |
+| 架构决策记录 | `docs/ADR-001-local-monolith.md` ～ `docs/ADR-005-module-boundaries.md` |
 | 后端说明 | `backend/README.md` |
+| 历史审计与归档 | `docs/reviews/` |
 
 ---
 

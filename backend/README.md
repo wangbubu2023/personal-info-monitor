@@ -1,9 +1,9 @@
 # 后端服务
 
-Personal Info Monitor 当前后端为单体 FastAPI 服务，负责：
+Personal Info Monitor 后端为单体 FastAPI 服务，负责：
 
 - 监控源管理
-- 内容抓取与处理
+- 内容抓取、归并、富化、原子化（atoms 旁路）
 - SQLite 数据持久化
 - APScheduler 定时任务
 - 认证配置、系统设置、Dashboard 与 Digest API
@@ -12,24 +12,68 @@ Personal Info Monitor 当前后端为单体 FastAPI 服务，负责：
 
 - FastAPI
 - SQLAlchemy 2.x
-- SQLite / aiosqlite
+- SQLite / aiosqlite + FTS5
 - APScheduler
 - Playwright / Requests / aiohttp / Trafilatura
 
-## 目录结构
+## 目录结构（蓝图 Phase 0–7 后）
 
 ```text
 app/
-├── api/          # REST API
-├── collectors/   # RSS / 网站 / X / YouTube / Podcast 抓取器
-├── models/       # ORM 模型
-├── pipeline/     # 采集与处理编排
-├── processors/   # 摘要、翻译、正文提取等
-├── schemas/      # Pydantic 模型
-├── services/     # 领域服务
-├── tasks/        # 抓取、维护、邮件、小时报任务
-└── utils/        # 通用工具
+├── interfaces/                  # 外向适配层（HTTP / 未来 CLI、cron 入口）
+│   └── http/                    # FastAPI 路由（含 sources/contents/digest/configs/system/keywords/dashboard）
+├── domains/                     # 四个业务领域 + 跨域契约
+│   ├── contracts/               # 跨领域 DTO 协议（fetch/ingest/enrich/sources/atoms）
+│   ├── sources/                 # 源调度 + 状态 + 类型注册
+│   ├── fetch/                   # 抓取
+│   │   ├── auth/                # 浏览器/凭据/cookie 刷新
+│   │   ├── collectors/          # rss / website / x_twitter / youtube / podcast
+│   │   └── orchestrator.py      # fetch_source_async 入口
+│   ├── ingest/                  # 归并入库主链
+│   │   ├── build_content.py     # 把 FetchBatch 物化成 Content
+│   │   ├── normalizer.py        # URL/标题/时间规范化
+│   │   ├── dedupe.py            # 去重
+│   │   ├── extractor.py         # 正文抽取（trafilatura/readability）
+│   │   ├── quality.py / quality_metadata.py
+│   │   ├── keywords/            # 关键词匹配 + 规则
+│   │   ├── scoring.py / search.py / storage.py
+│   │   ├── cleanup.py
+│   │   └── finish.py            # ingest → enrich → atoms → notify 唯一汇合点
+│   ├── enrich/                  # LLM 富化、reader、digest、通知
+│   │   ├── content/             # 摘要/翻译触发与重处理
+│   │   ├── reader/              # 正文加载 / 翻译 / NDJSON 流
+│   │   ├── hourly/              # 3 小时简报
+│   │   └── notifications/       # daily_digest / doctor / keyword_alert
+│   └── atoms/                   # 可选结构化原子事件（ATOMS_ENABLED 控制）
+├── platform/                    # 横切基础设施（禁止依赖 domains）
+│   ├── auth/                    # API key / cookies / 凭据加解密
+│   ├── browser/                 # Playwright pool
+│   ├── config/                  # Settings + system_settings DB-cache
+│   ├── export/                  # markdown 导出
+│   ├── health/                  # /livez /health 探针
+│   ├── llm/                     # summarizer / translator / 提供商代理
+│   ├── locks/                   # 进程级 + DB 级运行时锁
+│   ├── notifications/           # SMTP 传输
+│   ├── observability/           # logger / metrics / tracing
+│   ├── persistence/             # SQLAlchemy engine / session
+│   ├── runtime/                 # 启动钩子、shutdown checkpoint
+│   ├── security/                # 加密、SSRF 过滤
+│   └── workers/                 # 有界任务队列
+├── models/                      # ORM 实体
+├── schemas/                     # Pydantic 模型
+├── ai/, services/, processors/, tasks/, pipeline/, utils/
+│                                # 历史 shim：仍保留是为了已有 `patch()` target 与
+│                                # 极少数尚未迁完的内部调用。新代码必须直接走
+│                                # interfaces / domains / platform 三层。
+├── api/                         # sys.modules 别名，把 app.api.* 解析到
+│                                # app.interfaces.http.*（同一模块对象）
+├── background.py, main.py, scheduler.py, features.py, config.py, database.py, auth.py
+│                                # 顶层入口或薄 shim
+└── data/                        # 静态 JSON 资源（model_providers.json）
 ```
+
+详细边界与导入约束见 `docs/MODULE_BOUNDARIES.md` 与
+`backend/scripts/check_domain_imports.py`（CI 会用 `--phase=7` 检查）。
 
 ## 本地开发
 
@@ -92,5 +136,11 @@ cd backend
 
 ## 说明
 
-- 当前代码库不使用 Celery/Redis 作为主运行时。
-- 运行时锁已优先使用数据库表，单进程内存锁只作为降级兜底。
+- 当前代码库不使用 Celery/Redis 作为主运行时（APScheduler + 内置有界 TaskQueue）。
+- 运行时锁优先使用数据库表（`app/platform/locks/`），单进程内存锁只作为降级兜底。
+- LLM 调用通过 `ENRICH_SUMMARY_ENABLED` / `ENRICH_TRANSLATE_ENABLED` 显式控制；
+  `AI_PROCESSING_ENABLED` 作为 master kill switch 保留，但只在全局停用 LLM
+  时使用。
+- 可选 atoms 结构化层（Phase 6）默认关闭，需要 `ATOMS_ENABLED=true`
+  显式开启；开启后也只是 `finish_content` 旁路的 best-effort 写入，
+  永远不阻塞 ingest 主链。
