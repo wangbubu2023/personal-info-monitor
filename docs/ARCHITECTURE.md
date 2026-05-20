@@ -1,13 +1,14 @@
 # PIM 架构总览
 
 > 本文档描述**当前运行时代码**的架构（蓝图 Phase 0–7 已落地）。模块边界
-> 速查见 [`MODULE_BOUNDARIES.md`](./MODULE_BOUNDARIES.md)，分阶段迁移历史
-> 见 [`MODULE_REFACTOR_PLAN.md`](./MODULE_REFACTOR_PLAN.md)，导入约束见
+> 速查见 [`MODULE_BOUNDARIES.md`](./MODULE_BOUNDARIES.md)，全量目录注解见
+> [`PROJECT_STRUCTURE.md`](./PROJECT_STRUCTURE.md)，导入约束见
 > [`ADR-005-module-boundaries.md`](./ADR-005-module-boundaries.md) 与
-> `backend/scripts/check_domain_imports.py`。
+> `backend/scripts/check_domain_imports.py`。重构历史实施记录已归档至
+> [`reviews/archive/MODULE_REFACTOR_PLAN.md`](./reviews/archive/MODULE_REFACTOR_PLAN.md)。
 >
 > 具体实现细节（配置、部署、CLI）请参考 `README.md`、`docs/LOCAL_RUN.md`、
-> `docs/VPS_DEPLOY.md`、`docs/CLI_SPEC.md`。
+> `docs/VPS_DEPLOY.md`、`docs/PIMCTL_REFERENCE.md`。
 
 ## 1. 系统分层
 
@@ -253,8 +254,8 @@ PIM 有两个互补的 CLI，职责严格分开：
 
 详细命令树见：
 
-- 设计规范：`docs/CLI_SPEC.md`
 - `pimctl` 参考手册：`docs/PIMCTL_REFERENCE.md`
+- 早期设计规划（已归档）：`docs/reviews/archive/CLI_SPEC.md`
 - macOS lifecycle 命令源码：仓库根目录的 `pim`
 
 ## 8. 依赖与锁定
@@ -301,9 +302,10 @@ CI 会在每次构建时重新运行 `uv export` 并 `diff` 生成结果与提�
 ## 10. 进一步阅读
 
 - 模块边界一页纸：`docs/MODULE_BOUNDARIES.md`
-- 模块化重构全程实施记录（Phase 0–7）：`docs/MODULE_REFACTOR_PLAN.md`
+- 全量目录注解：`docs/PROJECT_STRUCTURE.md`
 - 边界 ADR：`docs/ADR-005-module-boundaries.md`
 - 功能开关 ADR：`docs/ADR-004-feature-flags.md`
+- 重构实施记录（Phase 0–7，已归档）：`docs/reviews/archive/MODULE_REFACTOR_PLAN.md`
 - 历史审计（2026-05-02 快照）：`docs/reviews/archive/audit-2026-05-02/`
 - API 参考与 `rate()` 查询样例：`docs/API_GUIDE.md`
 - 部署与运维：`docs/VPS_DEPLOY.md`、`docs/LOCAL_RUN.md`

@@ -114,9 +114,9 @@ cat ~/.pim/data/runtime-secrets.json | jq -r .api_key
 ./pimctl settings get --json
 ```
 
-完整命令树见 [`docs/PIMCTL_REFERENCE.md`](docs/PIMCTL_REFERENCE.md) 与
-[`docs/CLI_SPEC.md`](docs/CLI_SPEC.md)。Agent 集成方式见
-[`docs/AGENT_GUIDE.md`](docs/AGENT_GUIDE.md)。
+完整命令树见 [`docs/PIMCTL_REFERENCE.md`](docs/PIMCTL_REFERENCE.md)。
+Agent 集成方式见 [`docs/AGENT_GUIDE.md`](docs/AGENT_GUIDE.md)。CLI 早期
+设计规划已归档至 [`docs/reviews/archive/CLI_SPEC.md`](docs/reviews/archive/CLI_SPEC.md)。
 
 ## API
 
@@ -168,16 +168,15 @@ ruff / mypy(stub) / domain-import 静态边界 / pytest / vitest / playwright，
 | **架构总览** | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) |
 | **每个文件/文件夹做什么** | [`docs/PROJECT_STRUCTURE.md`](docs/PROJECT_STRUCTURE.md) |
 | **模块边界（一页纸）** | [`docs/MODULE_BOUNDARIES.md`](docs/MODULE_BOUNDARIES.md) |
-| **重构 Phase 0–7 记录** | [`docs/MODULE_REFACTOR_PLAN.md`](docs/MODULE_REFACTOR_PLAN.md) |
 | **架构决策记录** | `docs/ADR-001-local-monolith.md` … `docs/ADR-005-module-boundaries.md` |
 | **用户使用指南** | [`docs/USER_GUIDE.md`](docs/USER_GUIDE.md) |
 | **Agent 集成** | [`docs/AGENT_GUIDE.md`](docs/AGENT_GUIDE.md) |
 | **pimctl 命令参考** | [`docs/PIMCTL_REFERENCE.md`](docs/PIMCTL_REFERENCE.md) |
-| **CLI 设计规格** | [`docs/CLI_SPEC.md`](docs/CLI_SPEC.md) |
 | **本地运行细节** | [`docs/LOCAL_RUN.md`](docs/LOCAL_RUN.md) |
 | **VPS 部署** | [`docs/VPS_DEPLOY.md`](docs/VPS_DEPLOY.md) |
 | **API 指南 + Prometheus** | [`docs/API_GUIDE.md`](docs/API_GUIDE.md) |
 | **故障排查** | [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md) |
+| **贡献规则** | [`docs/CONTRIBUTING.md`](docs/CONTRIBUTING.md) |
 | **后端 README** | [`backend/README.md`](backend/README.md) |
 | **前端 README** | [`frontend/README.md`](frontend/README.md) |
 | **历史审计与归档** | [`docs/reviews/README.md`](docs/reviews/README.md) |

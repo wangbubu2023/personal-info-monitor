@@ -1,11 +1,12 @@
 # 项目结构说明（每个文件/文件夹的作用）
 
-> 适用版本：master @ `400d23e`（post-Phase-7 audit），后端 232 个 Python 模块、
-> 66 个测试文件；前端 110 个 TS/TSX 文件；CLI 6 个模块；文档 30+ 篇。
+> 适用版本：master 当前 HEAD（post-Phase-7 audit 之后），后端 232 个
+> Python 模块、66 个测试文件；前端 110 个 TS/TSX 文件；CLI 6 个模块；
+> 文档 16 篇活档 + reviews 归档。
 >
 > 配套阅读：[`ARCHITECTURE.md`](./ARCHITECTURE.md)（架构总览）、
-> [`MODULE_BOUNDARIES.md`](./MODULE_BOUNDARIES.md)（边界一页纸）、
-> [`MODULE_REFACTOR_PLAN.md`](./MODULE_REFACTOR_PLAN.md)（Phase 0–7 记录）。
+> [`MODULE_BOUNDARIES.md`](./MODULE_BOUNDARIES.md)（边界一页纸）。
+> 重构实施历史见 [`reviews/archive/MODULE_REFACTOR_PLAN.md`](./reviews/archive/MODULE_REFACTOR_PLAN.md)。
 
 ---
 
@@ -689,12 +690,10 @@ cli/
 docs/
 ├── ARCHITECTURE.md             架构总览（系统图 + 抓取时序图 + 服务边界表）
 ├── MODULE_BOUNDARIES.md        模块边界一页纸（三层 + 五领域 + 数据流 + 禁止依赖）
-├── MODULE_REFACTOR_PLAN.md     Phase 0–7 实施记录 + 旧路径映射 + 仍保留的 shim 清单
 ├── PROJECT_STRUCTURE.md        本文：每个文件/文件夹的作用
 ├── USER_GUIDE.md               最终用户使用手册
 ├── AGENT_GUIDE.md              Agent / 自动化集成指南（HTTP + pimctl）
 ├── PIMCTL_REFERENCE.md         pimctl 完整命令参考
-├── CLI_SPEC.md                 ./pim 与 pimctl 设计规格
 ├── API_GUIDE.md                API 端点 + 限速 + Prometheus rate() 样例
 ├── LOCAL_RUN.md                本地运行的全部细节（含 LaunchAgent / launchctl）
 ├── VPS_DEPLOY.md               VPS 部署（systemd / Nginx / 反向代理 / TLS）
@@ -708,11 +707,17 @@ docs/
 └── reviews/                          历史审计 / 设计文档归档
     ├── README.md                     归档说明 + 最新事实在哪儿看
     └── archive/
-        ├── audit-fix-plan.md         2026-04 第三版审计修复计划
+        ├── MODULE_REFACTOR_PLAN.md       Phase 0–7 完整实施记录 +
+        │                                 旧路径 → 新路径映射 +
+        │                                 仍保留的 shim 清单
+        ├── CLI_SPEC.md                   ./pim 与 pimctl 早期设计规划
+        │                                 （Phase 1+2 已落地；Phase 3
+        │                                 MCP 兼容尚未实施）
+        ├── audit-fix-plan.md             2026-04 第三版审计修复计划
         ├── AI_DECOUPLING_REFACTOR_PLAN.md  AI 解耦第一版计划
         ├── pim_aihot_upgrade_plan_2026-05-07.md
-        │                             AIHOT 借鉴升级计划（atoms / 3 小时报已落地）
-        ├── audit-2026-05-02/         2026-05-02 第四版代码审计 11 件套
+        │                                 AIHOT 借鉴升级计划（atoms / 3 小时报已落地）
+        ├── audit-2026-05-02/             2026-05-02 第四版代码审计 11 件套
         │   ├── _audit-plan.md
         │   ├── 00-summary.md
         │   ├── 01-architecture.md
@@ -726,7 +731,7 @@ docs/
         │   ├── 09-frontend.md
         │   ├── 10-cli-ops.md
         │   └── 11-deps-standards.md
-        ├── superpowers-plans/        2026-04 并行实施计划（按 Stream）
+        ├── superpowers-plans/            2026-04 并行实施计划（按 Stream）
         │   ├── 2026-04-01-audit-fixes.md
         │   ├── 2026-04-01-stream1-frontend.md
         │   ├── 2026-04-01-stream2-backend.md
@@ -735,6 +740,10 @@ docs/
         └── superpowers-specs/
             └── 2026-04-01-phase2-3-design.md   Phase 2/3 设计文档
 ```
+
+> `docs/` 顶层只保留**当前仍活的运维 / 架构 / 用户/Agent / 决策**文档；
+> 已完成的实施计划（如 `MODULE_REFACTOR_PLAN.md`）与早期设计规划
+> （如 `CLI_SPEC.md`）统一归档到 `reviews/archive/`，避免和最新事实混淆。
 
 ---
 

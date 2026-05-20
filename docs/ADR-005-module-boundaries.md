@@ -10,7 +10,7 @@ PIM 后端在 `collectors`、`pipeline`、`processors`、`tasks`、`api/sources/
 
 ## 决策
 
-1. **领域层**划分为五个包，单向依赖：`sources` → `fetch` → `ingest` → `atoms`；`ingest` → `enrich`；`atoms` 对 `enrich` 为**可选上游**（L0/L1/L2 消费级别，见 [MODULE_REFACTOR_PLAN.md](./MODULE_REFACTOR_PLAN.md)）。
+1. **领域层**划分为五个包，单向依赖：`sources` → `fetch` → `ingest` → `atoms`；`ingest` → `enrich`；`atoms` 对 `enrich` 为**可选上游**（L0/L1/L2 消费级别，详见已归档的 [`reviews/archive/MODULE_REFACTOR_PLAN.md`](./reviews/archive/MODULE_REFACTOR_PLAN.md)）。
 2. **交付层**（`interfaces/http`、`cli/pimctl`、`frontend`、`./pim`）不承载业务规则，不列为第六个领域模块。
 3. **平台层**（`platform/*`）承载认证、配置、数据库、任务队列、指标、浏览器池、SSRF/加密等横切能力。
 4. 抓取主路径**禁止 LLM**；摘要/翻译/简报仅在 `enrich`；结构化原子在 `atoms`。
@@ -39,6 +39,8 @@ PIM 后端在 `collectors`、`pipeline`、`processors`、`tasks`、`api/sources/
 
 ## 参考
 
-- [MODULE_REFACTOR_PLAN.md](./MODULE_REFACTOR_PLAN.md)
 - [ARCHITECTURE.md](./ARCHITECTURE.md)
+- [MODULE_BOUNDARIES.md](./MODULE_BOUNDARIES.md)
+- [PROJECT_STRUCTURE.md](./PROJECT_STRUCTURE.md)
 - [ADR-001-local-monolith.md](./ADR-001-local-monolith.md)
+- 历史实施记录：[`reviews/archive/MODULE_REFACTOR_PLAN.md`](./reviews/archive/MODULE_REFACTOR_PLAN.md)

@@ -1,7 +1,9 @@
 # PIM 模块边界（一页纸）
 
-> 完整迁移步骤见 [MODULE_REFACTOR_PLAN.md](./MODULE_REFACTOR_PLAN.md)。  
-> ADR：[ADR-005-module-boundaries.md](./ADR-005-module-boundaries.md)
+> 完整目录注解见 [PROJECT_STRUCTURE.md](./PROJECT_STRUCTURE.md)；架构总览见
+> [ARCHITECTURE.md](./ARCHITECTURE.md)；边界 ADR 见
+> [ADR-005-module-boundaries.md](./ADR-005-module-boundaries.md)。
+> 完整迁移历史已归档至 [`reviews/archive/MODULE_REFACTOR_PLAN.md`](./reviews/archive/MODULE_REFACTOR_PLAN.md)。
 
 ## 三层结构
 
