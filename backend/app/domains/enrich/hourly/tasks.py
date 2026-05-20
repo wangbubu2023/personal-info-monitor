@@ -50,7 +50,7 @@ from app.domains.enrich.hourly.text_utils import (
     strip_llm_reasoning,
 )
 from app.services.ranking_service import RankingService
-from app.services.system_settings import effective_hourly_digest_prompt
+from app.platform.config.system_settings import effective_hourly_digest_prompt
 from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -232,7 +232,7 @@ from app.domains.enrich.hourly import repository as _repository  # noqa: E402
 from app.domains.enrich.hourly import selection as _selection  # noqa: E402
 from app.domains.enrich.hourly import synthesis as _synthesis  # noqa: E402
 from app.domains.enrich.hourly import text_utils as _text_utils  # noqa: E402
-from app.services.system_settings import get_system_settings_sync  # noqa: E402,F401 - legacy re-export
+from app.platform.config.system_settings import get_system_settings_sync  # noqa: E402,F401 - legacy re-export
 
 _local_to_utc_naive = _text_utils.local_to_utc_naive
 _format_digest_title = _text_utils.format_digest_title

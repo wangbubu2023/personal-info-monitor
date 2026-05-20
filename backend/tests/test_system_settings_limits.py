@@ -1,6 +1,6 @@
 import copy
 
-from app.services.system_settings import (
+from app.platform.config.system_settings import (
     DEFAULT_SYSTEM_SETTINGS,
     HOURLY_DIGEST_DEFAULT_PROMPT,
     _apply_patch,

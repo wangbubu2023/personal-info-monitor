@@ -13,7 +13,10 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from app.services.system_settings import get_system_settings_sync, normalize_hourly_digest_window_hours
+from app.platform.config.system_settings import (
+    get_system_settings_sync,
+    normalize_hourly_digest_window_hours,
+)
 
 SYSTEM_TZ = ZoneInfo("Asia/Shanghai")
 

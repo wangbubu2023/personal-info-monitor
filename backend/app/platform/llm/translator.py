@@ -19,7 +19,7 @@ def get_translation_settings():
     """Get translation model settings from system config."""
     try:
         from app.services.api_config_credentials import enrich_model_settings_from_api_config
-        from app.services.system_settings import get_system_settings_sync
+        from app.platform.config.system_settings import get_system_settings_sync
 
         settings = get_system_settings_sync()
         model_settings = settings.get("translation_model", {})
@@ -34,7 +34,7 @@ def get_translation_settings():
 def is_translation_cloud_fallback_enabled() -> bool:
     """Whether fallback translation is enabled (any configured provider)."""
     try:
-        from app.services.system_settings import get_system_settings_sync
+        from app.platform.config.system_settings import get_system_settings_sync
 
         settings = get_system_settings_sync() or {}
         if "translation_fallback_enabled" in settings:
@@ -54,7 +54,7 @@ def get_translation_fallback_model_settings() -> dict:
     """Enriched provider/model dict for translation fallback from 模型接入."""
     try:
         from app.services.api_config_credentials import enrich_model_settings_from_api_config
-        from app.services.system_settings import get_system_settings_sync
+        from app.platform.config.system_settings import get_system_settings_sync
 
         s = get_system_settings_sync() or {}
         if not is_translation_cloud_fallback_enabled():
@@ -85,7 +85,7 @@ def get_translation_cloud_fallback_openai_settings() -> dict:
     """Resolve OpenAI-compatible cloud fallback settings."""
     try:
         from app.services.api_config_credentials import enrich_model_settings_from_api_config
-        from app.services.system_settings import get_system_settings_sync
+        from app.platform.config.system_settings import get_system_settings_sync
 
         settings = get_system_settings_sync()
         trans_model = enrich_model_settings_from_api_config(settings.get("translation_model", {}) or {})

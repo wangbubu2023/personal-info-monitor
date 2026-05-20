@@ -10,7 +10,7 @@ import httpx
 
 from app.config import get_settings
 from app.services.api_config_credentials import enrich_model_settings_from_api_config
-from app.services.system_settings import get_system_settings_sync
+from app.platform.config.system_settings import get_system_settings_sync
 from app.utils.logger import get_logger
 
 logger = get_logger(__name__)

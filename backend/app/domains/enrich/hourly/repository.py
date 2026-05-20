@@ -24,7 +24,7 @@ from app.domains.enrich.hourly.text_utils import (
     get_digest_window_hours,
     local_to_utc_naive,
 )
-from app.services.system_settings import (
+from app.platform.config.system_settings import (
     get_system_settings_sync,
     normalize_hourly_digest_content_types,
 )

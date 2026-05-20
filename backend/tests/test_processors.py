@@ -532,7 +532,10 @@ class TestSummarizer:
 
     def test_get_runtime_settings_fallback(self):
         summarizer = self._make_summarizer()
-        with patch("app.services.system_settings.get_system_settings_sync", side_effect=Exception("no db")):
+        with patch(
+            "app.platform.config.system_settings.get_system_settings_sync",
+            side_effect=Exception("no db"),
+        ):
             result = summarizer._get_runtime_settings()
         assert result == {}
 
@@ -724,37 +727,52 @@ class TestTranslator:
 class TestTranslatorStandalone:
 
     def test_get_translation_settings_success(self):
-        with patch("app.services.system_settings.get_system_settings_sync", return_value={"translation_model": {"provider": "ollama"}}):
+        with patch(
+            "app.platform.config.system_settings.get_system_settings_sync",
+            return_value={"translation_model": {"provider": "ollama"}},
+        ):
             from app.processors.translator import get_translation_settings
             result = get_translation_settings()
         assert result["provider"] == "ollama"
         assert "api_base" in result
 
     def test_get_translation_settings_exception(self):
-        with patch("app.services.system_settings.get_system_settings_sync", side_effect=Exception("no db")):
+        with patch(
+            "app.platform.config.system_settings.get_system_settings_sync",
+            side_effect=Exception("no db"),
+        ):
             from app.processors.translator import get_translation_settings
             result = get_translation_settings()
         assert result == {}
 
     def test_get_translation_settings_not_dict(self):
-        with patch("app.services.system_settings.get_system_settings_sync", return_value={"translation_model": "invalid"}):
+        with patch(
+            "app.platform.config.system_settings.get_system_settings_sync",
+            return_value={"translation_model": "invalid"},
+        ):
             from app.processors.translator import get_translation_settings
             result = get_translation_settings()
         assert result == {}
 
     def test_is_translation_cloud_fallback_enabled_true(self):
-        with patch("app.services.system_settings.get_system_settings_sync", return_value={"translation_cloud_fallback_enabled": True}):
+        with patch(
+            "app.platform.config.system_settings.get_system_settings_sync",
+            return_value={"translation_cloud_fallback_enabled": True},
+        ):
             from app.processors.translator import is_translation_cloud_fallback_enabled
             assert is_translation_cloud_fallback_enabled() is True
 
     def test_is_translation_cloud_fallback_enabled_false(self):
-        with patch("app.services.system_settings.get_system_settings_sync", return_value={}):
+        with patch(
+            "app.platform.config.system_settings.get_system_settings_sync",
+            return_value={},
+        ):
             from app.processors.translator import is_translation_cloud_fallback_enabled
             assert is_translation_cloud_fallback_enabled() is False
 
     def test_is_translation_fallback_new_key_overrides_legacy(self):
         with patch(
-            "app.services.system_settings.get_system_settings_sync",
+            "app.platform.config.system_settings.get_system_settings_sync",
             return_value={
                 "translation_fallback_enabled": False,
                 "translation_cloud_fallback_enabled": True,
@@ -764,7 +782,10 @@ class TestTranslatorStandalone:
             assert is_translation_cloud_fallback_enabled() is False
 
     def test_is_translation_cloud_fallback_exception(self):
-        with patch("app.services.system_settings.get_system_settings_sync", side_effect=Exception("err")):
+        with patch(
+            "app.platform.config.system_settings.get_system_settings_sync",
+            side_effect=Exception("err"),
+        ):
             from app.processors.translator import is_translation_cloud_fallback_enabled
             assert is_translation_cloud_fallback_enabled() is False
 
@@ -773,7 +794,10 @@ class TestTranslatorStandalone:
             "translation_model": {"fallback_model": "gpt-4", "fallback_api_key": "k1"},
             "ai_model": {"model": "gpt-3.5", "api_key": "k2", "api_base": "https://api.openai.com"},
         }
-        with patch("app.services.system_settings.get_system_settings_sync", return_value=sys_settings):
+        with patch(
+            "app.platform.config.system_settings.get_system_settings_sync",
+            return_value=sys_settings,
+        ):
             from app.processors.translator import get_translation_cloud_fallback_openai_settings
             result = get_translation_cloud_fallback_openai_settings()
         assert result["model"] == "gpt-4"
@@ -781,14 +805,20 @@ class TestTranslatorStandalone:
 
     def test_get_translation_cloud_fallback_openai_settings_defaults(self):
         sys_settings = {"translation_model": {}, "ai_model": {}}
-        with patch("app.services.system_settings.get_system_settings_sync", return_value=sys_settings):
+        with patch(
+            "app.platform.config.system_settings.get_system_settings_sync",
+            return_value=sys_settings,
+        ):
             from app.processors.translator import get_translation_cloud_fallback_openai_settings
             result = get_translation_cloud_fallback_openai_settings()
         assert result["model"] == "gpt-4o-mini"
         assert result["provider"] == "openai"
 
     def test_get_translation_cloud_fallback_openai_settings_exception(self):
-        with patch("app.services.system_settings.get_system_settings_sync", side_effect=Exception("err")):
+        with patch(
+            "app.platform.config.system_settings.get_system_settings_sync",
+            side_effect=Exception("err"),
+        ):
             from app.processors.translator import get_translation_cloud_fallback_openai_settings
             result = get_translation_cloud_fallback_openai_settings()
         assert result["model"] == "gpt-4o-mini"

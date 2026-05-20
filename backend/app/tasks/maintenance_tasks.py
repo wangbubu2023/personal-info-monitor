@@ -76,7 +76,7 @@ async def run_markdown_export(since_hours: int = 2):
     """Run incremental markdown export task."""
     from datetime import timedelta
     from app.database import AsyncSessionLocal
-    from app.services.system_settings import get_system_settings_async
+    from app.platform.config.system_settings import get_system_settings_async
     from app.exporters.markdown_exporter import MarkdownExporter
 
     async with AsyncSessionLocal() as db:

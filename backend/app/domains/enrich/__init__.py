@@ -94,7 +94,9 @@ Phase progress:
   frontend's :mod:`HOURLY_DIGEST_DEFAULT_PROMPT` in
   ``frontend/src/config/taskPromptDefaults.ts`` was resynced to match
   the backend's "本次简报窗口内" wording in
-  :mod:`app.services.system_settings`. The pytest autouse fixture in
+  :mod:`app.platform.config.system_settings` (relocated from
+  ``app.services.system_settings`` in Phase 5 step 2; the old path
+  remains as a shim). The pytest autouse fixture in
   ``conftest.py`` was extended to pin all four env vars so tests do
   not inherit a developer's per-feature overrides and do not spam
   ``DeprecationWarning`` during ``get_settings.cache_clear()`` loops.

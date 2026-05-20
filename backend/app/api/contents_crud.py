@@ -189,7 +189,7 @@ async def manual_export_markdown(db: AsyncSession = Depends(get_async_db)):
     """Manually trigger incremental markdown export."""
     from datetime import timedelta
     from app.utils.datetime import utcnow_naive
-    from app.services.system_settings import get_system_settings_async
+    from app.platform.config.system_settings import get_system_settings_async
     from app.exporters.markdown_exporter import MarkdownExporter
 
     settings = await get_system_settings_async(db)

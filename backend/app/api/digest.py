@@ -16,7 +16,7 @@ from app.schemas.digest import (
     DigestResponse, DigestCategory, DigestItem,
     HourlyDigestSummary, HourlyDigestDetail,
 )
-from app.services.system_settings import (
+from app.platform.config.system_settings import (
     get_system_settings_async,
     normalize_hourly_digest_content_types,
     normalize_hourly_digest_window_hours,

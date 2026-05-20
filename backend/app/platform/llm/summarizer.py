@@ -24,7 +24,7 @@ def get_summarization_fallback_model_settings(runtime: Optional[dict[str, Any]] 
     """
     try:
         from app.services.api_config_credentials import enrich_model_settings_from_api_config
-        from app.services.system_settings import get_system_settings_sync
+        from app.platform.config.system_settings import get_system_settings_sync
 
         s = (runtime if runtime is not None else (get_system_settings_sync() or {})) or {}
         if not _is_summarization_fallback_enabled(s):
@@ -65,7 +65,7 @@ class Summarizer:
     def _get_runtime_settings(self) -> dict:
         """Read runtime AI settings from system config."""
         try:
-            from app.services.system_settings import get_system_settings_sync
+            from app.platform.config.system_settings import get_system_settings_sync
 
             return get_system_settings_sync()
         except Exception:

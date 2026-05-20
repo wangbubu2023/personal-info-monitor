@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.ai.provider import list_ollama_models
 from app.database import get_async_db
 from app.models.auth_config import APIConfig, AuthStatus
-from app.services.system_settings import (
+from app.platform.config.system_settings import (
     get_system_settings_async,
     get_system_settings_for_response,
     update_system_settings_async,

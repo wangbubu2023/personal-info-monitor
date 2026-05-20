@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models import Source, AuthConfig
 from app.models.source import SourceType
 from app.features import PODCAST_DISABLED_DETAIL, PODCAST_SOURCES_ENABLED
-from app.services.system_settings import get_system_settings_async
+from app.platform.config.system_settings import get_system_settings_async
 from app.utils.datetime import to_iso_z
 from app.utils.ttl_cache import TTLCache
 from app.utils.url import host_matches, normalize_host, normalize_source_url_for_dedupe
