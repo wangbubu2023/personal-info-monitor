@@ -11,16 +11,22 @@ from starlette.responses import PlainTextResponse
 from starlette.routing import Route
 from starlette.testclient import TestClient
 
-from app import auth
 from app.main import _normalize_request_id, _request_route_label, app
 from app.middleware.api_rate_limit import APIRateLimitMiddleware
+from app.platform.auth import api_key as auth_module
 
 
 def test_verify_api_key_rejects_missing_server_configuration(monkeypatch):
-    monkeypatch.setattr(auth, "get_settings", lambda: SimpleNamespace(pim_api_key=""))
+    # Phase 5 step 8 relocated ``verify_api_key`` to ``app.platform.auth.api_key``.
+    # The caller reads ``get_settings`` from the canonical module's local
+    # binding, so the patch must target the canonical module — patching the
+    # legacy ``app.auth`` re-export shim would only rebind the shim attribute.
+    monkeypatch.setattr(
+        auth_module, "get_settings", lambda: SimpleNamespace(pim_api_key="")
+    )
 
     with pytest.raises(HTTPException) as exc_info:
-        auth.verify_api_key("anything")
+        auth_module.verify_api_key("anything")
 
     assert exc_info.value.status_code == 500
 

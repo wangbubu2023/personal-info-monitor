@@ -1,24 +1,34 @@
-"""API Key authentication for PIM API endpoints."""
+"""Backwards-compatible re-export.
 
-import secrets
+.. deprecated::
+    The canonical home for the ``X-API-Key`` FastAPI dependency
+    (``verify_api_key``) is now :mod:`app.platform.auth.api_key`.
+    Phase 5 step 8 of the module refactor moved the implementation
+    out of ``app`` because API-key auth is platform-level security
+    infrastructure used by every router, not application code.
 
-from fastapi import Depends, HTTPException, Security
-from fastapi.security import APIKeyHeader
+    This file remains as a thin re-export shim. The handful of call
+    sites that currently import from ``app.auth`` (``app.api``,
+    ``app.main``, ``tests/conftest.py``,
+    ``tests/test_configs_browser.py``) continue to use this path;
+    bulk migration is deferred to Phase 7. New code MUST import
+    from :mod:`app.platform.auth.api_key` directly — and especially
+    new ``patch`` targets in tests, because the production
+    ``verify_api_key`` reads ``get_settings`` from the canonical
+    module (rebinding the shim's ``get_settings`` attribute is a
+    no-op for the canonical caller's local lookup).
+"""
 
-from app.config import get_settings
+from app.platform.auth.api_key import (  # noqa: F401 — re-export
+    _api_key_header,
+    verify_api_key,
+)
 
-_api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
+# ``get_settings`` is re-exported so legacy ``patch("app.auth.get_settings")``
+# sites can still find the attribute on this module (and at least keep the
+# import valid). Note that patching this attribute does NOT replace what the
+# canonical ``verify_api_key`` actually reads — see the deprecation note
+# above.
+from app.config import get_settings  # noqa: F401 — legacy patch-target compatibility
 
-
-def verify_api_key(api_key: str | None = Security(_api_key_header)) -> str:
-    """Dependency that validates the X-API-Key header.
-
-    Returns the validated key on success; raises 401 otherwise.
-    """
-    settings = get_settings()
-    expected = settings.pim_api_key
-    if not expected:
-        raise HTTPException(status_code=500, detail="Server misconfigured: API key not set")
-    if not api_key or not secrets.compare_digest(api_key, expected):
-        raise HTTPException(status_code=401, detail="Invalid or missing API key")
-    return api_key
+__all__ = ["verify_api_key"]
