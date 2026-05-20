@@ -1,94 +1,46 @@
-"""Database connection and session management."""
+"""Backwards-compatible re-export.
 
-import uuid
+.. deprecated::
+    The canonical home for SQLAlchemy engines, session factories,
+    declarative :class:`Base`, and the FastAPI ``get_async_db`` /
+    ``get_db`` dependencies is now
+    :mod:`app.platform.persistence.database`. Phase 5 step 4 of the
+    module refactor moved the implementation out of ``app`` because
+    the database layer is cross-cutting persistence infrastructure,
+    not application code.
 
-from sqlalchemy import String, create_engine, event
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
-from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
-from sqlalchemy.types import TypeDecorator
+    This file remains as a re-export shim because over 50 modules
+    (API routers, services, tasks, model files, scripts, tests,
+    Alembic env) currently import from ``app.database``; a single
+    big-bang rewrite would dwarf this slice's risk budget. Phase 7
+    (or an opportunistic future PR) can sweep the bulk migration
+    once the rest of Phase 5 is settled. New code MUST import from
+    :mod:`app.platform.persistence.database` directly.
+"""
 
-
-class UUIDString(TypeDecorator):
-    """Store UUIDs as 36-char strings. Accepts both uuid.UUID and str on input."""
-
-    impl = String(36)
-    cache_ok = True
-
-    def process_bind_param(self, value, dialect):
-        if value is not None:
-            return str(value)
-        return value
-
-    def process_result_value(self, value, dialect):
-        return value  # keep as string
-
-from app.config import get_settings
-
-settings = get_settings()
-
-# Synchronous engine (for background tasks running in threads)
-engine = create_engine(
-    settings.database_url,
-    connect_args={"check_same_thread": False},
-    echo=settings.debug,
+from app.platform.persistence.database import (  # noqa: F401 — re-export
+    AsyncSessionLocal,
+    Base,
+    SessionLocal,
+    UUIDString,
+    async_engine,
+    engine,
+    get_async_db,
+    get_db,
+    settings,
+)
+from app.platform.persistence.database import (  # noqa: F401 — explicit; SQLAlchemy event registrations
+    _set_sqlite_pragma_async,
+    _set_sqlite_pragma_sync,
 )
 
-# Asynchronous engine (for FastAPI endpoints).
-# SQLite + aiosqlite: SQLAlchemy's default async pool (``NullPool``-style
-# behaviour for sqlite) is appropriate — no TCP connection pool tuning needed.
-async_engine = create_async_engine(
-    settings.async_database_url,
-    echo=settings.debug,
-)
-
-
-# SQLite pragmas for performance and correctness
-@event.listens_for(engine, "connect")
-def _set_sqlite_pragma_sync(dbapi_connection, connection_record):
-    cursor = dbapi_connection.cursor()
-    cursor.execute("PRAGMA journal_mode=WAL")
-    cursor.execute("PRAGMA foreign_keys=ON")
-    cursor.execute("PRAGMA busy_timeout=5000")
-    cursor.close()
-
-
-@event.listens_for(async_engine.sync_engine, "connect")
-def _set_sqlite_pragma_async(dbapi_connection, connection_record):
-    cursor = dbapi_connection.cursor()
-    cursor.execute("PRAGMA journal_mode=WAL")
-    cursor.execute("PRAGMA foreign_keys=ON")
-    cursor.execute("PRAGMA busy_timeout=5000")
-    cursor.close()
-
-
-# Session factories
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-AsyncSessionLocal = sessionmaker(
-    class_=AsyncSession,
-    autocommit=False,
-    autoflush=False,
-    bind=async_engine,
-    expire_on_commit=False,
-)
-
-# Base class for models
-class Base(DeclarativeBase):
-    pass
-
-
-def get_db() -> Session:
-    """Get synchronous database session."""
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-
-
-async def get_async_db() -> AsyncSession:
-    """Get asynchronous database session."""
-    async with AsyncSessionLocal() as session:
-        try:
-            yield session
-        finally:
-            await session.close()
+__all__ = [
+    "AsyncSessionLocal",
+    "Base",
+    "SessionLocal",
+    "UUIDString",
+    "async_engine",
+    "engine",
+    "get_async_db",
+    "get_db",
+]

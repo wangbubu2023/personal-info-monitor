@@ -13,7 +13,7 @@ from datetime import timedelta
 
 from sqlalchemy.exc import IntegrityError
 
-from app.database import SessionLocal
+from app.platform.persistence.database import SessionLocal
 from app.models.runtime_lock import RuntimeLock
 from app.utils.datetime import utcnow_naive
 from app.utils.logger import get_logger

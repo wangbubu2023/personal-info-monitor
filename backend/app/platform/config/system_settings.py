@@ -8,7 +8,7 @@ from typing import Any, Dict
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database import SessionLocal
+from app.platform.persistence.database import SessionLocal
 from app.models.system_setting import SystemSetting
 from app.utils.logger import get_logger
 
