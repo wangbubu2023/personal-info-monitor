@@ -110,7 +110,6 @@ select = ["BLE001", "B904", "B023", "F821", "F811"]
 #     excepts in that file. Confirm with `ruff check --select BLE001 <path>`.
 "app/ai/provider.py" = ["BLE001"]
 "app/interfaces/http/configs_api_auth.py" = ["BLE001"]
-"app/interfaces/http/configs_common.py" = ["BLE001"]
 "app/interfaces/http/contents_crud.py" = ["BLE001"]
 "app/interfaces/http/sources/_helpers.py" = ["BLE001"]
 "app/interfaces/http/sources/mutation.py" = ["BLE001"]

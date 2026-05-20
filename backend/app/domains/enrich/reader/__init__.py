@@ -16,7 +16,10 @@ Module layout (post Phase 4 steps 1 + 5 of the module-refactor blueprint):
   stream endpoint. Moved from ``app.services.reader.streaming`` in
   Phase 4 step 5.
 
-The HTTP layer at ``app.api.contents_reader`` is kept thin — it imports
-these submodules directly. Both ``app.api.content_shared`` and
-``app.services.reader.*`` remain as re-export shims through Phase 7.
+The HTTP layer at ``app.interfaces.http.contents_reader`` (aliased as
+``app.api.contents_reader`` via the Phase 5 sys.modules shim) imports
+these submodules directly. The ``app.services.reader.*`` package was
+retired by the post-Phase-7 audit; the import-boundary checker bans it.
+The ``app.interfaces.http.content_shared`` module remains live for
+helpers shared between the HTTP layer and reader-internal callers.
 """

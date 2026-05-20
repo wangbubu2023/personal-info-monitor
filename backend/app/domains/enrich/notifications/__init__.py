@@ -11,6 +11,8 @@ domain-owned templates:
 * :mod:`.keyword_alert`  – per-content keyword match notification.
 
 All three call into :func:`app.platform.notifications.smtp.send_email`
-for outbound delivery; legacy callers keep working through the
-``app.tasks.email_tasks`` re-export shim.
+for outbound delivery. The legacy ``app.tasks.email_tasks`` re-export
+shim was retired by the post-Phase-7 audit; the import-boundary checker
+bans it. Importers must address the canonical submodule path here
+(or :mod:`app.platform.notifications.smtp` for raw transport).
 """

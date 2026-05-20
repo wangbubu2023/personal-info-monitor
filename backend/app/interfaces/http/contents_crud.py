@@ -190,7 +190,7 @@ async def manual_export_markdown(db: AsyncSession = Depends(get_async_db)):
     from datetime import timedelta
     from app.utils.datetime import utcnow_naive
     from app.platform.config.system_settings import get_system_settings_async
-    from app.exporters.markdown_exporter import MarkdownExporter
+    from app.platform.export import MarkdownExporter
 
     settings = await get_system_settings_async(db)
     if not settings.get("markdown_export_enabled"):

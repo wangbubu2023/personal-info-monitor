@@ -10,8 +10,8 @@ out of ``app.utils`` into the platform layer:
   (``assert_public_http_target`` / ``check_before_fetch``) used by every
   collector that does network IO. Previously at ``app.utils.ssrf``.
 
-Both old paths remain as re-export shims (with explicit underscore-symbol
-forwarding so existing ``patch("app.utils.ssrf._resolve_host_addresses")``
-test sites keep targeting the same symbol identity). Phase 7 removes
-those shims.
+The ``app.utils.encryption`` shim remains because it still serves as a
+``patch()`` target in several tests. The ``app.utils.ssrf`` shim was
+retired by the post-Phase-7 audit; the import-boundary checker bans it.
+SSRF callers must import :mod:`app.platform.security.ssrf` directly.
 """

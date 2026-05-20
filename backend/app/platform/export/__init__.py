@@ -7,12 +7,8 @@ platform layer. As of this step the package contains:
   :class:`MarkdownExporter`, the YAML-frontmatter Markdown writer used by
   ``contents/{id}/export-md`` and the ``maintenance`` task that fans out
   bulk exports. Previously lived at ``app.exporters.markdown_exporter``;
-  that module is preserved as a re-export shim through Phase 7.
-
-The legacy ``app.exporters`` namespace remains importable so existing
-callers (CLI maintenance tasks, the contents-CRUD download endpoint, and
-any external automation that imported the old path) keep working without
-modification while we migrate them in Phase 7.
+  the legacy shim was retired by the post-Phase-7 audit after the two
+  remaining callers were migrated to import from this package directly.
 """
 
 from app.platform.export.markdown import MarkdownExporter

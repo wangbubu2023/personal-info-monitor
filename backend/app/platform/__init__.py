@@ -15,5 +15,8 @@ Rules (enforced from refactor Phase 5 onwards by
 
 Phase 2 step 1 created this package together with :mod:`app.platform.locks`
 in order to break the ``background.py -> app.services.runtime_lock_service``
-circular dependency described in 蓝图 §1.4 / §10.
+circular dependency described in 蓝图 §1.4 / §10. The legacy
+``app.services.runtime_lock_service`` shim was retired by the post-
+Phase-7 audit; runtime-lock callers must address :mod:`app.platform.locks`
+directly.
 """

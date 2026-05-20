@@ -10,7 +10,8 @@ into the platform package. As of Phase 5 step 10 this includes:
   re-export shim through Phase 7.
 * :mod:`app.platform.config.system_settings` — DB-backed user-tunable
   settings + in-memory cache + hourly-digest prompt helpers. Previously
-  lived at ``app.services.system_settings`` (also kept as a shim).
+  lived at ``app.services.system_settings``; the legacy shim was retired
+  by the post-Phase-7 audit and the import-boundary checker bans it.
 
 Future siblings planned under this package:
 

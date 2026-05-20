@@ -14,8 +14,8 @@ Pipeline:
 - :mod:`.tasks`       – thin orchestrator: load context → pick →
   synthesize → store (with progressive AI-failure degradation)
 
-Legacy shims under ``app.services.hourly_digest`` and
-``app.tasks.hourly_digest_tasks`` re-export every public symbol so
-out-of-tree consumers and existing test helpers keep resolving;
-Phase 7 will retire those shims.
+This is the only path for the hourly digest pipeline — the legacy
+``app.services.hourly_digest`` and ``app.tasks.hourly_digest_tasks``
+re-export shims were retired by the post-Phase-7 audit (zero remaining
+callers) and the import-boundary checker now bans them.
 """

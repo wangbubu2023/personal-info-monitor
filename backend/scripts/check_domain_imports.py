@@ -138,6 +138,35 @@ RULES: tuple[Rule, ...] = (
         "configs_common aggregator facade removed by Phase 7; address the split "
         "modules (configs_common_auth / configs_common_browser / configs_common_cookies) directly",
     ),
+    # Phase 7 housekeeping — orphan shims removed by the post-Phase-7 audit.
+    # These re-export facades were retained "just in case" during earlier
+    # phases but had zero remaining callers (see audit notes); banning them
+    # here prevents future code from accidentally reintroducing them.
+    (
+        "app.",
+        (
+            "app.collectors.podcast",
+            "app.collectors.website_helpers",
+            "app.collectors.x_twitter_formatters",
+            "app.data.source_types",
+            "app.exporters",
+            "app.utils.ssrf",
+            "app.utils.tracing",
+            "app.tasks.email_tasks",
+            "app.tasks.fetch_orchestrator",
+            "app.tasks.hourly_digest_tasks",
+            "app.services.runtime_lock_service",
+            "app.services.system_settings",
+            "app.services.hourly_digest",
+            "app.services.reader",
+        ),
+        7,
+        "orphan shim removed by post-Phase-7 audit; import the canonical path "
+        "(domains.fetch.collectors / domains.sources.source_types / platform.export / "
+        "platform.security.ssrf / platform.observability.tracing / domains.enrich.notifications / "
+        "domains.sources.status / domains.enrich.hourly / platform.locks / platform.config / "
+        "domains.enrich.reader) instead",
+    ),
 )
 
 

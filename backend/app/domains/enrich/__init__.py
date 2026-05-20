@@ -37,35 +37,32 @@ Phase progress:
 * ``domains/enrich/reader/{body_loader, translation, streaming}.py`` —
   moved from ``app.services.reader.*`` in Phase 4 step 5 (Reader 整包
   平移). ``app.api.contents_reader`` switched to import these directly
-  from the canonical location; the ``app.services.reader.*`` paths
-  remain as re-export shims (test patches that target internals were
-  migrated to ``app.domains.enrich.reader.*`` paths in
-  ``tests/test_contents_reader.py``).
+  from the canonical location; the post-Phase-7 audit confirmed every
+  remaining caller had moved over, so the ``app.services.reader.*``
+  shim package was deleted. Address the new module path directly.
 * ``domains/enrich/hourly/{tasks, repository, selection, synthesis,
   text_utils}.py`` — moved from ``app.services.hourly_digest.*`` +
   ``app.tasks.hourly_digest_tasks`` in Phase 4 step 6 (hourly digest
-  整包平移). ``app.scheduler`` and ``app.tasks.__init__`` switched to
-  import ``generate_previous_hour_digest`` / ``clear_hourly_digests``
-  from the canonical location; both legacy paths remain as
-  ``from new import *`` re-export shims. The HTTP-facing ``hourly``
-  naming on ``app/api/digest.py`` is preserved per the "must keep"
-  list. ``tests/test_hourly_digest_limits.py`` was migrated to import
+  整包平移). The HTTP-facing ``hourly`` naming on
+  ``app/api/digest.py`` is preserved per the "must keep" list.
+  ``tests/test_hourly_digest_limits.py`` was migrated to import
   ``synthesis``/``tasks``/``text_utils`` from the canonical module so
   that ``monkeypatch`` against wrapper-internal ``Translator`` /
-  ``get_system_settings_sync`` hits the actual call sites, and to
-  reach the underscore-prefixed legacy aliases that ``import *`` does
-  not carry through the shim.
+  ``get_system_settings_sync`` hits the actual call sites. The
+  ``app.services.hourly_digest.*`` and ``app.tasks.hourly_digest_tasks``
+  re-export shims were retired by the post-Phase-7 audit (zero
+  remaining callers); the import-boundary checker now bans both.
 * ``domains/enrich/notifications/{daily_digest, doctor_digest,
   keyword_alert}.py`` — extracted from the legacy 407-line
   ``app.tasks.email_tasks`` module in Phase 4 step 7. SMTP transport
   moved to :mod:`app.platform.notifications.smtp`. ``app.scheduler``,
   ``app.tasks.__init__`` and ``app.domains.ingest.finish`` switched to
-  import each entry point from its canonical location;
-  ``app.tasks.email_tasks`` remains a thin facade that re-exports the
-  five public names from the four new modules. Test patches that
-  targeted wrapper-internal ``asyncio.to_thread`` / ``send_email`` /
-  ``send_keyword_alert`` references were migrated to the canonical
-  submodule paths in ``tests/test_email_tasks.py`` and
+  import each entry point from its canonical location. The
+  ``app.tasks.email_tasks`` re-export facade was retired by the
+  post-Phase-7 audit; the import-boundary checker bans it. Test patches
+  that previously targeted wrapper-internal ``asyncio.to_thread`` /
+  ``send_email`` / ``send_keyword_alert`` references already live on
+  the canonical submodule paths in ``tests/test_email_tasks.py`` and
   ``tests/test_process_tasks_extended.py``.
 * :mod:`app.platform.llm.summarizer` / :mod:`app.platform.llm.translator`
   — moved from ``app.processors.summarizer`` / ``app.processors.translator``
@@ -95,8 +92,8 @@ Phase progress:
   ``frontend/src/config/taskPromptDefaults.ts`` was resynced to match
   the backend's "本次简报窗口内" wording in
   :mod:`app.platform.config.system_settings` (relocated from
-  ``app.services.system_settings`` in Phase 5 step 2; the old path
-  remains as a shim). The pytest autouse fixture in
+  ``app.services.system_settings`` in Phase 5 step 2; the legacy
+  shim was retired by the post-Phase-7 audit). The pytest autouse fixture in
   ``conftest.py`` was extended to pin all four env vars so tests do
   not inherit a developer's per-feature overrides and do not spam
   ``DeprecationWarning`` during ``get_settings.cache_clear()`` loops.
