@@ -17,7 +17,7 @@ async def test_probe_service_blocks_private_resolution(monkeypatch):
     async def _fake_resolve(_hostname: str, _port: int) -> List[str]:
         return ["127.0.0.1"]
 
-    monkeypatch.setattr("app.utils.ssrf._resolve_host_addresses", _fake_resolve)
+    monkeypatch.setattr("app.platform.security.ssrf._resolve_host_addresses", _fake_resolve)
 
     with pytest.raises(ValueError, match="private address"):
         await service._assert_public_http_target("http://example.com")
@@ -61,7 +61,7 @@ async def test_probe_service_blocks_redirects_to_private_hosts(monkeypatch):
     async def _fake_resolve(hostname: str, _port: int) -> List[str]:
         return ["93.184.216.34"] if hostname == "example.com" else ["127.0.0.1"]
 
-    monkeypatch.setattr("app.utils.ssrf._resolve_host_addresses", _fake_resolve)
+    monkeypatch.setattr("app.platform.security.ssrf._resolve_host_addresses", _fake_resolve)
     monkeypatch.setattr(
         "app.services.probe_service.aiohttp.ClientSession",
         lambda *args, **kwargs: _FakeSession(),

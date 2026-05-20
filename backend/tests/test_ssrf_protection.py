@@ -1,6 +1,6 @@
 import pytest
 
-from app.utils.ssrf import assert_public_http_target, check_before_fetch, hosts_match
+from app.platform.security.ssrf import assert_public_http_target, check_before_fetch, hosts_match
 
 
 # ---------------------------------------------------------------------------

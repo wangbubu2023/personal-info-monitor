@@ -27,7 +27,7 @@ from app.services.probe_strategies.rss import (  # re-exported for callers
 )
 from app.utils.http import permissive_session_kwargs
 from app.utils.logger import get_logger
-from app.utils.ssrf import _is_private_address, assert_public_http_target
+from app.platform.security.ssrf import _is_private_address, assert_public_http_target
 
 logger = get_logger(__name__)
 settings = get_settings()

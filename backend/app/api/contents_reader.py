@@ -72,7 +72,7 @@ from app.processors.extractor import ContentExtractor  # noqa: E402,F401 - patch
 from app.processors.translator import Translator  # noqa: E402,F401 - patch target
 from app.tasks.fetch_auth_helpers import try_parse_auth_credentials  # noqa: E402,F401 - patch target
 from app.utils.cookies import normalize_cookie_dict  # noqa: E402,F401 - patch target
-from app.utils.ssrf import assert_public_http_target  # noqa: E402,F401 - patch target
+from app.platform.security.ssrf import assert_public_http_target  # noqa: E402,F401 - patch target
 from app.utils.text import strip_html_tags, truncate_content  # noqa: E402,F401 - patch target
 from app.config import get_settings  # noqa: E402,F401 - patch target
 import aiohttp  # noqa: E402,F401 - patch target

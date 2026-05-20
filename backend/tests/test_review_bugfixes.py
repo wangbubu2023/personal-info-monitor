@@ -12,7 +12,7 @@ from app.collectors import get_collector
 from app.config import get_settings
 from app.main import _mask_secret
 from app.models.content import Content
-from app.utils.encryption import decrypt_data, encrypt_data
+from app.platform.security.encryption import decrypt_data, encrypt_data
 
 
 def _legacy_fixed_salt_encrypt(payload: dict) -> str:

@@ -28,7 +28,7 @@ from app.models.auth_config import AuthConfig
 from app.models.browser_session import BrowserSession
 from app.platform.browser.hosts import _X_HOSTS, is_x_host
 from app.utils.datetime import to_iso_z, utcnow_naive
-from app.utils.encryption import encrypt_data
+from app.platform.security.encryption import encrypt_data
 from app.utils.logger import get_logger
 from app.utils.url import host_matches, normalize_host
 

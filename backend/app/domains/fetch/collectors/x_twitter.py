@@ -45,7 +45,7 @@ from app.domains.fetch.collectors.x_twitter_text import (
 )
 from app.models import Source
 from app.utils.http import permissive_session_kwargs
-from app.utils.ssrf import assert_public_http_target
+from app.platform.security.ssrf import assert_public_http_target
 
 
 class XCollector(BaseCollector):

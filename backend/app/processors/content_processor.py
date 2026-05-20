@@ -20,7 +20,7 @@ from app.services.content_quality_service import merge_content_quality_metadata
 from app.utils.cookies import normalize_cookie_dict
 from app.utils.http import permissive_session_kwargs
 from app.utils.logger import get_logger
-from app.utils.ssrf import check_before_fetch
+from app.platform.security.ssrf import check_before_fetch
 from app.utils.text import strip_html_tags, truncate_content
 
 logger = get_logger(__name__)

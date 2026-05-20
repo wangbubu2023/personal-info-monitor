@@ -22,7 +22,7 @@ from app.schemas.config import (
     AuthConfigUpdate,
 )
 from app.utils.datetime import utcnow_naive
-from app.utils.encryption import decrypt_data, encrypt_data
+from app.platform.security.encryption import decrypt_data, encrypt_data
 from app.utils.url import normalize_host
 from app.api.configs_common import (
     bind_auth_config_to_all_x_sources,

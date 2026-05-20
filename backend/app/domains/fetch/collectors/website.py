@@ -35,7 +35,7 @@ from app.utils.human_timing import (
 )
 from app.utils.logger import get_logger
 from app.utils.playwright_stealth import stealth_init_script
-from app.utils.ssrf import check_before_fetch
+from app.platform.security.ssrf import check_before_fetch
 
 from . import website_helpers as _helpers
 from . import website_parser as _parser

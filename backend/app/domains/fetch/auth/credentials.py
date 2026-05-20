@@ -26,7 +26,7 @@ def try_parse_auth_credentials(auth_config) -> dict:
         return {}
     site_host = normalize_host(getattr(auth_config, "site_url", ""))
     try:
-        from app.utils.encryption import decrypt_data
+        from app.platform.security.encryption import decrypt_data
 
         raw = decrypt_data(auth_config.credentials)
         if isinstance(raw, str):

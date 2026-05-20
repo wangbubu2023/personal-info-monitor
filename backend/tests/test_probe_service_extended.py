@@ -627,7 +627,7 @@ class TestHttpGet:
         service = ProbeService()
         async def _fake_resolve(hostname, port):
             return ["127.0.0.1"]
-        with patch("app.utils.ssrf._resolve_host_addresses", _fake_resolve):
+        with patch("app.platform.security.ssrf._resolve_host_addresses", _fake_resolve):
             result = await service._http_get("http://localhost/admin")
             assert result is None
 
@@ -665,7 +665,7 @@ class TestHttpGet:
         ):
             async def _fake_resolve(hostname, port):
                 return ["93.184.216.34"]
-            with patch("app.utils.ssrf._resolve_host_addresses", _fake_resolve):
+            with patch("app.platform.security.ssrf._resolve_host_addresses", _fake_resolve):
                 result = await service._http_get("http://public.example.com/start")
                 assert result is None
 

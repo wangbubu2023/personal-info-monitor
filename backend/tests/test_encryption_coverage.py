@@ -1,4 +1,4 @@
-"""Extra coverage for :mod:`app.utils.encryption`."""
+"""Extra coverage for :mod:`app.platform.security.encryption`."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from cryptography.fernet import Fernet
 
 from app.config import get_settings
-from app.utils.encryption import (
+from app.platform.security.encryption import (
     _LEGACY_STATIC_SALT,
     _SALT_LENGTH,
     _V2_PREFIX,

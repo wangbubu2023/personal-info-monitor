@@ -15,7 +15,7 @@ from bs4 import BeautifulSoup
 from app.domains.fetch.collectors.base import BaseCollector
 from app.models import Source
 from app.utils.logger import get_logger
-from app.utils.ssrf import check_before_fetch
+from app.platform.security.ssrf import check_before_fetch
 from app.utils.text import strip_html_tags, text_looks_like_embedded_binary
 
 logger = get_logger(__name__)

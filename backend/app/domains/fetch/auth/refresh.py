@@ -96,7 +96,7 @@ async def maybe_refresh_auth_cookies(db, source, creds: dict) -> tuple[dict, str
     merged["cookie_mode"] = "auto"
     merged["cookie_updated_at"] = utcnow_naive().isoformat() + "Z"
     try:
-        from app.utils.encryption import encrypt_data
+        from app.platform.security.encryption import encrypt_data
 
         source.auth_config.credentials = encrypt_data(merged)
         source.auth_config.last_validated_at = utcnow_naive()

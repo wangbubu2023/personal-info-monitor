@@ -19,7 +19,7 @@ from __future__ import annotations
 import json
 
 from app.models.auth_config import APIConfig
-from app.utils.encryption import decrypt_data
+from app.platform.security.encryption import decrypt_data
 
 
 def decrypt_api_credentials(config: APIConfig) -> dict:

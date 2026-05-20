@@ -7,7 +7,7 @@ from app.utils.datetime import utcnow_naive
 from app.models import Source
 from app.utils.cookies import normalize_cookie_dict
 from app.utils.logger import get_logger
-from app.utils.ssrf import assert_public_http_target
+from app.platform.security.ssrf import assert_public_http_target
 
 logger = get_logger(__name__)
 

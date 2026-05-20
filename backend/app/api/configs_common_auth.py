@@ -12,7 +12,7 @@ import json
 from app.models.auth_config import APIConfig, AuthConfig
 from app.platform.auth.api_credentials import decrypt_api_credentials  # noqa: F401 - re-export
 from app.utils.datetime import to_iso_z
-from app.utils.encryption import decrypt_data
+from app.platform.security.encryption import decrypt_data
 from app.utils.url import normalize_host
 
 

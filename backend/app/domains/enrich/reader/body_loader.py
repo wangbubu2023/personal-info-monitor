@@ -31,7 +31,7 @@ from app.utils.cookies import normalize_cookie_dict
 from app.utils.datetime import utcnow_naive
 from app.utils.http import permissive_session_kwargs
 from app.utils.logger import get_logger
-from app.utils.ssrf import assert_public_http_target
+from app.platform.security.ssrf import assert_public_http_target
 from app.utils.text import strip_html_tags, truncate_content
 
 logger = get_logger(__name__)
