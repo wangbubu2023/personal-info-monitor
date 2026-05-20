@@ -27,7 +27,7 @@ from app.platform.browser.bootstrap import (
     _require_playwright,
 )
 from app.platform.browser.hosts import is_x_host
-from app.utils.logger import get_logger
+from app.platform.observability.logger import get_logger
 from app.utils.playwright_runtime import (
     async_playwright,
     default_channel as _browser_default_channel,

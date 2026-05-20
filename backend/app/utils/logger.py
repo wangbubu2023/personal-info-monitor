@@ -1,165 +1,23 @@
-"""Logging configuration."""
+"""Backwards-compatible re-export.
 
-from __future__ import annotations
+.. deprecated::
+    The canonical home for logging configuration (JSON formatter,
+    request- and job-id context binding, rotating file handler,
+    mirroring) is now :mod:`app.platform.observability.logger`.
+    Phase 5 step 5 of the module refactor moved the implementation
+    out of ``app.utils`` because logging is cross-cutting
+    observability infrastructure, not a generic utility.
 
-import json
-import logging
-import os
-import sys
-from logging.handlers import RotatingFileHandler
-from contextvars import ContextVar, Token
-from datetime import datetime, timezone
-from typing import Optional
+    This file remains as a thin re-export shim. The 30+ modules that
+    currently consume ``app.utils.logger`` continue to import via
+    this shim path; bulk migration is deferred to Phase 7. New code
+    MUST import from :mod:`app.platform.observability.logger`
+    directly.
+"""
 
-from app.config import get_settings
-
-_request_id: ContextVar[str | None] = ContextVar("request_id", default=None)
-_job_id: ContextVar[str | None] = ContextVar("job_id", default=None)
-_logging_configured = False
-
-
-def bind_job_id(job_id: str | None) -> Token:
-    """Bind job_id to context, returns Token for restore."""
-    return _job_id.set(job_id)
-
-
-def restore_job_id(token: Token) -> None:
-    """Restore previous job_id using saved token."""
-    _job_id.reset(token)
-
-
-def get_job_id() -> str | None:
-    """Return the active job id, if any."""
-    return _job_id.get()
-
-
-def set_request_id(request_id: str | None) -> None:
-    """Bind the current request id into logging context."""
-    _request_id.set(request_id)
-
-
-def clear_request_id() -> None:
-    """Clear request-scoped logging context."""
-    _request_id.set(None)
-
-
-def get_request_id() -> str | None:
-    """Return the active request id, if any."""
-    return _request_id.get()
-
-
-class _RequestContextFilter(logging.Filter):
-    def filter(self, record: logging.LogRecord) -> bool:
-        record.request_id = get_request_id()
-        record.job_id = get_job_id()
-        return True
-
-
-class _JsonFormatter(logging.Formatter):
-    """Minimal JSON formatter for production-friendly logs."""
-
-    def format(self, record: logging.LogRecord) -> str:
-        payload = {
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "level": record.levelname,
-            "logger": record.name,
-            "message": record.getMessage(),
-        }
-        request_id = getattr(record, "request_id", None)
-        if request_id:
-            payload["request_id"] = request_id
-        job_id = getattr(record, "job_id", None)
-        if job_id:
-            payload["job_id"] = job_id
-        # Forward any extra structured fields (phase, source_id, etc.)
-        for key in ("phase", "source_id", "content_id"):
-            val = record.__dict__.get(key)
-            if val is not None:
-                payload[key] = val
-        if record.exc_info:
-            payload["exc_info"] = self.formatException(record.exc_info)
-        return json.dumps(payload, ensure_ascii=True)
-
-
-def _configure_logging() -> None:
-    global _logging_configured
-    if _logging_configured:
-        return
-
-    settings = get_settings()
-    level = logging.DEBUG if settings.debug else logging.INFO
-    log_format = os.getenv("LOG_FORMAT", "json").strip().lower()
-
-    handler = logging.StreamHandler(sys.stdout)
-    handler.setLevel(level)
-    handler.addFilter(_RequestContextFilter())
-    if log_format == "text":
-        handler.setFormatter(
-            logging.Formatter(
-                "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-                datefmt="%Y-%m-%d %H:%M:%S",
-            )
-        )
-    else:
-        handler.setFormatter(_JsonFormatter())
-
-    root_logger = logging.getLogger()
-    root_logger.handlers.clear()
-    root_logger.addHandler(handler)
-    root_logger.setLevel(level)
-
-    log_dir = os.environ.get("PIM_LOG_DIR", ".pim-local-logs")
-    if log_dir:
-        os.makedirs(log_dir, exist_ok=True)
-        max_bytes = _positive_int_env(
-            "PIM_LOG_MAX_BYTES", default=10 * 1024 * 1024, minimum=64 * 1024
-        )
-        backup_count = _non_negative_int_env("PIM_LOG_BACKUP_COUNT", default=5, maximum=100)
-        file_handler = RotatingFileHandler(
-            os.path.join(log_dir, "backend.log"),
-            maxBytes=max_bytes,
-            backupCount=backup_count,
-            encoding="utf-8",
-        )
-        file_handler.setLevel(level)
-        file_handler.addFilter(_RequestContextFilter())
-        file_handler.setFormatter(_JsonFormatter())
-        root_logger.addHandler(file_handler)
-
-    _logging_configured = True
-
-
-def _positive_int_env(name: str, *, default: int, minimum: int) -> int:
-    """Parse a positive integer env var, falling back to ``default`` on error.
-
-    Values below ``minimum`` are clamped up so operators can't accidentally
-    DoS themselves with a 100-byte rotation threshold.
-    """
-    raw = os.environ.get(name)
-    if raw is None or not raw.strip():
-        return default
-    try:
-        value = int(raw.strip())
-    except ValueError:
-        return default
-    return max(minimum, value)
-
-
-def _non_negative_int_env(name: str, *, default: int, maximum: int) -> int:
-    """Parse a non-negative integer env var capped at ``maximum``."""
-    raw = os.environ.get(name)
-    if raw is None or not raw.strip():
-        return default
-    try:
-        value = int(raw.strip())
-    except ValueError:
-        return default
-    if value < 0:
-        return default
-    return min(maximum, value)
-
-
-def get_logger(name: Optional[str] = None) -> logging.Logger:
-    """Get a configured logger instance."""
-    _configure_logging()
-    return logging.getLogger(name or "personal-info-monitor")
+from app.platform.observability.logger import *  # noqa: F401,F403 — re-export
+from app.platform.observability.logger import (  # noqa: F401 — explicit (private context vars / state)
+    _job_id,
+    _logging_configured,
+    _request_id,
+)

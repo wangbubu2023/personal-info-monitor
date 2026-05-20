@@ -16,7 +16,7 @@ from sqlalchemy.exc import IntegrityError
 from app.platform.persistence.database import SessionLocal
 from app.models.runtime_lock import RuntimeLock
 from app.utils.datetime import utcnow_naive
-from app.utils.logger import get_logger
+from app.platform.observability.logger import get_logger
 
 logger = get_logger(__name__)
 

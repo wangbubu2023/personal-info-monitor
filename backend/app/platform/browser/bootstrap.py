@@ -20,7 +20,7 @@ from typing import Any, Dict, List
 
 from app.features import PlaywrightDisabledError, playwright_enabled
 from app.utils.cookies import cookie_domains_for_host
-from app.utils.logger import get_logger
+from app.platform.observability.logger import get_logger
 from app.utils.playwright_runtime import (
     async_playwright,
     default_channel as _browser_default_channel,

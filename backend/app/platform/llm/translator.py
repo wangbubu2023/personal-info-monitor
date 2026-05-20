@@ -10,7 +10,7 @@ from app.ai.provider import (
     normalize_model_runtime,
 )
 from app.config import get_settings
-from app.utils.logger import get_logger
+from app.platform.observability.logger import get_logger
 
 logger = get_logger(__name__)
 

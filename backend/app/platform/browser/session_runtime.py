@@ -23,7 +23,7 @@ from pathlib import Path
 from uuid import UUID
 
 from app.utils.datetime import utcnow_naive
-from app.utils.logger import get_logger
+from app.platform.observability.logger import get_logger
 
 logger = get_logger(__name__)
 

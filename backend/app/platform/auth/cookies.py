@@ -12,7 +12,7 @@ import aiohttp
 from yarl import URL
 
 from app.utils.http import permissive_session_kwargs
-from app.utils.logger import get_logger
+from app.platform.observability.logger import get_logger
 
 logger = get_logger(__name__)
 

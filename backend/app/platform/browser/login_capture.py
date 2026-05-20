@@ -14,7 +14,7 @@ live in ``app.domains.fetch.auth.refresh``.
 from __future__ import annotations
 
 from app.platform.auth.cookies import domain_match
-from app.utils.logger import get_logger
+from app.platform.observability.logger import get_logger
 from app.utils.url import normalize_host
 
 logger = get_logger(__name__)
