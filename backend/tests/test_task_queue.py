@@ -23,10 +23,10 @@ async def test_enqueue_fetch_returns_false_when_queue_full():
 
 
 @pytest.mark.asyncio
-async def test_enqueue_process_returns_true_when_capacity_available():
+async def test_enqueue_ingest_finish_returns_true_when_capacity_available():
     from app.tasks.task_queue import BoundedTaskQueue
     q = BoundedTaskQueue(fetch_maxsize=5, process_maxsize=5)
-    result = await q.enqueue_process("content-1")
+    result = await q.enqueue_ingest_finish("content-1")
     assert result is True
 
 

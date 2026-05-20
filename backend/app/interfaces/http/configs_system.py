@@ -16,7 +16,7 @@ from app.platform.config.system_settings import (
     get_system_settings_for_response,
     update_system_settings_async,
 )
-from app.interfaces.http.configs_common import decrypt_api_credentials
+from app.interfaces.http.configs_common_auth import decrypt_api_credentials
 from app.utils.model_catalog import load_model_providers
 
 router = APIRouter()

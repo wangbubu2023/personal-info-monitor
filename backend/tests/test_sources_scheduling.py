@@ -156,13 +156,12 @@ class TestGetDueSources:
         assert [s.id for s in result] == ["due"]
 
 
-class TestBackCompatAlias:
-    def test_old_tasks_module_re_exports_scheduling_function(self):
-        """``app.tasks.fetch_tasks._effective_due_interval_minutes`` must keep working.
-
-        Existing tests (``tests/test_fetch_tasks_extended.py``) import the
-        legacy private symbol; the alias has to point at the new function.
+class TestCanonicalImportPath:
+    def test_canonical_function_is_importable_from_domain(self):
+        """Phase 7 retired the ``app.tasks.fetch_tasks._effective_due_interval_minutes``
+        alias; callers must import :func:`effective_due_interval_minutes`
+        from :mod:`app.domains.sources.scheduling` directly.
         """
-        from app.tasks.fetch_tasks import _effective_due_interval_minutes
+        from app.domains.sources.scheduling import effective_due_interval_minutes as canonical
 
-        assert _effective_due_interval_minutes is effective_due_interval_minutes
+        assert canonical is effective_due_interval_minutes

@@ -1,18 +1,21 @@
-"""Backwards-compatible facade for post-fetch content processing tasks.
+"""Manual reprocess + keyword-refresh tasks (post-fetch enrich operations).
 
-The non-LLM ingest-finalization path (formerly ``process_new_content`` +
-``_process_new_content_async`` + ``_dispatch_keyword_alerts``) moved to
-:mod:`app.domains.ingest.finish` in Phase 3 step 5 of the
-module-refactor blueprint. Those callables are re-exported here under
-their legacy names so existing callers — ``task_queue._process_worker``
-(now using ``finish_content`` directly), ``app.tasks.__init__``, and
-the keyword-alert / process-task tests — keep resolving without churn.
+The non-LLM ingest-finalization path moved to
+:mod:`app.domains.ingest.finish` in Phase 3 step 5 of the module-refactor
+blueprint; its canonical entry point is
+:func:`app.domains.ingest.finish.finish_content`. Phase 7 retired the
+legacy ``process_new_content`` / ``_process_new_content_async`` aliases
+that used to be re-exported from this module.
 
-LLM-bearing manual reprocess paths (``process_content`` /
-``_process_content_async``) and the keyword-refresh batch
-(``update_keyword_matches`` / ``_update_keyword_matches_sync``) stay
-here for now; they will move to ``tasks/enrich_jobs.py`` in Phase 4
-once enrich is collapsed.
+What stays here:
+
+* :func:`process_content` — UI-triggered manual reprocess (LLM-bearing
+  summarization / translation).
+* :func:`update_keyword_matches` — batch keyword-refresh job.
+* :func:`batch_process_contents` — thin scheduler-side dispatcher.
+
+A future revision (blueprint §5.7) will move all three to
+``tasks/enrich_jobs.py``; until then they remain co-located here.
 """
 
 from __future__ import annotations
@@ -20,11 +23,6 @@ from __future__ import annotations
 import asyncio
 
 from app.background import get_llm_semaphore, task_tracker  # noqa: F401 — patch target for tests
-from app.domains.ingest.finish import (  # noqa: F401 — re-exported under legacy names
-    _dispatch_keyword_alerts,
-    _finish_content_async as _process_new_content_async,
-    finish_content as process_new_content,
-)
 from app.features import KEYWORD_MONITORING_ENABLED  # noqa: F401 — patch target for tests
 from app.utils.logger import get_logger
 
@@ -42,7 +40,7 @@ async def _process_content_async(content_id: str, regenerate_summary: bool, retr
     from app.config import get_settings
     from app.database import SessionLocal
     from app.models import Content
-    from app.processors import ContentProcessor
+    from app.processors.content_processor import ContentProcessor
 
     if (regenerate_summary or retranslate) and not get_settings().ai_processing_enabled:
         logger.info("AI processing disabled; skip manual reprocess for %s", content_id)
@@ -127,9 +125,6 @@ def _update_keyword_matches_sync():
 
 
 __all__ = [
-    "process_new_content",
-    "_process_new_content_async",
-    "_dispatch_keyword_alerts",
     "process_content",
     "batch_process_contents",
     "update_keyword_matches",

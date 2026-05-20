@@ -1,25 +1,22 @@
 """Platform-level worker primitives.
 
-Phase 5 step 6 of the refactor relocates the bounded async task queue
+Phase 5 step 6 of the refactor relocated the bounded async task queue
 out of ``app.tasks`` into the platform layer:
 
 * :mod:`app.platform.workers.queue` — :class:`BoundedTaskQueue`
   (backed by two ``asyncio.Queue`` instances + rotating DLQ log),
   the module-level ``task_queue`` singleton consumed by every
-  fetch / ingest dispatch site, and the
-  ``enqueue_fetch`` / ``enqueue_ingest_finish`` /
-  ``enqueue_process`` (legacy alias) coroutines. Previously at
+  fetch / ingest dispatch site, and the ``enqueue_fetch`` /
+  ``enqueue_ingest_finish`` coroutines. Previously at
   ``app.tasks.task_queue``.
 
-The old path remains as a re-export shim. The five call sites that
-consume the singleton (``app.main``, ``app.tasks.fetch_tasks``,
-``app.tasks.process_tasks``, ``app.api.sources.fetch_import``, plus
-test_fetch_tasks_extended ``patch`` targets) continue to import via
-the shim path; bulk migration is deferred to Phase 7 to keep this
-slice small.
+The old ``app.tasks.task_queue`` path remains as a thin re-export shim
+so existing test patches continue to resolve. Phase 7 retired the
+``enqueue_process`` legacy alias — callers dispatch through
+:meth:`BoundedTaskQueue.enqueue_ingest_finish` directly.
 
-Update the canonical singleton path for new code instead of the
-shim — and especially for new ``patch`` targets in tests.
+Use the canonical singleton path (``app.platform.workers.task_queue``)
+for new code and new ``patch`` targets.
 """
 
 from app.platform.workers.queue import (  # noqa: F401 — convenience re-export

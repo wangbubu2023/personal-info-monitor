@@ -1,4 +1,9 @@
-"""Tests for pipeline stages: AIStage, CollectorStage, StorageStage, coordinator, dedupe."""
+"""Tests for pipeline stages: CollectorStage, StorageStage, coordinator, dedupe.
+
+Phase 7 retired :mod:`app.pipeline.ai_stage` (the legacy deprecated stage
+had no production callers; the tests that pinned it were removed alongside
+the implementation).
+"""
 
 from datetime import datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -35,55 +40,6 @@ def _raw(title="Article", url="https://example.com/1", external_id="ext-1", **ex
     d = {"title": title, "url": url, "external_id": external_id, "content": "body text", "publish_time": datetime.utcnow().isoformat()}
     d.update(extra)
     return d
-
-
-# ===========================================================================
-# AIStage
-# ===========================================================================
-
-class TestAIStage:
-
-    @pytest.mark.asyncio
-    async def test_processes_each_raw_content(self):
-        """AIStage should invoke processor.process for every raw content dict."""
-        from app.pipeline.ai_stage import AIStage
-
-        fake_content = MagicMock(spec=Content)
-        with patch("app.pipeline.ai_stage.ContentProcessor") as MockCls:
-            mock_proc = AsyncMock()
-            mock_proc.process.return_value = fake_content
-            MockCls.return_value = mock_proc
-
-            source = _make_source()
-            raw = [_raw(title="A"), _raw(title="B", external_id="ext-2")]
-            result = await AIStage.execute(source, raw, [])
-
-        assert len(result) == 2
-        assert mock_proc.process.call_count == 2
-
-    @pytest.mark.asyncio
-    async def test_continues_on_processor_error(self):
-        """AIStage should skip items that raise and still return the rest."""
-        from app.pipeline.ai_stage import AIStage
-
-        fake_content = MagicMock(spec=Content)
-        with patch("app.pipeline.ai_stage.ContentProcessor") as MockCls:
-            mock_proc = AsyncMock()
-            mock_proc.process.side_effect = [RuntimeError("boom"), fake_content]
-            MockCls.return_value = mock_proc
-
-            result = await AIStage.execute(_make_source(), [_raw(), _raw(external_id="ext-2")], [])
-
-        assert len(result) == 1
-
-    @pytest.mark.asyncio
-    async def test_empty_input_returns_empty(self):
-        from app.pipeline.ai_stage import AIStage
-
-        with patch("app.pipeline.ai_stage.ContentProcessor"):
-            result = await AIStage.execute(_make_source(), [], [])
-
-        assert result == []
 
 
 # ===========================================================================
@@ -431,7 +387,9 @@ class TestStorageStage:
 
 
 # ===========================================================================
-# coordinator._build_raw_content_objects
+# domains.ingest.build_content.build_raw_content_objects
+# (Phase 3 step 3 moved this here; Phase 7 retired the
+# ``app.pipeline.coordinator._build_raw_content_objects`` alias.)
 # ===========================================================================
 
 _no_reject = patch("app.domains.ingest.build_content.get_website_content_reject_reason", return_value=None)
@@ -441,14 +399,14 @@ class TestBuildRawContentObjects:
 
     @pytest.mark.asyncio
     async def test_basic_content_creation(self):
-        from app.pipeline.coordinator import _build_raw_content_objects
+        from app.domains.ingest.build_content import build_raw_content_objects
 
         source = _make_source()
         raw = [_raw(title="Hello World", content="Some body text")]
 
         with _no_reject, patch("app.processors.extractor.ContentExtractor") as MockExt:
             MockExt.return_value = AsyncMock()
-            results, _build_failures = await _build_raw_content_objects(raw, source)
+            results, _build_failures = await build_raw_content_objects(raw, source)
 
         assert len(results) == 1
         assert results[0].title == "Hello World"
@@ -456,7 +414,7 @@ class TestBuildRawContentObjects:
 
     @pytest.mark.asyncio
     async def test_html_extraction_when_no_content(self):
-        from app.pipeline.coordinator import _build_raw_content_objects
+        from app.domains.ingest.build_content import build_raw_content_objects
 
         source = _make_source()
         raw = [{"title": "T", "url": "https://example.com", "html": "<p>Extracted</p>", "content": "", "publish_time": datetime.utcnow().isoformat()}]
@@ -465,41 +423,41 @@ class TestBuildRawContentObjects:
         mock_extractor.extract.return_value = "Extracted text"
 
         with _no_reject, patch("app.processors.extractor.ContentExtractor", return_value=mock_extractor):
-            results, _build_failures = await _build_raw_content_objects(raw, source)
+            results, _build_failures = await build_raw_content_objects(raw, source)
 
         assert len(results) == 1
         mock_extractor.extract.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_publish_time_iso_parsing(self):
-        from app.pipeline.coordinator import _build_raw_content_objects
+        from app.domains.ingest.build_content import build_raw_content_objects
 
         source = _make_source()
         raw = [_raw(publish_time="2025-06-15T10:00:00Z")]
 
         with _no_reject, patch("app.processors.extractor.ContentExtractor") as MockExt:
             MockExt.return_value = AsyncMock()
-            results, _build_failures = await _build_raw_content_objects(raw, source)
+            results, _build_failures = await build_raw_content_objects(raw, source)
 
         assert results[0].publish_time.year == 2025
         assert results[0].publish_time.month == 6
 
     @pytest.mark.asyncio
     async def test_publish_time_fallback_to_now(self):
-        from app.pipeline.coordinator import _build_raw_content_objects
+        from app.domains.ingest.build_content import build_raw_content_objects
 
         source = _make_source()
         raw = [_raw(publish_time=None)]
 
         with _no_reject, patch("app.processors.extractor.ContentExtractor") as MockExt:
             MockExt.return_value = AsyncMock()
-            results, _build_failures = await _build_raw_content_objects(raw, source)
+            results, _build_failures = await build_raw_content_objects(raw, source)
 
         assert results[0].publish_time is not None
 
     @pytest.mark.asyncio
     async def test_skips_items_on_error(self):
-        from app.pipeline.coordinator import _build_raw_content_objects
+        from app.domains.ingest.build_content import build_raw_content_objects
 
         source = _make_source()
         raw = [_raw(), {"title": None}]
@@ -509,13 +467,13 @@ class TestBuildRawContentObjects:
             with patch("app.domains.ingest.build_content.strip_html_tags", side_effect=[
                 "Article", "body text", RuntimeError("bad data")
             ]):
-                results, _build_failures = await _build_raw_content_objects(raw, source)
+                results, _build_failures = await build_raw_content_objects(raw, source)
 
         assert len(results) <= 2
 
     @pytest.mark.asyncio
     async def test_summary_truncation(self):
-        from app.pipeline.coordinator import _build_raw_content_objects
+        from app.domains.ingest.build_content import build_raw_content_objects
 
         source = _make_source()
         long_body = "X" * 600
@@ -523,21 +481,21 @@ class TestBuildRawContentObjects:
 
         with _no_reject, patch("app.processors.extractor.ContentExtractor") as MockExt:
             MockExt.return_value = AsyncMock()
-            results, _build_failures = await _build_raw_content_objects(raw, source)
+            results, _build_failures = await build_raw_content_objects(raw, source)
 
         assert results[0].summary is not None
         assert results[0].summary.endswith("…")
 
     @pytest.mark.asyncio
     async def test_metadata_normalised_to_dict_and_quality_stamped(self):
-        from app.pipeline.coordinator import _build_raw_content_objects
+        from app.domains.ingest.build_content import build_raw_content_objects
 
         source = _make_source()
         raw = [_raw(metadata="not-a-dict")]
 
         with _no_reject, patch("app.processors.extractor.ContentExtractor") as MockExt:
             MockExt.return_value = AsyncMock()
-            results, _build_failures = await _build_raw_content_objects(raw, source)
+            results, _build_failures = await build_raw_content_objects(raw, source)
 
         assert isinstance(results[0].metadata_, dict)
         assert results[0].metadata_["fulltext_status"] == "title_only"

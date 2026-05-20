@@ -94,10 +94,13 @@ class Settings(BaseSettings):
     #: Per-IP limit for ``GET /local-token`` (bootstrap); 0 = disabled
     local_token_rate_limit_per_minute: int = 30
 
-    # Master switch for outbound LLM calls (summaries, translation, digest selection, etc.)
-    # NOTE: deprecated alias retained through Phase 7 for back-compat. New deployments
-    # should prefer the per-feature ``ENRICH_*`` toggles below; this flag stays as a
-    # master kill switch that's checked in addition to the per-feature gates.
+    # Master kill switch for outbound LLM calls (summaries, translation, digest
+    # selection, etc.). The legacy ``AI_PROCESSING_ENABLED`` env name is still
+    # accepted but now serves only as the *master* gate; new deployments configure
+    # the per-feature ``ENRICH_*`` toggles below and leave this flag at its
+    # ``True`` default. Phase 7 of the modular refactor cleaned the
+    # "AI_PROCESSING_ENABLED is the only switch" narrative out of the docs and
+    # runtime paths — the flag is no longer slated for removal.
     ai_processing_enabled: bool = True
     #: Rough daily cap on *estimated* LLM tokens (prompt + max output). ``0`` = unlimited.
     ai_daily_token_budget: int = 0
@@ -125,17 +128,21 @@ class Settings(BaseSettings):
         # Expand ~ but leave filesystem bootstrap to explicit runtime entrypoints.
         self.data_dir = os.path.expanduser(self.data_dir)
 
-        # Deprecation notice for the legacy master-kill flag. Emitted only once per
-        # process (uses a stash in os.environ to suppress repeat warnings inside
-        # ``get_settings.cache_clear()`` loops triggered by tests / monkeypatch).
+        # Soft-deprecation notice for the legacy ``AI_PROCESSING_ENABLED`` env name.
+        # The flag still functions as the master kill switch (see field docstring
+        # above), so we no longer threaten removal — we just nudge operators toward
+        # the ENRICH_* family for fine-grained control. The single-emit guard
+        # prevents warning spam inside ``get_settings.cache_clear()`` loops.
         if (
             os.environ.get("AI_PROCESSING_ENABLED") is not None
             and not os.environ.get("_PIM_AI_DEPRECATION_LOGGED")
         ):
             warnings.warn(
-                "AI_PROCESSING_ENABLED is deprecated and will be removed in Phase 7. "
-                "Use the ENRICH_* family (ENRICH_AUTO_ON_INGEST / ENRICH_SUMMARY_ENABLED "
-                "/ ENRICH_TRANSLATE_ENABLED) instead — see backend/.env.example.",
+                "AI_PROCESSING_ENABLED is the legacy master kill switch; per-feature "
+                "gates moved to ENRICH_AUTO_ON_INGEST / ENRICH_SUMMARY_ENABLED / "
+                "ENRICH_TRANSLATE_ENABLED. The master flag is still honored; "
+                "prefer the ENRICH_* family for fine-grained control "
+                "(see backend/.env.example).",
                 DeprecationWarning,
                 stacklevel=2,
             )

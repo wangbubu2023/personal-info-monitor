@@ -22,12 +22,6 @@ from app.domains.sources.status import persist_fetch_task_exception
 from app.utils.logger import get_logger, bind_job_id, restore_job_id
 from app.utils.url import normalize_host
 
-# Backwards-compatible alias — Phase 1 moved the canonical implementation
-# to ``app.domains.sources.scheduling``. Existing tests that import the
-# private name from this module continue to work; Phase 7 removes both
-# this alias and the underlying lazy imports.
-_effective_due_interval_minutes = effective_due_interval_minutes
-
 logger = get_logger(__name__)
 settings = get_settings()
 

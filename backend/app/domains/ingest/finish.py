@@ -7,17 +7,17 @@ baseline scoring + keyword-alert dispatch). It is intentionally
 LLM-free: any AI summarization / translation belongs to the enrich
 domain (handled later through a separate ``ai_pending`` queue).
 
-Moved out of ``app.tasks.process_tasks.process_new_content`` as part
-of Phase 3 step 5 of the module-refactor blueprint. The function is
-renamed ``finish_content`` here to match the blueprint's ingest
-vocabulary; the legacy name ``process_new_content`` keeps working
-through a re-export shim in :mod:`app.tasks.process_tasks` (Phase 7
-will retire the alias).
+Moved out of the legacy ``app.tasks.process_tasks.process_new_content``
+function as part of Phase 3 step 5 of the module-refactor blueprint and
+renamed ``finish_content`` to match the blueprint's ingest vocabulary.
+Phase 7 retired the legacy ``process_new_content`` /
+``_process_new_content_async`` re-exports; callers must import
+:func:`finish_content` from this module.
 
 Companion :func:`_dispatch_keyword_alerts` schedules keyword-alert
-emails fire-and-forget; tests resolve it from this module (and also
-through the legacy ``app.tasks.process_tasks._dispatch_keyword_alerts``
-re-export).
+emails fire-and-forget; resolve it from this module directly (the
+legacy ``app.tasks.process_tasks._dispatch_keyword_alerts`` re-export
+was removed in Phase 7).
 """
 
 from __future__ import annotations
@@ -55,7 +55,7 @@ async def _finish_content_async(content_id: str) -> None:
     from app.database import SessionLocal
     from app.domains.fetch.auth import try_parse_auth_credentials
     from app.models import Content, Keyword
-    from app.processors import ContentProcessor
+    from app.processors.content_processor import ContentProcessor
     from app.processors.keyword_matcher import KeywordMatcher
     from app.services.content_quality_service import merge_content_quality_metadata
     from app.services.scoring_service import merge_baseline_scoring_metadata
@@ -133,7 +133,7 @@ async def _finish_content_async(content_id: str) -> None:
             logger.debug("atomize_content sidecar failed for %s: %s", content_id, exc)
 
     except Exception as exc:
-        logger.error(f"process_new_content failed for {content_id}: {exc}")
+        logger.error(f"finish_content failed for {content_id}: {exc}")
     finally:
         db.close()
 

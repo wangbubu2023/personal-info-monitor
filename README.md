@@ -188,7 +188,7 @@ cat ~/.pim/data/runtime-secrets.json
 |------|--------|------|
 | `DATA_DIR` | `~/.pim/data` | SQLite 数据库与日志目录 |
 | `FETCH_CONCURRENCY` | `20` | 并发抓取数 |
-| `AI_PROCESSING_ENABLED` | `true` | AI 总开关（已 deprecated，Phase 7 移除；保留作为 master kill switch） |
+| `AI_PROCESSING_ENABLED` | `true` | LLM 总开关（master kill switch）；与 `ENRICH_*` 同时检查，新部署优先用 `ENRICH_*` 系列做细粒度控制 |
 | `ENRICH_AUTO_ON_INGEST` | `false` | ingest 完成时是否自动触发 enrich 流水线（Phase 4 step 8） |
 | `ENRICH_SUMMARY_ENABLED` | `true` | 是否允许 Summarizer 调 LLM 生成摘要 |
 | `ENRICH_TRANSLATE_ENABLED` | `true` | 是否允许 Translator 调 LLM 做翻译 |

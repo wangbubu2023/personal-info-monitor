@@ -1,6 +1,9 @@
-"""Business services package."""
+"""Business services package.
 
-from app.services.digest_service import DigestService
-from app.services.monitor_service import MonitorService
-
-__all__ = ["DigestService", "MonitorService"]
+Phase 7 retired the legacy re-export bundle that pre-loaded
+``DigestService`` / ``MonitorService`` into this namespace. Importers
+must address the canonical submodule directly
+(``app.services.digest_service`` / ``app.services.monitor_service``).
+The blueprint plans further redistribution into
+:mod:`app.domains.enrich` and :mod:`app.domains.sources`.
+"""

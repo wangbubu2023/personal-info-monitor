@@ -111,8 +111,9 @@ def _ensure_env_file():
     ENV_FILE.write_text(
         "DATA_DIR=~/.pim/data\n"
         "FETCH_CONCURRENCY=20\n"
-        # Master kill switch (deprecated, will be removed in Phase 7) + per-feature
-        # ENRICH_* toggles. Default to "ingest-only" until the user configures keys.
+        # Master LLM kill switch + per-feature ENRICH_* toggles. Default to
+        # "ingest-only" until the user configures API keys; once configured, set
+        # AI_PROCESSING_ENABLED=true and flip individual ENRICH_* gates on.
         "AI_PROCESSING_ENABLED=false\n"
         "ENRICH_SUMMARY_ENABLED=false\n"
         "ENRICH_TRANSLATE_ENABLED=false\n"

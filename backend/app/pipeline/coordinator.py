@@ -12,31 +12,14 @@ from sqlalchemy.orm import Session
 from app.models import Content, Source
 from app.utils.datetime import utcnow_naive
 from app.utils.logger import get_logger
-# ``_build_raw_content_objects`` has moved to ``app.domains.ingest.build_content``
-# as part of Phase 3 step 3. We keep the legacy private name as a re-export
-# shim so existing test patch targets like
-# ``patch("app.pipeline.coordinator._build_raw_content_objects", ...)``
-# continue to resolve through Phase 7. The wrapper-internal symbols
-# (``strip_html_tags``, ``truncate_content``, ``merge_content_quality_metadata``)
-# now live next to the implementation and should be patched at
-# ``app.domains.ingest.build_content.<name>``.
-from app.domains.ingest.build_content import (
-    build_raw_content_objects as _build_raw_content_objects,
-    strip_html_tags,
-    truncate_content,
-    merge_content_quality_metadata,
-)
+from app.domains.ingest.build_content import build_raw_content_objects
 
 logger = get_logger(__name__)
 
 __all__ = [
     "run_fetch_pipeline",
-    "_build_raw_content_objects",
     "_update_source_status",
     "_apply_keyword_filter",
-    "strip_html_tags",
-    "truncate_content",
-    "merge_content_quality_metadata",
     "logger",
 ]
 
@@ -149,7 +132,7 @@ async def run_fetch_pipeline(db: Session, source: Source, manual_trigger: bool =
         return {"status": "success", "message": "All content up to date", "count": 0}
 
     # 3. Build lightweight Content objects (no LLM) and persist
-    content_objects, build_failed = await _build_raw_content_objects(valid_raw_contents, source)
+    content_objects, build_failed = await build_raw_content_objects(valid_raw_contents, source)
     keyword_filtered_count = 0
     if getattr(source, "use_keyword_filter", False):
         content_objects, keyword_filtered_count = _apply_keyword_filter(db, source, content_objects)

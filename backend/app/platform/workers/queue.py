@@ -94,10 +94,10 @@ class BoundedTaskQueue:
     async def enqueue_ingest_finish(self, content_id: str, job_id: str | None = None) -> bool:
         """Enqueue an ingest-finalization job (LLM-free post-fetch enrichment).
 
-        Renamed from ``enqueue_process`` in Phase 3 step 5 of the
-        module-refactor blueprint to match the ``ingest.finish_content``
-        target it dispatches to. The legacy ``enqueue_process`` name is
-        kept as a thin alias below (Phase 7 will retire it).
+        Renamed from the legacy ``enqueue_process`` in Phase 3 step 5 of
+        the module-refactor blueprint to match the ``ingest.finish_content``
+        target it dispatches to. Phase 7 retired the ``enqueue_process``
+        deprecation alias — callers must address this method directly.
         """
         try:
             self._process_queue.put_nowait((content_id, job_id))
@@ -110,16 +110,6 @@ class BoundedTaskQueue:
             self._record_dropped_task("PROCESS", content_id, f"job_id={job_id}")
             task_queue_metrics.record_dropped("process")
             return False
-
-    async def enqueue_process(self, content_id: str, job_id: str | None = None) -> bool:
-        """Deprecated alias for :meth:`enqueue_ingest_finish`.
-
-        .. deprecated::
-           Use :meth:`enqueue_ingest_finish` instead. This alias keeps
-           legacy callers (and the matching ``test_task_queue.py``
-           assertions) working through Phase 7.
-        """
-        return await self.enqueue_ingest_finish(content_id, job_id=job_id)
 
     async def start_workers(
         self,

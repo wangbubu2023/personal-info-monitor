@@ -1,5 +1,14 @@
 # backend/tests/test_process_tasks_extended.py
-"""process_tasks coverage: normal path, content not found, keyword matching."""
+"""ingest.finish_content + tasks.process_tasks coverage (Phase 7 retired legacy aliases).
+
+These tests used to import ``process_new_content`` / ``_process_new_content_async``
+from :mod:`app.tasks.process_tasks` — those legacy names were removed in
+Phase 7 and the canonical entry points
+(:func:`app.domains.ingest.finish.finish_content` and friends) are imported
+directly. The ``process_content`` (manual reprocess) and
+``_update_keyword_matches_sync`` paths still live in
+:mod:`app.tasks.process_tasks` and are imported from there.
+"""
 
 import asyncio
 from types import SimpleNamespace
@@ -9,7 +18,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 
 @pytest.mark.asyncio
-async def test_process_new_content_content_not_found():
+async def test_finish_content_content_not_found():
     """When content doesn't exist, logs error and returns without exception."""
     mock_sem = MagicMock()
     mock_sem.__aenter__ = AsyncMock(return_value=None)
@@ -26,15 +35,15 @@ async def test_process_new_content_content_not_found():
     with patch("app.domains.ingest.finish.get_llm_semaphore", return_value=mock_sem):
         with patch("app.domains.ingest.finish.task_tracker", mock_tracker):
             with patch("app.database.SessionLocal", return_value=mock_db):
-                from app.tasks.process_tasks import process_new_content
-                await process_new_content("nonexistent-id")  # Must not raise
+                from app.domains.ingest.finish import finish_content
+                await finish_content("nonexistent-id")  # Must not raise
 
     mock_tracker.start_process.assert_called_once()
     mock_tracker.end_process.assert_called_once()
 
 
 @pytest.mark.asyncio
-async def test_process_new_content_keyword_matching():
+async def test_finish_content_keyword_matching():
     """Keyword matching runs when KEYWORD_MONITORING_ENABLED is True."""
     mock_sem = MagicMock()
     mock_sem.__aenter__ = AsyncMock(return_value=None)
@@ -69,14 +78,14 @@ async def test_process_new_content_keyword_matching():
                     with patch("app.processors.keyword_matcher.KeywordMatcher") as MockMatcher:
                         MockMatcher.return_value.match.return_value = [{"id": "kw-1", "keyword": "test"}]
                         with patch("app.domains.ingest.finish._dispatch_keyword_alerts"):
-                            from app.tasks.process_tasks import process_new_content
-                            await process_new_content("content-1")
+                            from app.domains.ingest.finish import finish_content
+                            await finish_content("content-1")
 
     assert mock_content.keyword_matches == [{"id": "kw-1", "keyword": "test"}]
 
 
 @pytest.mark.asyncio
-async def test_process_new_content_no_keywords_when_disabled():
+async def test_finish_content_no_keywords_when_disabled():
     """Keyword matching is skipped when KEYWORD_MONITORING_ENABLED is False."""
     mock_sem = MagicMock()
     mock_sem.__aenter__ = AsyncMock(return_value=None)
@@ -105,14 +114,14 @@ async def test_process_new_content_no_keywords_when_disabled():
             with patch("app.domains.ingest.finish.KEYWORD_MONITORING_ENABLED", False):
                 with patch("app.database.SessionLocal", return_value=mock_db):
                     with patch("app.processors.keyword_matcher.KeywordMatcher") as MockMatcher:
-                        from app.tasks.process_tasks import process_new_content
-                        await process_new_content("content-1")
+                        from app.domains.ingest.finish import finish_content
+                        await finish_content("content-1")
                         # When disabled, KeywordMatcher class should never be instantiated
                         MockMatcher.assert_not_called()
 
 
 @pytest.mark.asyncio
-async def test_process_new_content_stamps_baseline_score():
+async def test_finish_content_stamps_baseline_score():
     mock_sem = MagicMock()
     mock_sem.__aenter__ = AsyncMock(return_value=None)
     mock_sem.__aexit__ = AsyncMock(return_value=False)
@@ -144,8 +153,8 @@ async def test_process_new_content_stamps_baseline_score():
         with patch("app.domains.ingest.finish.task_tracker", mock_tracker):
             with patch("app.domains.ingest.finish.KEYWORD_MONITORING_ENABLED", False):
                 with patch("app.database.SessionLocal", return_value=mock_db):
-                    from app.tasks.process_tasks import process_new_content
-                    await process_new_content("content-1")
+                    from app.domains.ingest.finish import finish_content
+                    await finish_content("content-1")
 
     assert mock_content.metadata_["fulltext_status"] == "full"
     assert mock_content.metadata_["scoring_method"] == "baseline"
@@ -195,7 +204,7 @@ async def test_dispatch_keyword_alerts_uses_create_task():
         "app.domains.enrich.notifications.keyword_alert.send_keyword_alert",
         new=AsyncMock(),
     ) as mock_send:
-        from app.tasks.process_tasks import _dispatch_keyword_alerts
+        from app.domains.ingest.finish import _dispatch_keyword_alerts
 
         _dispatch_keyword_alerts(mock_db, content)
         await asyncio.sleep(0)

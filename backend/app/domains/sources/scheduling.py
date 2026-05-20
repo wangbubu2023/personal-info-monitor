@@ -1,6 +1,6 @@
 """Single source of truth for "when is this source due to be fetched".
 
-This module owns the formulas previously hidden inside
+This module owns the formulas previously hidden inside the legacy
 ``app.tasks.fetch_tasks._effective_due_interval_minutes``. Both the
 APScheduler tick (``check_and_fetch_due_sources``) and the read-side
 ``MonitorService.get_source_status`` agree on the same instant by
@@ -8,9 +8,10 @@ calling :func:`next_fetch_at_for` here — otherwise the UI would show
 e.g. ``13:53`` while the fetch landed at ``13:56`` for no visible
 reason.
 
-Phase 1 of the refactor (see ``PIM 模块化重构实施蓝图 v3 §7``) lifts
-this code out of ``app.tasks`` so the ``services``/``api`` layers no
-longer have to lazy-import a private symbol from a task module.
+Phase 1 of the refactor (see ``PIM 模块化重构实施蓝图 v3 §7``) lifted
+this code out of ``app.tasks``; Phase 7 retired the legacy
+``_effective_due_interval_minutes`` alias so the ``services``/``api``
+layers must import directly from here.
 """
 
 from __future__ import annotations

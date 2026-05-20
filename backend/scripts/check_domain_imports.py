@@ -126,7 +126,17 @@ RULES: tuple[Rule, ...] = (
         "app.",
         ("app.pipeline.ai_stage",),
         7,
-        "pipeline/ai_stage.py is dead code (no callers); must be removed by Phase 7",
+        "pipeline/ai_stage.py is dead code (no callers); removed by Phase 7",
+    ),
+    (
+        "app.",
+        (
+            "app.interfaces.http.configs_common",
+            "app.api.configs_common",
+        ),
+        7,
+        "configs_common aggregator facade removed by Phase 7; address the split "
+        "modules (configs_common_auth / configs_common_browser / configs_common_cookies) directly",
     ),
 )
 

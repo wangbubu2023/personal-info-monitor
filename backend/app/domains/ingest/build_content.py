@@ -6,11 +6,10 @@ This is the LLM-free portion of the fetch → ingest path: turn the
 publish-time normalisation, quality-metadata stamping, and the
 ``get_website_content_reject_reason`` low-signal filter.
 
-This module is the new home for :func:`_build_raw_content_objects` (Phase 3
-step 3 of the module-refactor blueprint). The legacy private name still
-exists under :mod:`app.pipeline.coordinator` as a thin re-export shim so
-existing test patch targets like ``patch("app.pipeline.coordinator._build_raw_content_objects", ...)``
-continue to resolve through Phase 7.
+This module is the new home for :func:`build_raw_content_objects` (Phase 3
+step 3 of the module-refactor blueprint). Phase 7 retired the legacy
+``app.pipeline.coordinator._build_raw_content_objects`` re-export — callers
+and tests must address the canonical name here.
 
 Internal symbols (``strip_html_tags``, ``truncate_content``,
 ``utcnow_naive``, ``merge_content_quality_metadata``, ``logger``) are
@@ -39,7 +38,7 @@ async def build_raw_content_objects(
 
     Only does local text extraction / cleanup so the fetch task stays fast.
     Keyword matching / optional cookie full-text enrichment happen
-    asynchronously via :func:`app.tasks.process_tasks.process_new_content`.
+    asynchronously via :func:`app.domains.ingest.finish.finish_content`.
     """
     # Local import keeps lxml / readability off the import graph until the
     # first real fetch hits a Content build.

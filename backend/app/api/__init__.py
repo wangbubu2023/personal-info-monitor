@@ -26,7 +26,9 @@ _MODULE_NAMES: tuple[str, ...] = (
     ".configs",
     ".configs_api_auth",
     ".configs_browser",
-    ".configs_common",
+    # ``configs_common`` aggregator facade retired in Phase 7 — callers
+    # must address the split modules below (``configs_common_auth`` /
+    # ``configs_common_browser`` / ``configs_common_cookies``) directly.
     ".configs_common_auth",
     ".configs_common_browser",
     ".configs_common_cookies",

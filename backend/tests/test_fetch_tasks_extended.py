@@ -165,7 +165,7 @@ def test_effective_due_interval_applies_backoff_and_jitter():
     errored 3 times (2^3 = 8×) lands in [60*8*0.9, 60*8*1.1] = [432, 528]."""
     from datetime import datetime as _dt
 
-    from app.tasks.fetch_tasks import _effective_due_interval_minutes
+    from app.domains.sources.scheduling import effective_due_interval_minutes
 
     source = MagicMock()
     source.id = "src-backoff"
@@ -173,10 +173,10 @@ def test_effective_due_interval_applies_backoff_and_jitter():
     source.error_count = 3
     source.last_fetched_at = _dt(2026, 4, 22, 12, 0, 0)
 
-    minutes = _effective_due_interval_minutes(source)
+    minutes = effective_due_interval_minutes(source)
     assert 432 <= minutes <= 528
 
     # Healthy source (no errors): interval lives in [54, 66].
     source.error_count = 0
-    minutes = _effective_due_interval_minutes(source)
+    minutes = effective_due_interval_minutes(source)
     assert 54 <= minutes <= 66

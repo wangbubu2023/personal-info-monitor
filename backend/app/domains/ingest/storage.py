@@ -1,6 +1,6 @@
 """Ingest stage for persisting raw Content objects.
 
-Keyword notifications are handled later by ``process_new_content_task``
+Keyword notifications are handled later by :func:`app.domains.ingest.finish.finish_content`
 after AI processing fills in keyword_matches.
 """
 

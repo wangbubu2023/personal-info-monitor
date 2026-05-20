@@ -2,7 +2,7 @@
 
 Phase 1 of the refactor migrates the following into this package:
 
-* ``domains/sources/scheduling.py`` — owns ``_effective_due_interval_minutes``
+* ``domains/sources/scheduling.py`` — owns the formerly-private ``_effective_due_interval_minutes``
   (currently private in ``app.tasks.fetch_tasks``) and ``list_due_source_ids``
 * ``domains/sources/policy.py``, ``serialization.py``, ``probe.py``,
   ``status.py`` — split from ``app/api/sources/_helpers.py`` (404 lines)
