@@ -12,6 +12,13 @@ Sub-modules:
   post-login cookie jar (headful UX + headless settle wait).
 * ``validation`` — profile validation against the target site (paywall
   article-paragraph heuristic + X cookie heuristic).
+* ``pool`` — long-lived Playwright driver + Chromium ``Browser`` pool that
+  hands out disposable ``BrowserContext`` per fetch (Phase 5 step 7
+  relocation from ``app.utils.browser``).
+* ``playwright_runtime`` — patchright/playwright backend selector
+  (Phase 5 step 7 relocation from ``app.utils.playwright_runtime``).
+* ``playwright_stealth`` — anti-fingerprint init script
+  (Phase 5 step 7 relocation from ``app.utils.playwright_stealth``).
 
 Domain code (e.g. ``app.domains.fetch.auth``) consumes these helpers without
 ever touching Playwright / Chromium directly.

@@ -66,10 +66,15 @@ async def test_login_and_capture_cookies_closes_context_and_browser_on_failure(m
         async def __aexit__(self, exc_type, exc, tb):
             return False
 
-    # _login_and_capture_cookies now goes through the playwright_runtime shim
-    # (so patchright and playwright can be swapped at runtime). Replace the
-    # shim's factory directly rather than sys.modules["playwright.async_api"].
-    from app.utils import playwright_runtime
+    # _login_and_capture_cookies routes through the playwright_runtime shim
+    # so patchright / playwright can be swapped at runtime. Phase 5 step 7
+    # relocated the shim to ``app.platform.browser.playwright_runtime``;
+    # the caller (``app.platform.browser.login_capture._login_and_capture_cookies``)
+    # imports ``async_playwright`` from the canonical module, so the
+    # monkey-patch must target the canonical module — patching the
+    # ``app.utils.playwright_runtime`` re-export is a no-op for the
+    # caller's binding lookup.
+    from app.platform.browser import playwright_runtime
 
     monkeypatch.setattr(playwright_runtime, "async_playwright", lambda: _FakePlaywright())
 

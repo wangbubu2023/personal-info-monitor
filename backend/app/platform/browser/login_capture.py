@@ -99,7 +99,7 @@ async def login_and_capture_cookies(
     """
 
     from app.features import PlaywrightDisabledError, playwright_enabled
-    from app.utils.playwright_runtime import async_playwright
+    from app.platform.browser.playwright_runtime import async_playwright
 
     if not playwright_enabled():
         raise PlaywrightDisabledError(

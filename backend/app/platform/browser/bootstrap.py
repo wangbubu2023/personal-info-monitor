@@ -21,13 +21,13 @@ from typing import Any, Dict, List
 from app.features import PlaywrightDisabledError, playwright_enabled
 from app.utils.cookies import cookie_domains_for_host
 from app.platform.observability.logger import get_logger
-from app.utils.playwright_runtime import (
+from app.platform.browser.playwright_runtime import (
     async_playwright,
     default_channel as _browser_default_channel,
     is_patchright_active,
     recommended_launch_args,
 )
-from app.utils.playwright_stealth import stealth_init_script
+from app.platform.browser.playwright_stealth import stealth_init_script
 
 logger = get_logger(__name__)
 

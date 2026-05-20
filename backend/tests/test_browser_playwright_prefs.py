@@ -1,4 +1,13 @@
-"""Tests for app.utils.browser — local Playwright fetch prefs (metadata-driven)."""
+"""Tests for app.platform.browser.pool — local Playwright fetch prefs (metadata-driven).
+
+Phase 5 step 7 relocated the browser-pool implementation from
+``app.utils.browser`` to ``app.platform.browser.pool``. The ``async_playwright``
+binding the production code actually reads from lives on the canonical
+module, so ``patch.object`` must target the canonical module — patching the
+``app.utils.browser`` re-export shim is a no-op for binding-resolution
+purposes (the shim re-exports references; rebinding a shim attribute does
+not affect the canonical caller's local lookup).
+"""
 
 from __future__ import annotations
 
@@ -6,8 +15,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.utils import browser as browser_module
-from app.utils.browser import get_browser_context, local_playwright_fetch_prefs, shutdown_browser_pool
+from app.platform.browser import pool as browser_module
+from app.platform.browser.pool import (
+    get_browser_context,
+    local_playwright_fetch_prefs,
+    shutdown_browser_pool,
+)
 
 
 class TestLocalPlaywrightFetchPrefs:

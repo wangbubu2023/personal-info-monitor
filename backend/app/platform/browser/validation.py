@@ -28,13 +28,13 @@ from app.platform.browser.bootstrap import (
 )
 from app.platform.browser.hosts import is_x_host
 from app.platform.observability.logger import get_logger
-from app.utils.playwright_runtime import (
+from app.platform.browser.playwright_runtime import (
     async_playwright,
     default_channel as _browser_default_channel,
     is_patchright_active,
     recommended_launch_args,
 )
-from app.utils.playwright_stealth import stealth_init_script
+from app.platform.browser.playwright_stealth import stealth_init_script
 from app.utils.url import host_matches, normalize_host
 
 logger = get_logger(__name__)
