@@ -13,12 +13,23 @@ This package exposes infrastructure-side helpers that any domain may call:
   import from it (``app.api.__init__``, ``app.main``,
   ``tests/conftest.py``, ``tests/test_configs_browser.py``) plus six
   ``patch("app.auth.get_settings")`` sites in ``test_auth_unit.py``.
+* ``bootstrap_token`` — ``/local-token`` endpoint + ``index.html``
+  bootstrap-meta injector (Phase 5 step 14, extracted from
+  :mod:`app.main`). Exposes the ``bootstrap_router`` FastAPI router and
+  the ``inject_bootstrap_meta`` SPA helper.
 
 It contains **no business logic**. Domain-specific credential handling lives
 under ``app.domains.fetch.auth``.
 """
 
 from app.platform.auth.api_key import verify_api_key
+from app.platform.auth.bootstrap_token import bootstrap_router, inject_bootstrap_meta
 from app.platform.auth.cookies import cookies_appear_valid, domain_match
 
-__all__ = ["cookies_appear_valid", "domain_match", "verify_api_key"]
+__all__ = [
+    "bootstrap_router",
+    "cookies_appear_valid",
+    "domain_match",
+    "inject_bootstrap_meta",
+    "verify_api_key",
+]

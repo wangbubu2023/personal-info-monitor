@@ -106,10 +106,11 @@ async def test_local_token_rejects_untrusted_origin(monkeypatch):
 @pytest.mark.asyncio
 async def test_local_token_accepts_valid_bootstrap_and_loopback(monkeypatch):
     """Happy path: loopback client + matching host + valid token returns the API key."""
-    from app import main as main_module
+    from app.platform.config.settings import get_settings
 
-    monkeypatch.setattr(main_module.settings, "bootstrap_token", "known-token")
-    monkeypatch.setattr(main_module.settings, "pim_api_key", "secret-api-key")
+    monkeypatch.setenv("BOOTSTRAP_TOKEN", "known-token")
+    monkeypatch.setenv("PIM_API_KEY", "secret-api-key")
+    get_settings.cache_clear()
 
     transport = ASGITransport(app=app, client=("127.0.0.1", 0))
     async with AsyncClient(transport=transport, base_url="http://127.0.0.1:8000") as client:
@@ -123,10 +124,11 @@ async def test_local_token_accepts_valid_bootstrap_and_loopback(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_local_token_accepts_query_token(monkeypatch):
-    from app import main as main_module
+    from app.platform.config.settings import get_settings
 
-    monkeypatch.setattr(main_module.settings, "bootstrap_token", "known-token")
-    monkeypatch.setattr(main_module.settings, "pim_api_key", "secret-api-key")
+    monkeypatch.setenv("BOOTSTRAP_TOKEN", "known-token")
+    monkeypatch.setenv("PIM_API_KEY", "secret-api-key")
+    get_settings.cache_clear()
 
     transport = ASGITransport(app=app, client=("127.0.0.1", 0))
     async with AsyncClient(transport=transport, base_url="http://localhost:8000") as client:
@@ -169,7 +171,7 @@ def _build_request(client_host: str | None, host_header: str | None):
 
 
 def test_inject_bootstrap_meta_adds_tag_for_loopback_with_allowed_host():
-    from app.main import _inject_bootstrap_meta
+    from app.platform.auth.bootstrap_token import _inject_bootstrap_meta
 
     request = _build_request("127.0.0.1", "localhost:8000")
     html = "<html><head><title>PIM</title></head><body></body></html>"
@@ -181,7 +183,7 @@ def test_inject_bootstrap_meta_adds_tag_for_loopback_with_allowed_host():
 
 
 def test_inject_bootstrap_meta_escapes_token_content():
-    from app.main import _inject_bootstrap_meta
+    from app.platform.auth.bootstrap_token import _inject_bootstrap_meta
 
     request = _build_request("127.0.0.1", "127.0.0.1:8000")
     html = "<html><head></head><body></body></html>"
@@ -192,7 +194,7 @@ def test_inject_bootstrap_meta_escapes_token_content():
 
 
 def test_inject_bootstrap_meta_skips_non_loopback_caller():
-    from app.main import _inject_bootstrap_meta
+    from app.platform.auth.bootstrap_token import _inject_bootstrap_meta
 
     request = _build_request("10.0.0.5", "localhost:8000")
     html = "<html><head></head><body></body></html>"
@@ -202,7 +204,7 @@ def test_inject_bootstrap_meta_skips_non_loopback_caller():
 
 def test_inject_bootstrap_meta_skips_foreign_host_header():
     """DNS-rebinding spoofing attempts must not receive the token."""
-    from app.main import _inject_bootstrap_meta
+    from app.platform.auth.bootstrap_token import _inject_bootstrap_meta
 
     request = _build_request("127.0.0.1", "attacker.example.com")
     html = "<html><head></head><body></body></html>"
@@ -211,7 +213,7 @@ def test_inject_bootstrap_meta_skips_foreign_host_header():
 
 
 def test_inject_bootstrap_meta_skips_when_token_missing():
-    from app.main import _inject_bootstrap_meta
+    from app.platform.auth.bootstrap_token import _inject_bootstrap_meta
 
     request = _build_request("127.0.0.1", "localhost:8000")
     html = "<html><head></head><body></body></html>"
@@ -221,7 +223,7 @@ def test_inject_bootstrap_meta_skips_when_token_missing():
 
 
 def test_inject_bootstrap_meta_handles_missing_head_tag():
-    from app.main import _inject_bootstrap_meta
+    from app.platform.auth.bootstrap_token import _inject_bootstrap_meta
 
     request = _build_request("127.0.0.1", "localhost:8000")
     html = "<!doctype html><body>no head</body>"

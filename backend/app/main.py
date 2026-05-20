@@ -2,19 +2,18 @@
 
 import os
 import re
-import secrets as _secrets
 from time import perf_counter
 from uuid import uuid4
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse
-from html import escape as _html_escape
 
 from app.api import api_router
 from app.auth import verify_api_key
 from app.config import bootstrap_runtime_environment, get_settings, parse_cors_origins
-from app.middleware.api_rate_limit import APIRateLimitMiddleware, get_real_client_ip
+from app.middleware.api_rate_limit import APIRateLimitMiddleware
+from app.platform.auth import bootstrap_router, inject_bootstrap_meta
 from app.platform.health import health_router
 from app.platform.runtime import build_lifespan
 from app.utils.logger import clear_request_id, get_logger, set_request_id
@@ -119,6 +118,8 @@ app.add_middleware(
 app.include_router(api_router, prefix="/api")
 # Platform-level health/liveness endpoints (extracted from this module in Phase 5.12).
 app.include_router(health_router)
+# /local-token endpoint + SPA bootstrap-meta helpers (extracted in Phase 5.14).
+app.include_router(bootstrap_router)
 
 
 @app.middleware("http")
@@ -152,129 +153,6 @@ async def request_observability_middleware(request: Request, call_next):
     response.headers["X-Request-ID"] = request_id
     clear_request_id()
     return response
-
-
-_ALLOWED_LOCAL_TOKEN_HOSTNAMES = frozenset(
-    {"127.0.0.1", "localhost", "::1", "[::1]"}
-)
-
-_BOOTSTRAP_META_NAME = "pim-bootstrap-token"
-
-
-def _inject_bootstrap_meta(html: str, request: Request, token: str) -> str:
-    """Stamp the bootstrap token into index.html for trusted loopback callers.
-
-    This is the single-machine-user shortcut that lets the SPA acquire its API
-    key without asking the user to type one. Callers that don't match the same
-    defence-in-depth gate as ``/local-token`` (loopback IP + allowed Host) get
-    the page back unchanged, so remote or Host-spoofed requests continue to
-    fall through to the manual prompt.
-    """
-    clean_token = (token or "").strip()
-    if not clean_token:
-        return html
-    try:
-        real_ip = get_real_client_ip(request)
-    except Exception:
-        return html
-    if real_ip not in ("127.0.0.1", "::1"):
-        return html
-    hostname = _hostname_of(request.headers.get("host"))
-    if hostname not in _ALLOWED_LOCAL_TOKEN_HOSTNAMES:
-        return html
-    meta_tag = (
-        f'<meta name="{_BOOTSTRAP_META_NAME}" '
-        f'content="{_html_escape(clean_token, quote=True)}">'
-    )
-    if "</head>" in html:
-        return html.replace("</head>", f"    {meta_tag}\n  </head>", 1)
-    return meta_tag + html
-
-
-def _hostname_of(host_header: str | None) -> str:
-    """Strip an optional ``:port`` from a Host header and lower-case."""
-    value = (host_header or "").strip().lower()
-    if not value:
-        return ""
-    # IPv6 literal like "[::1]:8000"
-    if value.startswith("["):
-        closing = value.find("]")
-        if closing == -1:
-            return value
-        return value[: closing + 1]
-    # host:port
-    if value.count(":") == 1:
-        return value.split(":", 1)[0]
-    return value
-
-
-def _origin_is_permitted(origin: str | None) -> bool:
-    """Only same-site or Tauri origins may call the bootstrap endpoint."""
-    candidate = (origin or "").strip().lower()
-    if not candidate:
-        # Missing Origin (e.g. curl / server-side call) is acceptable; the other
-        # checks (loopback, Host, bootstrap_token) still protect the endpoint.
-        return True
-    if candidate == "tauri://localhost":
-        return True
-    allowed = {item.lower() for item in parse_cors_origins(settings.cors_origins)}
-    return candidate in allowed
-
-
-def _bootstrap_token_matches(request: Request) -> bool:
-    expected = (settings.bootstrap_token or "").strip()
-    if not expected:
-        # Fail closed: a misconfigured server should not hand out API keys.
-        return False
-
-    header_token = request.headers.get("X-Bootstrap-Token", "")
-    query_token = request.query_params.get("bootstrap_token", "")
-    for provided in (header_token, query_token):
-        provided = (provided or "").strip()
-        if provided and _secrets.compare_digest(provided, expected):
-            return True
-    return False
-
-
-@app.get("/local-token")
-async def local_token(request: Request):
-    """Return the API key for trusted local callers only.
-
-    Defence-in-depth gates — every request must pass all of them:
-
-    1. Source IP must be loopback (or the configured trusted proxy).
-    2. ``Host`` header hostname must be ``localhost`` / ``127.0.0.1`` / ``::1``
-       to block DNS rebinding attacks where a malicious site forces the
-       browser to send requests to the loopback interface under its own domain.
-    3. ``Origin`` header, if present, must be a CORS-whitelisted origin or
-       ``tauri://localhost``. ``null`` / other origins are rejected.
-    4. A ``bootstrap_token`` (query string or ``X-Bootstrap-Token`` header)
-       must match the value stored in ``runtime-secrets.json``. The token is
-       distributed out-of-band via the filesystem (mode 0600) to the Tauri
-       shell and operator CLI, and is never echoed over HTTP.
-
-    Result: the endpoint is safe even when another unprivileged process on the
-    same host tries to scrape it, because the attacker cannot read the
-    0600-protected bootstrap token file.
-    """
-    real_ip = get_real_client_ip(request)
-    if real_ip not in ("127.0.0.1", "::1"):
-        raise HTTPException(status_code=403, detail="Local access only")
-
-    hostname = _hostname_of(request.headers.get("host"))
-    if hostname not in _ALLOWED_LOCAL_TOKEN_HOSTNAMES:
-        logger.warning("/local-token rejected: invalid Host header %r", request.headers.get("host"))
-        raise HTTPException(status_code=403, detail="Invalid host")
-
-    if not _origin_is_permitted(request.headers.get("origin")):
-        logger.warning("/local-token rejected: invalid Origin %r", request.headers.get("origin"))
-        raise HTTPException(status_code=403, detail="Invalid origin")
-
-    if not _bootstrap_token_matches(request):
-        logger.warning("/local-token rejected: missing or invalid bootstrap token")
-        raise HTTPException(status_code=401, detail="Missing or invalid bootstrap token")
-
-    return {"api_key": settings.pim_api_key}
 
 
 @app.get("/metrics", dependencies=[Depends(verify_api_key)], response_class=PlainTextResponse)
@@ -318,7 +196,7 @@ if os.path.isdir(dist_dir) and not DEV_SERVER_MODE:
                 headers={**SPA_NO_CACHE_HEADERS, **_SPA_SECURITY_HEADERS},
             )
 
-        html = _inject_bootstrap_meta(html, request, settings.bootstrap_token)
+        html = inject_bootstrap_meta(html, request, settings.bootstrap_token)
         return HTMLResponse(
             content=html,
             headers={**SPA_NO_CACHE_HEADERS, **_SPA_SECURITY_HEADERS},
