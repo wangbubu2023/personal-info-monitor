@@ -123,6 +123,15 @@ async def _finish_content_async(content_id: str) -> None:
         if KEYWORD_MONITORING_ENABLED and content.keyword_matches:
             _dispatch_keyword_alerts(db, content)
 
+        # Phase 6: optional structural atomisation. ``atomize_content`` is
+        # idempotent and never raises; when ``ATOMS_ENABLED=false`` it returns
+        # False immediately, so the default flow stays bit-for-bit unchanged.
+        try:
+            from app.domains.atoms import atomize_content
+            atomize_content(str(content.id))
+        except Exception as exc:  # noqa: BLE001 - atoms is sidecar; never block ingest
+            logger.debug("atomize_content sidecar failed for %s: %s", content_id, exc)
+
     except Exception as exc:
         logger.error(f"process_new_content failed for {content_id}: {exc}")
     finally:

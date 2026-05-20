@@ -41,9 +41,18 @@ def _parse_bool(value: str | None, *, default: bool) -> bool:
 #     Narrower switch for X (Twitter) cookie-based auto-login flows which
 #     touch X Terms of Service grey area (see ADR-003). **Default OFF** per
 #     the 2026-04-20 audit S5 recommendation; operators must opt in.
+#
+#   ATOMS_ENABLED
+#     Phase 6 opt-in for the structured atoms layer (events / entities /
+#     relations per Content row). **Default OFF** — when false, the
+#     ``content_atom_bundles`` table simply stays empty, no code path reads
+#     or writes it, and the default ``fetch → ingest → enrich`` main flow
+#     stays bit-for-bit unchanged. Atomisation failures never block ingest
+#     regardless of this flag.
 _FEATURE_FLAG_DEFAULTS = {
     "PIM_FEATURE_PLAYWRIGHT": True,
     "PIM_FEATURE_X_PLAYWRIGHT": False,
+    "ATOMS_ENABLED": False,
 }
 
 
@@ -70,6 +79,16 @@ def x_playwright_enabled() -> bool:
     Playwright entirely, X-specific Playwright use is disabled too.
     """
     return feature_enabled("PIM_FEATURE_PLAYWRIGHT") and feature_enabled("PIM_FEATURE_X_PLAYWRIGHT")
+
+
+def atoms_enabled() -> bool:
+    """Convenience wrapper for the Phase 6 ``ATOMS_ENABLED`` opt-in.
+
+    When ``False`` (default), the atoms layer is fully inert: the
+    extractor short-circuits without touching the DB and the
+    :class:`SqlAtomReader.get_bundle` port returns ``None``.
+    """
+    return feature_enabled("ATOMS_ENABLED")
 
 
 class PlaywrightDisabledError(RuntimeError):

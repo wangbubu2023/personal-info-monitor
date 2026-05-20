@@ -9,6 +9,7 @@ from app.models.hourly_digest import HourlyDigest
 from app.models.browser_session import BrowserSession
 from app.models.system_setting import SystemSetting
 from app.models.runtime_lock import RuntimeLock
+from app.models.atom import ContentAtomBundle
 
 __all__ = [
     "Source",
@@ -21,4 +22,5 @@ __all__ = [
     "BrowserSession",
     "SystemSetting",
     "RuntimeLock",
+    "ContentAtomBundle",
 ]
