@@ -21,7 +21,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.api.content_shared import (
+from app.interfaces.http.content_shared import (
     _build_clean_reader_html,
     _is_valid_translation_text,
     _reader_body_hash,

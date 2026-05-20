@@ -11,7 +11,7 @@ from sqlalchemy import func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.api.content_shared import _serialize_content
+from app.interfaces.http.content_shared import _serialize_content
 from app.database import get_async_db
 from app.models import Content
 from app.schemas.content import ContentListResponse, ContentResponse, ContentUpdate, FavoriteBody

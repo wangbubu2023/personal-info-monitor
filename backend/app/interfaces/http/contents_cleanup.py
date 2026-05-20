@@ -5,7 +5,7 @@ The pure cleanup logic (``_build_low_signal_cleanup_report``,
 to :mod:`app.domains.ingest.cleanup` in Phase 3 step 7 of the
 module-refactor blueprint; this module keeps only the FastAPI route
 handlers and re-imports the helpers (also re-exporting them so the
-existing ``from app.api.contents import _build_low_signal_cleanup_report``
+existing ``from app.interfaces.http.contents import _build_low_signal_cleanup_report``
 chain — used by ``tests/test_content_quality_filters.py`` — keeps
 resolving).
 """

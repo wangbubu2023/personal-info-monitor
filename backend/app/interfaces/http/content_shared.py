@@ -14,8 +14,8 @@ maps a ``Content`` ORM instance onto the API response dict
 HTTP responses, not domain logic.
 
 All previously exported reader-helper names are re-exported below so
-existing imports (``from app.api.content_shared import _split_for_reader``,
-``from app.api.contents import _split_for_reader``, plus the routes in
+existing imports (``from app.interfaces.http.content_shared import _split_for_reader``,
+``from app.interfaces.http.contents import _split_for_reader``, plus the routes in
 ``app.api.contents_reader``) keep resolving through Phase 7.
 """
 

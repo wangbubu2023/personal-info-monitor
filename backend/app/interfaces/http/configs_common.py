@@ -15,7 +15,7 @@ The three sibling modules own:
 * ``configs_common_browser`` — browser sessions + Playwright orchestration
 """
 
-from app.api.configs_common_auth import (  # noqa: F401 — re-export
+from app.interfaces.http.configs_common_auth import (  # noqa: F401 — re-export
     decrypt_api_credentials,
     decrypt_auth_credentials,
     has_any_credentials,
@@ -24,7 +24,7 @@ from app.api.configs_common_auth import (  # noqa: F401 — re-export
     serialize_api_config,
     serialize_auth_config,
 )
-from app.api.configs_common_browser import (  # noqa: F401 — re-export
+from app.interfaces.http.configs_common_browser import (  # noqa: F401 — re-export
     bind_browser_session_to_sources,
     ensure_x_shared_auth_config,
     is_x_host,
@@ -35,7 +35,7 @@ from app.api.configs_common_browser import (  # noqa: F401 — re-export
     slugify_profile_name,
     sync_cookies_to_auth_config,
 )
-from app.api.configs_common_cookies import (  # noqa: F401 — re-export
+from app.interfaces.http.configs_common_cookies import (  # noqa: F401 — re-export
     bind_auth_config_to_all_x_sources,
     bind_auth_config_to_sources,
     extract_auth_cookies_for_host,

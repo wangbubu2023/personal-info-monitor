@@ -18,7 +18,7 @@ from app.models.source import SourceType
 from app.utils.cookies import normalize_cookie_dict
 from app.utils.url import host_matches, normalize_host
 
-from app.api.configs_common_auth import (
+from app.interfaces.http.configs_common_auth import (
     decrypt_auth_credentials,
     is_shared_x_cookie_config,
 )

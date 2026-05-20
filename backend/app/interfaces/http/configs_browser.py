@@ -21,7 +21,7 @@ from app.schemas.config import (
 from app.utils.datetime import utcnow_naive
 from app.utils.logger import get_logger
 from app.utils.url import host_matches, normalize_host
-from app.api.configs_common import extract_auth_cookies_for_host
+from app.interfaces.http.configs_common import extract_auth_cookies_for_host
 from app.domains.fetch.auth import (
     bind_browser_session_to_sources,
     ensure_x_shared_auth_config,

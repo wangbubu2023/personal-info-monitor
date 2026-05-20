@@ -1,6 +1,6 @@
 """Content API router aggregator and compatibility exports."""
 
-from app.api.content_shared import (
+from app.interfaces.http.content_shared import (
     _build_clean_reader_html,
     _clean_x_reader_body,
     _derive_title_from_body,
@@ -13,9 +13,9 @@ from app.api.content_shared import (
     _split_for_reader,
     _title_looks_like_url,
 )
-from app.api.contents_cleanup import _build_low_signal_cleanup_report, router as cleanup_router
-from app.api.contents_crud import MAX_CONTENTS_PAGE_SIZE, router as crud_router
-from app.api.contents_reader import (
+from app.interfaces.http.contents_cleanup import _build_low_signal_cleanup_report, router as cleanup_router
+from app.interfaces.http.contents_crud import MAX_CONTENTS_PAGE_SIZE, router as crud_router
+from app.interfaces.http.contents_reader import (
     _ensure_reader_body,
     _ensure_translated_title,
     _fetch_reader_fulltext,

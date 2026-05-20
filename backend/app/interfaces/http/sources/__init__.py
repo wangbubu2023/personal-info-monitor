@@ -1,7 +1,7 @@
 # backend/app/api/sources/__init__.py
 """Sources API package — combines all sub-routers into one router.
 
-Import: from app.api.sources import router
+Import: from app.interfaces.http.sources import router
 """
 
 from fastapi import APIRouter
