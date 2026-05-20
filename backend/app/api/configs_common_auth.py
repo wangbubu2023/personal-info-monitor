@@ -1,18 +1,29 @@
 """Credential (API-key + AuthConfig) helpers shared across config routes.
 
 Split out of the former monolithic ``configs_common.py`` (audit 2026-04-20,
-§8.2 Q1). This module owns everything that decrypts or serialises opaque
-credential blobs; cookie / browser-session logic lives in sibling modules.
+§8.2 Q1). This module owns the HTTP-shaped serialisation helpers
+(``mask_api_key`` / ``serialize_api_config`` / ``serialize_auth_config``)
+that surface credential metadata to the frontend. The lower-level
+decryption helpers themselves now live in the platform layer:
+
+* :func:`app.platform.auth.api_credentials.decrypt_api_credentials` —
+  ``APIConfig`` blob decryption (relocated in Phase 4.6).
+* :func:`app.platform.auth.credentials.decrypt_auth_credentials` —
+  ``AuthConfig`` blob decryption (relocated in Phase 5 step 9 so
+  ``app.domains.fetch.auth.browser`` can consume it without violating
+  the ``domains → api`` boundary).
+
+Both names are re-exported here so the existing HTTP-layer callers
+(``configs_api_auth`` / ``configs_common_cookies`` / the
+``configs_common`` aggregator facade) keep working unchanged.
 """
 
 from __future__ import annotations
 
-import json
-
 from app.models.auth_config import APIConfig, AuthConfig
 from app.platform.auth.api_credentials import decrypt_api_credentials  # noqa: F401 - re-export
+from app.platform.auth.credentials import decrypt_auth_credentials  # noqa: F401 - re-export
 from app.utils.datetime import to_iso_z
-from app.platform.security.encryption import decrypt_data
 from app.utils.url import normalize_host
 
 
@@ -39,19 +50,6 @@ def serialize_api_config(config: APIConfig) -> dict:
         "masked_key": masked_key,
         "api_base": additional.get("api_base"),
     }
-
-
-def decrypt_auth_credentials(config: AuthConfig) -> dict:
-    if not config.credentials:
-        return {}
-    try:
-        raw = decrypt_data(config.credentials)
-        if isinstance(raw, str):
-            parsed = json.loads(raw)
-            return parsed if isinstance(parsed, dict) else {}
-        return raw if isinstance(raw, dict) else {}
-    except Exception:  # noqa: BLE001 - opaque decrypt / JSON path, UI degrades to "no creds"
-        return {}
 
 
 def has_any_credentials(credentials: dict) -> bool:

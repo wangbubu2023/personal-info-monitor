@@ -113,7 +113,7 @@ def sync_cookies_to_auth_config(
     if not auth_config or not cookies:
         return False
 
-    from app.api.configs_common_auth import decrypt_auth_credentials
+    from app.platform.auth.credentials import decrypt_auth_credentials
 
     cookie_dict: Dict[str, str] = {}
     for item in cookies:

@@ -3,15 +3,30 @@
 Replaces scattered asyncio.create_task() calls with a queue-backed worker pool,
 providing back-pressure: when the queue is full, new tasks are dropped (logged)
 instead of being silently heap-allocated.
+
+Phase 5 step 9 of the module refactor removed the worker class's direct
+imports of ``app.tasks.fetch_tasks.fetch_source`` and
+``app.domains.ingest.finish.finish_content``: the platform layer must not
+depend on business domains. Handler callables are now passed into
+:meth:`BoundedTaskQueue.start_workers` by the application bootstrap
+(``app.main``) — the same arrangement standard worker frameworks like
+RQ / Celery / Arq use.
 """
 
 import asyncio
 import logging
 import os
 from logging.handlers import RotatingFileHandler
+from typing import Awaitable, Callable, Optional
 
 from app.platform.observability.logger import get_logger
 from app.platform.observability.metrics import task_queue_metrics
+
+FetchHandler = Callable[[str, bool], Awaitable[None]]
+"""``(source_id, manual_trigger) -> awaitable`` — runs a single fetch job."""
+
+ProcessHandler = Callable[[str, Optional[str]], Awaitable[None]]
+"""``(content_id, job_id) -> awaitable`` — runs a single post-fetch finish job."""
 
 logger = get_logger(__name__)
 
@@ -49,6 +64,8 @@ class BoundedTaskQueue:
         self._fetch_queue: asyncio.Queue = asyncio.Queue(maxsize=fetch_maxsize)
         self._process_queue: asyncio.Queue = asyncio.Queue(maxsize=process_maxsize)
         self._workers: list[asyncio.Task] = []
+        self._fetch_handler: Optional[FetchHandler] = None
+        self._process_handler: Optional[ProcessHandler] = None
 
     def _record_dropped_task(self, task_type: str, item_id: str, details: str = ""):
         """Record dropped task to a rotating DLQ log under ``data_dir``."""
@@ -104,8 +121,26 @@ class BoundedTaskQueue:
         """
         return await self.enqueue_ingest_finish(content_id, job_id=job_id)
 
-    async def start_workers(self, fetch_workers: int = 4, process_workers: int = 4) -> None:
-        """Start worker coroutines. Call once from app lifespan startup."""
+    async def start_workers(
+        self,
+        fetch_workers: int = 4,
+        process_workers: int = 4,
+        *,
+        fetch_handler: Optional[FetchHandler] = None,
+        process_handler: Optional[ProcessHandler] = None,
+    ) -> None:
+        """Start worker coroutines. Call once from app lifespan startup.
+
+        ``fetch_handler`` and ``process_handler`` are required for the
+        worker coroutines to do anything meaningful, but are kept
+        optional so the existing ``test_task_queue.py::test_stop_workers_is_idempotent``
+        (which just exercises start/stop lifecycle) keeps working.
+        When a handler is ``None``, the corresponding worker drains
+        the queue but performs no work — useful for unit tests that
+        only need the queue surface, not real fetch / finish behaviour.
+        """
+        self._fetch_handler = fetch_handler
+        self._process_handler = process_handler
         for _ in range(fetch_workers):
             self._workers.append(asyncio.create_task(self._fetch_worker()))
         for _ in range(process_workers):
@@ -123,12 +158,12 @@ class BoundedTaskQueue:
         logger.info("BoundedTaskQueue stopped")
 
     async def _fetch_worker(self) -> None:
-        from app.tasks.fetch_tasks import fetch_source
         while True:
             try:
                 source_id, manual_trigger = await self._fetch_queue.get()
                 try:
-                    await fetch_source(source_id, manual_trigger=manual_trigger)
+                    if self._fetch_handler is not None:
+                        await self._fetch_handler(source_id, manual_trigger)
                 except Exception:
                     logger.exception("fetch worker error for source_id=%s", source_id)
                 finally:
@@ -137,12 +172,12 @@ class BoundedTaskQueue:
                 break
 
     async def _process_worker(self) -> None:
-        from app.domains.ingest.finish import finish_content
         while True:
             try:
                 content_id, job_id = await self._process_queue.get()
                 try:
-                    await finish_content(content_id, job_id=job_id)
+                    if self._process_handler is not None:
+                        await self._process_handler(content_id, job_id)
                 except Exception:
                     logger.exception("process worker error for content_id=%s", content_id)
                 finally:

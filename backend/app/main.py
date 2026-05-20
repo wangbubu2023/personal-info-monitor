@@ -109,9 +109,23 @@ async def lifespan(app: FastAPI):
     scheduler.start()
     trigger_startup_jobs()
 
-    # Start bounded task queue workers
+    # Start bounded task queue workers. Handlers are injected here so the
+    # platform.workers.queue module stays free of any business-domain
+    # imports (Phase 5 step 9 — eliminates platform → domains violation).
+    from app.domains.ingest.finish import finish_content
+    from app.tasks.fetch_tasks import fetch_source
     from app.tasks.task_queue import task_queue
-    await task_queue.start_workers()
+
+    async def _fetch_handler(source_id: str, manual_trigger: bool) -> None:
+        await fetch_source(source_id, manual_trigger=manual_trigger)
+
+    async def _process_handler(content_id: str, job_id: str | None) -> None:
+        await finish_content(content_id, job_id=job_id)
+
+    await task_queue.start_workers(
+        fetch_handler=_fetch_handler,
+        process_handler=_process_handler,
+    )
 
     # Print startup info
     print(f"\n  PIM API Key: {_mask_secret(settings.pim_api_key)}")
