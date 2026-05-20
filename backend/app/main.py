@@ -4,7 +4,6 @@ import asyncio
 import os
 import re
 import secrets as _secrets
-import shutil
 from contextlib import asynccontextmanager
 from time import perf_counter
 from uuid import uuid4
@@ -13,7 +12,6 @@ from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse
 from html import escape as _html_escape
-from sqlalchemy import text
 
 from app.api import api_router
 from app.auth import verify_api_key
@@ -21,6 +19,7 @@ from app.config import bootstrap_runtime_environment, get_settings, parse_cors_o
 from app.database import async_engine
 from app.migrations import run_migrations
 from app.middleware.api_rate_limit import APIRateLimitMiddleware, get_real_client_ip
+from app.platform.health import health_router
 from app.utils.logger import clear_request_id, get_logger, set_request_id
 from app.utils.metrics import persist_metrics, request_metrics, restore_metrics
 
@@ -226,6 +225,8 @@ app.add_middleware(
 
 # Include API routes
 app.include_router(api_router, prefix="/api")
+# Platform-level health/liveness endpoints (extracted from this module in Phase 5.12).
+app.include_router(health_router)
 
 
 @app.middleware("http")
@@ -259,12 +260,6 @@ async def request_observability_middleware(request: Request, call_next):
     response.headers["X-Request-ID"] = request_id
     clear_request_id()
     return response
-
-
-@app.get("/livez")
-async def livez():
-    """Public liveness probe for local tooling and desktop bootstrap."""
-    return {"status": "ok"}
 
 
 _ALLOWED_LOCAL_TOKEN_HOSTNAMES = frozenset(
@@ -388,48 +383,6 @@ async def local_token(request: Request):
         raise HTTPException(status_code=401, detail="Missing or invalid bootstrap token")
 
     return {"api_key": settings.pim_api_key}
-
-
-@app.get("/health", dependencies=[Depends(verify_api_key)])
-async def health_check():
-    """Detailed health check endpoint for authenticated operators."""
-    checks = {}
-    details = {}
-
-    try:
-        async with async_engine.connect() as conn:
-            await conn.execute(text("SELECT 1"))
-        checks["database"] = "ok"
-    except Exception as exc:
-        checks["database"] = "error"
-        logger.warning("Database health check failed: %s", exc)
-
-    try:
-        from app.scheduler import scheduler
-
-        checks["scheduler"] = "ok" if getattr(scheduler, "running", False) else "error"
-        details["scheduled_jobs"] = len(scheduler.get_jobs())
-    except Exception as exc:
-        checks["scheduler"] = "error"
-        logger.warning("Scheduler health check failed: %s", exc)
-
-    try:
-        usage = shutil.disk_usage(settings.data_dir)
-        details["disk_free_bytes"] = usage.free
-        checks["disk"] = "ok" if usage.free >= 100 * 1024 * 1024 else "error"
-    except Exception as exc:
-        checks["disk"] = "error"
-        logger.warning("Disk health check failed: %s", exc)
-
-    healthy = all(v == "ok" for v in checks.values())
-    return JSONResponse(
-        status_code=200 if healthy else 503,
-        content={
-            "status": "healthy" if healthy else "degraded",
-            "checks": checks,
-            "details": details,
-        },
-    )
 
 
 @app.get("/metrics", dependencies=[Depends(verify_api_key)], response_class=PlainTextResponse)
