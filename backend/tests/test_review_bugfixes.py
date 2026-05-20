@@ -10,7 +10,7 @@ from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from app.api.dashboard import _today_window_utc_naive
 from app.collectors import get_collector
 from app.config import get_settings
-from app.main import _mask_secret
+from app.platform.runtime.lifespan import _mask_secret
 from app.models.content import Content
 from app.platform.security.encryption import decrypt_data, encrypt_data
 

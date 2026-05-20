@@ -1,10 +1,8 @@
 """FastAPI application entry point."""
 
-import asyncio
 import os
 import re
 import secrets as _secrets
-from contextlib import asynccontextmanager
 from time import perf_counter
 from uuid import uuid4
 
@@ -16,12 +14,11 @@ from html import escape as _html_escape
 from app.api import api_router
 from app.auth import verify_api_key
 from app.config import bootstrap_runtime_environment, get_settings, parse_cors_origins
-from app.database import async_engine
-from app.migrations import run_migrations
 from app.middleware.api_rate_limit import APIRateLimitMiddleware, get_real_client_ip
 from app.platform.health import health_router
+from app.platform.runtime import build_lifespan
 from app.utils.logger import clear_request_id, get_logger, set_request_id
-from app.utils.metrics import persist_metrics, request_metrics, restore_metrics
+from app.utils.metrics import request_metrics
 
 bootstrap_runtime_environment()
 settings = get_settings()
@@ -57,15 +54,6 @@ _SPA_SECURITY_HEADERS = {
 _REQUEST_ID_RE = re.compile(r"^[A-Za-z0-9-]{1,64}$")
 
 
-def _mask_secret(value: str, prefix: int = 4, suffix: int = 4) -> str:
-    text = (value or "").strip()
-    if not text:
-        return "(not set)"
-    if len(text) <= prefix + suffix:
-        return "*" * len(text)
-    return f"{text[:prefix]}...{text[-suffix:]}"
-
-
 def _normalize_request_id(raw_value: str | None) -> str:
     candidate = (raw_value or "").strip()
     if _REQUEST_ID_RE.fullmatch(candidate):
@@ -85,126 +73,30 @@ def _request_route_label(request: Request) -> str:
     return request.url.path or "/"
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    """Application lifespan events."""
-    if os.environ.get("PIM_SKIP_MIGRATIONS", "").strip().lower() in {"1", "true", "yes", "on"}:
-        logger.warning(
-            "PIM_SKIP_MIGRATIONS is set — skipping Alembic migrations (development only; unsafe in production)"
-        )
-    else:
-        await asyncio.to_thread(run_migrations)
+# Composition root: pick the concrete domain handlers and hand them to the
+# platform-level lifespan factory so platform/runtime stays free of any
+# app.domains.* imports (Phase 5 step 13 — preserves the platform ↛ domains
+# invariant enforced by scripts/check_domain_imports.py --phase=5).
+from app.domains.ingest.finish import finish_content
+from app.tasks.fetch_tasks import fetch_source
 
-    # Restore persisted metrics counters so rate() queries survive restarts.
-    try:
-        if restore_metrics():
-            logger.info("Restored persisted metrics counters from data_dir checkpoint")
-    except Exception as exc:  # noqa: BLE001 - observability best-effort
-        logger.warning("Failed to restore metrics checkpoint: %s", exc)
 
-    # Start scheduler
-    from app.scheduler import scheduler, setup_scheduler, trigger_startup_jobs
-    setup_scheduler()
-    scheduler.start()
-    trigger_startup_jobs()
+async def _fetch_handler(source_id: str, manual_trigger: bool) -> None:
+    await fetch_source(source_id, manual_trigger=manual_trigger)
 
-    # Start bounded task queue workers. Handlers are injected here so the
-    # platform.workers.queue module stays free of any business-domain
-    # imports (Phase 5 step 9 — eliminates platform → domains violation).
-    from app.domains.ingest.finish import finish_content
-    from app.tasks.fetch_tasks import fetch_source
-    from app.tasks.task_queue import task_queue
 
-    async def _fetch_handler(source_id: str, manual_trigger: bool) -> None:
-        await fetch_source(source_id, manual_trigger=manual_trigger)
-
-    async def _process_handler(content_id: str, job_id: str | None) -> None:
-        await finish_content(content_id, job_id=job_id)
-
-    await task_queue.start_workers(
-        fetch_handler=_fetch_handler,
-        process_handler=_process_handler,
-    )
-
-    # Print startup info
-    print(f"\n  PIM API Key: {_mask_secret(settings.pim_api_key)}")
-    print(f"  Data dir:    {settings.data_dir}")
-    print(f"  Fetch concurrency: {settings.fetch_concurrency}")
-    _enrich_flags = (
-        f"auto_on_ingest={settings.enrich_auto_on_ingest}, "
-        f"summary={settings.enrich_summary_enabled}, "
-        f"translate={settings.enrich_translate_enabled}"
-    )
-    print(
-        "  AI processing: "
-        f"{'enabled' if settings.ai_processing_enabled else 'disabled'} "
-        f"(enrich: {_enrich_flags})"
-    )
-    print(
-        "  Bootstrap URL (web auto-provision): run `./pim bootstrap-url` to print"
-    )
-    print()
-
-    if settings.probe_disable_ssl_verify and settings.debug:
-        logger.warning(
-            "SECURITY WARNING: probe_disable_ssl_verify=True — SSL certificate verification is "
-            "disabled for all outbound probe/fetch requests. This should never be enabled in "
-            "production as it exposes the service to man-in-the-middle attacks."
-        )
-    elif settings.probe_disable_ssl_verify:
-        logger.warning(
-            "Ignoring probe_disable_ssl_verify because debug mode is disabled; outbound probe/fetch "
-            "requests will continue to verify SSL certificates."
-        )
-
-    # Surface feature-flag posture so operators notice unsafe defaults in logs
-    # without needing to hit /api/system/doctor first.
-    from app.features import playwright_enabled, x_playwright_enabled
-
-    if not playwright_enabled():
-        logger.warning(
-            "PIM_FEATURE_PLAYWRIGHT is disabled — JS-heavy site collection and "
-            "cookie-login bootstrap will be skipped. Enable with PIM_FEATURE_PLAYWRIGHT=true."
-        )
-    else:
-        logger.info("Playwright feature is enabled (PIM_FEATURE_PLAYWRIGHT=true).")
-    if x_playwright_enabled():
-        logger.warning(
-            "PIM_FEATURE_X_PLAYWRIGHT=true — X (Twitter) logged-in Chromium hydration is active. "
-            "This feature touches X Terms of Service grey area (ADR-003); keep it off unless "
-            "you fully understand the risk."
-        )
-
-    yield
-
-    # Shutdown
-    scheduler.shutdown(wait=False)
-    await task_queue.stop_workers()
-
-    # Release the shared Playwright/Chromium process before dropping the DB
-    # engine so we never leak a Chromium child on graceful reload.
-    try:
-        from app.utils.browser import shutdown_browser_pool
-
-        await shutdown_browser_pool()
-    except Exception as exc:
-        logger.warning("Browser pool shutdown raised: %s", exc)
-
-    # Checkpoint metrics counters before dropping the process.
-    try:
-        if persist_metrics() is not None:
-            logger.info("Persisted metrics counters to data_dir checkpoint")
-    except Exception as exc:  # noqa: BLE001 - observability best-effort
-        logger.warning("Failed to persist metrics checkpoint: %s", exc)
-
-    await async_engine.dispose()
+async def _process_handler(content_id: str, job_id: str | None) -> None:
+    await finish_content(content_id, job_id=job_id)
 
 
 app = FastAPI(
     title=settings.app_name,
     description="个人化资讯监控管理系统 API",
     version="2.0.0",
-    lifespan=lifespan,
+    lifespan=build_lifespan(
+        fetch_handler=_fetch_handler,
+        process_handler=_process_handler,
+    ),
 )
 
 # CORS: browser dev + Tauri WebView
