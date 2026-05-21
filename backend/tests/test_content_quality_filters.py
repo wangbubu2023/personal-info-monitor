@@ -8,6 +8,10 @@ from app.database import Base
 from app.models import Content, Source
 from app.models.source import SourceType
 from app.pipeline.normalizer_stage import NormalizerStage
+from app.domains.ingest.quality import (
+    get_non_article_format_reject_reason,
+    is_rss_sourced_item,
+)
 from app.pipeline.utils import get_website_content_reject_reason
 from app.utils.datetime import utcnow_naive
 
@@ -175,6 +179,177 @@ def test_website_content_gate_keeps_article_like_urls():
         )
         is None
     )
+
+
+def test_non_article_format_rejects_nyt_slideshow_even_from_rss():
+    raw = {
+        "title": "图集：图片中的2025年（下）",
+        "content": "",
+        "url": "https://cn.nytimes.com/slideshow/20251229/year-in-pictures-2025-2/",
+        "ingest_channel": "rss",
+        "metadata": {"ingest_channel": "rss"},
+    }
+    assert (
+        get_non_article_format_reject_reason("https://cn.nytimes.com/", raw)
+        == "blocked_non_article_format"
+    )
+    assert get_website_content_reject_reason("https://cn.nytimes.com/", raw) is None
+
+
+def test_non_article_format_rejects_engadget_science_news_roundup():
+    raw = {
+        "title": "Perseverance checks in from Mars with a selfie, and more science stories",
+        "content": "",
+        "url": "https://www.engadget.com/2174445/perseverance-mars-selfie-science-news/",
+        "ingest_channel": "rss",
+    }
+    assert (
+        get_non_article_format_reject_reason("https://www.engadget.com/", raw)
+        == "blocked_engadget_roundup"
+    )
+
+
+def test_non_article_format_rejects_engadget_review_recap():
+    raw = {
+        "title": "Engadget review recap: Razr Fold, Bose Lifestyle Ultra Speaker and more",
+        "content": "x" * 500,
+        "url": "https://www.engadget.com/2174499/engadget-review-recap-razr-fold/",
+        "ingest_channel": "rss",
+    }
+    assert (
+        get_non_article_format_reject_reason("https://www.engadget.com/", raw)
+        == "blocked_engadget_roundup"
+    )
+    assert get_website_content_reject_reason("https://www.engadget.com/", raw) is None
+
+
+async def test_normalizer_stage_drops_engadget_roundup_from_rss():
+    db = _build_db_session()
+    source = Source(
+        name="Engadget",
+        type=SourceType.WEBSITE,
+        url="https://www.engadget.com/",
+        fetch_interval=60,
+        enabled=True,
+        metadata_={},
+    )
+    db.add(source)
+    db.commit()
+    db.refresh(source)
+
+    now = utcnow_naive()
+    raw_contents = [
+        {
+            "external_id": "https://www.engadget.com/2174445/foo-science-news/",
+            "title": "Mars selfie, satellite pollution, and more science stories",
+            "content": "",
+            "url": "https://www.engadget.com/2174445/foo-science-news/",
+            "publish_time": now,
+            "ingest_channel": "rss",
+            "metadata": {"ingest_channel": "rss"},
+        },
+    ]
+
+    valid_contents, stale_skipped = await NormalizerStage.execute(
+        db=db,
+        source=source,
+        raw_contents=raw_contents,
+        manual_trigger=False,
+    )
+
+    assert stale_skipped == 0
+    assert valid_contents == []
+
+
+async def test_normalizer_stage_drops_rss_sourced_slideshow_items():
+    db = _build_db_session()
+    source = Source(
+        name="NYT CN",
+        type=SourceType.WEBSITE,
+        url="https://cn.nytimes.com/",
+        fetch_interval=60,
+        enabled=True,
+        metadata_={},
+    )
+    db.add(source)
+    db.commit()
+    db.refresh(source)
+
+    now = utcnow_naive()
+    raw_contents = [
+        {
+            "external_id": "https://cn.nytimes.com/slideshow/20251229/year-in-pictures-2025-2/",
+            "title": "图集：图片中的2025年（下）",
+            "content": "",
+            "url": "https://cn.nytimes.com/slideshow/20251229/year-in-pictures-2025-2/",
+            "publish_time": now,
+            "ingest_channel": "rss",
+            "metadata": {"ingest_channel": "rss"},
+        },
+    ]
+
+    valid_contents, stale_skipped = await NormalizerStage.execute(
+        db=db,
+        source=source,
+        raw_contents=raw_contents,
+        manual_trigger=False,
+    )
+
+    assert stale_skipped == 0
+    assert valid_contents == []
+
+
+def test_rss_sourced_item_detected_from_ingest_channel():
+    raw = {
+        "title": "黑客军团如何渗透美国电网",
+        "content": "x" * 77,
+        "url": "https://cn.nytimes.com/china/2026/05/20/hackers-power-grid/",
+        "ingest_channel": "rss",
+    }
+    assert is_rss_sourced_item(raw)
+    assert (
+        get_website_content_reject_reason("https://cn.nytimes.com/", raw)
+        == "low_content_single_phrase_link"
+    )
+
+
+async def test_normalizer_stage_keeps_rss_sourced_short_website_items():
+    db = _build_db_session()
+    source = Source(
+        name="NYT CN",
+        type=SourceType.WEBSITE,
+        url="https://cn.nytimes.com/",
+        fetch_interval=60,
+        enabled=True,
+        metadata_={},
+    )
+    db.add(source)
+    db.commit()
+    db.refresh(source)
+
+    now = utcnow_naive()
+    raw_contents = [
+        {
+            "external_id": "https://cn.nytimes.com/china/2026/05/20/hackers-power-grid/",
+            "title": "黑客军团如何渗透美国电网",
+            "content": "x" * 77,
+            "url": "https://cn.nytimes.com/china/2026/05/20/hackers-power-grid/",
+            "publish_time": now,
+            "ingest_channel": "rss",
+            "metadata": {"ingest_channel": "rss"},
+        },
+    ]
+
+    valid_contents, stale_skipped = await NormalizerStage.execute(
+        db=db,
+        source=source,
+        raw_contents=raw_contents,
+        manual_trigger=False,
+    )
+
+    assert stale_skipped == 0
+    assert len(valid_contents) == 1
+    assert valid_contents[0]["title"] == "黑客军团如何渗透美国电网"
 
 
 async def test_normalizer_stage_filters_low_signal_website_contents_before_storage():

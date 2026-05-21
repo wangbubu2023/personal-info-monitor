@@ -121,13 +121,20 @@ class TestIsValidDigestFormat:
         assert not is_valid_digest_format("")
         assert not is_valid_digest_format("   ")
 
-    def test_h3_with_source_accepted(self):
+    def test_h3_with_source_accepted(self, monkeypatch):
+        monkeypatch.setenv("PIM_HOURLY_DIGEST_SKIP_FORMAT_VALIDATION", "false")
         body = "### 标题\n正文\n来源：X"
         assert is_valid_digest_format(body)
 
-    def test_h2_with_reader_link_accepted(self):
+    def test_h2_with_reader_link_accepted(self, monkeypatch):
+        monkeypatch.setenv("PIM_HOURLY_DIGEST_SKIP_FORMAT_VALIDATION", "false")
         body = "## 标题\n" + ("一条比较长的正文 " * 10) + "\n/reader/abc"
         assert is_valid_digest_format(body)
 
-    def test_plain_text_rejected(self):
+    def test_plain_text_rejected_when_validation_enabled(self, monkeypatch):
+        monkeypatch.setenv("PIM_HOURLY_DIGEST_SKIP_FORMAT_VALIDATION", "false")
         assert not is_valid_digest_format("just some plain paragraph")
+
+    def test_plain_text_accepted_when_validation_skipped(self, monkeypatch):
+        monkeypatch.setenv("PIM_HOURLY_DIGEST_SKIP_FORMAT_VALIDATION", "true")
+        assert is_valid_digest_format("just some plain paragraph")

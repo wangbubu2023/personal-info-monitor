@@ -16,6 +16,7 @@ import type { AIModelTabFormValues } from '../../types'
 import ModelProvidersTab from './ModelProvidersTab'
 import SectionNote from '../ui/SectionNote'
 import PanelLoading from '../common/PanelLoading'
+import OllamaCtxSlider, { snapOllamaNumCtx } from './OllamaCtxSlider'
 
 const { Option } = Select
 
@@ -72,9 +73,12 @@ const AIModelTab: React.FC = () => {
       provider: settings.ai_model.provider,
       model: settings.ai_model.model,
       temperature: settings.ai_model.temperature,
-      max_tokens: settings.ai_model.max_tokens,
+      ollama_num_ctx: snapOllamaNumCtx(settings.ai_model.ollama_num_ctx, 8192),
+      ollama_no_think: settings.ai_model.ollama_no_think ?? false,
       trans_provider: settings.translation_model?.provider || 'ollama',
       trans_model: settings.translation_model?.model || 'translategemma:12b',
+      trans_ollama_num_ctx: snapOllamaNumCtx(settings.translation_model?.ollama_num_ctx, 2048),
+      trans_ollama_no_think: settings.translation_model?.ollama_no_think ?? true,
       translation_fallback_enabled:
         settings.translation_fallback_enabled ?? settings.translation_cloud_fallback_enabled ?? false,
       summarization_fallback_enabled:
@@ -173,11 +177,22 @@ const AIModelTab: React.FC = () => {
         provider: values.provider,
         model: values.model,
         temperature: values.temperature,
-        max_tokens: values.max_tokens,
+        ...(values.provider === 'ollama'
+          ? {
+              ollama_num_ctx: values.ollama_num_ctx,
+              ollama_no_think: values.ollama_no_think === true,
+            }
+          : {}),
       },
       translation_model: {
         provider: values.trans_provider,
         model: values.trans_model,
+        ...(values.trans_provider === 'ollama'
+          ? {
+              ollama_num_ctx: values.trans_ollama_num_ctx,
+              ollama_no_think: values.trans_ollama_no_think === true,
+            }
+          : {}),
       },
       translation_fallback_enabled: translationFallbackEnabled === true,
       translation_fallback: {
@@ -207,7 +222,7 @@ const AIModelTab: React.FC = () => {
       <ModelProvidersTab />
 
       <SectionNote style={{ marginBottom: 16, marginTop: 24 }}>
-        已接入的提供商才会出现在下面的模型选择中。API Key 与网关地址只在上方「模型接入」维护；此处仅选择提供商、模型及生成参数（Temperature / Token 等）。
+        已接入的提供商才会出现在下面的模型选择中。API Key 与网关地址只在上方「模型接入」维护；此处仅选择提供商、模型及生成参数（Temperature 等）。
       </SectionNote>
       {selectedProvider === 'ollama' && currentProvider?.availability_message ? (
         <SectionNote tone="caution" style={{ marginBottom: 16 }}>
@@ -215,7 +230,7 @@ const AIModelTab: React.FC = () => {
         </SectionNote>
       ) : null}
       <Form form={form} layout="vertical" onFinish={handleSave} style={{ maxWidth: 600 }}>
-        <Divider orientation="left">摘要模型配置</Divider>
+        <Divider orientation="left">写作模型配置</Divider>
 
         <Form.Item name="provider" label="AI 提供商" rules={[{ required: true }]}>
           <Select placeholder="选择 AI 提供商">
@@ -251,22 +266,38 @@ const AIModelTab: React.FC = () => {
           <Slider min={0} max={2} step={0.1} marks={{ 0: '0', 0.7: '0.7', 1: '1', 2: '2' }} />
         </Form.Item>
 
-        <Form.Item name="max_tokens" label="最大 Token 数">
-          <InputNumber min={100} max={4000} style={{ width: '100%' }} />
-        </Form.Item>
+        {selectedProvider === 'ollama' ? (
+          <>
+            <Form.Item
+              name="ollama_num_ctx"
+              label="Context 窗口 (num_ctx)"
+              extra="写作任务使用的 Ollama 上下文长度，默认 8K。"
+            >
+              <OllamaCtxSlider />
+            </Form.Item>
+            <Form.Item
+              name="ollama_no_think"
+              label="关闭思维链 (/no_think)"
+              valuePropName="checked"
+              extra="写作任务通常不需要思维链；开启后会在 system prompt 末尾追加 /no_think。"
+            >
+              <Switch checkedChildren="开启" unCheckedChildren="关闭" />
+            </Form.Item>
+          </>
+        ) : null}
 
         <Form.Item
           name="summarization_fallback_enabled"
-          label="启用摘要备用（fallback）模型"
+          label="启用写作备用（fallback）模型"
           valuePropName="checked"
-          extra="关闭后，摘要失败将退回截断正文，不再尝试备用模型。"
+          extra="关闭后，写作失败将退回截断正文，不再尝试备用模型。"
         >
           <Switch checkedChildren="开启" unCheckedChildren="关闭" />
         </Form.Item>
 
         {summarizationFallbackOn ? (
           <>
-            <Form.Item name="sum_fallback_provider" label="摘要备用 · 提供商" rules={[{ required: true }]}>
+            <Form.Item name="sum_fallback_provider" label="写作备用 · 提供商" rules={[{ required: true }]}>
               <Select placeholder="选择提供商">
                 {modelsData?.providers?.map(p => (
                   <Option key={p.id} value={p.id}>{p.name}</Option>
@@ -275,7 +306,7 @@ const AIModelTab: React.FC = () => {
             </Form.Item>
             <Form.Item
               name="sum_fallback_model"
-              label="摘要备用 · 模型"
+              label="写作备用 · 模型"
               rules={[{ required: true }]}
               extra={selectedSumFbProvider === 'ollama'
                 ? '列表来自本机已安装模型（与上方列表同源）。'
@@ -289,7 +320,7 @@ const AIModelTab: React.FC = () => {
             </Form.Item>
             {selectedSumFbProvider ? (
               <SectionNote style={{ marginBottom: 16 }}>
-                摘要备用通道地址（来自模型接入）：{' '}
+                写作备用通道地址（来自模型接入）：{' '}
                 <code className="text-[13px]">{sumFbProvider?.default_api_base || '—'}</code>
               </SectionNote>
             ) : null}
@@ -325,6 +356,26 @@ const AIModelTab: React.FC = () => {
             当前翻译通道服务地址（来自模型接入）：{' '}
             <code className="text-[13px]">{transProvider?.default_api_base || '—'}</code>
           </SectionNote>
+        ) : null}
+
+        {selectedTransProvider === 'ollama' ? (
+          <>
+            <Form.Item
+              name="trans_ollama_num_ctx"
+              label="Context 窗口 (num_ctx)"
+              extra="翻译任务使用的 Ollama 上下文长度，默认 2K。"
+            >
+              <OllamaCtxSlider />
+            </Form.Item>
+            <Form.Item
+              name="trans_ollama_no_think"
+              label="关闭思维链 (/no_think)"
+              valuePropName="checked"
+              extra="翻译任务建议开启，避免模型输出冗长思考过程。"
+            >
+              <Switch checkedChildren="开启" unCheckedChildren="关闭" />
+            </Form.Item>
+          </>
         ) : null}
 
         <Form.Item

@@ -8,6 +8,7 @@ to drive digest generation.
 from __future__ import annotations
 
 import html
+import os
 import re
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -191,11 +192,23 @@ def classify_digest_category(text: str) -> str:
     return "重点"
 
 
+def hourly_digest_skip_format_validation() -> bool:
+    """When enabled, accept any non-empty LLM digest (skip ### / 来源： /reader/ gate).
+
+    Set ``PIM_HOURLY_DIGEST_SKIP_FORMAT_VALIDATION=false`` to restore the format check.
+    Defaults to enabled so operators can inspect raw model output without code edits.
+    """
+    raw = os.environ.get("PIM_HOURLY_DIGEST_SKIP_FORMAT_VALIDATION", "true").strip().lower()
+    return raw in {"1", "true", "yes", "on"}
+
+
 def is_valid_digest_format(body: str) -> bool:
     """Sanity-check the LLM output before we commit it as a digest."""
     text = (body or "").strip()
     if not text:
         return False
+    if hourly_digest_skip_format_validation():
+        return True
     if "### " in text and "来源：" in text:
         return True
     if "## " in text and "/reader/" in text and len(text) >= 80:

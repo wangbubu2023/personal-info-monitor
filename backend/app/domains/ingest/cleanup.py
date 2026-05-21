@@ -32,7 +32,10 @@ from __future__ import annotations
 
 from collections import Counter
 
-from app.domains.ingest.quality import get_website_content_reject_reason
+from app.domains.ingest.quality import (
+    get_non_article_format_reject_reason,
+    get_website_content_reject_reason,
+)
 from app.models import Content
 from app.utils.text import strip_html_tags, text_looks_like_embedded_binary
 
@@ -87,15 +90,15 @@ def _build_low_signal_cleanup_report(
         source = content.source
         if not source:
             continue
-        reason = get_website_content_reject_reason(
-            source.url,
-            {
-                "title": content.title,
-                "content": content.full_content or content.summary or "",
-                "url": content.original_url,
-                "html": "",
-            },
-        )
+        raw = {
+            "title": content.title,
+            "content": content.full_content or content.summary or "",
+            "url": content.original_url,
+            "html": "",
+        }
+        reason = get_non_article_format_reject_reason(source.url, raw)
+        if not reason:
+            reason = get_website_content_reject_reason(source.url, raw)
         if not reason:
             continue
 

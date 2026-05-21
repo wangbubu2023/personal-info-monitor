@@ -164,6 +164,8 @@ class AIModelConfig(BaseModel):
     api_key: Optional[str] = Field(None, description="API key if required")
     temperature: float = Field(default=0.7, ge=0, le=2)
     max_tokens: int = Field(default=1000, ge=1)
+    ollama_num_ctx: Optional[int] = Field(None, ge=1024, le=262144, description="Ollama context window (num_ctx)")
+    ollama_no_think: Optional[bool] = Field(None, description="Append /no_think for Ollama models")
 
 
 class AIModelConfigResponse(BaseModel):
@@ -173,6 +175,8 @@ class AIModelConfigResponse(BaseModel):
     api_base: Optional[str] = None
     temperature: float
     max_tokens: int
+    ollama_num_ctx: Optional[int] = None
+    ollama_no_think: Optional[bool] = None
     has_api_key: bool = False
 
 
@@ -183,6 +187,8 @@ class TranslationModelConfig(BaseModel):
     model: str = Field(..., description="Model name")
     api_base: Optional[str] = Field(None, description="Custom API base URL (for Ollama)")
     api_key: Optional[str] = Field(None, description="API key if required")
+    ollama_num_ctx: Optional[int] = Field(None, ge=1024, le=262144, description="Ollama context window (num_ctx)")
+    ollama_no_think: Optional[bool] = Field(None, description="Append /no_think for Ollama models")
 
 
 class TranslationModelConfigResponse(BaseModel):
@@ -191,6 +197,8 @@ class TranslationModelConfigResponse(BaseModel):
     provider: str
     model: str
     api_base: Optional[str] = None
+    ollama_num_ctx: Optional[int] = None
+    ollama_no_think: Optional[bool] = None
     has_api_key: bool = False
 
 

@@ -60,6 +60,8 @@ def get_runtime_features() -> Dict[str, Any]:
         "keyword_monitoring_enabled": feat.KEYWORD_MONITORING_ENABLED,
         "playwright_enabled": feat.playwright_enabled(),
         "x_playwright_enabled": feat.x_playwright_enabled(),
+        "atoms_enabled": feat.atoms_enabled(),
+        "atoms_relations_enabled": feat.atoms_relations_enabled(),
     }
 
 

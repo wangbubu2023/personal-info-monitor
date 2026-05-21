@@ -54,11 +54,16 @@ async def test_finish_content_keyword_matching():
     mock_tracker.end_process = AsyncMock()
 
     mock_content = MagicMock()
+    mock_content.id = "content-1"
+    mock_content.content_type = "website"
     mock_content.title = "Test Title"
-    mock_content.full_content = "Test content body"
-    mock_content.summary = None
+    mock_content.full_content = "Test content body with enough length for acceptance checks" * 3
+    mock_content.summary = "Test summary with enough characters to pass listing checks easily."
+    mock_content.translated_summary = None
+    mock_content.translated_title = None
     mock_content.keyword_matches = []
-    mock_content.metadata_ = {}
+    mock_content.metadata_ = {"fulltext_status": "full"}
+    mock_content.original_url = "https://example.com/article"
     mock_content.source = None
     mock_content.auth_config_id = None
 
@@ -77,9 +82,10 @@ async def test_finish_content_keyword_matching():
                 with patch("app.database.SessionLocal", return_value=mock_db):
                     with patch("app.processors.keyword_matcher.KeywordMatcher") as MockMatcher:
                         MockMatcher.return_value.match.return_value = [{"id": "kw-1", "keyword": "test"}]
-                        with patch("app.domains.ingest.finish._dispatch_keyword_alerts"):
-                            from app.domains.ingest.finish import finish_content
-                            await finish_content("content-1")
+                        with patch("app.domains.fetch.finalize.hydrate_fetched_content", new_callable=AsyncMock):
+                            with patch("app.domains.ingest.finish._dispatch_keyword_alerts"):
+                                from app.domains.ingest.finish import finish_content
+                                await finish_content("content-1")
 
     assert mock_content.keyword_matches == [{"id": "kw-1", "keyword": "test"}]
 
@@ -157,9 +163,9 @@ async def test_finish_content_stamps_baseline_score():
                     await finish_content("content-1")
 
     assert mock_content.metadata_["fulltext_status"] == "full"
-    assert mock_content.metadata_["scoring_method"] == "baseline"
-    assert mock_content.metadata_["score_version"] == "pim-score-v1"
-    assert mock_content.metadata_["domain_match"] > 0.7
+    assert mock_content.metadata_["scoring_method"] == "rule"
+    assert mock_content.metadata_["score_version"] == "pim-score-v2"
+    assert mock_content.metadata_["lane"] == "tech_product"
     assert "final_score" in mock_content.metadata_
 
 

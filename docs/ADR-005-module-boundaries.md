@@ -1,46 +1,25 @@
-# ADR-005: 后端五模块领域边界
+# ADR-005: 后端六模块领域边界
 
 ## 状态
 
-已接受（Phase 0–7 全部落地；post-Phase-7 仓库审计完成）
+已接受（2026-05 修订：fetch 扩权、score 独立、summarize 流水线阶段）
 
 ## 背景
 
-PIM 后端在 `collectors`、`pipeline`、`processors`、`tasks`、`api/sources/_helpers` 等目录间存在职责重叠与反向依赖。计划引入「新闻原子」结构化能力，需要稳定的扩展点。团队希望按模块单独优化、测试与排障。
+PIM 后端在 Phase 0–7 完成五模块拆分后，实践中发现：(1) 正文二跳与验收逻辑落在 `ingest` 但与「抓取交付完整原始内容」语义不符；(2) 评分规则持续演进，与清洗入库耦合；(3) LLM 摘要应在打分前产生 canonical summary，但不宜打破 ingest 无 LLM 约束。
 
 ## 决策
 
-1. **领域层**划分为五个包，单向依赖：`sources` → `fetch` → `ingest` → `atoms`；`ingest` → `enrich`；`atoms` 对 `enrich` 为**可选上游**（L0/L1/L2 消费级别，详见已归档的 [`reviews/archive/MODULE_REFACTOR_PLAN.md`](./reviews/archive/MODULE_REFACTOR_PLAN.md)）。
-2. **交付层**（`interfaces/http`、`cli/pimctl`、`frontend`、`./pim`）不承载业务规则，不列为第六个领域模块。
-3. **平台层**（`platform/*`）承载认证、配置、数据库、任务队列、指标、浏览器池、SSRF/加密等横切能力。
-4. 抓取主路径**禁止 LLM**；摘要/翻译/简报仅在 `enrich`；结构化原子在 `atoms`。
-5. 删除未接入流水线的 `pipeline/ai_stage.py`；调度 due 逻辑收口至 `sources/scheduling`。
-6. **导入约束由静态检查器强制**：`backend/scripts/check_domain_imports.py` 在 CI 中按 `--phase=7` 校验全部依赖方向，post-Phase-7 仓库审计追加规则禁止重新引入已删除的 shim（`app.collectors.podcast / website_helpers / x_twitter_formatters`、`app.data.source_types`、`app.exporters`、`app.utils.{ssrf,tracing}`、`app.tasks.{email_tasks,fetch_orchestrator,hourly_digest_tasks}`、`app.services.{runtime_lock_service,system_settings,hourly_digest,reader}`）。
-
-## 原因
-
-- 与 ADR-001 本地单体一致：包边界替代微服务。
-- 便于分 PR 迁移、按 domain 过滤日志与指标。
-- atoms 可选上游避免 enrich 被结构化流水线阻塞。
-
-## 后果
-
-### 优点
-
-- 新人可按模块阅读代码与文档。
-- 单模块测试与发布风险隔离。
-- 为 atoms 预留清晰落点。
-- 顶层文档（README、ARCHITECTURE、MODULE_BOUNDARIES、`backend/README.md`）已在 Phase 7 后集中更新；audit/ 目录历史快照归档至 `docs/reviews/archive/audit-2026-05-02/`。
-
-### 代价
-
-- 部分高 fan-out 的 shim 仍保留以维持 `patch()` target（如 `app.config`、`app.database`、`app.auth`、`app.background`、`app.collectors.{base,rss,youtube,x_twitter,...}`、`app.utils.{logger,metrics,encryption}`），未来如要删除需要先在测试中改 patch target。
-- `app.api → app.interfaces.http` 通过 `sys.modules` 别名共存；删除别名需要先在 `app/main.py` 与所有测试中改 import 路径。
+1. **领域层**划分为六个包，流水线单向依赖：
+   `sources` → `fetch` → `ingest` → `score`；`ingest` → `enrich`（summarize 子阶段）；`atoms` 可选 sidecar。
+2. **fetch** 负责 collector、**正文二跳**（`fetch/article_body`）、**验收**（`fetch/acceptance`），交付 `fetch_acceptance=accepted` 的完整原始内容（X 短帖除外）。
+3. **ingest** 仅做确定性预处理（清洗、去重、入库、FTS、关键词）；**禁止 LLM**。
+4. **score** 独立为 `domains/score`；打分只读**原文** `title` / `summary`（listing 翻译纯 UI）。
+5. **summarize** 为第七个**流水线阶段**，由 `enrich/content/summarize` 实现，在 `ingest/finish` 中于 score 之前同步调用；受 `ENRICH_AUTO_ON_INGEST` + `ENRICH_SUMMARY_ENABLED` 控制。
+6. 共享 fulltext 常量置于 `domains/contracts/content_quality.py`，供 fetch 验收与 ingest 质量元数据共用。
+7. **导入约束**见 `check_domain_imports.py`（含 `fetch` 不得 import 下游、`score` 不得 import enrich）。
 
 ## 参考
 
-- [ARCHITECTURE.md](./ARCHITECTURE.md)
 - [MODULE_BOUNDARIES.md](./MODULE_BOUNDARIES.md)
-- [PROJECT_STRUCTURE.md](./PROJECT_STRUCTURE.md)
-- [ADR-001-local-monolith.md](./ADR-001-local-monolith.md)
-- 历史实施记录：[`reviews/archive/MODULE_REFACTOR_PLAN.md`](./reviews/archive/MODULE_REFACTOR_PLAN.md)
+- [SCORING_MODEL.md](./SCORING_MODEL.md)

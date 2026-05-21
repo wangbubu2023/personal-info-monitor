@@ -977,6 +977,37 @@ class TestRssOnlyMode:
         rss_mock.assert_awaited_once()
 
     @pytest.mark.asyncio
+    async def test_rss_hydrates_without_auth_when_rss_only_off(self):
+        """RSS batches should hydrate article HTML even without cookies/session."""
+        collector = WebsiteCollector()
+        source = _make_source(
+            url="https://open.example.com",
+            metadata_={"rss_url": "https://open.example.com/feed"},
+        )
+        items = self._rss_items()
+
+        rss_mock = AsyncMock(return_value=list(items))
+        hydrate_rss_mock = AsyncMock(return_value=[{"url": "hydrated", "content": "full"}])
+
+        with patch.object(collector, "_check_ssrf", new_callable=AsyncMock), \
+             patch.object(collector, "get_runtime_auth", return_value=None), \
+             patch.object(collector, "get_runtime_cookies", return_value={}), \
+             patch.object(collector, "get_runtime_browser_session", return_value=None), \
+             patch.object(
+                 collector, "_fetch_authenticated_direct_articles",
+                 new=AsyncMock(return_value=None),
+             ), \
+             patch.object(collector.rss_collector, "fetch", new=rss_mock), \
+             patch.object(
+                 collector, "_maybe_hydrate_rss_contents",
+                 new=hydrate_rss_mock,
+             ):
+            result = await collector.fetch(source)
+
+        hydrate_rss_mock.assert_awaited_once()
+        assert result == [{"url": "hydrated", "content": "full"}]
+
+    @pytest.mark.asyncio
     async def test_rss_only_off_still_hydrates_when_auth_present(self):
         """Regression guard: with rss_only unset, the legacy hydration path
         still runs. If this test breaks, we've accidentally disabled full-text

@@ -8,6 +8,7 @@ const HomePage = lazy(() => import('./pages/HomePage'))
 const DigestPage = lazy(() => import('./pages/DigestPage'))
 const SettingsPage = lazy(() => import('./pages/SettingsPage'))
 const ReaderPage = lazy(() => import('./pages/ReaderPage'))
+const AtomsPage = lazy(() => import('./pages/AtomsPage'))
 
 const App: React.FC = () => {
   const [isSpotlightOpen, setIsSpotlightOpen] = useState<boolean>(false)
@@ -42,6 +43,7 @@ const App: React.FC = () => {
             <Route path="/" element={<HomePage />} />
             <Route path="/digest" element={<DigestPage />} />
             <Route path="/reader/:id" element={<ReaderPage />} />
+            <Route path="/atoms" element={<AtomsPage />} />
             <Route path="/sources" element={<Navigate to="/settings" replace />} />
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />

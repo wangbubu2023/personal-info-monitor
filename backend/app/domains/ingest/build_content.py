@@ -23,8 +23,12 @@ from typing import List
 from app.models import Content, Source
 from app.utils.datetime import utcnow_naive
 from app.utils.logger import get_logger
-from app.utils.text import strip_html_tags, truncate_content
-from app.domains.ingest.quality import get_website_content_reject_reason
+from app.utils.text import strip_html_tags, truncate_content, normalize_article_text
+from app.domains.ingest.quality import (
+    get_non_article_format_reject_reason,
+    get_website_content_reject_reason,
+    is_rss_sourced_item,
+)
 from app.domains.ingest.quality_metadata import merge_content_quality_metadata
 
 logger = get_logger(__name__)
@@ -57,7 +61,7 @@ async def build_raw_content_objects(
             if html and not main_text:
                 main_text = await extractor.extract(html, raw.get("url"))
 
-            main_text_clean = strip_html_tags(main_text) if main_text else ""
+            main_text_clean = normalize_article_text(main_text) if main_text else ""
             title = strip_html_tags(raw.get("title", "Untitled"))
 
             # Truncated snippet as placeholder summary (AI will replace it later)
@@ -84,8 +88,8 @@ async def build_raw_content_objects(
                 summary=summary,
             )
 
-            # PROACTIVE SIGNAL FILTERING
-            reject_reason = get_website_content_reject_reason(
+            # Slideshows/galleries: always drop. Thin RSS teasers: keep (separate gate).
+            reject_reason = get_non_article_format_reject_reason(
                 source.url,
                 {
                     "title": title,
@@ -94,6 +98,16 @@ async def build_raw_content_objects(
                     "html": html or "",
                 },
             )
+            if not reject_reason and not is_rss_sourced_item(raw):
+                reject_reason = get_website_content_reject_reason(
+                    source.url,
+                    {
+                        "title": title,
+                        "content": main_text_clean,
+                        "url": raw.get("url", ""),
+                        "html": html or "",
+                    },
+                )
             if reject_reason:
                 logger.info(
                     f"Pipeline: Dropping low-signal content from {source.url} ({reject_reason}): {title}"

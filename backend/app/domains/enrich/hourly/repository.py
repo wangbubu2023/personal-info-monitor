@@ -68,6 +68,7 @@ def build_entries(rows: list) -> tuple[list[dict], list[str]]:
         source_stars = content_metadata.get("source_stars") or source_metadata.get("source_stars")
         entries.append({
             "content_id": str(c.id),
+            "source_id": str(c.source_id) if c.source_id else "",
             "source_name": source_name,
             "source_url": (c.source.url if c.source else "") or c.original_url or "",
             "article_url": c.original_url or "",
@@ -81,6 +82,8 @@ def build_entries(rows: list) -> tuple[list[dict], list[str]]:
             "metadata": content_metadata,
             "source_metadata": source_metadata,
             "final_score": content_metadata.get("final_score"),
+            "article_score": content_metadata.get("article_score", content_metadata.get("final_score")),
+            "lane": content_metadata.get("lane"),
             "selection_status": content_metadata.get("selection_status"),
             "fulltext_status": content_metadata.get("fulltext_status"),
             "score_confidence": content_metadata.get("score_confidence"),

@@ -21,9 +21,23 @@ export interface QueueStatus {
   sources_status: SourceStatusItem[]
 }
 
+export interface RuntimeFeatures {
+  podcast_sources_enabled: boolean
+  keyword_monitoring_enabled: boolean
+  playwright_enabled: boolean
+  x_playwright_enabled: boolean
+  atoms_enabled: boolean
+  atoms_relations_enabled: boolean
+}
+
 export const systemApi = {
   getQueueStatus: async (): Promise<QueueStatus> => {
     const response = await api.get<QueueStatus>('/system/queue')
+    return response.data
+  },
+
+  getFeatures: async (): Promise<RuntimeFeatures> => {
+    const response = await api.get<RuntimeFeatures>('/system/features')
     return response.data
   },
 }

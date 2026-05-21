@@ -53,6 +53,17 @@ def text_looks_like_embedded_binary(s: str) -> bool:
 
 MAX_FULL_CONTENT_LENGTH = 50_000
 
+# Standalone embed / ad labels that often survive HTML extraction as their own
+# "paragraph" (Engadget VIDEO, NYT 广告, etc.).
+_ARTICLE_NOISE_LINE_RE = re.compile(
+    r"^(?:"
+    r"VIDEO|AUDIO|SLIDESHOW|GALLERY|PHOTOS|IMAGE|"
+    r"Advertisement|Ads?|Sponsored|Recommended|Related|"
+    r"广告|推荐阅读|延伸阅读|相关阅读"
+    r")$",
+    re.IGNORECASE,
+)
+
 
 def truncate_content(text: str, url: str = "") -> str:
     """Truncate text to MAX_FULL_CONTENT_LENGTH, logging if truncation occurs."""
@@ -83,3 +94,66 @@ def strip_html_tags(text: str) -> str:
     clean = clean.replace("&#39;", "'")
     clean = clean.replace("&hellip;", "...")
     return clean.strip()
+
+
+def strip_markdown(text: str) -> str:
+    """Convert lightweight markdown to plain text for reader storage/display."""
+    if not text:
+        return text
+
+    value = text.replace("\r\n", "\n")
+
+    value = re.sub(r"!\[([^\]]*)\]\([^)]*\)", r"\1", value)
+    value = re.sub(r"\[([^\]]+)\]\([^)]*\)", r"\1", value)
+    value = re.sub(r"<(https?://[^>]+)>", r"\1", value)
+
+    # Section labels like **Summary** at the start of a block.
+    value = re.sub(r"(^|\n)\*\*([^*\n]+)\*\*(?=\s)", r"\1\2\n\n", value)
+    value = re.sub(r"(^|\n)__([^_\n]+)__(?=\s)", r"\1\2\n\n", value)
+
+    value = re.sub(r"\*\*([^*]+)\*\*", r"\1", value)
+    value = re.sub(r"__([^_]+)__", r"\1", value)
+    value = re.sub(r"(?<!\*)\*([^*\n]+)\*(?!\*)", r"\1", value)
+    value = re.sub(r"(?<!_)_([^_\n]+)_(?!_)", r"\1", value)
+
+    value = re.sub(r"^#{1,6}\s+", "", value, flags=re.MULTILINE)
+    value = re.sub(r"`([^`]+)`", r"\1", value)
+    value = re.sub(r"^[\-\*\+]\s+", "", value, flags=re.MULTILINE)
+    value = re.sub(r"^\s*[-*_]{3,}\s*$", "", value, flags=re.MULTILINE)
+    value = re.sub(r"\n{3,}", "\n\n", value)
+
+    return value.strip()
+
+
+def _normalize_article_line(line: str) -> str:
+    return re.sub(r"[ \t]+", " ", strip_html_tags(line)).strip()
+
+
+def _is_article_noise_line(line: str) -> bool:
+    return bool(_ARTICLE_NOISE_LINE_RE.match(line))
+
+
+def normalize_article_text(text: str) -> str:
+    """Normalize extracted article text to plain, reader-friendly paragraphs."""
+    if not text:
+        return text
+
+    cleaned = strip_markdown(text).replace("\r\n", "\n").strip()
+    if not cleaned:
+        return cleaned
+
+    blocks = re.split(r"\n{2,}", cleaned)
+    if len(blocks) <= 1:
+        blocks = [line for line in cleaned.split("\n") if line.strip()]
+
+    paragraphs: list[str] = []
+    for block in blocks:
+        lines: list[str] = []
+        for line in block.split("\n"):
+            normalized_line = _normalize_article_line(line)
+            if normalized_line and not _is_article_noise_line(normalized_line):
+                lines.append(normalized_line)
+        if lines:
+            paragraphs.append(" ".join(lines))
+
+    return "\n\n".join(paragraphs).strip()

@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.models import Content, Source
+from app.pipeline.utils import normalize_external_id
 from app.utils.datetime import utcnow_naive
 from app.utils.text import truncate_content
 from app.utils.logger import get_logger
@@ -29,9 +31,16 @@ def handle_external_id_duplicate(
     store stages run, so a duplicate batch no longer triggers N independent
     write-ahead-log fsyncs.
     """
+    normalized_eid = normalize_external_id(external_id) or external_id
+    identity_keys = {external_id, normalized_eid}
+    article_url = str(raw_content.get("url") or "").strip()
+    identity_filters = [Content.external_id.in_(list(identity_keys))]
+    if article_url:
+        identity_filters.append(Content.original_url == article_url)
+
     existing = db.query(Content).filter(
         Content.source_id == source.id,
-        Content.external_id == external_id,
+        or_(*identity_filters),
     ).first()
 
     cross_source_match = (
@@ -39,7 +48,7 @@ def handle_external_id_duplicate(
         .join(Source)
         .filter(
             Source.type == source.type,
-            Content.external_id == external_id,
+            Content.external_id.in_(list(identity_keys)),
             Content.source_id != source.id,
         )
         .first()

@@ -34,9 +34,12 @@ app/
 │   │   ├── normalizer.py        # URL/标题/时间规范化
 │   │   ├── dedupe.py            # 去重
 │   │   ├── extractor.py         # 正文抽取（trafilatura/readability）
-│   │   ├── quality.py / quality_metadata.py
+│   │   ├── quality.py / quality_metadata.py / fetch_acceptance.py
+│   │   ├── score_vocab.py / score_rules.py / score_event.py / score_subjective.py
+│   │   ├── scoring.py           # pim-score-v2 单篇合分（运维见 docs/SCORING_MODEL.md）
+│   │   ├── summary_clean.py     # RSS/通讯摘要 boilerplate 清洗
 │   │   ├── keywords/            # 关键词匹配 + 规则
-│   │   ├── scoring.py / search.py / storage.py
+│   │   ├── search.py / storage.py
 │   │   ├── cleanup.py
 │   │   └── finish.py            # ingest → enrich → atoms → notify 唯一汇合点
 │   ├── enrich/                  # LLM 富化、reader、digest、通知
@@ -44,7 +47,7 @@ app/
 │   │   ├── reader/              # 正文加载 / 翻译 / NDJSON 流
 │   │   ├── hourly/              # 3 小时简报
 │   │   └── notifications/       # daily_digest / doctor / keyword_alert
-│   └── atoms/                   # 可选结构化原子事件（ATOMS_ENABLED 控制）
+│   └── atoms/                   # 新闻原子库（ATOMS_ENABLED）；atoms + atom_relations 表
 ├── platform/                    # 横切基础设施（禁止依赖 domains）
 │   ├── auth/                    # API key / cookies / 凭据加解密
 │   ├── browser/                 # Playwright pool
@@ -141,6 +144,6 @@ cd backend
 - LLM 调用通过 `ENRICH_SUMMARY_ENABLED` / `ENRICH_TRANSLATE_ENABLED` 显式控制；
   `AI_PROCESSING_ENABLED` 作为 master kill switch 保留，但只在全局停用 LLM
   时使用。
-- 可选 atoms 结构化层（Phase 6）默认关闭，需要 `ATOMS_ENABLED=true`
+- 新闻原子库（Schema v2）默认关闭：`ATOMS_ENABLED=true` 启用提取与 `/atoms` API；`ATOMS_RELATIONS_ENABLED` 控制跨文关系（P2）
   显式开启；开启后也只是 `finish_content` 旁路的 best-effort 写入，
   永远不阻塞 ingest 主链。

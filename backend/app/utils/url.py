@@ -1,7 +1,7 @@
 """URL/host normalization helpers."""
 
 import re
-from urllib.parse import urlparse, urlunparse
+from urllib.parse import parse_qs, urlparse, urlunparse
 
 _SCHEME_RE = re.compile(r"^https?://", re.IGNORECASE)
 
@@ -14,6 +14,35 @@ def normalize_source_url_input(url: str | None) -> str:
     if not _SCHEME_RE.match(s):
         s = f"https://{s}"
     return s
+
+
+def canonical_article_external_id(url: str | None) -> str:
+    """Map article URLs that point at the same story to one stable external_id key.
+
+    Handles common WordPress patterns (``?p=12345`` vs slug paths containing the
+    same numeric post id) so RSS and website listing fetches dedupe correctly.
+    """
+    s = (url or "").strip()
+    if not s:
+        return ""
+    if not _SCHEME_RE.match(s):
+        return s
+    p = urlparse(s)
+    if not p.scheme or not p.netloc:
+        return s.lower()
+    host = (p.netloc or "").lower()
+    if host.startswith("www."):
+        host = host[4:]
+
+    wp_id = (parse_qs(p.query).get("p") or [None])[0]
+    if wp_id and str(wp_id).strip().isdigit():
+        return f"https://{host}/article:{str(wp_id).strip()}"
+
+    for part in (p.path or "").split("/"):
+        if part.isdigit() and len(part) >= 5:
+            return f"https://{host}/article:{part}"
+
+    return normalize_source_url_for_dedupe(s)
 
 
 def normalize_source_url_for_dedupe(url: str | None) -> str:

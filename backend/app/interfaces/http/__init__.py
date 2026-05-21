@@ -11,7 +11,7 @@ external operator scripts) migrate one at a time.
 
 from fastapi import APIRouter, Depends
 
-from app.interfaces.http import sources, contents, keywords, digest, configs, dashboard, system
+from app.interfaces.http import sources, contents, keywords, digest, configs, dashboard, system, atoms
 from app.platform.auth import verify_api_key
 from app.features import KEYWORD_MONITORING_ENABLED
 
@@ -25,3 +25,5 @@ if KEYWORD_MONITORING_ENABLED:
 api_router.include_router(digest.router, prefix="/digest", tags=["digest"])
 api_router.include_router(configs.router, prefix="/configs", tags=["configs"])
 api_router.include_router(dashboard.router, prefix="/dashboard", tags=["dashboard"])
+api_router.include_router(atoms.router, prefix="/atoms", tags=["atoms"])
+api_router.include_router(atoms.relations_router, prefix="/atom-relations", tags=["atoms"])

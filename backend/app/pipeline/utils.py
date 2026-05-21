@@ -29,7 +29,7 @@ from app.domains.ingest.quality import (  # noqa: F401 — re-export
     get_website_content_reject_reason,
 )
 from app.utils.logger import get_logger
-from app.utils.url import normalize_source_url_for_dedupe
+from app.utils.url import canonical_article_external_id, normalize_source_url_for_dedupe
 
 logger = get_logger(__name__)
 
@@ -38,10 +38,14 @@ def normalize_external_id(external_id: str | None) -> str | None:
     """Normalize external_id to fit DB length constraints while staying stable."""
     if not external_id:
         return external_id
-    if len(external_id) <= 255:
-        return external_id
-    digest = hashlib.sha1(external_id.encode("utf-8")).hexdigest()
+    eid = str(external_id).strip()
+    if eid.startswith(("http://", "https://")):
+        eid = canonical_article_external_id(eid)
+    if len(eid) <= 255:
+        return eid
+    digest = hashlib.sha1(eid.encode("utf-8")).hexdigest()
     return f"hash:{digest}"
+
 
 def normalize_extra_urls(extra_urls) -> List[str]:
     if not isinstance(extra_urls, list):
@@ -142,7 +146,7 @@ def dedupe_raw_contents(raw_contents: List[dict]) -> List[dict]:
     for item in raw_contents:
         eid = normalize_external_id(item.get("external_id"))
         url = (item.get("url") or "").strip()
-        url_key = normalize_source_url_for_dedupe(url) if url else ""
+        url_key = canonical_article_external_id(url) if url else ""
         key = eid or url_key or item.get("title")
         if not key or key in seen:
             continue

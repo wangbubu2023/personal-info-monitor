@@ -14,6 +14,21 @@ def test_split_for_reader_keeps_abbreviation_sentence():
     assert len(parts) == 2
 
 
+def test_split_for_reader_preserves_paragraph_blocks():
+    text = (
+        "OpenAI is reportedly preparing to file for an IPO. "
+        "The IPO could take place as soon as September.\n\n"
+        "This is all according to a pair of company insiders who spoke to the paper. "
+        "They said that OpenAI has been laying the groundwork.\n\n"
+        "Finally, there's the notion of its valuation."
+    )
+    parts = _split_for_reader(text)
+    assert len(parts) == 3
+    assert parts[0].startswith("OpenAI is reportedly preparing")
+    assert parts[1].startswith("This is all according")
+    assert parts[2].startswith("Finally, there's the notion")
+
+
 def test_extract_x_article_url_from_metadata_urls():
     metadata = {
         "urls": [

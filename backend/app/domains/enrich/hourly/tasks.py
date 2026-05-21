@@ -82,7 +82,7 @@ async def generate_previous_hour_digest() -> None:
     runtime = await get_runtime_from_system_settings(
         setting_key="ai_model",
         default_provider="ollama",
-        default_model="deepseek-r1:14b",
+        default_model="",
         default_api_base="http://localhost:11434",
         default_temperature=0.2,
         default_max_tokens=2400,

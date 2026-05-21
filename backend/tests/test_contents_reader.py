@@ -608,13 +608,60 @@ class TestEnsureReaderBody:
 class TestBackfillWebsiteReaderBody:
 
     @pytest.mark.asyncio
+    async def test_partial_short_body_triggers_backfill(self):
+        content = MagicMock()
+        content.content_type = "website"
+        content.original_url = "https://cn.nytimes.com/china/article/"
+        content.full_content = "x" * 451
+        content.summary = content.full_content
+        db = AsyncMock()
+        with patch("app.domains.enrich.reader.body_loader.fetch_reader_fulltext", new_callable=AsyncMock) as mock_fetch:
+            mock_fetch.return_value = ("Full article " * 80, content.original_url)
+            with patch("app.domains.enrich.reader.body_loader.truncate_content", return_value="Full article " * 80):
+                body, meta = await _backfill_website_reader_body(
+                    content,
+                    {"fulltext_status": "partial", "article_fulltext": True},
+                    content.full_content,
+                    db,
+                )
+                assert "Full article" in body
+                mock_fetch.assert_awaited_once()
+
+    @pytest.mark.asyncio
     async def test_non_empty_body_skips(self):
         content = MagicMock()
         content.content_type = "website"
         content.original_url = "https://example.com"
+        content.full_content = "x" * 500
         db = AsyncMock()
-        body, meta = await _backfill_website_reader_body(content, {}, "existing body", db)
-        assert body == "existing body"
+        body, meta = await _backfill_website_reader_body(
+            content,
+            {"fulltext_status": "full", "article_fulltext": True},
+            "x" * 500,
+            db,
+        )
+        assert body == "x" * 500
+
+    @pytest.mark.asyncio
+    async def test_summary_only_teaser_triggers_backfill(self):
+        content = MagicMock()
+        content.content_type = "website"
+        content.original_url = "https://www.engadget.com/article"
+        content.summary = "RSS teaser " * 5
+        content.full_content = content.summary
+        db = AsyncMock()
+        with patch("app.domains.enrich.reader.body_loader.fetch_reader_fulltext", new_callable=AsyncMock) as mock_fetch:
+            mock_fetch.return_value = ("Full article " * 50, "https://www.engadget.com/article")
+            with patch("app.domains.enrich.reader.body_loader.truncate_content", return_value="Full article " * 50):
+                body, meta = await _backfill_website_reader_body(
+                    content,
+                    {"fulltext_status": "summary_only"},
+                    content.summary,
+                    db,
+                )
+                assert "Full article" in body
+                mock_fetch.assert_awaited_once()
+                db.commit.assert_called()
 
     @pytest.mark.asyncio
     async def test_non_website_skips(self):
@@ -638,14 +685,25 @@ class TestBackfillWebsiteReaderBody:
     async def test_successful_backfill(self):
         content = MagicMock()
         content.content_type = "website"
+        content.title = "OpenAI IPO"
+        content.translated_summary = None
         content.original_url = "https://example.com"
         content.summary = ""
         db = AsyncMock()
         with patch("app.domains.enrich.reader.body_loader.fetch_reader_fulltext", new_callable=AsyncMock) as mock_fetch:
             mock_fetch.return_value = ("Fetched body text " * 30, "https://example.com/resolved")
             with patch("app.domains.enrich.reader.body_loader.truncate_content", return_value="Fetched body text " * 30):
-                body, meta = await _backfill_website_reader_body(content, {}, "", db)
+                body, meta = await _backfill_website_reader_body(
+                    content,
+                    {"fulltext_status": "title_only"},
+                    "",
+                    db,
+                )
                 assert "Fetched body text" in body
+                assert meta.get("fulltext_status") in {"partial", "full"}
+                assert meta.get("fulltext_status") != "title_only"
+                assert meta.get("reader_fulltext_backfilled_at")
+                assert meta.get("article_fulltext") is True
                 db.commit.assert_called()
 
     @pytest.mark.asyncio

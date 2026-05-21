@@ -6,6 +6,7 @@ from typing import Optional
 from app.ai.provider import (
     ModelProviderClient,
     ModelRuntime,
+    OLLAMA_NUM_CTX_TRANSLATION_DEFAULT,
     list_ollama_models,
     normalize_model_runtime,
 )
@@ -70,6 +71,18 @@ def get_translation_fallback_model_settings() -> dict:
     except Exception as exc:
         logger.warning("Translation fallback model settings failed: %s", exc)
         return {}
+
+
+def _translation_prompt_char_limit(num_ctx: int) -> int:
+    """Reserve context for system prompt + instructions when num_ctx is small."""
+    # ~4 chars/token; keep user payload under half of ctx after overhead.
+    return max(200, min(1200, (num_ctx - 768) * 2))
+
+
+def _translation_num_predict(text: str, *, max_tokens: int) -> int:
+    """Cap generation length so small local models return quickly."""
+    est = max(64, min(len(text) * 2, 512))
+    return min(max_tokens, est)
 
 
 def _provider_model_pair(cfg: dict) -> tuple[str, str]:
@@ -167,6 +180,8 @@ class Translator:
             default_temperature=0.1,
             default_max_tokens=1200,
             fallback_api_key=self.settings.openai_api_key,
+            ollama_num_ctx_default=OLLAMA_NUM_CTX_TRANSLATION_DEFAULT,
+            ollama_no_think_default=True,
         )
 
         if runtime.provider == "ollama":
@@ -200,19 +215,29 @@ class Translator:
             "ko": "한국어",
         }.get(target_language, target_language)
 
+        char_limit = 3000
+        num_predict = 1200
+        if runtime.provider == "ollama":
+            num_ctx = runtime.ollama_num_ctx or OLLAMA_NUM_CTX_TRANSLATION_DEFAULT
+            char_limit = _translation_prompt_char_limit(num_ctx)
+            num_predict = _translation_num_predict(text, max_tokens=runtime.max_tokens)
+
         prompt = (
             f"请将下面内容翻译为{lang_name}。"
             "只返回译文，不要解释，不要保留原文。\n\n"
-            f"{text[:3000]}"
+            f"{text[:char_limit]}"
         )
         try:
+            timeout = 180.0 if runtime.provider == "ollama" else 60.0
             translated = await self.model_client.generate_text(
                 runtime,
                 prompt=prompt,
                 system_prompt="你是一个严谨的翻译助手。",
                 temperature=0.1,
-                max_tokens=1200,
-                timeout_seconds=60.0,
+                max_tokens=num_predict,
+                timeout_seconds=timeout,
+                # Always disable Ollama chain-of-thought API; prompt /no_think follows settings.
+                no_think=True if runtime.provider == "ollama" else None,
             )
             translated = (translated or "").strip()
             if translated:
@@ -256,7 +281,7 @@ class Translator:
         target_language: str,
         trans_settings: dict,
     ) -> Optional[str]:
-        runtime = await self._resolve_runtime(trans_settings, default_model="translategemma:12b")
+        runtime = await self._resolve_runtime(trans_settings, default_model="")
         if not runtime or runtime.provider != "ollama":
             return None
         return await self._translate_with_runtime(text, target_language, runtime)

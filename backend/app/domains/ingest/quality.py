@@ -85,6 +85,39 @@ _DOMAIN_NON_ARTICLE_PATH_SEGMENTS = {
     },
 }
 
+# Photo galleries / slideshows — not readable articles (filter even for RSS items).
+_NON_ARTICLE_FORMAT_PATH_SEGMENTS = frozenset({
+    "slideshow",
+    "slideshows",
+    "gallery",
+    "galleries",
+    "photo-gallery",
+    "photogallery",
+    "interactive",
+})
+
+_GALLERY_TITLE_PREFIXES = (
+    "图集：",
+    "图集:",
+    "相册：",
+    "相册:",
+    "图集 ",
+    "相册 ",
+)
+
+# Engadget (and similar) link-hub / recap pages — not single-article reads.
+_ENGADGET_ROUNDUP_SLUG_MARKERS = (
+    "-science-news",
+    "review-recap",
+    "-gift-guide",
+)
+
+_ROUNDUP_TITLE_MARKERS = (
+    "engadget review recap",
+    "review recap:",
+    "and more science stories",
+)
+
 _NON_ARTICLE_PATH_SEGMENTS = {
     "account",
     "author",
@@ -203,6 +236,70 @@ def _looks_like_section_path(source_url: str, candidate_url: str) -> bool:
     return False
 
 
+def _engadget_roundup_reject_reason(url: str, title: str) -> str | None:
+    """Reject Engadget science-news roundups, review recaps, and gift guides."""
+    host = _normalize_host(url)
+    if not _host_matches_domain(host, "engadget.com"):
+        return None
+
+    path = (urlparse(url).path or "").lower()
+    if any(marker in path for marker in _ENGADGET_ROUNDUP_SLUG_MARKERS):
+        return "blocked_engadget_roundup"
+
+    title_key = _normalize_title_key(title)
+    if not title_key:
+        return None
+    if any(marker in title_key for marker in _ROUNDUP_TITLE_MARKERS):
+        return "blocked_engadget_roundup"
+    if title_key.startswith("review recap"):
+        return "blocked_engadget_roundup"
+    return None
+
+
+def get_non_article_format_reject_reason(source_url: str, raw_content: dict) -> str | None:
+    """Reject slideshows / photo galleries regardless of ingest channel (RSS included)."""
+    _ = source_url  # reserved for future domain-specific rules
+    url = str(raw_content.get("url") or "").strip()
+    title = strip_html_tags(str(raw_content.get("title") or "")).strip()
+    if not url and not title:
+        return None
+
+    roundup_reason = _engadget_roundup_reject_reason(url, title)
+    if roundup_reason:
+        return roundup_reason
+
+    parsed = urlparse(url) if url else None
+    segments = [
+        unquote(seg).strip().lower()
+        for seg in (parsed.path.split("/") if parsed else [])
+        if seg.strip()
+    ]
+    if segments and any(seg in _NON_ARTICLE_FORMAT_PATH_SEGMENTS for seg in segments):
+        return "blocked_non_article_format"
+
+    for prefix in _GALLERY_TITLE_PREFIXES:
+        if title.startswith(prefix):
+            return "blocked_gallery_title"
+
+    title_key = _normalize_title_key(title)
+    if title_key:
+        gallery_markers = (
+            "in pictures",
+            "photo gallery",
+            "picture gallery",
+            "year in pictures",
+            "photos of the week",
+            "week in pictures",
+        )
+        if any(marker in title_key for marker in gallery_markers):
+            if not segments or any(seg in _NON_ARTICLE_FORMAT_PATH_SEGMENTS for seg in segments):
+                return "blocked_gallery_title"
+            if segments and segments[0] in {"photos", "photo"}:
+                return "blocked_gallery_title"
+
+    return None
+
+
 def get_website_content_reject_reason(source_url: str, raw_content: dict) -> str | None:
     """Return a rejection reason for obvious non-article website items.
 
@@ -271,4 +368,20 @@ def get_website_content_reject_reason(source_url: str, raw_content: dict) -> str
     return None
 
 
-__all__ = ["get_website_content_reject_reason"]
+def is_rss_sourced_item(raw_content: dict) -> bool:
+    """True when the collector marked this row as originating from RSS/Atom."""
+    if not isinstance(raw_content, dict):
+        return False
+    if str(raw_content.get("ingest_channel") or "").strip().lower() == "rss":
+        return True
+    metadata = raw_content.get("metadata")
+    if isinstance(metadata, dict):
+        return str(metadata.get("ingest_channel") or "").strip().lower() == "rss"
+    return False
+
+
+__all__ = [
+    "get_non_article_format_reject_reason",
+    "get_website_content_reject_reason",
+    "is_rss_sourced_item",
+]

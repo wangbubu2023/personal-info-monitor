@@ -32,7 +32,8 @@ from app.utils.datetime import utcnow_naive
 from app.utils.http import permissive_session_kwargs
 from app.utils.logger import get_logger
 from app.platform.security.ssrf import assert_public_http_target
-from app.utils.text import strip_html_tags, truncate_content
+from app.domains.ingest.quality_metadata import merge_content_quality_metadata
+from app.utils.text import strip_html_tags, truncate_content, normalize_article_text
 
 logger = get_logger(__name__)
 
@@ -99,7 +100,7 @@ async def fetch_reader_fulltext(original_url: str) -> tuple[str, str]:
         return "", ""
 
     extracted = await ContentExtractor().extract(html_text, final_url)
-    clean_text = strip_html_tags(extracted or "").strip()
+    clean_text = normalize_article_text(extracted or "").strip()
     if len(clean_text) < 120:
         return "", ""
     return clean_text, final_url
@@ -199,6 +200,13 @@ async def upgrade_x_reader_body(
         merged["article_url"] = article_url
     merged["article_fulltext"] = True
     merged["article_text_chars"] = len(article_text)
+    merged = merge_content_quality_metadata(
+        merged,
+        title=content.title or "",
+        full_content=content.full_content,
+        summary=content.summary,
+        translated_summary=content.translated_summary,
+    )
     if _title_looks_like_url(content.title or ""):
         derived_title = _derive_title_from_body(article_text)
         if derived_title:
@@ -235,14 +243,32 @@ async def clean_x_body_if_needed(
     return cleaned_body, merged
 
 
+def _website_body_needs_reader_backfill(content: Content, metadata: dict, body_raw: str) -> bool:
+    """True when the stored body is an RSS/listing teaser, not article fulltext."""
+    if (content.content_type or "").strip().lower() != "website":
+        return False
+    if not (content.original_url or "").strip():
+        return False
+    status = str(metadata.get("fulltext_status") or "").strip()
+    body_len = len((content.full_content or "").strip())
+    if status in {"summary_only", "title_only"}:
+        return True
+    # Partial rows can still be a single paywall chunk (e.g. NYT article-partial).
+    if status == "partial" and body_len < 900:
+        return True
+    if not metadata.get("article_fulltext") and body_len < 280:
+        return True
+    return not body_raw
+
+
 async def backfill_website_reader_body(
     content: Content,
     metadata: dict,
     body_raw: str,
     db: AsyncSession,
 ) -> tuple[str, dict]:
-    """Fetch the original URL on demand when DB has nothing to render for a website row."""
-    if body_raw or content.content_type != "website" or not content.original_url:
+    """Fetch the original URL on demand when DB has no real article body."""
+    if not _website_body_needs_reader_backfill(content, metadata, body_raw):
         return body_raw, metadata
 
     fetched_body, resolved_url = await fetch_reader_fulltext(content.original_url)
@@ -256,9 +282,17 @@ async def backfill_website_reader_body(
 
     merged = clear_reader_translation_cache(metadata)
     merged["reader_fulltext_backfilled_at"] = utcnow_naive().isoformat()
+    merged["article_fulltext"] = True
     if resolved_url and resolved_url != content.original_url:
         merged["resolved_original_url"] = resolved_url
         content.original_url = resolved_url
+    merged = merge_content_quality_metadata(
+        merged,
+        title=content.title or "",
+        full_content=content.full_content,
+        summary=content.summary,
+        translated_summary=content.translated_summary,
+    )
     content.metadata_ = merged
     await db.commit()
     return fetched_body, merged
@@ -272,15 +306,31 @@ async def ensure_reader_body(content: Content, db: AsyncSession) -> tuple[str, d
     2. Clean noise from existing X tweet bodies.
     3. Backfill website rows from the original URL when DB has no body.
     """
+    def _finalize(body: str, meta: dict) -> tuple[str, dict]:
+        return normalize_article_text(body), meta
+
+    from app.domains.fetch.collectors.x_twitter_text import looks_like_x_interstitial_text
+
     metadata = content.metadata_ if isinstance(content.metadata_, dict) else {}
     body_raw = (content.full_content or "").strip() or (content.summary or "").strip()
     source_type = (content.content_type or "").strip().lower()
+    if source_type == "x" and body_raw and looks_like_x_interstitial_text(body_raw):
+        title_fallback = (content.title or "").strip()
+        if title_fallback and not looks_like_x_interstitial_text(title_fallback):
+            body_raw = title_fallback
+            content.full_content = truncate_content(title_fallback, url=content.original_url or "")
+            preview = title_fallback[:500]
+            content.summary = preview + ("..." if len(title_fallback) > 500 else "")
+            metadata = clear_reader_translation_cache(metadata)
+            metadata["x_interstitial_repaired_at"] = utcnow_naive().isoformat()
+            content.metadata_ = metadata
+            await db.commit()
     x_short_needs_upgrade = source_type == "x" and len(body_raw) < 280
 
     if x_short_needs_upgrade:
         upgraded_body, upgraded_metadata = await upgrade_x_reader_body(content, metadata, body_raw, db)
         if upgraded_body and upgraded_metadata is not None:
-            return upgraded_body, upgraded_metadata
+            return _finalize(upgraded_body, upgraded_metadata)
 
     if source_type == "x" and body_raw:
         body_raw, metadata = await clean_x_body_if_needed(content, metadata, body_raw, db)
@@ -293,6 +343,7 @@ async def ensure_reader_body(content: Content, db: AsyncSession) -> tuple[str, d
                 if content.translated_title and _looks_like_translation_refusal(content.translated_title):
                     content.translated_title = None
                 await db.commit()
-        return body_raw, metadata
+        return _finalize(body_raw, metadata)
 
-    return await backfill_website_reader_body(content, metadata, body_raw, db)
+    body_raw, metadata = await backfill_website_reader_body(content, metadata, body_raw, db)
+    return _finalize(body_raw, metadata)

@@ -15,7 +15,7 @@ Usage:
     ./pim start             Start dev server (backend + frontend Vite :3000)
     ./pim start --prod      Start production server as background process (single :8000)
     ./pim stop              Stop the server (launchd-aware, falls back to pid scan)
-    ./pim status            Show running status
+    ./pim status            Show running status and atom feature flags
     ./pim fetch             Trigger a full fetch now
     ./pim backup            Create a SQLite backup and archive local config
     ./pim rollback <rev>    Downgrade Alembic schema to a target revision
@@ -95,6 +95,45 @@ def _install_playwright():
     subprocess.check_call(
         [_python(), "-m", "playwright", "install", "chromium"],
     )
+
+
+def _parse_env_bool(value: str | None, *, default: bool = False) -> bool:
+    if value is None:
+        return default
+    normalized = value.strip().lower()
+    if not normalized:
+        return default
+    if normalized in {"1", "true", "t", "yes", "y", "on", "enabled"}:
+        return True
+    if normalized in {"0", "false", "f", "no", "n", "off", "disabled"}:
+        return False
+    return default
+
+
+def _read_env_var(name: str) -> str | None:
+    if name in os.environ and os.environ[name].strip():
+        return os.environ[name]
+    if not ENV_FILE.exists():
+        return None
+    for line in ENV_FILE.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        if key.strip() == name:
+            return value.strip().strip('"').strip("'")
+    return None
+
+
+def _print_atom_feature_status() -> None:
+    atoms_on = _parse_env_bool(_read_env_var("ATOMS_ENABLED"), default=False)
+    relations_on = atoms_on and _parse_env_bool(
+        _read_env_var("ATOMS_RELATIONS_ENABLED"),
+        default=False,
+    )
+    atoms_label = "on" if atoms_on else "off"
+    relations_label = "on" if relations_on else "off"
+    print(f"  atoms: {atoms_label} (extract)   relations: {relations_label}")
 
 
 def _ensure_env_file():
@@ -304,6 +343,19 @@ def _service_env() -> dict:
     env["PATH"] = str(VENV / "bin") + ":" + env.get("PATH", "")
     env.setdefault("HOME", str(Path.home()))
     env.setdefault("LANG", "en_US.UTF-8")
+
+    # Load backend/.env (values already in env take priority).
+    if ENV_FILE.exists():
+        for line in ENV_FILE.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            k, _, v = line.partition("=")
+            k = k.strip()
+            v = v.strip().strip('"').strip("'")
+            if k and v:
+                env.setdefault(k, v)
+
     return env
 
 
@@ -621,9 +673,7 @@ def cmd_start():
         if api_key:
             print(f"  API Key: {_mask_secret(api_key)}")
 
-        env = os.environ.copy()
-        env["VIRTUAL_ENV"] = str(VENV)
-        env["PATH"] = str(VENV / "bin") + ":" + env.get("PATH", "")
+        env = _service_env()
         env["PIM_DEV_SERVER"] = "1"
         env["PIM_DEV_FRONTEND_URL"] = "http://127.0.0.1:3000"
 
@@ -725,11 +775,14 @@ def cmd_status():
                 print(f"PIM is running via LaunchAgent (PID {pid_match})")
                 print(f"  URL: http://127.0.0.1:8000")
                 print(f"  Logs: {LOG_FILE}")
+                _print_atom_feature_status()
             else:
                 print("PIM LaunchAgent is installed but the server is not running.")
                 print("  Check logs: ./pim logs")
+                _print_atom_feature_status()
             return
         print("PIM LaunchAgent is installed but not loaded.")
+        _print_atom_feature_status()
         return
 
     # Fallback: PID file / process scan
@@ -740,6 +793,7 @@ def cmd_status():
             pid = 0
         if pid and _is_prod_uvicorn_pid(pid):
             print(f"PIM is running (PID {pid})")
+            _print_atom_feature_status()
             return
         PID_FILE.unlink(missing_ok=True)
 
@@ -749,12 +803,15 @@ def cmd_status():
         PID_FILE.parent.mkdir(parents=True, exist_ok=True)
         PID_FILE.write_text(str(pid))
         print(f"PIM is running (PID {pid}, recovered PID file)")
+        _print_atom_feature_status()
         return
 
     if _is_port_8000_open():
         print("Port 8000 is in use, but PIM process is not managed by current PID file.")
+        _print_atom_feature_status()
         return
     print("PIM is not running.")
+    _print_atom_feature_status()
 
 
 def cmd_fetch():

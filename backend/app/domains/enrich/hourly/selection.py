@@ -35,15 +35,19 @@ def build_selection_catalog(entries: List[dict]) -> str:
         if len(summ) > 280:
             summ = f"{summ[:277]}..."
         final_score = e.get("final_score", meta.get("final_score"))
+        article_score = e.get("article_score", meta.get("article_score", final_score))
+        lane = e.get("lane", meta.get("lane"))
         source_stars = e.get("source_stars", meta.get("source_stars"))
         fulltext_status = e.get("fulltext_status", meta.get("fulltext_status"))
         quality_parts = []
-        if final_score is not None:
-            quality_parts.append(f"评分={final_score}")
+        if article_score is not None:
+            quality_parts.append(f"评分={article_score}")
+        if lane:
+            quality_parts.append(f"赛道={lane}")
         if source_stars is not None:
             quality_parts.append(f"信源={source_stars}星")
         if fulltext_status:
-            quality_parts.append(f"抓取质量={fulltext_status}")
+            quality_parts.append(f"正文={fulltext_status}")
         quality_line = f"  质量={'；'.join(quality_parts)}\n" if quality_parts else ""
         lines.append(f"content_id={cid}\n  来源={sn}\n  标题={title}\n  摘要={summ}\n")
         if quality_line:

@@ -25,6 +25,54 @@ from app.utils.logger import get_logger
 logger = get_logger(__name__)
 
 
+def _reader_translation_chunk_limit() -> int:
+    """Size reader translation chunks to fit configured Ollama num_ctx."""
+    try:
+        from app.ai.provider import OLLAMA_NUM_CTX_TRANSLATION_DEFAULT, resolve_ollama_num_ctx
+        from app.platform.llm.translator import get_translation_settings
+
+        cfg = get_translation_settings()
+        if str(cfg.get("provider") or "").strip().lower() != "ollama":
+            return 2400
+        num_ctx = resolve_ollama_num_ctx(cfg, default=OLLAMA_NUM_CTX_TRANSLATION_DEFAULT)
+        # Leave room for system prompt + instruction (~768 tokens) in a 2K window.
+        return max(200, min(1200, (num_ctx - 768) * 2))
+    except Exception:
+        return 2400
+
+
+def _split_text_for_translation(text: str, *, chunk_limit: int) -> list[str]:
+    """Split long reader paragraphs so each Ollama call fits num_ctx."""
+    cleaned = (text or "").strip()
+    if not cleaned:
+        return []
+    if len(cleaned) <= chunk_limit:
+        return [cleaned]
+
+    segments: list[str] = []
+    current = ""
+    for paragraph in _split_for_reader(cleaned) or [cleaned]:
+        piece = paragraph.strip()
+        if not piece:
+            continue
+        if len(piece) > chunk_limit:
+            if current:
+                segments.append(current.strip())
+                current = ""
+            for idx in range(0, len(piece), chunk_limit):
+                segments.append(piece[idx : idx + chunk_limit])
+            continue
+        candidate = f"{piece}\n\n" if current else piece
+        if current and len(current) + len(candidate) > chunk_limit:
+            segments.append(current.strip())
+            current = piece + "\n\n"
+        else:
+            current = (current + candidate) if current else piece + "\n\n"
+    if current.strip():
+        segments.append(current.strip())
+    return segments or [cleaned]
+
+
 async def ensure_translated_title(
     content: Content,
     db: AsyncSession,
@@ -79,17 +127,16 @@ async def ensure_translated_title(
     return original
 
 
-async def translate_reader_paragraph(
-    paragraph: str,
+async def _translate_reader_segment(
+    segment: str,
     translator: Translator,
     *,
     timeout_seconds: float,
 ) -> tuple[str, bool]:
-    """Translate a single paragraph; return ``(piece, is_valid_translation)``."""
     translated: Optional[str]
     try:
         translated = await asyncio.wait_for(
-            translator.translate(paragraph, "zh-CN"),
+            translator.translate(segment, "zh-CN"),
             timeout=timeout_seconds,
         )
     except (TimeoutError, asyncio.TimeoutError):
@@ -100,7 +147,7 @@ async def translate_reader_paragraph(
     if not _is_valid_translation_text(translated):
         try:
             translated = await asyncio.wait_for(
-                translator.translate_with_fallback(paragraph, "zh-CN"),
+                translator.translate_with_fallback(segment, "zh-CN"),
                 timeout=min(timeout_seconds, 6.0),
             )
         except (TimeoutError, asyncio.TimeoutError):
@@ -108,8 +155,40 @@ async def translate_reader_paragraph(
         except Exception as exc:  # noqa: BLE001 - translator fallback may raise anything
             logger.debug("Paragraph translation fallback raised: %s", exc)
             translated = translated or None
-    piece = (translated or paragraph).strip()
+    piece = (translated or segment).strip()
     return piece, _is_valid_translation_text(translated)
+
+
+async def translate_reader_paragraph(
+    paragraph: str,
+    translator: Translator,
+    *,
+    timeout_seconds: float,
+) -> tuple[str, bool]:
+    """Translate a single paragraph; return ``(piece, is_valid_translation)``."""
+    segments = _split_text_for_translation(paragraph, chunk_limit=_reader_translation_chunk_limit())
+    if not segments:
+        return "", False
+    if len(segments) == 1:
+        return await _translate_reader_segment(
+            segments[0],
+            translator,
+            timeout_seconds=timeout_seconds,
+        )
+
+    translated_parts: list[str] = []
+    translated_ok = 0
+    per_segment_timeout = max(8.0, timeout_seconds / len(segments))
+    for segment in segments:
+        piece, ok = await _translate_reader_segment(
+            segment,
+            translator,
+            timeout_seconds=per_segment_timeout,
+        )
+        translated_parts.append(piece)
+        translated_ok += 1 if ok else 0
+    merged = "\n\n".join(translated_parts).strip()
+    return merged, translated_ok > 0
 
 
 async def translate_reader_text(
@@ -129,17 +208,10 @@ async def translate_reader_text(
     if translator.is_chinese(text):
         return text
 
+    chunk_limit = _reader_translation_chunk_limit()
     chunks: list[str] = []
-    current = ""
     for paragraph in _split_for_reader(text):
-        segment = paragraph + "\n\n"
-        if len(current) + len(segment) > 2400 and current:
-            chunks.append(current)
-            current = segment
-        else:
-            current += segment
-    if current:
-        chunks.append(current)
+        chunks.extend(_split_text_for_translation(paragraph, chunk_limit=chunk_limit))
 
     translated_parts: list[str] = []
     started_at = time.monotonic()

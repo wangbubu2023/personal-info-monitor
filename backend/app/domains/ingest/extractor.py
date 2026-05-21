@@ -17,10 +17,11 @@ test targets continue to resolve and external callers
 """
 
 from typing import Optional
+import re
 
 from app.domains.ingest.quality import _word_count
 from app.utils.logger import get_logger
-from app.utils.text import strip_html_tags
+from app.utils.text import strip_html_tags, normalize_article_text
 
 logger = get_logger(__name__)
 
@@ -89,18 +90,32 @@ class ContentExtractor:
 
         # 1. Try Readability LXML (best for structure preservation)
         content = self._extract_with_readability(html)
+        read_len = len(content or "")
 
-        # 2. Try trafilatura if readability failed or was too sparse
-        if not content or len(content) < 200:
+        # 2. Try trafilatura when readability failed, is sparse, looks like a
+        # partial chunk, or left embed/ad labels (e.g. Engadget "VIDEO").
+        needs_trafilatura = not content or read_len < 200
+        if not needs_trafilatura and read_len < 1200:
+            needs_trafilatura = True
+        if not needs_trafilatura and content and re.search(
+            r"(?:^|\n)(?:VIDEO|AUDIO|SLIDESHOW|GALLERY|PHOTOS|Advertisement|Sponsored|Recommended)(?:\n|$)",
+            content,
+            flags=re.IGNORECASE,
+        ):
+            needs_trafilatura = True
+
+        if needs_trafilatura:
             trafil_content = self._extract_with_trafilatura(html, url)
-            if trafil_content and len(trafil_content) > len(content or ""):
-                content = trafil_content
+            if trafil_content:
+                traf_len = len(trafil_content)
+                if traf_len > read_len and (read_len < 200 or traf_len >= read_len * 1.5):
+                    content = trafil_content
 
         # 3. Fall back to BeautifulSoup if still nothing significant
         if not content or len(content) < 100:
             content = self._extract_with_beautifulsoup(html)
 
-        return content
+        return normalize_article_text(content) if content else ""
 
     def _extract_with_readability(self, html: str) -> str:
         """Extract content using readability-lxml and convert to markdown."""

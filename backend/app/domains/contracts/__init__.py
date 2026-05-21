@@ -12,7 +12,7 @@ domain. It defines the contracts that flow between ``sources``, ``fetch``,
   ``FinishContentResult``
 * :mod:`app.domains.contracts.enrich`  — ``EnrichRequest``,
   ``ReprocessRequest``
-* :mod:`app.domains.contracts.atoms`   — ``AtomBundle``, ``AtomReader``
+* :mod:`app.domains.contracts.atoms`   — ``AtomRecord``, ``AtomReader``
 
 Rules:
 
@@ -24,7 +24,7 @@ Rules:
 * No contract module may import from ``app.domains.*`` to avoid cycles.
 """
 
-from app.domains.contracts.atoms import AtomBundle, AtomReader
+from app.domains.contracts.atoms import AtomReader
 from app.domains.contracts.enrich import EnrichRequest, ReprocessRequest
 from app.domains.contracts.fetch import (
     FetchBatch,
@@ -40,7 +40,6 @@ from app.domains.contracts.sources import (
 )
 
 __all__ = [
-    "AtomBundle",
     "AtomReader",
     "EnrichRequest",
     "FetchBatch",

@@ -1,5 +1,11 @@
 # Troubleshooting
 
+## 评分与排序异常
+
+- 词表/规则变更后需 **重启后端**，并对历史内容跑批量重打分：`backend/scripts/rescore_contents.py`（详见 [SCORING_MODEL.md](./SCORING_MODEL.md) §6）
+- 无 `final_score`：检查 `metadata.fetch_acceptance` 是否为 `incomplete`
+- 促销/订阅类文章分数虚高：检查摘要是否含通讯 boilerplate；finish 路径会调用 `summary_clean.py` 清洗
+
 ## 服务无法启动
 
 1. 运行 `./pim logs`
@@ -24,6 +30,24 @@
 - 分类树和 Dashboard 统计增加了短 TTL 内存缓存
 - 默认几十秒内可能看到旧值
 - 稳定性优先于“每次请求都打满数据库”
+
+## 原子库无数据 / API 404
+
+- 确认 `backend/.env` 中 `ATOMS_ENABLED=true` 并已重启服务
+- `pimctl atoms stats --json` 查看总量
+- P0 阶段需手工 `POST /api/atoms` 或 CLI 录入；自动 LLM 提取在 P1
+- 自动提取依赖 `AI_PROCESSING_ENABLED=true` 且系统设置中配置了 `ai_model`
+- 历史回填：`pimctl atoms backfill --limit 200 --since 2026-01-01`
+
+## 跨文关系无数据 / 误判
+
+- 关系推断需 `ATOMS_RELATIONS_ENABLED=true` 且已重启服务
+- 仅对 **信息**、**数据** 类原子自动推断；观点类不参与
+- 候选规则：跨文章、同 domain、entity 有交集、时间窗 ±30 天（或同一 period 字符串）
+- 新关系默认未验证；前端「关联原子」Tab 或 `pimctl atoms relations verify` 确认印证
+- 全库重跑：`pimctl atoms relations reconcile --limit 1000`（低峰执行，依赖 LLM 配额）
+- 关系过多：单原子最多自动写入 5 条；可删除误报：`DELETE /api/atom-relations/{rel_id}`
+- reconcile 慢：属正常，用 `pimctl atoms relations reconcile-status <job_id>` 查看进度
 
 ## 需要回滚或备份
 

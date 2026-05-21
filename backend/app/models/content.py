@@ -68,6 +68,7 @@ class Content(Base):
 
     # Relationships
     source = relationship("Source", back_populates="contents")
+    atoms = relationship("Atom", back_populates="content", cascade="all, delete-orphan")
 
     def __repr__(self) -> str:
         safe_title = (self.title or "")[:50]

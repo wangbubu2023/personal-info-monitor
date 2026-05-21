@@ -6,6 +6,7 @@ from app.services.content_quality_service import (
     merge_content_quality_metadata,
 )
 from app.services.scoring_service import (
+    SCORE_VERSION,
     calculate_final_score,
     compute_domain_match,
     merge_baseline_scoring_metadata,
@@ -56,48 +57,41 @@ def test_content_quality_marks_cookie_required_unobtained_as_blocked():
 def test_scoring_selects_high_quality_matching_source():
     result = calculate_final_score(
         {
-            "topic_relevance": 9,
-            "novelty": 8,
-            "impact": 8,
+            "salience": 9,
+            "reach": 9,
             "authority": 9,
-            "actionability": 8,
-            "risk": 2,
+            "depth": 8,
+            "subjective": 5,
         },
-        content_metadata={"fulltext_status": "full", "content_quality": 0.9, "domain_match": 1.0},
-        source_metadata={"source_stars": 3, "source_weight": 1.1},
+        content_metadata={"fulltext_status": "full", "content_quality": 0.9},
+        source_metadata={"source_stars": 3},
+        lane="tech_product",
     )
 
     assert result["selection_status"] == "selected"
-    assert result["final_score"] >= 75
+    assert result["article_score"] >= 75
     assert result["score_confidence"] >= 0.65
 
 
-def test_scoring_penalizes_domain_mismatch_even_for_high_star_source():
-    matched = calculate_final_score(
-        {"topic_relevance": 8, "novelty": 7, "impact": 7, "authority": 8, "actionability": 7, "risk": 1},
-        content_metadata={"fulltext_status": "full", "content_quality": 0.9, "domain_match": 1.0},
+def test_scoring_v2_no_domain_penalty():
+    high = calculate_final_score(
+        {"salience": 8, "reach": 8, "authority": 8, "depth": 7, "subjective": 5},
+        content_metadata={"fulltext_status": "full", "content_quality": 0.9},
         source_metadata={"source_stars": 3},
+        lane="tech_product",
     )
-    mismatched = calculate_final_score(
-        {"topic_relevance": 8, "novelty": 7, "impact": 7, "authority": 8, "actionability": 7, "risk": 1},
-        content_metadata={"fulltext_status": "full", "content_quality": 0.9, "domain_match": 0.25},
-        source_metadata={"source_stars": 3},
-    )
-
-    assert matched["final_score"] > mismatched["final_score"]
-    assert mismatched["domain_match"] == 0.25
+    assert high["article_score"] >= 70
 
 
-def test_blocked_high_star_content_is_deferred_not_selected():
+def test_blocked_content_legacy_metadata_still_scores():
     result = calculate_final_score(
-        {"topic_relevance": 10, "novelty": 10, "impact": 10, "authority": 10, "actionability": 10, "risk": 0},
+        {"salience": 10, "reach": 10, "authority": 10, "depth": 10, "subjective": 5},
         content_metadata={"fulltext_status": "blocked", "content_quality": 0.0},
         source_metadata={"source_stars": 3},
     )
 
-    assert result["selection_status"] == "deferred"
-    assert result["final_score"] < 75
-    assert result["score_confidence"] == 0.0
+    assert result["selection_status"] in {"selected", "candidate", "rejected"}
+    assert result["article_score"] >= 0
 
 
 def test_compute_domain_match_defaults_to_no_penalty_without_focus():
@@ -106,29 +100,29 @@ def test_compute_domain_match_defaults_to_no_penalty_without_focus():
     assert compute_domain_match({"domain_focus": ["AI", "model"]}, "new AI model launch") > 0.7
 
 
-def test_baseline_scoring_stamps_final_score_without_model_dimensions():
+def test_rule_scoring_stamps_final_score():
     meta = merge_baseline_scoring_metadata(
-        {"fulltext_status": "full", "content_quality": 0.9},
+        {"fulltext_status": "full", "content_quality": 0.9, "fetch_acceptance": "accepted"},
         title="OpenAI releases new model",
         summary="The new AI model improves developer workflows.",
         full_content="The new AI model improves developer workflows. " * 80,
-        source_metadata={"source_stars": 3, "domain_focus": ["AI", "model"], "source_weight": 1.1},
+        source_metadata={"source_stars": 3, "authority_type": "primary"},
+        content_type="website",
     )
 
-    assert meta["scoring_method"] == "baseline"
-    assert meta["score_version"] == "pim-score-v1"
-    assert meta["domain_match"] > 0.7
+    assert meta["scoring_method"] == "rule"
+    assert meta["score_version"] == SCORE_VERSION
+    assert meta["lane"] == "tech_product"
     assert meta["final_score"] > 0
     assert meta["selection_status"] in {"selected", "candidate", "rejected"}
     assert meta["recommendation_reason"]["why_matters"]
-    assert meta["recommendation_reason"]["source_context"].startswith("来自3星信源")
-    assert meta["recommendation_reason"]["reason_source"] == "baseline"
+    assert meta["recommendation_reason"]["reason_source"] == "rule"
 
 
-def test_baseline_scoring_preserves_existing_model_dimensions():
+def test_rule_scoring_preserves_existing_v2_dimensions():
     original = {
-        "score_version": "model-score-v1",
-        "dimension_scores": {"topic_relevance": 10},
+        "score_version": SCORE_VERSION,
+        "dimension_scores": {"salience": 10},
         "final_score": 91,
     }
 

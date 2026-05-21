@@ -43,6 +43,13 @@ export function getDigestItemFinalScore(item: DigestItem): number | undefined {
   return Math.max(0, Math.min(100, score))
 }
 
+export function getDigestItemScoreDeferred(item: DigestItem): boolean {
+  if (getDigestItemFinalScore(item) !== undefined) return false
+  const status = readStringMetadata(item, 'selection_status')
+  if (status === 'deferred') return true
+  return readStringMetadata(item, 'fetch_acceptance') === 'incomplete'
+}
+
 export function getDigestItemSourceStars(item: DigestItem): number | undefined {
   const stars = readNumericMetadata(item, 'source_stars')
   if (stars === undefined) return undefined
@@ -180,16 +187,16 @@ export function makeDigestBodyPreview(fullContent?: string | null): string | und
   return `${cut.trim()}…`
 }
 
-/** 与后端 `_digest_list_preview` 一致：正文 → 译摘要 → 摘要（供搜索列表等） */
+/** 与后端 `_digest_list_preview` 一致：译摘要 → 摘要 → 正文摘录 */
 export function makeDigestListPreview(
   fullContent?: string | null,
   translatedSummary?: string | null,
   summary?: string | null,
 ): string | undefined {
   return (
-    makeDigestBodyPreview(fullContent) ??
     makeDigestBodyPreview(translatedSummary) ??
-    makeDigestBodyPreview(summary)
+    makeDigestBodyPreview(summary) ??
+    makeDigestBodyPreview(fullContent)
   )
 }
 

@@ -23,6 +23,7 @@ from app.platform.config.system_settings import (
 )
 from app.utils.datetime import to_iso_z, utcnow_naive
 from app.utils.logger import get_logger
+from app.domains.ingest.quality_metadata import merge_content_quality_metadata
 from app.utils.text import strip_html_tags, text_looks_like_embedded_binary
 
 logger = get_logger(__name__)
@@ -54,19 +55,68 @@ def _digest_snippet_from_text(raw: Optional[str]) -> Optional[str]:
 
 
 def _digest_list_preview(content: Content) -> Optional[str]:
-    """Prefer full_content, then translated summary, then summary (RSS 常无正文但有 description)."""
-    prev = _digest_snippet_from_text(content.full_content)
-    if prev:
-        return prev
+    """Prefer translated summary, then raw summary, then body excerpt."""
     prev = _digest_snippet_from_text(content.translated_summary)
     if prev:
         return prev
-    return _digest_snippet_from_text(content.summary)
+    prev = _digest_snippet_from_text(content.summary)
+    if prev:
+        return prev
+    return _digest_snippet_from_text(content.full_content)
+
+
+def _collect_listing_translation_backfill_ids(contents: list[Content], *, max_items: int = 30) -> list[str]:
+    from app.domains.enrich.content.listing_translation import (
+        content_needs_listing_translation,
+        listing_translation_enabled,
+    )
+
+    if not listing_translation_enabled():
+        return []
+
+    ids: list[str] = []
+    for content in contents:
+        if len(ids) >= max_items:
+            break
+        if content_needs_listing_translation(
+            title=content.title or "",
+            summary=content.summary,
+            translated_title=content.translated_title,
+            translated_summary=content.translated_summary,
+        ):
+            ids.append(str(content.id))
+    return ids
+
+
+def _digest_item_metadata(content: Content) -> dict:
+    """Metadata for list cards; refresh quality when body grew after ingest/backfill."""
+    metadata = dict(content.metadata_ or {})
+    stored = str(metadata.get("fulltext_status") or "").strip()
+    body_len = len((content.full_content or "").strip())
+    summary_plain = strip_html_tags(
+        str(content.translated_summary or content.summary or "")
+    ).strip()
+    stale_low_tier = stored in {"title_only", "summary_only", "blocked"}
+    body_outgrew_label = stale_low_tier and body_len >= 400
+    summary_outgrew_title_only = stored == "title_only" and len(summary_plain) >= 50
+    if (
+        metadata.get("reader_fulltext_backfilled_at")
+        or body_outgrew_label
+        or summary_outgrew_title_only
+    ):
+        metadata = merge_content_quality_metadata(
+            metadata,
+            title=content.title or "",
+            full_content=content.full_content,
+            summary=content.summary,
+            translated_summary=content.translated_summary,
+        )
+    return metadata
 
 
 def _digest_item_from_content(content: Content) -> DigestItem:
     body_prev = _digest_list_preview(content)
-    metadata = dict(content.metadata_ or {})
+    metadata = _digest_item_metadata(content)
     source_metadata = (
         content.source.metadata_
         if content.source and isinstance(content.source.metadata_, dict)
@@ -177,6 +227,10 @@ async def get_daily_digest(
         item = _digest_item_from_content(content)
         digest.categories[category_key].items.append(item)
         digest.categories[category_key].count += 1
+
+    from app.domains.enrich.content.listing_translation import schedule_listing_translation_backfill
+
+    schedule_listing_translation_backfill(_collect_listing_translation_backfill_ids(contents))
     
     return digest
 

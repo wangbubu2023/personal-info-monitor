@@ -14,11 +14,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domains.enrich.reader.shared import _is_valid_translation_text, _split_for_reader
 from app.models import Content
+from app.config import get_settings
 from app.processors.translator import Translator
 from app.domains.enrich.reader.translation import (
     persist_reader_translation_cache,
     translate_reader_paragraph,
 )
+from app.platform.llm.translator import get_translation_settings
 
 
 def json_line(payload: dict) -> bytes:
@@ -128,16 +130,33 @@ async def emit_reader_translation(
         )
         return
 
+    settings = get_settings()
+    if not settings.ai_processing_enabled or not settings.enrich_translate_enabled:
+        yield json_line(
+            {
+                "type": "done",
+                "paragraphs_total": len(paragraphs),
+                "paragraphs_streamed": 0,
+                "translated": False,
+                "translation_cached": False,
+                "message": (
+                    "翻译功能未启用。请在 backend/.env 中设置 "
+                    "AI_PROCESSING_ENABLED=true 与 ENRICH_TRANSLATE_ENABLED=true 后重启服务。"
+                ),
+            }
+        )
+        return
+
     if body_hash and cached_body_hash == body_hash and (cached_ready or _is_valid_translation_text(cached)):
         async for item in emit_cached_reader_translation(str(cached).strip()):
             yield item
         return
 
+    provider = str(get_translation_settings().get("provider") or "ollama").strip().lower()
     translator = Translator()
     translated_parts: list[str] = []
     translated_count = 0
-    # Local models / long paragraphs often push 12s. 22s keeps retries meaningful.
-    per_chunk_timeout_seconds = 22.0
+    per_chunk_timeout_seconds = 60.0 if provider == "ollama" else 22.0
     # Skip paragraphs < 5 chars: Translator.translate no-ops on those, so
     # counting them in the denominator would artificially depress the
     # success ratio and trip the "translation failed" message below.

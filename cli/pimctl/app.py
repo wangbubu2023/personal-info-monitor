@@ -41,6 +41,7 @@ def build_parser() -> argparse.ArgumentParser:
     _build_keywords_parser(subparsers)
     _build_settings_parser(subparsers)
     _build_digest_parser(subparsers)
+    _build_atoms_parser(subparsers)
 
     return parser
 
@@ -253,6 +254,61 @@ def _build_digest_parser(subparsers) -> None:
     hour.add_argument("hour", help="Hour in YYYY-MM-DDTHH format")
 
 
+def _build_atoms_parser(subparsers) -> None:
+    parser = subparsers.add_parser("atoms", help="News atom library")
+    sub = parser.add_subparsers(dest="command")
+
+    list_parser = sub.add_parser("list", help="List atoms")
+    list_parser.add_argument("--type", dest="atom_type", help="信息|观点|数据")
+    list_parser.add_argument("--domain")
+    list_parser.add_argument("--verified", choices=["true", "false"])
+    list_parser.add_argument("--atom-source")
+    list_parser.add_argument("--content-id")
+    list_parser.add_argument("--search")
+    list_parser.add_argument("--page", type=int, default=1)
+    list_parser.add_argument("--page-size", type=int, default=20)
+
+    sub.add_parser("stats", help="Atom library statistics")
+    get_parser = sub.add_parser("get", help="Get one atom")
+    get_parser.add_argument("atom_id")
+    verify_parser = sub.add_parser("verify", help="Mark atom as verified")
+    verify_parser.add_argument("atom_id")
+    atomize_parser = sub.add_parser("atomize", help="Re-extract atoms for one content item")
+    atomize_parser.add_argument("content_id")
+
+    backfill_parser = sub.add_parser("backfill", help="Backfill atom extraction for historical contents")
+    backfill_parser.add_argument("--limit", type=int, default=500)
+    backfill_parser.add_argument("--since", help="ISO date, e.g. 2026-01-01")
+    backfill_parser.add_argument("--content-id")
+    backfill_parser.add_argument("--dry-run", action="store_true")
+
+    backfill_status = sub.add_parser("backfill-status", help="Show backfill job progress")
+    backfill_status.add_argument("job_id")
+
+    relations = sub.add_parser("relations", help="Cross-article atom relations")
+    rel_sub = relations.add_subparsers(dest="rel_command")
+
+    rel_list = rel_sub.add_parser("list", help="List atom relations")
+    rel_list.add_argument("--atom-id")
+    rel_list.add_argument("--verified", choices=["true", "false"])
+    rel_list.add_argument("--page", type=int, default=1)
+    rel_list.add_argument("--page-size", type=int, default=20)
+
+    rel_reconcile = rel_sub.add_parser("reconcile", help="Re-run relation inference (async job)")
+    rel_reconcile.add_argument("--limit", type=int, default=1000)
+    rel_reconcile.add_argument("--since", help="ISO date, e.g. 2026-01-01")
+    rel_reconcile.add_argument("--atom-id")
+    rel_reconcile.add_argument("--dry-run", action="store_true")
+
+    rel_reconcile_status = rel_sub.add_parser(
+        "reconcile-status", help="Show relations reconcile job progress"
+    )
+    rel_reconcile_status.add_argument("job_id")
+
+    rel_verify = rel_sub.add_parser("verify", help="Verify corroboration relation (+ confidence boost)")
+    rel_verify.add_argument("rel_id")
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     normalized_argv = _normalize_global_args(argv or sys.argv[1:])
@@ -303,6 +359,8 @@ def dispatch(args, *, as_json: bool) -> int:
         return handle_settings(args, client, as_json=as_json)
     if args.resource == "digest":
         return handle_digest(args, client, as_json=as_json)
+    if args.resource == "atoms":
+        return handle_atoms(args, client, as_json=as_json)
 
     raise CLIError("unsupported_command", "Unsupported command", 2)
 
@@ -992,6 +1050,169 @@ def handle_digest(args, client: APIClient, *, as_json: bool) -> int:
         return 0
 
     raise CLIError("missing_command", "Missing digest subcommand", 2)
+
+
+def handle_atoms(args, client: APIClient, *, as_json: bool) -> int:
+    if args.command == "list":
+        params: dict[str, Any] = {
+            "page": args.page,
+            "page_size": args.page_size,
+        }
+        if args.atom_type:
+            params["type"] = args.atom_type
+        if args.domain:
+            params["domain"] = args.domain
+        if args.verified is not None:
+            params["verified"] = _optional_bool(args.verified)
+        if args.atom_source:
+            params["atom_source"] = args.atom_source
+        if args.content_id:
+            params["content_id"] = args.content_id
+        if args.search:
+            params["search"] = args.search
+        data = client.request("GET", "/api/atoms", params=params)
+        emit_success(
+            data,
+            as_json=as_json,
+            meta=_build_meta(args, server=client.server),
+            renderer=lambda d: print_table(
+                d.get("items") or [],
+                [
+                    ("ATOM_ID", "atom_id"),
+                    ("TYPE", "atom_type"),
+                    ("DOMAIN", "domain"),
+                    ("SOURCE", "atom_source"),
+                    ("VERIFIED", "verified"),
+                ],
+            ),
+        )
+        return 0
+
+    if args.command == "stats":
+        data = client.request("GET", "/api/atoms/stats")
+        emit_success(
+            data,
+            as_json=as_json,
+            meta=_build_meta(args, server=client.server),
+            renderer=lambda d: print_key_values([
+                ("Total", d.get("total")),
+                ("Verified", d.get("verified_count")),
+                ("Unverified", d.get("unverified_count")),
+                ("By Type", d.get("by_type")),
+            ]),
+        )
+        return 0
+
+    if args.command == "get":
+        data = client.request("GET", f"/api/atoms/{args.atom_id}")
+        emit_success(data, as_json=as_json, meta=_build_meta(args, server=client.server))
+        return 0
+
+    if args.command == "verify":
+        data = client.request("POST", f"/api/atoms/{args.atom_id}/verify")
+        emit_success(data, as_json=as_json, meta=_build_meta(args, server=client.server))
+        return 0
+
+    if args.command == "atomize":
+        data = client.request("POST", f"/api/atoms/content/{args.content_id}/atomize")
+        emit_success(data, as_json=as_json, meta=_build_meta(args, server=client.server))
+        return 0
+
+    if args.command == "backfill":
+        payload = {"limit": args.limit, "dry_run": bool(args.dry_run)}
+        if args.since:
+            payload["since"] = args.since
+        if args.content_id:
+            payload["content_id"] = args.content_id
+        data = client.request("POST", "/api/atoms/backfill", json_body=payload)
+        job_id = data.get("job_id")
+        if as_json or args.quiet:
+            emit_success(data, as_json=as_json, meta=_build_meta(args, server=client.server))
+            return 0
+        print(f"Backfill job started: {job_id}")
+        import time
+
+        while True:
+            status = client.request("GET", f"/api/atoms/backfill/{job_id}")
+            print(
+                f"  status={status.get('status')} processed={status.get('processed')}/{status.get('total')}",
+                flush=True,
+            )
+            if status.get("status") in {"done", "failed"}:
+                emit_success(status, as_json=False, meta=_build_meta(args, server=client.server))
+                return 0 if status.get("status") == "done" else 1
+            time.sleep(2)
+
+    if args.command == "backfill-status":
+        data = client.request("GET", f"/api/atoms/backfill/{args.job_id}")
+        emit_success(data, as_json=as_json, meta=_build_meta(args, server=client.server))
+        return 0
+
+    if args.command == "relations":
+        rel_cmd = getattr(args, "rel_command", None)
+        if rel_cmd == "list":
+            params: dict[str, Any] = {"page": args.page, "page_size": args.page_size}
+            if args.atom_id:
+                params["atom_id"] = args.atom_id
+            if args.verified is not None:
+                params["verified"] = _optional_bool(args.verified)
+            data = client.request("GET", "/api/atoms/relations", params=params)
+            emit_success(
+                data,
+                as_json=as_json,
+                meta=_build_meta(args, server=client.server),
+                renderer=lambda d: print_table(
+                    d.get("items") or [],
+                    [
+                        ("REL_ID", "rel_id"),
+                        ("TYPE", "relation_type"),
+                        ("A", "atom_a"),
+                        ("B", "atom_b"),
+                        ("VERIFIED", "verified"),
+                    ],
+                ),
+            )
+            return 0
+
+        if rel_cmd == "reconcile":
+            payload = {"limit": args.limit, "dry_run": bool(args.dry_run)}
+            if args.since:
+                payload["since"] = args.since
+            if args.atom_id:
+                payload["atom_id"] = args.atom_id
+            data = client.request("POST", "/api/atoms/relations/reconcile", json_body=payload)
+            job_id = data.get("job_id")
+            if as_json or args.quiet:
+                emit_success(data, as_json=as_json, meta=_build_meta(args, server=client.server))
+                return 0
+            print(f"Relations reconcile job started: {job_id}")
+            import time
+
+            while True:
+                status = client.request("GET", f"/api/atoms/relations/reconcile/{job_id}")
+                print(
+                    f"  status={status.get('status')} processed={status.get('processed')}/{status.get('total')} "
+                    f"relations_created={status.get('relations_created', 0)}",
+                    flush=True,
+                )
+                if status.get("status") in {"done", "failed"}:
+                    emit_success(status, as_json=False, meta=_build_meta(args, server=client.server))
+                    return 0 if status.get("status") == "done" else 1
+                time.sleep(2)
+
+        if rel_cmd == "reconcile-status":
+            data = client.request("GET", f"/api/atoms/relations/reconcile/{args.job_id}")
+            emit_success(data, as_json=as_json, meta=_build_meta(args, server=client.server))
+            return 0
+
+        if rel_cmd == "verify":
+            data = client.request("POST", f"/api/atom-relations/{args.rel_id}/verify")
+            emit_success(data, as_json=as_json, meta=_build_meta(args, server=client.server))
+            return 0
+
+        raise CLIError("missing_command", "Missing atoms relations subcommand", 2)
+
+    raise CLIError("missing_command", "Missing atoms subcommand", 2)
 
 
 def _resolve_profile(args) -> dict[str, Any]:

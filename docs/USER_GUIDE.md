@@ -41,7 +41,7 @@ cd personal-info-monitor
 **日常管理命令**：
 
 ```bash
-./pim status          # 查看运行状态
+./pim status          # 查看运行状态与 atoms/relations feature flag
 ./pim stop            # 暂停服务
 ./pim logs            # 实时查看日志
 ./pim backup          # 备份数据
@@ -324,11 +324,17 @@ AI 功能为可选模块，不影响基本监控和内容抓取。
 
 适合不想使用云端 API 的用户：
 
-1. 先安装并启动 Ollama：`ollama run llama3`
+1. 先安装并启动 Ollama（建议延长模型驻留时间，避免批量翻译时反复加载）：
+   ```bash
+   export OLLAMA_KEEP_ALIVE=30m
+   ollama serve   # 或 ollama run llama3
+   ```
 2. 进入「设置 → AI 模型」
 3. 选择 Ollama
 4. 填入 Ollama 服务地址（默认 `http://localhost:11434`）
-5. 填入模型名称，如 `llama3`、`qwen2.5`
+5. 填入模型名称，如 `llama3`、`qwen2.5`、`qwen3`
+
+> **性能提示**：应用调用 Ollama 时已默认启用流式输出。在「设置 → 智能引擎」中可为**写作模型**与**翻译模型**分别配置 Context 窗口（`num_ctx`）及是否关闭思维链（`/no_think`）。写作默认 8192、不关闭思维链；翻译默认 2048、关闭思维链。若仍感觉慢，请确认 Ollama 服务已设置 `OLLAMA_KEEP_ALIVE=30m`。
 
 ### 6.4 配置 Google Translate
 
@@ -405,12 +411,62 @@ AI 功能为可选模块，不影响基本监控和内容抓取。
 
 ---
 
+## 8.4 新闻原子库
+
+结构化事实库（信息 / 观点 / 数据）存储在 `pim.db` 的 `atoms` 表中，与 Obsidian 等外部工具无关。
+
+**启用：**
+
+```bash
+# backend/.env
+ATOMS_ENABLED=true
+ATOMS_RELATIONS_ENABLED=true   # 跨文印证/矛盾（P2，默认 false）
+```
+
+重启服务后，侧栏出现「原子库」，或访问 `/atoms`。
+
+**日常操作：**
+
+- 筛选：按类型、领域、验证状态、关键词
+- 编辑：详情面板修改 payload JSON 并保存
+- 验证：「标记已验证」确认人工审核通过
+- **关联原子**（需 `ATOMS_RELATIONS_ENABLED=true`）：详情抽屉「关联原子」Tab 查看印证/矛盾、确认或拒绝、手建关系
+
+**CLI：**
+
+```bash
+pimctl atoms list --json
+pimctl atoms stats --json
+pimctl atoms verify ATOM-20260520-00001 --json
+```
+
+P1 起新入库文章将自动 LLM 提取；历史数据可运行：
+
+```bash
+pimctl atoms backfill --limit 200 --since 2026-01-01
+pimctl atoms atomize <content_id>   # 单篇重提取
+```
+
+**跨文关系（P2）：**
+
+新入库的信息/数据原子会自动推断印证/矛盾候选（默认 `verified=false`）。批量重跑：
+
+```bash
+pimctl atoms relations reconcile --limit 500 --since 2026-01-01
+pimctl atoms relations list --atom-id ATOM-20260520-00001 --json
+pimctl atoms relations verify REL-20260520-00001 --json
+```
+
+印证确认后，两端原子的 `fact_confidence` 各上调 0.05（上限 1.0）。
+
+---
+
 ## 9. 常见问题
 
 ### 服务无法访问
 
 ```bash
-./pim status    # 检查是否在运行
+./pim status    # 检查是否在运行；并显示 atoms / relations feature flag
 ./pim logs      # 查看最近错误
 ```
 

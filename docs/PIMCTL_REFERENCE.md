@@ -931,3 +931,89 @@ while [ "$(pimctl system queue --json | jq '.data.running_fetches')" -gt 0 ]; do
 done
 echo "Done"
 ```
+
+---
+
+## atoms — 新闻原子库
+
+> 需 `ATOMS_ENABLED=true`。默认关闭时 API 返回 404。
+
+### `pimctl atoms list`
+
+```bash
+pimctl atoms list [--type 信息|观点|数据] [--domain 科技] [--verified true|false]
+                  [--atom-source 路透] [--content-id <uuid>] [--search <关键词>]
+                  [--page 1] [--page-size 20] [--json]
+```
+
+### `pimctl atoms stats`
+
+```bash
+pimctl atoms stats [--json]
+```
+
+### `pimctl atoms get`
+
+```bash
+pimctl atoms get <atom_id> [--json]
+```
+
+### `pimctl atoms verify`
+
+```bash
+pimctl atoms verify <atom_id> [--json]
+```
+
+### `pimctl atoms atomize`
+
+单篇重新 LLM 提取：
+
+```bash
+pimctl atoms atomize <content_id> [--json]
+```
+
+### `pimctl atoms backfill`
+
+历史文章批量提取（异步 job）：
+
+```bash
+pimctl atoms backfill [--limit 500] [--since 2026-01-01] [--content-id <uuid>] [--dry-run] [--json]
+```
+
+### `pimctl atoms backfill-status`
+
+```bash
+pimctl atoms backfill-status <job_id> [--json]
+```
+
+### `pimctl atoms relations list`
+
+> 需 `ATOMS_RELATIONS_ENABLED=true`（且 `ATOMS_ENABLED=true`）。
+
+```bash
+pimctl atoms relations list [--atom-id <id>] [--verified true|false]
+                          [--page 1] [--page-size 20] [--json]
+```
+
+### `pimctl atoms relations reconcile`
+
+全库或增量重跑跨文关系推断（异步 job，可能耗时较长）：
+
+```bash
+pimctl atoms relations reconcile [--limit 1000] [--since 2026-01-01]
+                                 [--atom-id <id>] [--dry-run] [--json]
+```
+
+### `pimctl atoms relations reconcile-status`
+
+```bash
+pimctl atoms relations reconcile-status <job_id> [--json]
+```
+
+### `pimctl atoms relations verify`
+
+确认印证关系，并联动两端原子 `fact_confidence` +0.05：
+
+```bash
+pimctl atoms relations verify <rel_id> [--json]
+```

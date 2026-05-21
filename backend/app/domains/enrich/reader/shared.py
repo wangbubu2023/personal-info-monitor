@@ -30,6 +30,7 @@ import re
 from typing import Optional
 
 from app.processors.translator import Translator
+from app.utils.text import normalize_article_text
 
 _X_ARTICLE_URL_RE = re.compile(r"(?:https?://)?(?:x\.com|twitter\.com)/i/article/\d+", re.IGNORECASE)
 _TITLE_URL_RE = re.compile(r"^(?:https?://|www\.)", re.IGNORECASE)
@@ -127,7 +128,7 @@ def _is_valid_title_translation(original: str, candidate: Optional[str]) -> bool
 
 def _split_for_reader(text: str) -> list[str]:
     """Split plain text into readable paragraphs."""
-    cleaned = (text or "").replace("\r\n", "\n").strip()
+    cleaned = normalize_article_text(text or "").replace("\r\n", "\n").strip()
     if not cleaned:
         return []
 
@@ -193,8 +194,12 @@ def _derive_title_from_body(text: str) -> str:
 
 
 def _clean_x_reader_body(text: str) -> str:
+    from app.domains.fetch.collectors.x_twitter_text import looks_like_x_interstitial_text
+
     cleaned = (text or "").replace("\r\n", "\n").strip()
     if not cleaned:
+        return ""
+    if looks_like_x_interstitial_text(cleaned):
         return ""
 
     skip_exact = {

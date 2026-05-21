@@ -28,11 +28,13 @@ from typing import Any, Mapping
 
 from app.utils.text import strip_html_tags
 
-FULLTEXT_STATUS_FULL = "full"
-FULLTEXT_STATUS_PARTIAL = "partial"
-FULLTEXT_STATUS_SUMMARY_ONLY = "summary_only"
-FULLTEXT_STATUS_TITLE_ONLY = "title_only"
-FULLTEXT_STATUS_BLOCKED = "blocked"
+from app.domains.contracts.content_quality import (
+    FULLTEXT_STATUS_BLOCKED,
+    FULLTEXT_STATUS_FULL,
+    FULLTEXT_STATUS_PARTIAL,
+    FULLTEXT_STATUS_SUMMARY_ONLY,
+    FULLTEXT_STATUS_TITLE_ONLY,
+)
 
 _BLOCKED_FLAGS = (
     "blocked",
@@ -61,6 +63,18 @@ class ContentQuality:
 
 def _clean(text: Any) -> str:
     return strip_html_tags(str(text or "")).strip()
+
+
+def effective_listing_summary(
+    summary: str | None,
+    translated_summary: str | None = None,
+) -> str:
+    """Pick the longer cleaned listing summary (translation may be shorter than source)."""
+    candidates = [_clean(translated_summary), _clean(summary)]
+    candidates = [text for text in candidates if text]
+    if not candidates:
+        return ""
+    return max(candidates, key=len)
 
 
 def _paragraph_count(text: str) -> int:
@@ -117,7 +131,7 @@ def assess_content_quality(
     metadata = metadata if isinstance(metadata, Mapping) else {}
     title_text = _clean(title)
     body = _clean(full_content)
-    summary_text = _clean(translated_summary) or _clean(summary)
+    summary_text = effective_listing_summary(summary, translated_summary)
 
     body_len = len(body)
     summary_len = len(summary_text)

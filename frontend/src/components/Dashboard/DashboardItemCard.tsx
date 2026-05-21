@@ -19,6 +19,7 @@ import {
   getDigestItemFinalScore,
   getDigestItemFulltextStatusLabel,
   getDigestItemRecommendationReason,
+  getDigestItemScoreDeferred,
   getDigestItemSourceStars,
   renderDashboardTimePair,
 } from './dashboardUtils';
@@ -90,6 +91,11 @@ const DashboardItemCard: React.FC<DashboardItemCardProps> = ({
               <span className="inline-flex items-center gap-1 rounded-full border border-[#49A8C9]/18 bg-[#49A8C9]/8 px-2 py-0.5 text-[#3a8da9]">
                 <Gauge size={11} className="shrink-0" strokeWidth={1.5} />
                 {Math.round(finalScore)}分
+              </span>
+            ) : scoreDeferred ? (
+              <span className="inline-flex items-center gap-1 rounded-full border border-[#8a96a5]/18 bg-[#eef1f4] px-2 py-0.5 text-[#8a96a5]">
+                <Gauge size={11} className="shrink-0" strokeWidth={1.5} />
+                暂未评分
               </span>
             ) : null}
             {fulltextLabel ? (

@@ -92,21 +92,26 @@ class RSSCollector(BaseCollector):
         return True
 
     async def _parse_entry_with_summary(self, entry, source: Source) -> Dict[str, Any]:
-        """Parse a single feed entry and fetch summary if needed."""
+        """Parse a feed entry and best-effort load article HTML for local storage."""
         content = self._parse_entry(entry)
-        
-        # 如果摘要为空或太短，尝试从原始页面获取
-        summary = content.get("content", "")
         url = content.get("url", "")
-        
-        if url and not self._is_google_news_article_link(url) and (not summary or len(strip_html_tags(summary)) < 50):
-            self.logger.info(f"Summary too short, fetching from page: {url}")
+
+        if url and not self._is_google_news_article_link(url):
+            self.logger.info("Fetching article HTML for RSS entry: %s", url)
             async with self._entry_hydrate_sem:
-                page_summary = await self._fetch_page_summary(url, source)
-            if page_summary:
-                content["content"] = page_summary
-                self.logger.info(f"Got page summary: {page_summary[:100]}...")
-        
+                page_html = await self._fetch_page_html(url, source)
+            if page_html:
+                content["html"] = page_html
+                content["content"] = ""
+            else:
+                summary = content.get("content", "")
+                if not summary or len(strip_html_tags(summary)) < 50:
+                    self.logger.info("Article HTML unavailable; fetching page summary: %s", url)
+                    async with self._entry_hydrate_sem:
+                        page_summary = await self._fetch_page_summary(url, source)
+                    if page_summary:
+                        content["content"] = page_summary
+
         return content
 
     @staticmethod
@@ -133,10 +138,10 @@ class RSSCollector(BaseCollector):
         digest = hashlib.sha1(raw.encode("utf-8")).hexdigest()
         return f"gnews:{digest}"
     
-    async def _fetch_page_summary(self, url: str, source: Source) -> Optional[str]:
-        """Fetch summary/description from the original page."""
+    async def _fetch_page_html(self, url: str, source: Source) -> Optional[str]:
+        """Fetch article page HTML (for full-text extraction downstream)."""
         import random
-        
+
         try:
             cookies = self.get_runtime_cookies(source)
             await check_before_fetch(url, source_url=source.url, cookies=cookies or None)
@@ -150,27 +155,35 @@ class RSSCollector(BaseCollector):
                 "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
                 "Accept-Language": "en-US,en;q=0.5",
             }
-            
+
             async with aiohttp.ClientSession() as session:
                 async with session.get(
                     url,
                     headers=headers,
                     cookies=cookies if cookies else None,
-                    timeout=aiohttp.ClientTimeout(total=15),
-                    allow_redirects=True
+                    timeout=aiohttp.ClientTimeout(total=25),
+                    allow_redirects=True,
                 ) as response:
                     if response.status != 200:
-                        self.logger.warning(f"Failed to fetch page: {response.status}")
+                        self.logger.warning("Failed to fetch article page: %s", response.status)
                         return None
-                    html = await response.text()
-            
-            return self._extract_summary_from_html(html)
-            
+                    return await response.text()
         except asyncio.TimeoutError:
-            self.logger.warning(f"Timeout fetching page: {url}")
+            self.logger.warning("Timeout fetching article page: %s", url)
             return None
-        except Exception as e:
-            self.logger.error(f"Error fetching page summary: {e}")
+        except Exception as exc:  # noqa: BLE001 - network/HTML fetch may raise anything
+            self.logger.error("Error fetching article page %s: %s", url, exc)
+            return None
+
+    async def _fetch_page_summary(self, url: str, source: Source) -> Optional[str]:
+        """Fetch summary/description from the original page."""
+        html = await self._fetch_page_html(url, source)
+        if not html:
+            return None
+        try:
+            return self._extract_summary_from_html(html)
+        except Exception as exc:  # noqa: BLE001 - BeautifulSoup parse may fail
+            self.logger.error("Error extracting page summary from %s: %s", url, exc)
             return None
     
     def _extract_summary_from_html(self, html: str) -> Optional[str]:
@@ -303,12 +316,14 @@ class RSSCollector(BaseCollector):
             "content": content,
             "url": link,
             "publish_time": publish_time,
+            "ingest_channel": "rss",
             "metadata": {
                 "author": entry.get("author"),
                 "tags": [tag.term for tag in entry.get("tags", [])],
                 "media": media,
                 "enclosures": enclosures,
-            }
+                "ingest_channel": "rss",
+            },
         }
     
     async def discover_feed_url(self, website_url: str) -> Optional[str]:

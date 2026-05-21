@@ -173,14 +173,12 @@ function requestApiKeyOnce(): Promise<string | null> {
   }
 
   const promptPromise = (async () => {
-    const key = await promptApiKey()
-    const trimmed = (key || '').trim()
+    const { apiKey, remember } = await promptApiKey()
+    const trimmed = (apiKey || '').trim()
     if (!trimmed) {
       return null
     }
-    // Manual input defaults to session-only storage; a future UI checkbox can
-    // opt the user into { remember: true } for long-lived persistence.
-    return writeApiKey(trimmed).then(() => trimmed)
+    return writeApiKey(trimmed, { remember }).then(() => trimmed)
   })().finally(() => {
     setPromptPromise(null)
   })

@@ -1,23 +1,7 @@
-"""Post-fetch ingest finalization — non-LLM enrichment for freshly saved Content.
+"""Post-fetch pipeline orchestration — fetch hydrate → ingest → summarize → score.
 
-Runs after fetch so the fetch pipeline stays fast. This is the work
-that closes out a Content row's *ingest* lifecycle (cookie-protected
-full-text top-up + keyword matching + quality-metadata stamp +
-baseline scoring + keyword-alert dispatch). It is intentionally
-LLM-free: any AI summarization / translation belongs to the enrich
-domain (handled later through a separate ``ai_pending`` queue).
-
-Moved out of the legacy ``app.tasks.process_tasks.process_new_content``
-function as part of Phase 3 step 5 of the module-refactor blueprint and
-renamed ``finish_content`` to match the blueprint's ingest vocabulary.
-Phase 7 retired the legacy ``process_new_content`` /
-``_process_new_content_async`` re-exports; callers must import
-:func:`finish_content` from this module.
-
-Companion :func:`_dispatch_keyword_alerts` schedules keyword-alert
-emails fire-and-forget; resolve it from this module directly (the
-legacy ``app.tasks.process_tasks._dispatch_keyword_alerts`` re-export
-was removed in Phase 7).
+``finish_content`` is the single enqueue target after storage. It runs seven
+pipeline stages (see MODULE_BOUNDARIES.md); only stages 4–5 may invoke LLM.
 """
 
 from __future__ import annotations
@@ -27,13 +11,12 @@ import asyncio
 from app.background import get_llm_semaphore, task_tracker
 from app.features import KEYWORD_MONITORING_ENABLED
 from app.utils.logger import bind_job_id, get_logger, restore_job_id
-from app.utils.text import truncate_content
 
 logger = get_logger(__name__)
 
 
 async def finish_content(content_id: str, job_id: str | None = None) -> None:
-    """Finalize a freshly saved Content row (cookie full-text + keyword + scoring)."""
+    """Run the post-storage pipeline for a freshly saved Content row."""
     token = bind_job_id(job_id) if job_id else None
     try:
         sem = get_llm_semaphore()
@@ -49,17 +32,22 @@ async def finish_content(content_id: str, job_id: str | None = None) -> None:
 
 
 async def _finish_content_async(content_id: str) -> None:
-    """Async implementation of ingest-finish enrichment."""
     from sqlalchemy.orm import joinedload
 
     from app.database import SessionLocal
-    from app.domains.fetch.auth import try_parse_auth_credentials
+    from app.domains.enrich.content.summarize import apply_pipeline_summary
+    from app.domains.fetch.acceptance import (
+        assess_fetch_acceptance,
+        ensure_listing_summary,
+        stamp_fetch_acceptance_metadata,
+    )
+    from app.domains.fetch.finalize import hydrate_fetched_content
+    from app.domains.ingest.summary_clean import apply_summary_cleaning
     from app.models import Content, Keyword
     from app.processors.content_processor import ContentProcessor
     from app.processors.keyword_matcher import KeywordMatcher
     from app.services.content_quality_service import merge_content_quality_metadata
     from app.services.scoring_service import merge_baseline_scoring_metadata
-    from app.utils.cookies import normalize_cookie_dict
 
     db = SessionLocal()
     try:
@@ -75,29 +63,26 @@ async def _finish_content_async(content_id: str) -> None:
 
         source = content.source
         processor = ContentProcessor()
+        content_type = (content.content_type or "").strip().lower()
 
-        if source and source.auth_config_id:
-            try:
-                creds = try_parse_auth_credentials(source.auth_config)
-                cookies = normalize_cookie_dict(creds.get("cookies"))
-                if cookies and (not content.full_content or len(content.full_content) < 600):
-                    fetched = await processor._fetch_full_text_with_cookies(
-                        content.original_url, cookies
-                    )
-                    if fetched and len(fetched) > len(content.full_content or ""):
-                        content.full_content = truncate_content(fetched, url=content.original_url or "")
-            except Exception as exc:
-                logger.debug(f"Cookie enrichment skipped for {content_id}: {exc}")
+        # Stage 1–2: fetch finalize (second-hop body + listing summary)
+        await hydrate_fetched_content(content, source, processor=processor)
 
+        # Stage 3: ingest (clean + keywords)
+        apply_summary_cleaning(content)
+        ensure_listing_summary(content)
+
+        keyword_rows: list = []
         if KEYWORD_MONITORING_ENABLED:
-            keywords = db.query(Keyword).filter(Keyword.enabled == True).all()  # noqa: E712 — SQLAlchemy boolean
-            if keywords:
-                matcher = KeywordMatcher()
-                content.keyword_matches = matcher.match(
-                    content.title or "",
-                    content.full_content or content.summary or "",
-                    keywords,
-                )
+            keyword_rows = db.query(Keyword).filter(Keyword.enabled == True).all()  # noqa: E712
+
+        if KEYWORD_MONITORING_ENABLED and keyword_rows:
+            matcher = KeywordMatcher()
+            content.keyword_matches = matcher.match(
+                content.title or "",
+                content.full_content or content.summary or "",
+                keyword_rows,
+            )
 
         meta = dict(content.metadata_ or {})
         meta.pop("ai_pending", None)
@@ -108,13 +93,47 @@ async def _finish_content_async(content_id: str) -> None:
             summary=content.summary,
             translated_summary=content.translated_summary,
         )
-        meta = merge_baseline_scoring_metadata(
-            meta,
-            title=content.title or "",
-            summary=content.translated_summary or content.summary,
-            full_content=content.full_content,
-            source_metadata=source.metadata_ if source else {},
-        )
+
+        source_stars = (source.metadata_ or {}).get("source_stars", 1) if source else 1
+        accepted, accept_reason = assess_fetch_acceptance(content, meta)
+        if accepted:
+            meta = stamp_fetch_acceptance_metadata(meta, accepted=True, reason=accept_reason)
+
+            # Stage 4: enrich summarize (LLM, optional)
+            await apply_pipeline_summary(content)
+            meta = merge_content_quality_metadata(
+                meta,
+                title=content.title or "",
+                full_content=content.full_content,
+                summary=content.summary,
+                translated_summary=content.translated_summary,
+            )
+
+            # Stage 5: score (original title/summary only)
+            meta = merge_baseline_scoring_metadata(
+                meta,
+                title=content.title or "",
+                summary=content.summary,
+                full_content=content.full_content,
+                source_metadata=source.metadata_ if source else {},
+                content_type=content_type,
+                content=content,
+                keyword_objects=keyword_rows if KEYWORD_MONITORING_ENABLED else None,
+                keyword_matches=content.keyword_matches if KEYWORD_MONITORING_ENABLED else None,
+            )
+        else:
+            meta = stamp_fetch_acceptance_metadata(
+                meta,
+                accepted=False,
+                reason=accept_reason,
+                source_stars=source_stars,
+            )
+            logger.info(
+                "Fetch acceptance failed for %s (%s): %s",
+                content_id,
+                accept_reason,
+                (content.title or "")[:60],
+            )
         content.metadata_ = meta
 
         db.commit()
@@ -123,14 +142,19 @@ async def _finish_content_async(content_id: str) -> None:
         if KEYWORD_MONITORING_ENABLED and content.keyword_matches:
             _dispatch_keyword_alerts(db, content)
 
-        # Phase 6: optional structural atomisation. ``atomize_content`` is
-        # idempotent and never raises; when ``ATOMS_ENABLED=false`` it returns
-        # False immediately, so the default flow stays bit-for-bit unchanged.
         try:
-            from app.domains.atoms import atomize_content
-            atomize_content(str(content.id))
-        except Exception as exc:  # noqa: BLE001 - atoms is sidecar; never block ingest
+            from app.domains.atoms import atomize_content_async
+
+            await atomize_content_async(str(content.id))
+        except Exception as exc:  # noqa: BLE001
             logger.debug("atomize_content sidecar failed for %s: %s", content_id, exc)
+
+        try:
+            from app.domains.enrich.content.listing_translation import translate_listing_fields_async
+
+            asyncio.create_task(translate_listing_fields_async(str(content.id)))
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("listing translation schedule failed for %s: %s", content_id, exc)
 
     except Exception as exc:
         logger.error(f"finish_content failed for {content_id}: {exc}")
@@ -155,7 +179,6 @@ def _dispatch_keyword_alerts(db, content) -> None:
             try:
                 asyncio.create_task(_deliver_keyword_alert(match["keyword"]))
             except RuntimeError:
-                # No running loop (shouldn't happen normally)
                 pass
 
 

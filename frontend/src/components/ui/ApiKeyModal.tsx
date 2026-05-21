@@ -1,26 +1,48 @@
-import { Modal, Input } from 'antd'
-import React from 'react'
+import { Checkbox, Input, Modal } from 'antd'
 
-export function promptApiKey(): Promise<string | null> {
+export interface ApiKeyPromptResult {
+  apiKey: string | null
+  remember: boolean
+}
+
+export function promptApiKey(): Promise<ApiKeyPromptResult> {
   return new Promise((resolve) => {
     let currentValue = ''
+    let remember = true
+
     Modal.confirm({
       title: '请输入 PIM API Key',
       icon: null,
-      content: React.createElement(Input.Password, {
-        placeholder: 'API Key',
-        autoFocus: true,
-        onChange: (e: React.ChangeEvent<HTMLInputElement>) => {
-          currentValue = e.target.value
-        },
-      }),
+      width: 440,
+      content: (
+        <div className="space-y-3 pt-1">
+          <Input.Password
+            placeholder="API Key"
+            autoFocus
+            onChange={(e) => {
+              currentValue = e.target.value
+            }}
+          />
+          <Checkbox
+            defaultChecked
+            onChange={(e) => {
+              remember = e.target.checked
+            }}
+          >
+            记住此设备（关闭浏览器后仍有效）
+          </Checkbox>
+          <p className="mb-0 text-xs text-[#586476]">
+            也可运行 <code className="rounded bg-black/5 px-1">./pim bootstrap-url</code> 获取免输入链接。
+          </p>
+        </div>
+      ),
       okText: '确认',
       cancelText: '取消',
       onOk: () => {
         const trimmed = currentValue.trim()
-        resolve(trimmed || null)
+        resolve({ apiKey: trimmed || null, remember })
       },
-      onCancel: () => resolve(null),
+      onCancel: () => resolve({ apiKey: null, remember: false }),
     })
   })
 }

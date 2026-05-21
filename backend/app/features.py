@@ -43,16 +43,14 @@ def _parse_bool(value: str | None, *, default: bool) -> bool:
 #     the 2026-04-20 audit S5 recommendation; operators must opt in.
 #
 #   ATOMS_ENABLED
-#     Phase 6 opt-in for the structured atoms layer (events / entities /
-#     relations per Content row). **Default OFF** — when false, the
-#     ``content_atom_bundles`` table simply stays empty, no code path reads
-#     or writes it, and the default ``fetch → ingest → enrich`` main flow
-#     stays bit-for-bit unchanged. Atomisation failures never block ingest
-#     regardless of this flag.
+#     Opt-in for the normalized news atom library (``atoms`` /
+#     ``atom_relations`` tables in pim.db). **Default OFF**.
 _FEATURE_FLAG_DEFAULTS = {
     "PIM_FEATURE_PLAYWRIGHT": True,
     "PIM_FEATURE_X_PLAYWRIGHT": False,
     "ATOMS_ENABLED": False,
+    "ATOMS_RELATIONS_ENABLED": False,
+    "PIM_SCORE_LLM_SUBJECTIVE": False,
 }
 
 
@@ -81,12 +79,17 @@ def x_playwright_enabled() -> bool:
     return feature_enabled("PIM_FEATURE_PLAYWRIGHT") and feature_enabled("PIM_FEATURE_X_PLAYWRIGHT")
 
 
+def atoms_relations_enabled() -> bool:
+    """Cross-article relation inference (P2). Requires atoms layer."""
+    return atoms_enabled() and feature_enabled("ATOMS_RELATIONS_ENABLED")
+
+
 def atoms_enabled() -> bool:
-    """Convenience wrapper for the Phase 6 ``ATOMS_ENABLED`` opt-in.
+    """Convenience wrapper for the ``ATOMS_ENABLED`` opt-in.
 
     When ``False`` (default), the atoms layer is fully inert: the
     extractor short-circuits without touching the DB and the
-    :class:`SqlAtomReader.get_bundle` port returns ``None``.
+    :class:`SqlAtomReader` port returns an empty tuple.
     """
     return feature_enabled("ATOMS_ENABLED")
 

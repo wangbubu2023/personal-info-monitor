@@ -32,15 +32,19 @@ _cache_deadline = 0.0
 DEFAULT_SYSTEM_SETTINGS: Dict[str, Any] = {
     "ai_model": {
         "provider": "ollama",
-        "model": "deepseek-r1:14b",
+        "model": "",
         "api_base": "http://localhost:11434",
         "temperature": 0.7,
         "max_tokens": 1000,
+        "ollama_num_ctx": 8192,
+        "ollama_no_think": False,
     },
     "translation_model": {
         "provider": "ollama",
-        "model": "translategemma:12b",
+        "model": "",
         "api_base": "http://localhost:11434",
+        "ollama_num_ctx": 2048,
+        "ollama_no_think": True,
     },
     "translation_enabled": True,
     "title_translation_enabled": True,
@@ -71,8 +75,8 @@ _SETTINGS_BOOL_KEYS = (
     "summarization_fallback_enabled",
     "email_notifications_enabled",
 )
-_AI_MODEL_KEYS = ("provider", "model", "api_base", "temperature", "max_tokens", "api_key")
-_TRANS_MODEL_KEYS = ("provider", "model", "api_base", "api_key")
+_AI_MODEL_KEYS = ("provider", "model", "api_base", "temperature", "max_tokens", "api_key", "ollama_num_ctx", "ollama_no_think")
+_TRANS_MODEL_KEYS = ("provider", "model", "api_base", "api_key", "ollama_num_ctx", "ollama_no_think")
 _LIMIT_RULES = {
     "max_sources": (200, 1, 5000),
     "max_digest_candidates": (12, 3, 30),
@@ -207,6 +211,22 @@ def _coerce_persisted_settings(raw: Any) -> Dict[str, Any]:
     return {}
 
 
+def _normalize_ollama_model_fields(target: dict, *, default_ctx: int) -> None:
+    if "ollama_num_ctx" in target:
+        from app.ai.provider import snap_ollama_num_ctx
+
+        target["ollama_num_ctx"] = snap_ollama_num_ctx(
+            _coerce_int(
+                target.get("ollama_num_ctx"),
+                default_ctx,
+                min_value=1024,
+                max_value=262144,
+            )
+        )
+    if "ollama_no_think" in target:
+        target["ollama_no_think"] = _parse_bool_value(target.get("ollama_no_think"))
+
+
 def _apply_patch(current: Dict[str, Any], patch: Dict[str, Any]) -> Dict[str, Any]:
     updated = copy.deepcopy(current)
 
@@ -216,6 +236,10 @@ def _apply_patch(current: Dict[str, Any], patch: Dict[str, Any]) -> Dict[str, An
         for key in _AI_MODEL_KEYS:
             if key in ai_model:
                 target[key] = ai_model[key]
+        _normalize_ollama_model_fields(
+            target,
+            default_ctx=DEFAULT_SYSTEM_SETTINGS["ai_model"]["ollama_num_ctx"],
+        )
 
     translation_model = patch.get("translation_model")
     if isinstance(translation_model, dict):
@@ -223,6 +247,10 @@ def _apply_patch(current: Dict[str, Any], patch: Dict[str, Any]) -> Dict[str, An
         for key in _TRANS_MODEL_KEYS:
             if key in translation_model:
                 target[key] = translation_model[key]
+        _normalize_ollama_model_fields(
+            target,
+            default_ctx=DEFAULT_SYSTEM_SETTINGS["translation_model"]["ollama_num_ctx"],
+        )
 
     for fb_name in ("translation_fallback", "summarization_fallback"):
         fb_patch = patch.get(fb_name)

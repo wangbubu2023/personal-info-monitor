@@ -9,6 +9,7 @@ import {
   Command,
   Menu,
   X,
+  Database,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -66,6 +67,7 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const navItems = [
     { to: '/', label: '资讯', icon: Newspaper },
     { to: '/digest', label: '简报', icon: Clock },
+    { to: '/atoms', label: '原子库', icon: Database },
     { to: '/settings', label: '配置', icon: SlidersHorizontal },
   ]
 
@@ -73,6 +75,7 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     if (path === '/') return location.pathname === '/'
     if (path === '/settings')
       return location.pathname === '/settings' || location.pathname === '/sources'
+    if (path === '/atoms') return location.pathname === '/atoms'
     return location.pathname === path
   }
 

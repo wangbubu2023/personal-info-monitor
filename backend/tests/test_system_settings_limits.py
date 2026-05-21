@@ -37,6 +37,21 @@ def test_system_settings_patch_limits_ignores_unknown_keys():
     assert "not_exists" not in updated["limits"]
 
 
+def test_apply_patch_ollama_model_options():
+    current = copy.deepcopy(DEFAULT_SYSTEM_SETTINGS)
+    updated = _apply_patch(
+        current,
+        {
+            "ai_model": {"ollama_num_ctx": 999999, "ollama_no_think": "true"},
+            "translation_model": {"ollama_num_ctx": 1024, "ollama_no_think": "false"},
+        },
+    )
+    assert updated["ai_model"]["ollama_num_ctx"] == 262144
+    assert updated["ai_model"]["ollama_no_think"] is True
+    assert updated["translation_model"]["ollama_num_ctx"] == 1024
+    assert updated["translation_model"]["ollama_no_think"] is False
+
+
 def test_apply_patch_fallback_bools_coerced():
     """避免 str/非 bool 被 Python truthiness 误判（如 bool('false') == True）。"""
     current = copy.deepcopy(DEFAULT_SYSTEM_SETTINGS)

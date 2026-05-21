@@ -211,11 +211,16 @@ export interface AIModelConfig {
   has_api_key?: boolean
 }
 
-/** 摘要模型包含生成参数 */
-export interface SummaryAIModelConfig extends AIModelConfig {
+/** 写作模型包含生成参数 */
+export interface WritingAIModelConfig extends AIModelConfig {
   temperature: number
   max_tokens: number
+  ollama_num_ctx?: number
+  ollama_no_think?: boolean
 }
+
+/** @deprecated 使用 WritingAIModelConfig */
+export type SummaryAIModelConfig = WritingAIModelConfig
 
 export interface SystemSettingsLimits {
   max_sources: number
@@ -239,8 +244,11 @@ export interface FallbackModelPick {
 }
 
 export interface SystemSettings {
-  ai_model: SummaryAIModelConfig
-  translation_model?: AIModelConfig
+  ai_model: WritingAIModelConfig
+  translation_model?: AIModelConfig & {
+    ollama_num_ctx?: number
+    ollama_no_think?: boolean
+  }
   translation_enabled: boolean
   title_translation_enabled?: boolean
   auto_translate_language: string
@@ -263,9 +271,12 @@ export interface AIModelTabFormValues {
   provider: string
   model: string
   temperature: number
-  max_tokens: number
+  ollama_num_ctx?: number
+  ollama_no_think?: boolean
   trans_provider: string
   trans_model: string
+  trans_ollama_num_ctx?: number
+  trans_ollama_no_think?: boolean
   translation_fallback_enabled: boolean
   trans_fallback_provider: string
   trans_fallback_model: string

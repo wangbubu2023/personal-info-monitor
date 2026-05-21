@@ -6,9 +6,13 @@ from sqlalchemy.orm import Session
 from app.models import Source, Content
 from app.utils.datetime import utcnow_naive
 from app.utils.logger import get_logger
-from app.utils.text import strip_html_tags
+from app.utils.text import strip_html_tags, normalize_article_text
 from app.domains.ingest.dedupe import handle_external_id_duplicate
-from app.domains.ingest.quality import get_website_content_reject_reason
+from app.domains.ingest.quality import (
+    get_non_article_format_reject_reason,
+    get_website_content_reject_reason,
+    is_rss_sourced_item,
+)
 from app.pipeline.utils import (
     normalize_external_id,
     normalize_publish_time,
@@ -51,7 +55,7 @@ async def _materialize_hydrated_fulltext(raw_content: dict) -> None:
         logger.debug("Pre-dedupe extraction failed for %s: %s", raw_content.get("url"), exc)
         return
 
-    clean = strip_html_tags(extracted or "").strip()
+    clean = normalize_article_text(extracted or "").strip()
     if len(clean) < _MIN_FULLTEXT_CHARS:
         logger.debug(
             "Hydrated-html extraction too short for %s: html=%d extracted=%d clean=%d < %d",
@@ -103,7 +107,9 @@ class NormalizerStage:
             source_type = source.type.value if hasattr(source.type, "value") else source.type
 
             if str(source_type).lower() == "website":
-                reject_reason = get_website_content_reject_reason(source.url, raw_content)
+                reject_reason = get_non_article_format_reject_reason(source.url, raw_content)
+                if not reject_reason and not is_rss_sourced_item(raw_content):
+                    reject_reason = get_website_content_reject_reason(source.url, raw_content)
                 if reject_reason:
                     logger.info(
                         "Skipping low-signal website content (%s): %s [%s]",

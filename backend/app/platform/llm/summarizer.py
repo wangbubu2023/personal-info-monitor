@@ -185,6 +185,7 @@ class Summarizer:
                     language=language,
                     model=model,
                     api_base=api_base,
+                    model_settings=ai_model,
                 )
                 if summary:
                     return summary
@@ -222,10 +223,20 @@ class Summarizer:
         language: str,
         model: str,
         api_base: str,
+        model_settings: Optional[dict] = None,
     ) -> Optional[str]:
         """Summarize with local Ollama."""
         try:
-            import httpx
+            from app.ai.provider import (
+                OLLAMA_NUM_CTX_WRITING_DEFAULT,
+                ollama_generate_text,
+                resolve_ollama_no_think,
+                resolve_ollama_num_ctx,
+            )
+
+            cfg = model_settings if isinstance(model_settings, dict) else {}
+            num_ctx = resolve_ollama_num_ctx(cfg, default=OLLAMA_NUM_CTX_WRITING_DEFAULT)
+            no_think = resolve_ollama_no_think(cfg, default=False)
 
             max_input_length = 4000
             if len(text) > max_input_length:
@@ -238,19 +249,16 @@ class Summarizer:
                 f"{text}"
             )
 
-            async with httpx.AsyncClient(timeout=90.0) as client:
-                resp = await client.post(
-                    f"{api_base}/api/generate",
-                    json={
-                        "model": model,
-                        "prompt": prompt,
-                        "stream": False,
-                    },
-                )
-            if resp.status_code != 200:
-                return None
-
-            result = resp.json().get("response", "").strip()
+            result = await ollama_generate_text(
+                api_base=api_base,
+                model=model,
+                prompt=prompt,
+                system_prompt="你是一个专业的内容写作助手。",
+                temperature=0.3,
+                timeout_seconds=90.0,
+                no_think=no_think,
+                num_ctx=num_ctx,
+            )
             if result:
                 logger.info(f"Generated summary with Ollama ({model}): {len(result)} characters")
                 return result
@@ -319,6 +327,7 @@ class Summarizer:
                 language=language,
                 model=model,
                 api_base=api_base,
+                model_settings=cfg,
             )
         return await self._summarize_with_openai(
             text=text,
@@ -343,11 +352,20 @@ class Summarizer:
             api_key = ai_model.get("api_key")
 
             if provider == "ollama":
+                from app.ai.provider import list_ollama_models
+
+                api_base = api_base or "http://localhost:11434"
+                names = await list_ollama_models(api_base)
+                if not names:
+                    return []
+                preferred = (model or "").strip()
+                resolved_model = preferred if preferred in names else names[0]
                 keywords_str = await self._extract_keywords_with_ollama(
                     text=text,
                     max_keywords=max_keywords,
-                    model=model or "deepseek-r1:14b",
-                    api_base=api_base or "http://localhost:11434",
+                    model=resolved_model,
+                    api_base=api_base,
+                    model_settings=ai_model,
                 )
                 if not keywords_str:
                     return []
@@ -386,10 +404,20 @@ class Summarizer:
         max_keywords: int,
         model: str,
         api_base: str,
+        model_settings: Optional[dict] = None,
     ) -> Optional[str]:
         """Extract keywords with Ollama local model."""
         try:
-            import httpx
+            from app.ai.provider import (
+                OLLAMA_NUM_CTX_WRITING_DEFAULT,
+                ollama_generate_text,
+                resolve_ollama_no_think,
+                resolve_ollama_num_ctx,
+            )
+
+            cfg = model_settings if isinstance(model_settings, dict) else {}
+            num_ctx = resolve_ollama_num_ctx(cfg, default=OLLAMA_NUM_CTX_WRITING_DEFAULT)
+            no_think = resolve_ollama_no_think(cfg, default=False)
 
             prompt = (
                 f"请从下面内容提取不超过{max_keywords}个关键词。"
@@ -397,18 +425,17 @@ class Summarizer:
                 f"{text[:3000]}"
             )
 
-            async with httpx.AsyncClient(timeout=90.0) as client:
-                resp = await client.post(
-                    f"{api_base}/api/generate",
-                    json={
-                        "model": model,
-                        "prompt": prompt,
-                        "stream": False,
-                    },
-                )
-            if resp.status_code != 200:
-                return None
-            return (resp.json().get("response") or "").strip() or None
+            result = await ollama_generate_text(
+                api_base=api_base,
+                model=model,
+                prompt=prompt,
+                system_prompt="你是一个关键词提取助手。",
+                temperature=0.1,
+                timeout_seconds=90.0,
+                no_think=no_think,
+                num_ctx=num_ctx,
+            )
+            return result or None
         except Exception as e:
             logger.error(f"Ollama keyword extraction error: {e}")
             return None

@@ -252,13 +252,21 @@ class WebsiteCollector(BaseCollector):
         cookies: Dict[str, str],
         browser_session: Optional[Dict[str, Any]],
     ) -> List[Dict[str, Any]]:
-        hydrated = await self._hydrate_candidate_contents(
+        direct_contents = self._prefer_direct_article_links(source, contents)
+        if not direct_contents:
+            return contents
+
+        metadata = source.metadata_ or {}
+        rss_limit = int(metadata.get("rss_article_hydrate_limit", 20))
+        hydrated_contents, diag = await self._hydrate_direct_articles(
             source,
-            contents,
+            direct_contents,
             cookies,
             browser_session=browser_session,
+            hydrate_limit_override=rss_limit,
         )
-        return hydrated or contents
+        setattr(source, "_runtime_fetch_diag", diag)
+        return hydrated_contents or contents
 
     # ------------------------------------------------------------------
     # Article HTML fetching.
@@ -516,12 +524,17 @@ class WebsiteCollector(BaseCollector):
         contents: List[Dict[str, Any]],
         cookies: Dict[str, str],
         browser_session: Optional[Dict[str, Any]] = None,
+        *,
+        hydrate_limit_override: Optional[int] = None,
     ) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
         if not contents:
             return contents, {"attempted": 0, "hydrated": 0, "failures": {}}
         metadata = source.metadata_ or {}
         limit_default = 3 if _helpers.browser_session_auth_ready(browser_session or {}) else 8
-        hydrate_limit = int(metadata.get("direct_article_hydrate_limit", limit_default))
+        if hydrate_limit_override is not None:
+            hydrate_limit = hydrate_limit_override
+        else:
+            hydrate_limit = int(metadata.get("direct_article_hydrate_limit", limit_default))
         if hydrate_limit <= 0:
             return contents, {"attempted": 0, "hydrated": 0, "failures": {}}
 
@@ -690,9 +703,7 @@ class WebsiteCollector(BaseCollector):
             if rss_url:
                 self.logger.info(f"Using Economist fallback RSS feed: {rss_url}")
 
-        hydrate_rss = (
-            not rss_only and (has_cookies or has_browser_session or has_storage_export)
-        )
+        hydrate_rss = not rss_only
 
         # Try RSS first.
         if rss_url:

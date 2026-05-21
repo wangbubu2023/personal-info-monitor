@@ -90,7 +90,12 @@ class ContentProcessor:
         self, url: str, cookies: Dict[str, str], source_url: str = "",
     ) -> Optional[str]:
         """Fetch first-party article page with cookies and extract readable text."""
-        if not url or not cookies or self._is_wrapper_url(url):
+        from app.domains.fetch.collectors.x_twitter_text import (
+            is_x_status_page_url,
+            looks_like_x_interstitial_text,
+        )
+
+        if not url or not cookies or self._is_wrapper_url(url) or is_x_status_page_url(url):
             return None
 
         try:
@@ -127,6 +132,8 @@ class ContentProcessor:
 
             extracted = await self.extractor.extract(html, url)
             clean = strip_html_tags(extracted or "")
+            if looks_like_x_interstitial_text(clean):
+                return None
             return clean if len(clean) >= 120 else None
         except Exception as e:
             logger.warning(f"Cookie full-text fetch failed for {url}: {e}")

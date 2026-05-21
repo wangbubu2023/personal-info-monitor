@@ -56,8 +56,8 @@ RULES: tuple[Rule, ...] = (
     # Phase 0 — only the contracts package; it must remain dependency-free.
     (
         "app.domains.contracts",
-        ("app.domains.sources", "app.domains.fetch", "app.domains.ingest",
-         "app.domains.enrich", "app.domains.atoms", "app.api",
+        ("app.domains.sources",          "app.domains.fetch", "app.domains.ingest",
+         "app.domains.score", "app.domains.enrich", "app.domains.atoms", "app.api",
          "app.pipeline", "app.tasks", "app.services", "app.collectors",
          "app.processors"),
         0,
@@ -120,6 +120,30 @@ RULES: tuple[Rule, ...] = (
         ("app.interfaces.", "app.api."),
         5,
         "business domains must not depend on the HTTP interfaces layer",
+    ),
+    (
+        "app.domains.score",
+        ("app.domains.enrich.", "app.processors.summarizer", "app.processors.translator"),
+        7,
+        "score must not import enrich or LLM providers",
+    ),
+    (
+        "app.domains.fetch.acceptance",
+        ("app.domains.ingest.", "app.domains.score.", "app.domains.enrich.", "app.domains.atoms."),
+        7,
+        "fetch acceptance must not import downstream domains",
+    ),
+    (
+        "app.domains.fetch.article_body",
+        ("app.domains.ingest.", "app.domains.score.", "app.domains.enrich.", "app.domains.atoms."),
+        7,
+        "fetch article_body must not import downstream domains",
+    ),
+    (
+        "app.domains.fetch.finalize",
+        ("app.domains.ingest.", "app.domains.score.", "app.domains.enrich.", "app.domains.atoms."),
+        7,
+        "fetch finalize must not import downstream domains",
     ),
     # Phase 7 — sweep the last legacy paths out of the runtime.
     (

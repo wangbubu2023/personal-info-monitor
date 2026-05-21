@@ -498,8 +498,8 @@ class TestBuildRawContentObjects:
             results, _build_failures = await build_raw_content_objects(raw, source)
 
         assert isinstance(results[0].metadata_, dict)
-        assert results[0].metadata_["fulltext_status"] == "title_only"
-        assert results[0].metadata_["score_basis"] == "title"
+        assert results[0].metadata_.get("ingest_finalize_pending") is True
+        assert "fulltext_status" not in results[0].metadata_
 
 
 # ===========================================================================
@@ -582,6 +582,39 @@ class TestHandleExternalIdDuplicate:
         # The helper must NOT commit — that's the coordinator's job at the
         # batch boundary (see dedupe docstring / Phase 2 P1).
         db.commit.assert_not_called()
+
+    def test_duplicate_detected_by_original_url_when_external_id_differs(self):
+        from app.pipeline.dedupe import handle_external_id_duplicate
+
+        db = MagicMock()
+        source = _make_source()
+        slug = (
+            "https://www.theverge.com/ai-artificial-intelligence/934521/"
+            "google-synthid-c2pa-content-credentials-ai-labelling-efforts"
+        )
+
+        existing = MagicMock(spec=Content)
+        existing.metadata_ = {}
+        existing.full_content = "existing body"
+        existing.summary = "summary"
+        existing.title = "Old Title"
+        existing.is_user_edited = False
+
+        first_query = MagicMock()
+        first_query.filter.return_value.first.return_value = existing
+        cross_query = MagicMock()
+        cross_query.filter.return_value.first.return_value = None
+        db.query.side_effect = [first_query, cross_query]
+
+        raw = _raw(url=slug)
+        result = handle_external_id_duplicate(
+            db,
+            source,
+            raw,
+            "https://www.theverge.com/?p=934521",
+        )
+
+        assert result is True
 
     def test_cross_source_sets_metadata(self):
         from app.pipeline.dedupe import handle_external_id_duplicate
@@ -800,6 +833,27 @@ class TestPipelineUtils:
         ]
         result = dedupe_raw_contents(items)
         assert len(result) == 1
+
+    def test_dedupe_raw_contents_merges_wordpress_p_and_slug_urls(self):
+        from app.pipeline.utils import dedupe_raw_contents
+
+        slug = (
+            "https://www.theverge.com/ai-artificial-intelligence/934521/"
+            "google-synthid-c2pa-content-credentials-ai-labelling-efforts"
+        )
+        items = [
+            {"external_id": "https://www.theverge.com/?p=934521", "url": slug, "title": "A"},
+            {"external_id": slug, "url": slug, "title": "B"},
+        ]
+        result = dedupe_raw_contents(items)
+        assert len(result) == 1
+
+    def test_normalize_external_id_canonicalizes_article_urls(self):
+        from app.pipeline.utils import normalize_external_id
+
+        assert normalize_external_id("https://www.theverge.com/?p=934521") == (
+            "https://theverge.com/article:934521"
+        )
 
     def test_normalize_external_id_short(self):
         from app.pipeline.utils import normalize_external_id

@@ -22,13 +22,42 @@ class TestContentExtractor:
         assert await extractor.extract(None) == ""
 
     @pytest.mark.asyncio
-    async def test_extract_uses_trafilatura_first(self):
+    async def test_extract_prefers_trafilatura_when_readability_grabs_partial_chunk(self):
+        from app.processors.extractor import ContentExtractor
+        from app.utils.text import normalize_article_text
+
+        extractor = ContentExtractor()
+        partial = "partial chunk " * 30  # ~420 chars
+        full = "full article " * 80  # ~1040 chars
+        html = "<html><body><article>" + partial + "</article></body></html>"
+        with patch.object(extractor, "_extract_with_readability", return_value=partial):
+            with patch.object(extractor, "_extract_with_trafilatura", return_value=full):
+                result = await extractor.extract(html, "https://cn.nytimes.com/article/")
+        assert result == normalize_article_text(full)
+
+    @pytest.mark.asyncio
+    async def test_extract_keeps_readability_for_long_articles(self):
+        from app.processors.extractor import ContentExtractor
+        from app.utils.text import normalize_article_text
+
+        extractor = ContentExtractor()
+        long_md = "# Title\n\n" + ("paragraph. " * 300)
+        html = "<html><body><article>" + ("word " * 300) + "</article></body></html>"
+        with patch.object(extractor, "_extract_with_readability", return_value=long_md):
+            with patch.object(extractor, "_extract_with_trafilatura") as mock_traf:
+                result = await extractor.extract(html, "https://example.com/post")
+        assert result == normalize_article_text(long_md)
+        mock_traf.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_extract_uses_trafilatura_when_readability_sparse(self):
         from app.processors.extractor import ContentExtractor
 
         extractor = ContentExtractor()
         long_text = "A" * 200
-        with patch("trafilatura.extract", return_value=long_text):
-            result = await extractor.extract("<html><body>hello</body></html>")
+        with patch.object(extractor, "_extract_with_readability", return_value=""):
+            with patch.object(extractor, "_extract_with_trafilatura", return_value=long_text):
+                result = await extractor.extract("<html><body>hello</body></html>")
         assert result == long_text
 
     @pytest.mark.asyncio
@@ -306,14 +335,7 @@ class TestSummarizer:
     @pytest.mark.asyncio
     async def test_summarize_with_ollama_http_success(self):
         summarizer = self._make_summarizer()
-        mock_response = MagicMock(status_code=200)
-        mock_response.json.return_value = {"response": "Ollama summary"}
-        with patch("httpx.AsyncClient") as mock_client_cls:
-            mock_client = AsyncMock()
-            mock_client.post = AsyncMock(return_value=mock_response)
-            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-            mock_client.__aexit__ = AsyncMock(return_value=False)
-            mock_client_cls.return_value = mock_client
+        with patch("app.ai.provider.ollama_generate_text", new_callable=AsyncMock, return_value="Ollama summary"):
             result = await summarizer._summarize_with_ollama(
                 text="Test text", max_length=300, language="zh-CN",
                 model="llama", api_base="http://localhost:11434",
@@ -323,13 +345,7 @@ class TestSummarizer:
     @pytest.mark.asyncio
     async def test_summarize_with_ollama_http_failure(self):
         summarizer = self._make_summarizer()
-        mock_response = MagicMock(status_code=500)
-        with patch("httpx.AsyncClient") as mock_client_cls:
-            mock_client = AsyncMock()
-            mock_client.post = AsyncMock(return_value=mock_response)
-            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-            mock_client.__aexit__ = AsyncMock(return_value=False)
-            mock_client_cls.return_value = mock_client
+        with patch("app.ai.provider.ollama_generate_text", new_callable=AsyncMock, return_value=""):
             result = await summarizer._summarize_with_ollama(
                 text="Test text", max_length=300, language="en",
                 model="llama", api_base="http://localhost:11434",
@@ -339,7 +355,7 @@ class TestSummarizer:
     @pytest.mark.asyncio
     async def test_summarize_with_ollama_exception(self):
         summarizer = self._make_summarizer()
-        with patch("httpx.AsyncClient", side_effect=Exception("conn error")):
+        with patch("app.ai.provider.ollama_generate_text", new_callable=AsyncMock, side_effect=Exception("conn error")):
             result = await summarizer._summarize_with_ollama(
                 text="Test text", max_length=300, language="zh-CN",
                 model="llama", api_base="http://localhost:11434",
@@ -350,14 +366,7 @@ class TestSummarizer:
     async def test_summarize_with_ollama_truncates_long_input(self):
         summarizer = self._make_summarizer()
         long_text = "x" * 5000
-        mock_response = MagicMock(status_code=200)
-        mock_response.json.return_value = {"response": "shortened"}
-        with patch("httpx.AsyncClient") as mock_client_cls:
-            mock_client = AsyncMock()
-            mock_client.post = AsyncMock(return_value=mock_response)
-            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-            mock_client.__aexit__ = AsyncMock(return_value=False)
-            mock_client_cls.return_value = mock_client
+        with patch("app.ai.provider.ollama_generate_text", new_callable=AsyncMock, return_value="shortened"):
             result = await summarizer._summarize_with_ollama(
                 text=long_text, max_length=300, language="zh-CN",
                 model="llama", api_base="http://localhost:11434",
@@ -451,14 +460,7 @@ class TestSummarizer:
     @pytest.mark.asyncio
     async def test_extract_keywords_with_ollama_http(self):
         summarizer = self._make_summarizer()
-        mock_response = MagicMock(status_code=200)
-        mock_response.json.return_value = {"response": "k1, k2"}
-        with patch("httpx.AsyncClient") as mock_client_cls:
-            mock_client = AsyncMock()
-            mock_client.post = AsyncMock(return_value=mock_response)
-            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-            mock_client.__aexit__ = AsyncMock(return_value=False)
-            mock_client_cls.return_value = mock_client
+        with patch("app.ai.provider.ollama_generate_text", new_callable=AsyncMock, return_value="k1, k2"):
             result = await summarizer._extract_keywords_with_ollama(
                 text="A" * 200, max_keywords=5,
                 model="deepseek", api_base="http://localhost:11434",
@@ -468,13 +470,7 @@ class TestSummarizer:
     @pytest.mark.asyncio
     async def test_extract_keywords_with_ollama_failure(self):
         summarizer = self._make_summarizer()
-        mock_response = MagicMock(status_code=500)
-        with patch("httpx.AsyncClient") as mock_client_cls:
-            mock_client = AsyncMock()
-            mock_client.post = AsyncMock(return_value=mock_response)
-            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-            mock_client.__aexit__ = AsyncMock(return_value=False)
-            mock_client_cls.return_value = mock_client
+        with patch("app.ai.provider.ollama_generate_text", new_callable=AsyncMock, return_value=""):
             result = await summarizer._extract_keywords_with_ollama(
                 text="A" * 200, max_keywords=5,
                 model="deepseek", api_base="http://localhost:11434",
