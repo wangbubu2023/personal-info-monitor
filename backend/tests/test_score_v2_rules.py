@@ -401,3 +401,36 @@ def test_reach_entity_for_non_s_tier():
     vocab = RuntimeScoringVocab.build()
     reach = score_reach("Acme startup announces product update", None, None, runtime_vocab=vocab)
     assert reach == 5.5  # plain entity
+
+
+def test_entity_tier_ascii_word_boundary_no_false_positive():
+    """'pineapple' must NOT trigger the 'apple' S-tier entity (Apple the company).
+
+    Note: 'meta ' in score_vocab.py is stripped to 'meta' by _merge(), and
+    \\bmeta\\b still matches 'meta-analysis' (hyphen is non-word char).
+    'pineapple' is a clean test: \\bapple\\b does NOT match inside 'pineapple'
+    because the preceding 'e' is a word character.
+    """
+    from app.domains.score.score_vocab_runtime import RuntimeScoringVocab
+
+    vocab = RuntimeScoringVocab.build()
+    score_no_apple = vocab.entity_tier_score("pineapple production increased last quarter")
+    assert score_no_apple < 9.0  # 'pineapple' should NOT trigger S-tier Apple
+
+
+def test_entity_tier_ascii_word_boundary_positive():
+    """'Apple' as a standalone word should still match S-tier."""
+    from app.domains.score.score_vocab_runtime import RuntimeScoringVocab
+
+    vocab = RuntimeScoringVocab.build()
+    score_with_apple = vocab.entity_tier_score("Apple announces new AI research initiative")
+    assert score_with_apple == 9.0  # standalone 'Apple' → S-tier
+
+
+def test_entity_tier_chinese_substring_still_works():
+    """Chinese terms (non-ASCII) should still use substring matching."""
+    from app.domains.score.score_vocab_runtime import RuntimeScoringVocab
+
+    vocab = RuntimeScoringVocab.build()
+    score = vocab.entity_tier_score("白宫发表声明")
+    assert score == 9.0  # 白宫 is S-tier, substring match OK for Chinese

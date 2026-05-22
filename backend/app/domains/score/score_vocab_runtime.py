@@ -7,6 +7,7 @@ scoring vocabulary, not a parallel list.
 
 from __future__ import annotations
 
+import re as _re
 from dataclasses import dataclass
 from typing import Any, Mapping, Sequence
 
@@ -54,13 +55,13 @@ class RuntimeScoringVocab:
     def entity_tier_score(self, corpus: str) -> float:
         corpus_l = (corpus or "").lower()
         for term in self.entity_tier_s:
-            if term.lower() in corpus_l:
+            if _term_in_corpus(term, corpus_l):
                 return ENTITY_TIER_SCORES["S"]
         for term in self.entity_tier_a:
-            if term.lower() in corpus_l:
+            if _term_in_corpus(term, corpus_l):
                 return ENTITY_TIER_SCORES["A"]
         for term in self.entity_tier_b:
-            if term.lower() in corpus_l:
+            if _term_in_corpus(term, corpus_l):
                 return ENTITY_TIER_SCORES["B"]
         return ENTITY_TIER_SCORES["C"]
 
@@ -69,9 +70,24 @@ class RuntimeScoringVocab:
         if not self.matched_user_terms:
             return base_salience
         corpus_l = (corpus or "").lower()
-        if any(term.lower() in corpus_l for term in self.matched_user_terms):
+        if any(_term_in_corpus(term, corpus_l) for term in self.matched_user_terms):
             return max(base_salience, USER_KEYWORD_MATCHED_SALIENCE)
         return base_salience
+
+
+def _is_ascii_term(term: str) -> bool:
+    """True when term consists only of ASCII characters (English words, numbers, punctuation)."""
+    return all(ord(c) < 128 for c in term)
+
+
+def _term_in_corpus(term: str, corpus_l: str) -> bool:
+    """Match term in corpus. ASCII terms use word-boundary regex; CJK terms use substring match."""
+    t = term.lower()
+    if not t:
+        return False
+    if _is_ascii_term(term):
+        return bool(_re.search(r"\b" + _re.escape(t) + r"\b", corpus_l))
+    return t in corpus_l
 
 
 def _dedupe_terms(values: Sequence[str]) -> tuple[str, ...]:
