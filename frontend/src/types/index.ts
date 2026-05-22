@@ -262,6 +262,8 @@ export interface SystemSettings {
   /** @deprecated 由后端读时迁移到 summarization_fallback_enabled */
   summarization_cloud_fallback_enabled?: boolean
   email_notifications_enabled: boolean
+  /** Dev-only score lab sidebar entry (ignored in production builds). */
+  score_lab_enabled?: boolean
   limits?: SystemSettingsLimits
   hourly_digest?: HourlyDigestSettings
 }

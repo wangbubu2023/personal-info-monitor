@@ -55,6 +55,7 @@ DEFAULT_SYSTEM_SETTINGS: Dict[str, Any] = {
     "summarization_fallback_enabled": False,
     "summarization_fallback": {"provider": "openai", "model": "gpt-4o-mini"},
     "email_notifications_enabled": False,
+    "score_lab_enabled": False,
     "limits": {
         "max_sources": 200,
         "max_digest_candidates": 12,
@@ -74,6 +75,7 @@ _SETTINGS_BOOL_KEYS = (
     "translation_fallback_enabled",
     "summarization_fallback_enabled",
     "email_notifications_enabled",
+    "score_lab_enabled",
 )
 _AI_MODEL_KEYS = ("provider", "model", "api_base", "temperature", "max_tokens", "api_key", "ollama_num_ctx", "ollama_no_think")
 _TRANS_MODEL_KEYS = ("provider", "model", "api_base", "api_key", "ollama_num_ctx", "ollama_no_think")

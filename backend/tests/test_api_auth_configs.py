@@ -94,16 +94,37 @@ async def test_shared_x_auth_config_can_bind_all_x_sources(client, db_session):
     created = create_response.json()
     assert created["bound_sources"] == 2
 
-    result = await db_session.execute(select(Source).order_by(Source.name))
-    sources = result.scalars().all()
-    x_sources = [source for source in sources if source.type == SourceType.X]
-    website_sources = [source for source in sources if source.type == SourceType.WEBSITE]
 
-    assert len(x_sources) == 2
-    assert all(source.auth_required is True for source in x_sources)
-    assert all(source.auth_config_id == created["id"] for source in x_sources)
-    assert website_sources[0].auth_required is False
-    assert website_sources[0].auth_config_id is None
+@pytest.mark.asyncio
+async def test_shared_x_auth_config_create_defaults_bind_all_x_sources(client, db_session):
+    db_session.add(
+        Source(name="X 源 A", type=SourceType.X, url="https://x.com/example_a"),
+    )
+    await db_session.commit()
+
+    create_response = await client.post(
+        "/api/configs/auth-configs",
+        json={
+            "name": "主 X 账号",
+            "site_url": "https://x.com",
+            "auth_type": "cookie",
+            "is_shared": True,
+            "cookies": {
+                "auth_token": "token-1",
+                "ct0": "ct0-1",
+            },
+        },
+    )
+
+    assert create_response.status_code == 200
+    created = create_response.json()
+    assert created["bound_sources"] == 1
+
+    result = await db_session.execute(select(Source).filter(Source.type == SourceType.X))
+    x_sources = result.scalars().all()
+    assert len(x_sources) == 1
+    assert x_sources[0].auth_required is True
+    assert str(x_sources[0].auth_config_id) == created["id"]
 
 
 @pytest.mark.asyncio

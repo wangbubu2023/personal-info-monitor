@@ -477,7 +477,7 @@ const CredentialsTab: React.FC = () => {
             size="small"
             onClick={() => {
               setEditingLegacyX(record)
-              legacyXForm.setFieldsValue({ name: record.name })
+              legacyXForm.setFieldsValue({ name: record.name, bind_all_x_sources: true })
               setLegacyXModalOpen(true)
             }}
           >
@@ -949,7 +949,7 @@ const CredentialsTab: React.FC = () => {
               autoComplete="off"
             />
           </Form.Item>
-          <Form.Item name="bind_all_x_sources" valuePropName="checked" initialValue={false}>
+          <Form.Item name="bind_all_x_sources" valuePropName="checked" initialValue={true}>
             <Checkbox>保存后一键绑定所有 X 监测源</Checkbox>
           </Form.Item>
           <Form.Item>

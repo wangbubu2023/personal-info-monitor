@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
 from app.domains.fetch.collectors.x_twitter_text import (
+    build_title_from_text,
     extract_article_urls,
     extract_tweet_id,
     normalize_tweet_url,
@@ -20,9 +21,7 @@ from app.domains.fetch.collectors.x_twitter_text import (
 def format_tweet_graphql(tweet, username: str) -> Dict[str, Any]:
     """Shape a twikit GraphQL tweet object into a collector content dict."""
     text = getattr(tweet, "full_text", None) or getattr(tweet, "text", "") or ""
-    title = text[:80] + ("..." if len(text) > 80 else "")
-    if not title:
-        title = f"@{username} 的推文"
+    title = build_title_from_text(text) if text else f"@{username} 的推文"
 
     publish_time: Optional[datetime] = getattr(tweet, "created_at_datetime", None)
     if publish_time and publish_time.tzinfo is not None:
@@ -194,7 +193,7 @@ def format_tweet_api(tweet, username: str, media_lookup: Dict) -> Dict[str, Any]
         }
 
     text = tweet.text or ""
-    title = text[:80] + ("..." if len(text) > 80 else "")
+    title = build_title_from_text(text) if text else f"@{username} 的推文"
     return {
         "external_id": str(tweet.id),
         "title": title,

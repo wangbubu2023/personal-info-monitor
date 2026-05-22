@@ -99,6 +99,81 @@ async def test_bulk_import_creates_sources(client: AsyncClient):
 
 
 @pytest.mark.asyncio
+async def test_create_x_source_auto_binds_shared_x_cookie(client: AsyncClient):
+    auth_resp = await client.post(
+        "/api/configs/auth-configs",
+        json={
+            "name": "主 X 账号",
+            "site_url": "https://x.com",
+            "auth_type": "cookie",
+            "is_shared": True,
+            "cookies": {"auth_token": "token-1", "ct0": "ct0-1"},
+        },
+    )
+    assert auth_resp.status_code == 200
+    config_id = auth_resp.json()["id"]
+
+    resp = await client.post(
+        "/api/sources",
+        json={
+            "name": "karpathy",
+            "type": "x",
+            "url": "https://x.com/karpathy",
+            "fetch_interval": 60,
+            "enabled": True,
+        },
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["auth_config_id"] == config_id
+    assert data["auth_required"] is True
+
+
+@pytest.mark.asyncio
+async def test_bulk_import_x_sources_auto_bind_shared_x_cookie(client: AsyncClient):
+    auth_resp = await client.post(
+        "/api/configs/auth-configs",
+        json={
+            "name": "主 X 账号",
+            "site_url": "https://x.com",
+            "auth_type": "cookie",
+            "is_shared": True,
+            "cookies": {"auth_token": "token-1", "ct0": "ct0-1"},
+        },
+    )
+    assert auth_resp.status_code == 200
+    config_id = auth_resp.json()["id"]
+
+    resp = await client.post(
+        "/api/sources/bulk-import",
+        json={
+            "sources": [
+                {
+                    "name": "X A",
+                    "type": "x",
+                    "url": "https://x.com/example_a",
+                    "fetch_interval": 60,
+                    "enabled": True,
+                },
+                {
+                    "name": "X B",
+                    "type": "x",
+                    "url": "https://x.com/example_b",
+                    "fetch_interval": 60,
+                    "enabled": True,
+                },
+            ]
+        },
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["skipped_duplicates"] == 0
+    assert len(data["created"]) == 2
+    assert all(item["auth_config_id"] == config_id for item in data["created"])
+    assert all(item["auth_required"] is True for item in data["created"])
+
+
+@pytest.mark.asyncio
 async def test_bulk_import_skips_duplicate_urls(client: AsyncClient, db_session):
     from app.models import Source
     db_session.add(Source(name="existing", type="rss", url="https://same.com/feed",

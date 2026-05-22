@@ -15,6 +15,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.domains.fetch.collectors.x_twitter_text import is_x_status_page_url
 from app.domains.enrich.reader.shared import (
     _clean_x_reader_body,
     _derive_title_from_body,
@@ -63,6 +64,8 @@ async def fetch_reader_fulltext(original_url: str) -> tuple[str, str]:
     """
     url = (original_url or "").strip()
     if not url:
+        return "", ""
+    if is_x_status_page_url(url):
         return "", ""
     parsed = urlparse(url)
     if parsed.scheme not in {"http", "https"}:
@@ -309,14 +312,22 @@ async def ensure_reader_body(content: Content, db: AsyncSession) -> tuple[str, d
     def _finalize(body: str, meta: dict) -> tuple[str, dict]:
         return normalize_article_text(body), meta
 
-    from app.domains.fetch.collectors.x_twitter_text import looks_like_x_interstitial_text
+    from app.domains.fetch.collectors.x_twitter_text import (
+        looks_like_x_interstitial_text,
+        is_x_status_page_url,
+    )
 
     metadata = content.metadata_ if isinstance(content.metadata_, dict) else {}
     body_raw = (content.full_content or "").strip() or (content.summary or "").strip()
     source_type = (content.content_type or "").strip().lower()
     if source_type == "x" and body_raw and looks_like_x_interstitial_text(body_raw):
         title_fallback = (content.title or "").strip()
-        if title_fallback and not looks_like_x_interstitial_text(title_fallback):
+        # Never replace a longer body with a truncated listing title (often ~82 chars).
+        if (
+            title_fallback
+            and not looks_like_x_interstitial_text(title_fallback)
+            and len(title_fallback) > len(body_raw)
+        ):
             body_raw = title_fallback
             content.full_content = truncate_content(title_fallback, url=content.original_url or "")
             preview = title_fallback[:500]
@@ -326,6 +337,20 @@ async def ensure_reader_body(content: Content, db: AsyncSession) -> tuple[str, d
             content.metadata_ = metadata
             await db.commit()
     x_short_needs_upgrade = source_type == "x" and len(body_raw) < 280
+
+    if x_short_needs_upgrade and source_type == "x":
+        try:
+            from app.domains.fetch.tweet_repair import repair_x_tweet_content
+
+            source_row = await db.get(Source, content.source_id)
+            if source_row and await repair_x_tweet_content(content, source_row):
+                metadata = clear_reader_translation_cache(dict(content.metadata_ or {}))
+                content.metadata_ = metadata
+                await db.commit()
+                body_raw = (content.full_content or "").strip() or (content.summary or "").strip()
+                x_short_needs_upgrade = len(body_raw) < 280
+        except Exception as exc:  # noqa: BLE001 - repair is best-effort
+            logger.debug("X tweet repair skipped for %s: %s", getattr(content, "id", ""), exc)
 
     if x_short_needs_upgrade:
         upgraded_body, upgraded_metadata = await upgrade_x_reader_body(content, metadata, body_raw, db)

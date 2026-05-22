@@ -66,7 +66,7 @@ class AuthConfigCreate(AuthConfigBase):
     username: Optional[str] = None
     password: Optional[str] = None
     cookies: Optional[Union[Dict[str, str], str]] = None
-    bind_all_x_sources: bool = False
+    bind_all_x_sources: bool = True
     login_selectors: Optional[Dict[str, str]] = Field(
         default_factory=dict,
         description="CSS selectors for login form elements"
@@ -84,7 +84,7 @@ class AuthConfigUpdate(BaseModel):
     login_url: Optional[str] = None
     login_selectors: Optional[Dict[str, str]] = None
     is_shared: Optional[bool] = None
-    bind_all_x_sources: bool = False
+    bind_all_x_sources: Optional[bool] = None
 
 
 class AuthConfigResponse(AuthConfigBase):

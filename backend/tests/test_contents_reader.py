@@ -79,6 +79,10 @@ class TestFetchReaderFulltext:
         assert await _fetch_reader_fulltext("ftp://example.com") == ("", "")
 
     @pytest.mark.asyncio
+    async def test_x_status_url_rejected_without_network(self):
+        assert await _fetch_reader_fulltext("https://x.com/op7418/status/123") == ("", "")
+
+    @pytest.mark.asyncio
     async def test_private_url_rejected(self):
         with patch("app.domains.enrich.reader.body_loader.assert_public_http_target", side_effect=ValueError("private")):
             assert await _fetch_reader_fulltext("http://10.0.0.1/page") == ("", "")

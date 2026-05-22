@@ -58,6 +58,7 @@ const DashboardItemCard: React.FC<DashboardItemCardProps> = ({
     hasInlineLink || (!!bodyPreview && !summaryText);
   const timeText = renderDashboardTimePair(item.publish_time, item.fetched_at || item.publish_time);
   const finalScore = getDigestItemFinalScore(item);
+  const scoreDeferred = getDigestItemScoreDeferred(item);
   const sourceStars = getDigestItemSourceStars(item);
   const fulltextLabel = getDigestItemFulltextStatusLabel(item);
   const recommendationReason = getDigestItemRecommendationReason(item);

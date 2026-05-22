@@ -321,7 +321,7 @@ async def update_auth_config(
         _merge_auth_credentials(config, config_data)
 
     bound_sources = await bind_auth_config_to_sources(db, config)
-    if config_data.bind_all_x_sources:
+    if config_data.bind_all_x_sources is True:
         bound_sources += await bind_auth_config_to_all_x_sources(db, config)
     await db.commit()
     result = await db.execute(

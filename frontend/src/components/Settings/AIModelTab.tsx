@@ -177,6 +177,7 @@ const AIModelTab: React.FC = () => {
         provider: values.provider,
         model: values.model,
         temperature: values.temperature,
+        max_tokens: settings?.ai_model.max_tokens ?? 1024,
         ...(values.provider === 'ollama'
           ? {
               ollama_num_ctx: values.ollama_num_ctx,

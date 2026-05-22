@@ -3,12 +3,14 @@ import { Routes, Route, Navigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import MainLayout from './components/layout/MainLayout'
 import Spotlight from './components/common/Spotlight'
+import { SCORE_LAB_BUILD_ENABLED } from './config/features'
 
 const HomePage = lazy(() => import('./pages/HomePage'))
 const DigestPage = lazy(() => import('./pages/DigestPage'))
 const SettingsPage = lazy(() => import('./pages/SettingsPage'))
 const ReaderPage = lazy(() => import('./pages/ReaderPage'))
 const AtomsPage = lazy(() => import('./pages/AtomsPage'))
+const ScoreLabPage = lazy(() => import('./pages/ScoreLabPage'))
 
 const App: React.FC = () => {
   const [isSpotlightOpen, setIsSpotlightOpen] = useState<boolean>(false)
@@ -44,6 +46,7 @@ const App: React.FC = () => {
             <Route path="/digest" element={<DigestPage />} />
             <Route path="/reader/:id" element={<ReaderPage />} />
             <Route path="/atoms" element={<AtomsPage />} />
+            {SCORE_LAB_BUILD_ENABLED ? <Route path="/score-lab" element={<ScoreLabPage />} /> : null}
             <Route path="/sources" element={<Navigate to="/settings" replace />} />
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />

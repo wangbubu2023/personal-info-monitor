@@ -234,13 +234,14 @@ export const contentToDigestItem = (content: Content): DigestItem => {
   }
 }
 
-/** 阅读页链接：可附带 translate，以及返回时恢复的 `?tab=` 或 `?search=` */
+/** 阅读页链接：可附带 translate，以及返回时恢复的 `?tab=`、`?search=` 或 `?from=` */
 export function buildReaderPath(
   id: string,
-  opts?: { translate?: boolean; tab?: string; search?: string },
+  opts?: { translate?: boolean; tab?: string; search?: string; from?: string },
 ): string {
   const p = new URLSearchParams()
   if (opts?.translate) p.set('translate', '1')
+  if (opts?.from) p.set('from', opts.from)
   if (opts?.search) p.set('search', opts.search)
   else if (opts?.tab && opts.tab !== 'all') p.set('tab', opts.tab)
   const q = p.toString()

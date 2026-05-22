@@ -22,6 +22,7 @@ from ._helpers import (
     _normalize_extra_urls,
     _invalidate_source_cache,
     find_duplicate_source_by_normalized_url,
+    resolve_x_source_auth,
     serialize_source,
 )
 from app.utils.url import normalize_source_url_for_dedupe
@@ -58,11 +59,17 @@ async def bulk_import_sources(import_data: SourceBulkImport, db: AsyncSession = 
         metadata = dict(source_data.metadata_ or {}) if source_data.metadata_ else {}
         extra_urls = _normalize_extra_urls(source_data.extra_urls)
         metadata["extra_urls"] = extra_urls
+        auth_required, auth_config_id = await resolve_x_source_auth(
+            db,
+            source_type=source_data.type,
+            auth_config_id=source_data.auth_config_id,
+            auth_required=source_data.auth_required,
+        )
         source = Source(
             name=source_data.name, type=source_data.type, url=source_data.url,
             fetch_interval=source_data.fetch_interval,
             enabled=source_data.enabled,
-            auth_required=source_data.auth_required, auth_config_id=source_data.auth_config_id,
+            auth_required=auth_required, auth_config_id=auth_config_id,
             metadata_=metadata,
         )
         db.add(source)

@@ -15,6 +15,7 @@ from ._helpers import (
     _ensure_source_quota,
     _ensure_supported_source_type,
     _find_matching_auth_config_id,
+    resolve_x_source_auth,
     _invalidate_source_cache,
     _normalize_extra_urls,
     _source_is_visible,
@@ -45,6 +46,12 @@ async def create_source(source_data: SourceCreate, db: AsyncSession = Depends(ge
         matched_auth_id = await _find_matching_auth_config_id(db, source_data.url)
         if matched_auth_id:
             auth_config_id = matched_auth_id
+    auth_required, auth_config_id = await resolve_x_source_auth(
+        db,
+        source_type=source_data.type,
+        auth_config_id=auth_config_id,
+        auth_required=auth_required,
+    )
 
     source = Source(
         name=source_data.name, type=source_data.type, url=source_data.url,

@@ -6,8 +6,13 @@ from urllib.parse import urlparse
 
 import aiohttp
 
-from app.domains.fetch.collectors.x_twitter_text import build_title_from_text, extract_article_urls, title_looks_like_url
 from app.domains.fetch.acceptance import is_x_long_article
+from app.domains.fetch.collectors.x_twitter_text import (
+    build_title_from_text,
+    extract_article_urls,
+    is_x_status_page_url,
+    title_looks_like_url,
+)
 from app.models import Content, Source
 from app.processors.extractor import ContentExtractor
 from app.platform.security.ssrf import assert_public_http_target
@@ -28,6 +33,8 @@ async def fetch_public_article_body(original_url: str) -> tuple[str, str]:
     """
     url = (original_url or "").strip()
     if not url:
+        return "", ""
+    if is_x_status_page_url(url):
         return "", ""
     parsed = urlparse(url)
     if parsed.scheme not in {"http", "https"}:

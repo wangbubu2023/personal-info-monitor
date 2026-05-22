@@ -1,8 +1,8 @@
 import React, { Suspense, lazy, useMemo, useCallback, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Cpu, Database, Tag as TagIcon, ShieldCheck, MessageSquareText, ShieldAlert } from 'lucide-react';
+import { Cpu, Database, Tag as TagIcon, MessageSquareText, ShieldAlert, ShieldCheck, Gauge } from 'lucide-react';
 import { motion } from 'framer-motion';
-import { KEYWORD_MONITORING_ENABLED } from '../../config/features';
+import { KEYWORD_MONITORING_ENABLED, SCORE_LAB_BUILD_ENABLED } from '../../config/features';
 import PanelLoading from '../common/PanelLoading';
 import PageHeroTitle from '../common/PageHeroTitle';
 
@@ -38,6 +38,7 @@ const Settings: React.FC = () => {
   const validTabKeys = useMemo(() => {
     const keys: string[] = ['sources', 'credentials', 'ai-model', 'task-prompts'];
     if (KEYWORD_MONITORING_ENABLED) keys.push('keywords');
+    if (SCORE_LAB_BUILD_ENABLED) keys.push('score-lab');
     return keys;
   }, []);
 
@@ -97,6 +98,17 @@ const Settings: React.FC = () => {
       icon: TagIcon,
       description: '为特定主题设置提醒与过滤。',
       content: <KeywordsTab />,
+    });
+  }
+
+  if (SCORE_LAB_BUILD_ENABLED) {
+    const ScoreLabSettingsTab = lazy(() => import('./ScoreLabSettingsTab'));
+    tabItems.push({
+      key: 'score-lab',
+      label: '评分实验室',
+      icon: Gauge,
+      description: '开发模式下开启打分调试入口。',
+      content: <ScoreLabSettingsTab />,
     });
   }
 

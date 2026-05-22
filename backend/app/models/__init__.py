@@ -10,6 +10,7 @@ from app.models.browser_session import BrowserSession
 from app.models.system_setting import SystemSetting
 from app.models.runtime_lock import RuntimeLock
 from app.models.atom import Atom, AtomIdSequence, AtomRelation
+from app.models.score_feedback import ScoreFeedback
 
 __all__ = [
     "Source",
@@ -25,4 +26,5 @@ __all__ = [
     "Atom",
     "AtomRelation",
     "AtomIdSequence",
+    "ScoreFeedback",
 ]

@@ -168,6 +168,35 @@ async def _find_matching_auth_config_id(db: AsyncSession, url: str) -> Optional[
     return None
 
 
+async def _find_shared_x_cookie_auth_config_id(db: AsyncSession) -> Optional[UUID]:
+    """Return the newest shared X cookie auth config, if any."""
+    from app.interfaces.http.configs_common_auth import is_shared_x_cookie_config
+
+    result = await db.execute(select(AuthConfig).order_by(AuthConfig.updated_at.desc()))
+    for cfg in result.scalars().all():
+        if is_shared_x_cookie_config(cfg):
+            return cfg.id
+    return None
+
+
+async def resolve_x_source_auth(
+    db: AsyncSession,
+    *,
+    source_type: object,
+    auth_config_id: Optional[UUID],
+    auth_required: bool,
+) -> tuple[bool, Optional[UUID]]:
+    """Auto-bind shared X cookie auth for new X sources without explicit auth."""
+    if _source_type_value(source_type) != "x":
+        return auth_required, auth_config_id
+    if auth_config_id:
+        return auth_required, auth_config_id
+    matched = await _find_shared_x_cookie_auth_config_id(db)
+    if matched:
+        return True, matched
+    return auth_required, auth_config_id
+
+
 async def _load_source_probe_cookies(
     db: AsyncSession, source: Source
 ) -> Dict[str, str]:
