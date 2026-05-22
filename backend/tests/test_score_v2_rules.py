@@ -114,7 +114,8 @@ def test_calculate_article_score_selected_threshold():
         source_metadata={"source_stars": 3},
         lane="tech_product",
     )
-    assert result["selection_status"] in {"selected", "candidate"}
+    # New weights: (0.30*9+0.25*9+0.25*8.5+0.20*7)*10 = (2.7+2.25+2.125+1.4)*10 = 84.75
+    assert result["selection_status"] == "selected"
     assert result["article_score"] >= 60
 
 
@@ -331,3 +332,15 @@ def test_vocab_lane_terms_macro_and_regulation():
     reg = classify_lane("网信办发布生成式 AI 管理办法", "征求意见稿向社会公开。", "")
     assert macro == "macro_finance"
     assert reg == "regulation"
+
+
+def test_recommendation_reason_excludes_subjective_from_high_dimensions():
+    from app.domains.score.scoring import build_recommendation_reason
+    reason = build_recommendation_reason(
+        {"salience": 9.0, "reach": 7.0, "authority": 8.5, "depth": 6.0, "subjective": 5.0},
+        final_score=80.0,
+        selection_status="selected",
+        source_stars=3,
+        score_confidence=0.85,
+    )
+    assert "主观判断" not in reason["why_matters"]

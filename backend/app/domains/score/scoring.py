@@ -44,14 +44,14 @@ FULLTEXT_STATUS_LABELS = {
 @dataclass(frozen=True)
 class ScoringConfig:
     weights: dict[str, float] = field(default_factory=lambda: {
-        "salience": 0.25,
-        "reach": 0.20,
-        "authority": 0.20,
-        "depth": 0.15,
-        "subjective": 0.20,
+        "salience": 0.30,
+        "reach": 0.25,
+        "authority": 0.25,
+        "depth": 0.20,
+        "subjective": 0.0,   # disabled until LLM subjective scoring is live
     })
-    selected_threshold: float = 75.0
-    candidate_threshold: float = 60.0
+    selected_threshold: float = 70.0
+    candidate_threshold: float = 55.0
     minimum_selected_confidence: float = 0.65
 
 
@@ -103,7 +103,7 @@ def build_recommendation_reason(
 
     high_dimensions = [
         DIMENSION_LABELS[key]
-        for key in ("salience", "reach", "authority", "depth", "subjective")
+        for key in ("salience", "reach", "authority", "depth")
         if scores.get(key, 0.0) >= 7.0 and key in DIMENSION_LABELS
     ]
     if high_dimensions:
