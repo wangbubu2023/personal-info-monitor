@@ -159,7 +159,7 @@ def explain_content_score(
 
     dimensions_before_cap = {
         "salience": score_salience(resolved_title, summary, full_content, runtime_vocab=runtime_vocab),
-        "reach": score_reach(resolved_title, summary, full_content),
+        "reach": score_reach(resolved_title, summary, full_content, runtime_vocab=runtime_vocab),
         "authority": score_authority(source_metadata),
         "depth": score_depth(
             title=resolved_title,

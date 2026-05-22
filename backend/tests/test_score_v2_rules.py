@@ -365,3 +365,39 @@ def test_confidence_limited_flag_false_for_full_content():
     )
     assert result["confidence_limited_by_fulltext"] is False
     assert result["selection_status"] == "selected"
+
+
+def test_reach_major_entity_for_s_tier_without_sector_keyword():
+    from app.domains.score.score_rules import score_reach
+    from app.domains.score.score_vocab_runtime import RuntimeScoringVocab
+
+    vocab = RuntimeScoringVocab.build()
+    # OpenAI is S-tier, no sector keyword in title
+    reach = score_reach("OpenAI announces quarterly update", None, None, runtime_vocab=vocab)
+    assert reach == 6.5  # major_entity
+
+
+def test_reach_sector_keyword_takes_precedence_over_major_entity():
+    from app.domains.score.score_rules import score_reach
+    from app.domains.score.score_vocab_runtime import RuntimeScoringVocab
+
+    vocab = RuntimeScoringVocab.build()
+    # "ecosystem" is a sector keyword in REACH_KEYWORDS["sector"]
+    reach = score_reach("OpenAI transforms the AI ecosystem broadly", None, None, runtime_vocab=vocab)
+    assert reach == 7.0  # sector keyword takes precedence
+
+
+def test_reach_entity_without_runtime_vocab():
+    from app.domains.score.score_rules import score_reach
+    # Without runtime_vocab, S-tier entities don't get the boost
+    reach = score_reach("OpenAI announces quarterly update", None, None)
+    assert reach == 5.5  # plain entity (no vocab = no boost)
+
+
+def test_reach_entity_for_non_s_tier():
+    from app.domains.score.score_rules import score_reach
+    from app.domains.score.score_vocab_runtime import RuntimeScoringVocab
+
+    vocab = RuntimeScoringVocab.build()
+    reach = score_reach("Acme startup announces product update", None, None, runtime_vocab=vocab)
+    assert reach == 5.5  # plain entity

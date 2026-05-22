@@ -129,7 +129,13 @@ def score_salience(
     return round(min(10.0, raw), 1)
 
 
-def score_reach(title: str, summary: str | None, full_content: str | None) -> float:
+def score_reach(
+    title: str,
+    summary: str | None,
+    full_content: str | None,
+    *,
+    runtime_vocab: "RuntimeScoringVocab | None" = None,
+) -> float:
     del full_content  # reach is headline-scoped; body mentions are often incidental
     corpus = _headline_corpus(title, summary)
     title_l = (title or "").lower()
@@ -141,6 +147,11 @@ def score_reach(title: str, summary: str | None, full_content: str | None) -> fl
     for level in ("systemic", "sector", "local"):
         if any(kw.lower() in corpus for kw in REACH_KEYWORDS[level]):
             return REACH_SCORES[level]
+    # S-tier entity in headline → major_entity reach (between entity and sector)
+    if runtime_vocab is not None:
+        from app.domains.score.score_vocab import ENTITY_TIER_S
+        if any(term.lower() in corpus for term in ENTITY_TIER_S):
+            return REACH_SCORES["major_entity"]
     return REACH_SCORES["entity"]
 
 
@@ -213,7 +224,7 @@ def compute_rule_dimension_scores(
     subj = subjective or SubjectiveScoreResult(score=5.0, source="fixed_baseline")
     dimensions = {
         "salience": score_salience(resolved_title, summary, full_content, runtime_vocab=runtime_vocab),
-        "reach": score_reach(resolved_title, summary, full_content),
+        "reach": score_reach(resolved_title, summary, full_content, runtime_vocab=runtime_vocab),
         "authority": score_authority(source_metadata),
         "depth": score_depth(
             title=resolved_title,

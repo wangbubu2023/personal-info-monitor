@@ -366,7 +366,7 @@ REACH_KEYWORDS: dict[str, tuple[str, ...]] = {
     ),
 }
 
-REACH_SCORES = {"systemic": 9.0, "sector": 7.0, "entity": 5.5, "local": 3.5}
+REACH_SCORES = {"systemic": 9.0, "sector": 7.0, "major_entity": 6.5, "entity": 5.5, "local": 3.5}
 
 AUTHORITY_TYPE_BONUS: dict[str, float] = {
     "official": 1.0,
