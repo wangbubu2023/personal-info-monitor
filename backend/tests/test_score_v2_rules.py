@@ -344,3 +344,24 @@ def test_recommendation_reason_excludes_subjective_from_high_dimensions():
         score_confidence=0.85,
     )
     assert "主观判断" not in reason["why_matters"]
+
+
+def test_confidence_limited_flag_for_title_only():
+    result = calculate_article_score(
+        {"salience": 9.0, "reach": 9.0, "authority": 8.5, "depth": 4.0, "subjective": 5.0},
+        content_metadata={"fulltext_status": "title_only", "content_quality": 0.5},
+        source_metadata={"source_stars": 3},
+    )
+    # title_only evidence_confidence=0.22; confidence will be low, blocking selection
+    assert result["confidence_limited_by_fulltext"] is True
+    assert result["selection_status"] == "candidate"
+
+
+def test_confidence_limited_flag_false_for_full_content():
+    result = calculate_article_score(
+        {"salience": 9.0, "reach": 9.0, "authority": 8.5, "depth": 7.0, "subjective": 5.0},
+        content_metadata={"fulltext_status": "full", "content_quality": 0.9},
+        source_metadata={"source_stars": 3},
+    )
+    assert result["confidence_limited_by_fulltext"] is False
+    assert result["selection_status"] == "selected"

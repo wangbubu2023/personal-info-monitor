@@ -181,6 +181,11 @@ def calculate_article_score(
     else:
         selection_status = "rejected"
 
+    confidence_limited = (
+        article_score >= config.selected_threshold
+        and score_confidence < config.minimum_selected_confidence
+    )
+
     subj_meta = dict(subjective_meta or {"source": "fixed_baseline", "score": normalized_scores.get("subjective", 5.0)})
 
     return {
@@ -193,6 +198,7 @@ def calculate_article_score(
         "article_score": article_score,
         "final_score": article_score,
         "selection_status": selection_status,
+        "confidence_limited_by_fulltext": confidence_limited,
         "recommendation_reason": build_recommendation_reason(
             normalized_scores,
             content_metadata=content_metadata,
