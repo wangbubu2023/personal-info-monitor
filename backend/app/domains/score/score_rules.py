@@ -124,7 +124,7 @@ def score_salience(
         if any(kw.lower() in headline for kw in keywords):
             bonus = max(bonus, add)
     raw = base + bonus
-    raw = runtime_vocab.salience_with_user_match_floor(raw, _corpus(title, summary, full_content))
+    raw = runtime_vocab.salience_with_user_match_floor(raw, _corpus(title, summary, full_content, limit=2000))
     raw = apply_disaster_salience_floor(title, summary, raw)
     return round(min(10.0, raw), 1)
 
