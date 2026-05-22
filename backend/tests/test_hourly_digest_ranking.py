@@ -96,3 +96,22 @@ def test_ranking_prefers_scored_high_quality_entries_over_long_low_quality_items
     clusters = service.cluster_and_rank(entries)
 
     assert clusters[0]["topic"] == "OpenAI releases major model safety report"
+
+
+def test_tokenize_includes_chinese_trigrams():
+    from app.services.ranking_service import _tokenize
+    tokens = _tokenize("中国人民银行宣布降息")
+    # bigrams
+    assert "人民" in tokens
+    assert "银行" in tokens
+    # trigrams
+    assert "人民银" in tokens
+    assert "民银行" in tokens
+
+
+def test_tokenize_trigram_improves_similarity():
+    from app.services.ranking_service import _tokenize, _jaccard
+    a = _tokenize("中国人民银行宣布利率决定")
+    b = _tokenize("人民银行维持基准利率不变")
+    score = _jaccard(a, b)
+    assert score > 0.15  # trigrams give overlap on "人民银" and "民银行"

@@ -16,7 +16,11 @@ def _normalize_text(text: str) -> str:
 
 
 def _tokenize(text: str) -> Set[str]:
-    """Tokenize mixed Chinese/English text into a compact token set."""
+    """Tokenize mixed Chinese/English text into a compact token set.
+
+    Chinese: bigrams + trigrams to better capture 3-character terms.
+    English: 2+ character words (lowercased after _normalize_text).
+    """
     normalized = _normalize_text(text)
     if not normalized:
         return set()
@@ -24,8 +28,9 @@ def _tokenize(text: str) -> Set[str]:
     words = re.findall(r"[a-z0-9]{2,}", normalized)
     zh_chars = re.findall(r"[\u4e00-\u9fff]", normalized)
     zh_bigrams = ["".join(zh_chars[i : i + 2]) for i in range(len(zh_chars) - 1)]
+    zh_trigrams = ["".join(zh_chars[i : i + 3]) for i in range(len(zh_chars) - 2)]
 
-    return set(words + zh_bigrams)
+    return set(words + zh_bigrams + zh_trigrams)
 
 
 def _jaccard(a: Set[str], b: Set[str]) -> float:
