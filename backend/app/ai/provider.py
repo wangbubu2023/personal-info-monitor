@@ -482,6 +482,9 @@ async def get_runtime_from_system_settings(
     elif setting_key == "atom_model":
         ollama_num_ctx_default = OLLAMA_NUM_CTX_WRITING_DEFAULT
         ollama_no_think_default = False
+    elif setting_key == "score_model":
+        ollama_num_ctx_default = OLLAMA_NUM_CTX_TRANSLATION_DEFAULT
+        ollama_no_think_default = True
     else:
         ollama_num_ctx_default = OLLAMA_NUM_CTX_TRANSLATION_DEFAULT
         ollama_no_think_default = False
