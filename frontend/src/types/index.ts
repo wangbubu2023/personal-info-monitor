@@ -249,6 +249,10 @@ export interface SystemSettings {
     ollama_num_ctx?: number
     ollama_no_think?: boolean
   }
+  atom_model?: WritingAIModelConfig & {
+    ollama_num_ctx?: number
+    ollama_no_think?: boolean
+  }
   translation_enabled: boolean
   title_translation_enabled?: boolean
   auto_translate_language: string
@@ -279,6 +283,12 @@ export interface AIModelTabFormValues {
   trans_model: string
   trans_ollama_num_ctx?: number
   trans_ollama_no_think?: boolean
+  atom_provider: string
+  atom_model: string
+  atom_temperature: number
+  atom_max_tokens: number
+  atom_ollama_num_ctx?: number
+  atom_ollama_no_think?: boolean
   translation_fallback_enabled: boolean
   trans_fallback_provider: string
   trans_fallback_model: string

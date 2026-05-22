@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.ai.provider import ModelProviderClient, get_runtime_from_system_settings
+from app.ai.provider import ModelProviderClient, get_atom_extraction_runtime
 from app.domains.atoms.extractor.llm_extract import build_extraction_prompt, parse_llm_atoms
 from app.domains.atoms.extractor.sentence_split import batch_sentences, split_sentences
 from app.domains.atoms.types import AtomCreate
@@ -51,14 +51,7 @@ async def extract_atoms_from_content(content: Content) -> tuple[list[AtomCreate]
         metadata["skipped_reason"] = "no_sentences"
         return [], metadata
 
-    runtime = await get_runtime_from_system_settings(
-        setting_key="ai_model",
-        default_provider="ollama",
-        default_model="",
-        default_api_base="http://localhost:11434",
-        default_temperature=0.1,
-        default_max_tokens=4000,
-    )
+    runtime = await get_atom_extraction_runtime()
     if runtime is None:
         metadata["skipped_reason"] = "no_ai_runtime"
         return [], metadata
@@ -86,8 +79,8 @@ async def extract_atoms_from_content(content: Content) -> tuple[list[AtomCreate]
                 runtime,
                 prompt=user,
                 system_prompt=system,
-                temperature=0.1,
-                max_tokens=4000,
+                temperature=runtime.temperature,
+                max_tokens=runtime.max_tokens,
                 timeout_seconds=120.0,
             )
         except Exception as exc:  # noqa: BLE001

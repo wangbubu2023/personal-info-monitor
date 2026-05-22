@@ -14,7 +14,7 @@ from app.database import Base
 from app.domains.atoms.atomizer import atomize_content_async
 from app.domains.atoms.extractor.llm_extract import parse_llm_atoms
 from app.domains.atoms.extractor.sentence_split import split_sentences
-from app.domains.atoms.extractor.validate import sentence_in_source
+from app.domains.atoms.extractor.validate import resolve_source_sentence, sentence_in_source
 from app.models import Content, Source
 from app.models.source import SourceType
 
@@ -41,6 +41,52 @@ def test_sentence_in_source_whitespace():
     body = "华为于2026年5月18日在深圳发布了全新旗舰芯片麒麟X1。"
     assert sentence_in_source(body, body)
     assert sentence_in_source("华为于2026年5月18日 在深圳发布了全新旗舰芯片麒麟X1。", body) is True
+
+
+def test_sentence_in_source_curly_apostrophe():
+    body = "Meta\u2019s campaign to promote scrutinized youth safety features involved hundreds of family influencers."
+    llm_sentence = "Meta's campaign to promote scrutinized youth safety features involved hundreds of family influencers."
+    assert sentence_in_source(llm_sentence, body) is True
+    resolved = resolve_source_sentence(llm_sentence, body)
+    assert resolved is not None
+    assert "\u2019" in resolved
+
+
+def test_parse_llm_atoms_lenient_english_info():
+    body = "Meta\u2019s campaign to promote scrutinized youth safety features involved hundreds of family influencers."
+    payload = {
+        "atoms": [
+            {
+                "atom_type": "信息",
+                "source_sentence": "Meta's campaign to promote scrutinized youth safety features involved hundreds of family influencers",
+                "atom_source": "CNN",
+                "domain": "其他",
+                "fact_confidence": 0.9,
+                "payload": {
+                    "when": "",
+                    "where": "",
+                    "who": [{"name": "Meta", "type": "公司"}, {"name": "family influencers", "type": "人群"}],
+                    "why": "",
+                    "what_type": "",
+                    "what": "",
+                    "how": "",
+                    "result": "",
+                    "entities": [],
+                    "validity": "",
+                },
+            }
+        ]
+    }
+    atoms = parse_llm_atoms(
+        json.dumps(payload, ensure_ascii=False),
+        content_id="c1",
+        source_url="https://example.com/a",
+        full_text=body,
+    )
+    assert len(atoms) == 1
+    assert atoms[0].payload.who[0].type.value == "企业"
+    assert atoms[0].payload.what
+    assert atoms[0].payload.entities
 
 
 def test_parse_llm_atoms_info():
@@ -134,7 +180,7 @@ async def test_atomize_content_async_with_mock_llm(monkeypatch, sync_session_fac
 
     from types import SimpleNamespace
 
-    mock_runtime = SimpleNamespace(provider="test", model="mock")
+    mock_runtime = SimpleNamespace(provider="test", model="mock", temperature=0.1, max_tokens=4000)
     from app.domains.atoms.repository import SqlAtomRepository
 
     repo = SqlAtomRepository(sync_session_factory)
@@ -142,7 +188,7 @@ async def test_atomize_content_async_with_mock_llm(monkeypatch, sync_session_fac
         "app.domains.atoms.atomizer.default_atom_repository",
         return_value=repo,
     ), patch(
-        "app.domains.atoms.extractor.pipeline.get_runtime_from_system_settings",
+        "app.domains.atoms.extractor.pipeline.get_atom_extraction_runtime",
         new=AsyncMock(return_value=mock_runtime),
     ), patch(
         "app.domains.atoms.extractor.pipeline.ModelProviderClient"

@@ -46,6 +46,15 @@ DEFAULT_SYSTEM_SETTINGS: Dict[str, Any] = {
         "ollama_num_ctx": 2048,
         "ollama_no_think": True,
     },
+    "atom_model": {
+        "provider": "ollama",
+        "model": "",
+        "api_base": "http://localhost:11434",
+        "temperature": 0.1,
+        "max_tokens": 4000,
+        "ollama_num_ctx": 8192,
+        "ollama_no_think": False,
+    },
     "translation_enabled": True,
     "title_translation_enabled": True,
     "auto_translate_language": "zh-CN",
@@ -79,6 +88,7 @@ _SETTINGS_BOOL_KEYS = (
 )
 _AI_MODEL_KEYS = ("provider", "model", "api_base", "temperature", "max_tokens", "api_key", "ollama_num_ctx", "ollama_no_think")
 _TRANS_MODEL_KEYS = ("provider", "model", "api_base", "api_key", "ollama_num_ctx", "ollama_no_think")
+_ATOM_MODEL_KEYS = ("provider", "model", "api_base", "temperature", "max_tokens", "api_key", "ollama_num_ctx", "ollama_no_think")
 _LIMIT_RULES = {
     "max_sources": (200, 1, 5000),
     "max_digest_candidates": (12, 3, 30),
@@ -254,6 +264,17 @@ def _apply_patch(current: Dict[str, Any], patch: Dict[str, Any]) -> Dict[str, An
             default_ctx=DEFAULT_SYSTEM_SETTINGS["translation_model"]["ollama_num_ctx"],
         )
 
+    atom_model = patch.get("atom_model")
+    if isinstance(atom_model, dict):
+        target = updated.setdefault("atom_model", {})
+        for key in _ATOM_MODEL_KEYS:
+            if key in atom_model:
+                target[key] = atom_model[key]
+        _normalize_ollama_model_fields(
+            target,
+            default_ctx=DEFAULT_SYSTEM_SETTINGS["atom_model"]["ollama_num_ctx"],
+        )
+
     for fb_name in ("translation_fallback", "summarization_fallback"):
         fb_patch = patch.get(fb_name)
         if isinstance(fb_patch, dict):
@@ -310,7 +331,7 @@ def _apply_patch(current: Dict[str, Any], patch: Dict[str, Any]) -> Dict[str, An
 
 def _mask_sensitive(settings: Dict[str, Any]) -> Dict[str, Any]:
     response = copy.deepcopy(settings)
-    for field in ("ai_model", "translation_model"):
+    for field in ("ai_model", "translation_model", "atom_model"):
         model = response.get(field) or {}
         if isinstance(model, dict):
             model["has_api_key"] = bool(model.get("api_key"))

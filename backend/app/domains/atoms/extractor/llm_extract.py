@@ -7,6 +7,8 @@ import re
 from typing import Any
 
 from app.domains.atoms.credibility import resolve_credibility
+from app.domains.atoms.extractor.normalize import normalize_extraction_domain, normalize_extraction_payload
+from app.domains.atoms.extractor.validate import resolve_source_sentence
 from app.domains.atoms.types import AtomCreate, payload_from_dict
 from app.domains.atoms.vocab import AtomType, Domain
 from app.utils.logger import get_logger
@@ -69,8 +71,6 @@ def parse_llm_atoms(
     source_url: str,
     full_text: str,
 ) -> list[AtomCreate]:
-    from app.domains.atoms.extractor.validate import sentence_in_source
-
     cleaned = _strip_llm_wrapper(raw_text)
     if not cleaned:
         return []
@@ -120,20 +120,16 @@ def _item_to_atom_create(
     source_url: str,
     full_text: str,
 ) -> AtomCreate | None:
-    from app.domains.atoms.extractor.validate import sentence_in_source
-
     atom_type_raw = str(item.get("atom_type") or "").strip()
     if atom_type_raw not in {t.value for t in AtomType}:
         return None
 
     atom_type = AtomType(atom_type_raw)
-    source_sentence = str(item.get("source_sentence") or "").strip()
-    if not source_sentence or not sentence_in_source(source_sentence, full_text):
+    source_sentence = resolve_source_sentence(str(item.get("source_sentence") or "").strip(), full_text)
+    if not source_sentence:
         return None
 
-    domain_raw = str(item.get("domain") or Domain.OTHER.value).strip()
-    if domain_raw not in {d.value for d in Domain}:
-        domain_raw = Domain.OTHER.value
+    domain_raw = normalize_extraction_domain(item.get("domain"))
 
     atom_source = str(item.get("atom_source") or "").strip()
     if not atom_source:
@@ -145,8 +141,17 @@ def _item_to_atom_create(
             "atom_type", "source_sentence", "atom_source", "domain", "fact_confidence", "verified",
         }}
 
+    normalized_payload = normalize_extraction_payload(
+        atom_type,
+        payload_raw,
+        source_sentence=source_sentence,
+        atom_source=atom_source,
+    )
+    if normalized_payload is None:
+        return None
+
     try:
-        payload = payload_from_dict(atom_type, payload_raw)
+        payload = payload_from_dict(atom_type, normalized_payload)
     except Exception:
         return None
 

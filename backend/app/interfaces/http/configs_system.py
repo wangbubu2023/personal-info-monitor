@@ -94,6 +94,11 @@ async def get_available_models(
     if trans_provider and trans_api_key and str(trans_provider).lower() != "ollama":
         configured_platforms.add(trans_provider)
 
+    atom_provider = (runtime_settings.get("atom_model") or {}).get("provider")
+    atom_api_key = (runtime_settings.get("atom_model") or {}).get("api_key")
+    if atom_provider and atom_api_key and str(atom_provider).lower() != "ollama":
+        configured_platforms.add(atom_provider)
+
     configured_base = (runtime_settings.get("ai_model") or {}).get("api_base") or "http://localhost:11434"
     translation_base = (runtime_settings.get("translation_model") or {}).get("api_base") or configured_base
 

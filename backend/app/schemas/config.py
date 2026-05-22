@@ -202,6 +202,32 @@ class TranslationModelConfigResponse(BaseModel):
     has_api_key: bool = False
 
 
+class AtomModelConfig(BaseModel):
+    """Schema for news atom extraction model configuration."""
+
+    provider: str = Field(..., description="openai, ollama, anthropic, etc.")
+    model: str = Field(default="", description="Model name; empty means fallback to ai_model")
+    api_base: Optional[str] = Field(None, description="Custom API base URL (for Ollama)")
+    api_key: Optional[str] = Field(None, description="API key if required")
+    temperature: float = Field(default=0.1, ge=0, le=2)
+    max_tokens: int = Field(default=4000, ge=1)
+    ollama_num_ctx: Optional[int] = Field(None, ge=1024, le=262144, description="Ollama context window (num_ctx)")
+    ollama_no_think: Optional[bool] = Field(None, description="Append /no_think for Ollama models")
+
+
+class AtomModelConfigResponse(BaseModel):
+    """Schema for atom model config response."""
+
+    provider: str
+    model: str
+    api_base: Optional[str] = None
+    temperature: float
+    max_tokens: int
+    ollama_num_ctx: Optional[int] = None
+    ollama_no_think: Optional[bool] = None
+    has_api_key: bool = False
+
+
 class SystemLimitsConfig(BaseModel):
     """Schema for runtime limits."""
 
@@ -248,6 +274,7 @@ class SystemSettings(BaseModel):
     """Schema for system-wide settings."""
     ai_model: AIModelConfig
     translation_model: Optional[TranslationModelConfig] = None
+    atom_model: Optional[AtomModelConfig] = None
     translation_enabled: bool = True
     auto_translate_language: str = "zh-CN"
     summarization_enabled: bool = True
@@ -266,6 +293,7 @@ class SystemSettingsResponse(BaseModel):
     """Schema for system settings response."""
     ai_model: AIModelConfigResponse
     translation_model: Optional[TranslationModelConfigResponse] = None
+    atom_model: Optional[AtomModelConfigResponse] = None
     translation_enabled: bool
     auto_translate_language: str
     summarization_enabled: bool

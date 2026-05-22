@@ -418,35 +418,21 @@ async def _resolve_ollama_runtime(runtime: ModelRuntime, *, default_model: str =
     return runtime
 
 
-async def get_runtime_from_system_settings(
+async def _resolve_runtime_from_model_settings(
+    model_settings: dict[str, Any],
     *,
-    setting_key: str,
     default_provider: str,
     default_model: str,
     default_api_base: Optional[str] = None,
     default_temperature: float = 0.2,
     default_max_tokens: int = 1000,
+    ollama_num_ctx_default: int = OLLAMA_NUM_CTX_TRANSLATION_DEFAULT,
+    ollama_no_think_default: bool = False,
 ) -> Optional[ModelRuntime]:
-    """Resolve runtime from persistent system settings and verify availability."""
     settings = get_settings()
-    runtime_settings = get_system_settings_sync() or {}
-    model_settings = (runtime_settings.get(setting_key) or {}) if isinstance(runtime_settings, dict) else {}
-    if not isinstance(model_settings, dict):
-        model_settings = {}
-    model_settings = enrich_model_settings_from_api_config(model_settings)
-
-    if setting_key == "ai_model":
-        ollama_num_ctx_default = OLLAMA_NUM_CTX_WRITING_DEFAULT
-        ollama_no_think_default = False
-    elif setting_key == "translation_model":
-        ollama_num_ctx_default = OLLAMA_NUM_CTX_TRANSLATION_DEFAULT
-        ollama_no_think_default = True
-    else:
-        ollama_num_ctx_default = OLLAMA_NUM_CTX_TRANSLATION_DEFAULT
-        ollama_no_think_default = False
-
+    enriched = enrich_model_settings_from_api_config(model_settings)
     runtime = normalize_model_runtime(
-        model_settings,
+        enriched,
         default_provider=default_provider,
         default_model=default_model,
         default_api_base=default_api_base,
@@ -466,11 +452,84 @@ async def get_runtime_from_system_settings(
     if runtime.provider == "openai" and not runtime.api_key:
         return None
 
-    # Other providers currently use OpenAI-compatible chat APIs.
     if runtime.provider not in {"openai", "ollama"} and not runtime.api_key:
         return None
 
     return runtime
+
+
+async def get_runtime_from_system_settings(
+    *,
+    setting_key: str,
+    default_provider: str,
+    default_model: str,
+    default_api_base: Optional[str] = None,
+    default_temperature: float = 0.2,
+    default_max_tokens: int = 1000,
+) -> Optional[ModelRuntime]:
+    """Resolve runtime from persistent system settings and verify availability."""
+    runtime_settings = get_system_settings_sync() or {}
+    model_settings = (runtime_settings.get(setting_key) or {}) if isinstance(runtime_settings, dict) else {}
+    if not isinstance(model_settings, dict):
+        model_settings = {}
+
+    if setting_key == "ai_model":
+        ollama_num_ctx_default = OLLAMA_NUM_CTX_WRITING_DEFAULT
+        ollama_no_think_default = False
+    elif setting_key == "translation_model":
+        ollama_num_ctx_default = OLLAMA_NUM_CTX_TRANSLATION_DEFAULT
+        ollama_no_think_default = True
+    elif setting_key == "atom_model":
+        ollama_num_ctx_default = OLLAMA_NUM_CTX_WRITING_DEFAULT
+        ollama_no_think_default = False
+    else:
+        ollama_num_ctx_default = OLLAMA_NUM_CTX_TRANSLATION_DEFAULT
+        ollama_no_think_default = False
+
+    return await _resolve_runtime_from_model_settings(
+        model_settings,
+        default_provider=default_provider,
+        default_model=default_model,
+        default_api_base=default_api_base,
+        default_temperature=default_temperature,
+        default_max_tokens=default_max_tokens,
+        ollama_num_ctx_default=ollama_num_ctx_default,
+        ollama_no_think_default=ollama_no_think_default,
+    )
+
+
+async def get_atom_extraction_runtime() -> Optional[ModelRuntime]:
+    """Resolve the LLM runtime for news atom extraction.
+
+    When ``atom_model.model`` is empty, falls back to ``ai_model``.
+    """
+    runtime_settings = get_system_settings_sync() or {}
+    atom_settings = runtime_settings.get("atom_model") if isinstance(runtime_settings.get("atom_model"), dict) else {}
+    ai_settings = runtime_settings.get("ai_model") if isinstance(runtime_settings.get("ai_model"), dict) else {}
+    if not isinstance(atom_settings, dict):
+        atom_settings = {}
+    if not isinstance(ai_settings, dict):
+        ai_settings = {}
+
+    dedicated_model = str(atom_settings.get("model") or "").strip()
+    if dedicated_model:
+        merged = {**ai_settings, **atom_settings}
+    else:
+        merged = dict(ai_settings)
+
+    temperature = atom_settings.get("temperature", merged.get("temperature", 0.1))
+    max_tokens = atom_settings.get("max_tokens", merged.get("max_tokens", 4000))
+
+    return await _resolve_runtime_from_model_settings(
+        merged,
+        default_provider=str(merged.get("provider") or "ollama"),
+        default_model=str(merged.get("model") or ""),
+        default_api_base=merged.get("api_base") or "http://localhost:11434",
+        default_temperature=float(temperature if temperature is not None else 0.1),
+        default_max_tokens=int(max_tokens if max_tokens is not None else 4000),
+        ollama_num_ctx_default=OLLAMA_NUM_CTX_WRITING_DEFAULT,
+        ollama_no_think_default=False,
+    )
 
 
 class ModelProviderClient:
