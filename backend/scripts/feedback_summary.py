@@ -34,12 +34,19 @@ def _get_engine():
 
 def summarize(*, min_count: int = 1) -> None:
     engine = _get_engine()
-    with Session(engine) as session:
-        rows = session.execute(
-            select(ScoreFeedback, Content.title)
-            .join(Content, Content.id == ScoreFeedback.content_id)
-            .order_by(ScoreFeedback.created_at.desc())
-        ).all()
+    try:
+        with Session(engine) as session:
+            rows = session.execute(
+                select(ScoreFeedback, Content.title)
+                .join(Content, Content.id == ScoreFeedback.content_id)
+                .order_by(ScoreFeedback.created_at.desc())
+            ).all()
+    except Exception as exc:
+        if "no such table" in str(exc).lower():
+            print("score_feedback table not found — run: alembic upgrade head")
+        else:
+            print(f"Error querying feedback: {exc}")
+        return
 
     if not rows:
         print("No feedback recorded yet.")
