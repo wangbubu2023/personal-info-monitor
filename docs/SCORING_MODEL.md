@@ -49,23 +49,26 @@ metadata 可追溯字段：
 
 ### 1.2 单篇分（article_score，0–100）
 
-| 维度 | 权重 | 首版实现 |
-|------|------|----------|
-| salience 显著性 | 25% | 规则 |
-| reach 影响面 | 20% | 规则 |
-| authority 信源权威 | 20% | 规则 |
-| depth 信息深度 | 15% | 规则 |
-| subjective 主观 | 20% | **固定 5.0**（LLM 预留） |
+| 维度 | 权重 | 实现 |
+|------|------|------|
+| salience 显著性 | 30% | 规则 |
+| reach 影响面 | 25% | 规则；S-tier 实体无 sector 关键词时给 6.5（major_entity 子桶） |
+| authority 信源权威 | 25% | 规则 |
+| depth 信息深度 | 20% | 规则 |
+| subjective 主观 | 0%（LLM 预留，暂停用） | `PIM_SCORE_LLM_SUBJECTIVE=true` 时接入 `LlmSubjectiveScorer` |
 
-`final_score` 与 `article_score` 相同（兼容旧 UI）。
+`final_score` 与 `article_score` 相同（兼容旧 UI）。  
+`scoring_method` 为 `"rule"`（纯规则）或 `"rule+llm"`（启用 LLM 主观分后）。
 
 **入选阈值（默认）**
 
 | selection_status | 条件 |
 |------------------|------|
-| `selected` | article_score ≥ 75 |
-| `candidate` | 60 ≤ score < 75 |
-| `rejected` | score < 60 |
+| `selected` | article_score ≥ 70，且 score_confidence ≥ 0.65 |
+| `candidate` | 55 ≤ score < 70，或 score ≥ 70 但 confidence 不足 |
+| `rejected` | score < 55 |
+
+`confidence_limited_by_fulltext=true` 表示分数达到入选线但被置信度拦截（通常因 `fulltext_status=title_only`）。
 
 ### 1.4 语料范围（避免正文误伤）
 
@@ -175,8 +178,8 @@ cd backend && .venv/bin/python -m pytest tests/test_score_v2_rules.py -q
 
 编辑 **`scoring.py`** 中 `ScoringConfig`：
 
-- `weights` — 五维权重（总和应为 1.0）
-- `selected_threshold` / `candidate_threshold` — 默认 75 / 60
+- `weights` — 五维权重（总和应为 1.0；subjective 当前为 0）
+- `selected_threshold` / `candidate_threshold` — 默认 70 / 55
 
 ### 3.3 调整事件层公式
 
@@ -210,7 +213,7 @@ cd backend && .venv/bin/python -m pytest tests/test_score_v2_rules.py -q
 
 ---
 
-## 4. 启用 LLM 主观分（预留）
+## 4. 启用 LLM 主观分
 
 环境变量（默认关闭）：
 
@@ -218,14 +221,18 @@ cd backend && .venv/bin/python -m pytest tests/test_score_v2_rules.py -q
 PIM_SCORE_LLM_SUBJECTIVE=true
 ```
 
+同时需在系统设置页面配置 `score_model`（provider / model / api_base），或依赖 `DEFAULT_SYSTEM_SETTINGS` 中的 ollama 默认值。
+
 实现入口：`score_subjective.py`
 
-- `resolve_subjective_score()` — finish 同步路径
-- `SubjectiveScorer` 协议 — 后续 `LlmSubjectiveScorer`
+- `resolve_subjective_score()` — finish 同步路径，永远返回 fixed_baseline（LLM 为纯异步）
+- `score_subjective_async()` — 异步路径，标志位开启时调用 `LlmSubjectiveScorer`
+- `LlmSubjectiveScorer` — 传标题 + 摘要给 LLM，输出 1–10 整数分和不超过 30 字 rationale
+- `merge_rule_scoring_metadata_async()` — 标志位开启且 LLM 返回 `source=llm` 时，用新 subjective 值重跑 `calculate_article_score`，写入 `scoring_method=rule+llm`
 
-启用后 metadata 中 `subjective_meta.source` 应为 `llm`，并填充 `rationale` / `model`。
+启用后 metadata 中 `subjective_meta.source` 为 `llm`，并填充 `rationale`；`scoring_method` 变为 `rule+llm`。
 
-**注意：** 权重已在 v2 预留 20%；启用 LLM 后无需改合分公式，只需替换主观分数值。
+**注意：** subjective 权重当前为 0%，启用 LLM 主观分后建议同步在 `ScoringConfig` 将其调为 15–20%，并相应下调其余维度权重。
 
 ---
 
@@ -295,11 +302,11 @@ cd backend
 
 ---
 
-## 8. 已知限制（v2.0）
+## 8. 已知限制（v2.2）
 
 - 不通稿 / 转载去重（多源可能高估）
 - 无 personal_fit、freshness 维
-- subjective 固定 5.0
+- subjective 权重归零；LLM scorer 已实现，等待 score_model 配置后启用（见 §4）
 - lane / salience 为关键词规则，复杂语义需 LLM 主观分或后续 entity 库
 
 ---
@@ -308,5 +315,6 @@ cd backend
 
 | 日期 | 版本 | 说明 |
 |------|------|------|
+| 2026-05-24 | pim-score-v2.2 | subjective 权重归零（0%）；阈值调整 70/55；reach major_entity 子桶（6.5）；词边界保护；用户词扫描范围扩至 2000 字；中文 trigram；LlmSubjectiveScorer 实装；ingest score shim 清除 |
 | 2026-05-21 | pim-score-v2.1 | 固化：commerce/narrow impact caps、灾害下限、headline 语料、摘要清洗、`rescore_contents.py` |
 | 2026-05-21 | pim-score-v2 | 规则五维 + 固定主观分；fetch 验收与打分分离；事件层 corroboration |

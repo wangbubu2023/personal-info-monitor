@@ -15,6 +15,7 @@ from typing import Any, Mapping, Sequence
 
 from app.domains.score.score_rules import compute_rule_dimension_scores
 from app.domains.score.score_subjective import resolve_subjective_score
+from app.features import feature_enabled
 from app.domains.score.score_vocab_runtime import (
     extract_keyword_vocab_terms,
     extract_matched_keyword_terms,
@@ -319,10 +320,32 @@ def merge_rule_scoring_metadata(
 
 async def merge_rule_scoring_metadata_async(
     metadata: Mapping[str, Any] | None,
+    *,
+    content: Any | None = None,
     **kwargs: Any,
 ) -> dict[str, Any]:
-    """Async entry for future LLM subjective scoring in finish."""
-    return merge_rule_scoring_metadata(metadata, **kwargs)
+    """Async scoring entry — calls LLM subjective scorer when PIM_SCORE_LLM_SUBJECTIVE is on."""
+    from app.domains.score.score_subjective import score_subjective_async
+
+    result = merge_rule_scoring_metadata(metadata, content=content, **kwargs)
+
+    if feature_enabled("PIM_SCORE_LLM_SUBJECTIVE"):
+        lane = result.get("lane", "other")
+        subj = await score_subjective_async(content, lane=lane)
+        if subj.source == "llm":
+            dims = dict(result.get("dimension_scores") or {})
+            dims["subjective"] = round(max(0.0, min(10.0, float(subj.score))), 1)
+            updated = calculate_article_score(
+                dims,
+                content_metadata=result,
+                source_metadata=kwargs.get("source_metadata"),
+                lane=lane,
+                subjective_meta=subj.to_metadata(),
+            )
+            result.update(updated)
+            result["scoring_method"] = "rule+llm"
+
+    return result
 
 
 def merge_baseline_scoring_metadata(
