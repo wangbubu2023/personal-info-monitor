@@ -4,13 +4,13 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from app.domains.ingest.score_event import compute_corroboration, compute_event_score
-from app.domains.ingest.score_rules import (
+from app.domains.score.score_event import compute_corroboration, compute_event_score
+from app.domains.score.score_rules import (
     classify_lane,
     compute_rule_dimension_scores,
     score_salience,
 )
-from app.domains.ingest.scoring import SCORE_VERSION, calculate_article_score, merge_rule_scoring_metadata
+from app.domains.score.scoring import SCORE_VERSION, calculate_article_score, merge_rule_scoring_metadata
 
 
 def test_lane_classifies_geopolitics_and_tech_independently():
@@ -120,7 +120,7 @@ def test_calculate_article_score_selected_threshold():
 
 
 def test_vocab_recognizes_major_entities():
-    from app.domains.ingest.score_vocab_runtime import RuntimeScoringVocab
+    from app.domains.score.score_vocab_runtime import RuntimeScoringVocab
 
     vocab = RuntimeScoringVocab.build()
     assert vocab.entity_tier_score("鲍威尔在杰克逊霍尔发表演讲") == 9.0
@@ -129,7 +129,7 @@ def test_vocab_recognizes_major_entities():
 
 
 def test_user_keywords_merge_into_runtime_vocab():
-    from app.domains.ingest.score_vocab_runtime import RuntimeScoringVocab
+    from app.domains.score.score_vocab_runtime import RuntimeScoringVocab
 
     vocab = RuntimeScoringVocab.build(
         user_keyword_terms=("MyPrivateCo",),

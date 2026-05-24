@@ -38,11 +38,6 @@ here:
   ``processors.translator.Translator`` lazily inside the function — at
   module-import time the ingest domain stays free of any LLM dependency,
   keeping the Phase 3 boundary check clean.
-* ``domains/ingest/scoring.py`` — moved from
-  ``app.services.scoring_service`` in Phase 3 step 4 (deterministic
-  baseline scoring: dimension/score-confidence calc, structured
-  recommendation reasons, final-score + selection-status pipeline).
-  Pure functions, no LLM. Legacy path is a re-export shim.
 * ``domains/ingest/search.py`` — moved from
   ``app.utils.fts_query`` in Phase 3 step 6 (SQLite FTS5 MATCH
   expression builder; sanitizes user input before hitting the
