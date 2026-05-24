@@ -31,6 +31,8 @@ from typing import Optional
 
 from app.processors.translator import Translator
 from app.utils.text import normalize_article_text
+from app.utils.x_twitter_text import is_x_status_page_url as _is_x_status_page_url
+from app.utils.x_twitter_text import looks_like_x_interstitial_text as _looks_like_x_interstitial_text
 
 _X_ARTICLE_URL_RE = re.compile(r"(?:https?://)?(?:x\.com|twitter\.com)/i/article/\d+", re.IGNORECASE)
 _TITLE_URL_RE = re.compile(r"^(?:https?://|www\.)", re.IGNORECASE)
@@ -194,12 +196,10 @@ def _derive_title_from_body(text: str) -> str:
 
 
 def _clean_x_reader_body(text: str) -> str:
-    from app.domains.fetch.collectors.x_twitter_text import looks_like_x_interstitial_text
-
     cleaned = (text or "").replace("\r\n", "\n").strip()
     if not cleaned:
         return ""
-    if looks_like_x_interstitial_text(cleaned):
+    if _looks_like_x_interstitial_text(cleaned):
         return ""
 
     skip_exact = {
@@ -273,6 +273,8 @@ __all__ = [
     "_looks_like_translation_refusal",
     "_reader_body_hash",
     "_extract_x_article_url",
+    "_is_x_status_page_url",
+    "_looks_like_x_interstitial_text",
     "_is_valid_translation_text",
     "_is_valid_title_translation",
     "_split_for_reader",

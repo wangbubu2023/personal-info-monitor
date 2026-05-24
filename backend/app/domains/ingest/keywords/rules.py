@@ -111,7 +111,7 @@ async def _translate_keyword_via_public_endpoint(keyword: str, target_language: 
     }
 
     try:
-        async with httpx.AsyncClient(timeout=6.0, follow_redirects=True) as client:
+        async with httpx.AsyncClient(timeout=6.0, follow_redirects=False) as client:
             response = await client.get(_PUBLIC_TRANSLATE_URL, params=params)
             response.raise_for_status()
     except Exception as exc:

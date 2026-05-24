@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import json
+import threading
 from dataclasses import dataclass
 from datetime import date
 from typing import Any, Optional
 
 import httpx
 
-from app.config import get_settings
+from app.platform.config.settings import get_settings
 from app.services.api_config_credentials import enrich_model_settings_from_api_config
 from app.platform.config.system_settings import get_system_settings_sync
 from app.utils.logger import get_logger
@@ -35,6 +36,7 @@ OLLAMA_NUM_CTX_OPTIONS = (
 
 _token_meter_day: date | None = None
 _token_meter_total: int = 0
+_token_meter_lock = threading.Lock()
 
 
 def _reset_token_meter_if_needed() -> None:
@@ -52,19 +54,20 @@ def _reserve_ai_token_budget(estimated_tokens: int) -> bool:
     cap = int(settings.ai_daily_token_budget or 0)
     if cap <= 0:
         return True
-    _reset_token_meter_if_needed()
-    global _token_meter_total
     est = max(1, min(estimated_tokens, cap))
-    if _token_meter_total + est > cap:
-        logger.warning(
-            "AI daily token budget exceeded (used≈%s + est=%s > cap=%s)",
-            _token_meter_total,
-            est,
-            cap,
-        )
-        return False
-    _token_meter_total += est
-    return True
+    global _token_meter_total
+    with _token_meter_lock:
+        _reset_token_meter_if_needed()
+        if _token_meter_total + est > cap:
+            logger.warning(
+                "AI daily token budget exceeded (used≈%s + est=%s > cap=%s)",
+                _token_meter_total,
+                est,
+                cap,
+            )
+            return False
+        _token_meter_total += est
+        return True
 
 
 @dataclass

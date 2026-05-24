@@ -35,7 +35,7 @@ from app.utils.human_timing import (
 )
 from app.utils.logger import get_logger
 from app.utils.playwright_stealth import stealth_init_script
-from app.platform.security.ssrf import check_before_fetch
+from app.platform.security.ssrf import check_before_fetch, fetch_public_http_text
 
 from . import website_helpers as _helpers
 from . import website_parser as _parser
@@ -486,25 +486,30 @@ class WebsiteCollector(BaseCollector):
         }
         try:
             async with aiohttp.ClientSession(**permissive_session_kwargs()) as session:
-                async with session.get(
+                response = await fetch_public_http_text(
+                    session,
                     article_url,
+                    source_url=source_url,
+                    validation_cookies=cookies or None,
                     headers=headers,
                     cookies=cookies if cookies else None,
                     timeout=aiohttp.ClientTimeout(total=25),
-                    allow_redirects=True,
-                ) as response:
-                    if response.status != 200:
-                        attempt = await self._attempt_playwright_article_html(
-                            article_url, cookies, source_url, browser_session=browser_session, metadata=metadata
-                        )
-                        if attempt is not None:
-                            html, final_url, reason = attempt
-                            if html:
-                                return html, final_url, None
-                            if reason:
-                                return None, final_url or article_url, reason
-                        return None, None, f"http_status_{response.status}"
-                    return await response.text(), str(response.url), None
+                )
+                if response.status != 200:
+                    attempt = await self._attempt_playwright_article_html(
+                        article_url, cookies, source_url, browser_session=browser_session, metadata=metadata
+                    )
+                    if attempt is not None:
+                        html, final_url, reason = attempt
+                        if html:
+                            return html, final_url, None
+                        if reason:
+                            return None, final_url or article_url, reason
+                    return None, None, f"http_status_{response.status}"
+                return response.text, response.url, None
+        except ValueError as exc:
+            self.logger.warning("SSRF/cookie check blocked article fetch for %s: %s", article_url, exc)
+            return None, None, "ssrf_blocked"
         except (aiohttp.ClientError, TimeoutError) as exc:
             self.logger.warning("HTTP article fetch failed for %s: %s", article_url, exc)
             attempt = await self._attempt_playwright_article_html(
@@ -776,20 +781,23 @@ class WebsiteCollector(BaseCollector):
 
         try:
             async with aiohttp.ClientSession(**permissive_session_kwargs()) as session:
-                async with session.get(
+                response = await fetch_public_http_text(
+                    session,
                     source.url,
+                    source_url=source.url,
+                    validation_cookies=cookies or None,
                     headers=headers,
                     cookies=cookies if cookies else None,
                     timeout=aiohttp.ClientTimeout(total=30),
-                ) as response:
-                    if response.status != 200:
-                        self.logger.warning(f"Static fetch non-200 ({response.status}) for {source.url}")
-                        return []
-                    html = await response.text()
+                )
+                if response.status != 200:
+                    self.logger.warning(f"Static fetch non-200 ({response.status}) for {source.url}")
+                    return []
+                html = response.text
 
             return self._parse_html(html, source)
 
-        except (aiohttp.ClientError, TimeoutError) as exc:
+        except (aiohttp.ClientError, TimeoutError, ValueError) as exc:
             self.logger.error(f"Error fetching static website: {exc}")
             return []
 

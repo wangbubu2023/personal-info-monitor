@@ -194,7 +194,7 @@ def _resolve_target_language() -> str:
 
         lang = str((get_system_settings_sync() or {}).get("auto_translate_language") or "zh-CN").strip()
         return lang or "zh-CN"
-    except Exception:
+    except Exception:  # noqa: BLE001 - settings fallback must not block listing translation
         return "zh-CN"
 
 

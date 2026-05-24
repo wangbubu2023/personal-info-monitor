@@ -158,8 +158,8 @@ npx playwright test   # E2E
 ```
 
 CI 在 [`.github/workflows/ci.yml`](.github/workflows/ci.yml) 中串行执行
-ruff / mypy(stub) / domain-import 静态边界 / pytest / vitest / playwright，
-全部通过才允许合并。
+后端 ruff / domain-import 静态边界 / pytest，前端 lint / vitest / npm audit，
+以及后端 pip-audit。Playwright E2E 仍作为本地回归命令单独运行。
 
 ## 文档地图
 

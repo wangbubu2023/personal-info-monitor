@@ -88,7 +88,7 @@ class LlmSubjectiveScorer:
                 max_tokens=150,
                 timeout_seconds=30.0,
             )
-        except Exception:
+        except Exception:  # noqa: BLE001 - subjective LLM scoring falls back to deterministic parse
             return ""
 
     def _parse(self, raw: str) -> SubjectiveScoreResult:

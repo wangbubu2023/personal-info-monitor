@@ -2,12 +2,26 @@
 
 import asyncio
 import ipaddress
-import socket
 import logging
+import socket
+from dataclasses import dataclass
 from typing import Dict, List, Optional
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
+
+import aiohttp
 
 logger = logging.getLogger(__name__)
+REDIRECT_STATUSES = {301, 302, 303, 307, 308}
+DEFAULT_MAX_PUBLIC_REDIRECTS = 5
+
+
+@dataclass(frozen=True)
+class PublicHttpTextResult:
+    """HTTP text response returned after SSRF-checked manual redirects."""
+
+    status: int
+    url: str
+    text: str
 
 
 def _is_private_address(host: str) -> bool:
@@ -94,3 +108,49 @@ async def check_before_fetch(
             f"Cookie host mismatch: request to {urlparse(url).hostname} "
             f"but cookies belong to {urlparse(source_url).hostname}"
         )
+
+
+async def fetch_public_http_text(
+    session: aiohttp.ClientSession,
+    url: str,
+    *,
+    method: str = "GET",
+    source_url: str = "",
+    validation_cookies: Optional[Dict[str, str]] = None,
+    max_redirects: int = DEFAULT_MAX_PUBLIC_REDIRECTS,
+    text_errors: str | None = None,
+    read_body: bool = True,
+    **request_kwargs,
+) -> PublicHttpTextResult:
+    """Fetch text while re-running SSRF and cookie-host checks on every redirect.
+
+    aiohttp's automatic redirect handling does not re-enter PIM's SSRF guard.
+    This helper disables automatic redirects, validates each target URL before
+    the next request, and returns the first non-redirect response.
+    """
+    requester = getattr(session, method.lower())
+    current_url = url
+    for _ in range(max_redirects + 1):
+        await check_before_fetch(
+            current_url,
+            source_url=source_url,
+            cookies=validation_cookies,
+        )
+        kwargs = dict(request_kwargs)
+        kwargs["allow_redirects"] = False
+        async with requester(current_url, **kwargs) as response:
+            if response.status in REDIRECT_STATUSES:
+                location = (response.headers.get("Location") or "").strip()
+                if not location:
+                    return PublicHttpTextResult(response.status, str(response.url), "")
+                current_url = urljoin(str(response.url), location)
+                continue
+            if read_body:
+                if text_errors is None:
+                    body = await response.text()
+                else:
+                    body = await response.text(errors=text_errors)
+            else:
+                body = ""
+            return PublicHttpTextResult(response.status, str(response.url), body)
+    raise ValueError(f"redirect limit exceeded for {url}")

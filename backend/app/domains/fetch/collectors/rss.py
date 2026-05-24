@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Optional
 import hashlib
 import re
 import asyncio
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 
 import feedparser
 import aiohttp
@@ -15,7 +15,7 @@ from bs4 import BeautifulSoup
 from app.domains.fetch.collectors.base import BaseCollector
 from app.models import Source
 from app.utils.logger import get_logger
-from app.platform.security.ssrf import check_before_fetch
+from app.platform.security.ssrf import check_before_fetch, fetch_public_http_text
 from app.utils.text import strip_html_tags, text_looks_like_embedded_binary
 
 logger = get_logger(__name__)
@@ -157,17 +157,19 @@ class RSSCollector(BaseCollector):
             }
 
             async with aiohttp.ClientSession() as session:
-                async with session.get(
+                response = await fetch_public_http_text(
+                    session,
                     url,
+                    source_url=source.url,
+                    validation_cookies=cookies or None,
                     headers=headers,
                     cookies=cookies if cookies else None,
                     timeout=aiohttp.ClientTimeout(total=25),
-                    allow_redirects=True,
-                ) as response:
-                    if response.status != 200:
-                        self.logger.warning("Failed to fetch article page: %s", response.status)
-                        return None
-                    return await response.text()
+                )
+                if response.status != 200:
+                    self.logger.warning("Failed to fetch article page: %s", response.status)
+                    return None
+                return response.text
         except asyncio.TimeoutError:
             self.logger.warning("Timeout fetching article page: %s", url)
             return None
@@ -341,8 +343,8 @@ class RSSCollector(BaseCollector):
                 headers=headers,
                 timeout=aiohttp.ClientTimeout(total=10),
             ) as session:
-                async with session.get(website_url, allow_redirects=True) as response:
-                    html = await response.text()
+                response = await fetch_public_http_text(session, website_url)
+                html = response.text
             
             soup = BeautifulSoup(html, "lxml")
             
@@ -358,7 +360,6 @@ class RSSCollector(BaseCollector):
                 if href:
                     # Handle relative URLs
                     if href.startswith("/"):
-                        from urllib.parse import urljoin
                         href = urljoin(website_url, href)
                     return href
             
@@ -369,8 +370,6 @@ class RSSCollector(BaseCollector):
                 "/index.xml", "/feeds/posts/default"
             ]
             
-            from urllib.parse import urljoin
-            
             async with aiohttp.ClientSession(
                 headers=headers,
                 timeout=aiohttp.ClientTimeout(total=8),
@@ -378,9 +377,15 @@ class RSSCollector(BaseCollector):
                 for path in common_paths:
                     feed_url = urljoin(website_url, path)
                     try:
-                        async with session.head(feed_url, timeout=5, allow_redirects=True) as response:
-                            if response.status == 200:
-                                return feed_url
+                        response = await fetch_public_http_text(
+                            session,
+                            feed_url,
+                            method="HEAD",
+                            timeout=5,
+                            read_body=False,
+                        )
+                        if response.status == 200:
+                            return feed_url
                     except Exception as e:
                         self.logger.debug(f"RSS path probe failed for {feed_url}: {e}")
                         continue

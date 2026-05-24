@@ -45,7 +45,7 @@ from app.domains.fetch.collectors.x_twitter_text import (
 )
 from app.models import Source
 from app.utils.http import permissive_session_kwargs
-from app.platform.security.ssrf import assert_public_http_target
+from app.platform.security.ssrf import fetch_public_http_text
 
 
 class XCollector(BaseCollector):
@@ -488,7 +488,6 @@ class XCollector(BaseCollector):
     # ------------------------------------------------------------------
 
     async def _http_get(self, url: str, timeout: int = 20) -> Optional[str]:
-        await assert_public_http_target(url)
         headers = {
             "User-Agent": (
                 "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
@@ -498,20 +497,20 @@ class XCollector(BaseCollector):
         }
         try:
             async with aiohttp.ClientSession(**permissive_session_kwargs()) as session:
-                async with session.get(
+                response = await fetch_public_http_text(
+                    session,
                     url,
                     headers=headers,
                     timeout=aiohttp.ClientTimeout(total=timeout),
-                    allow_redirects=True,
-                ) as response:
-                    if response.status != 200:
-                        self.logger.warning(f"HTTP {response.status} for {url}")
-                        return None
-                    return await response.text()
+                )
+                if response.status != 200:
+                    self.logger.warning(f"HTTP {response.status} for {url}")
+                    return None
+                return response.text
         except asyncio.TimeoutError:
             self.logger.warning(f"HTTP timeout: {url}")
             return None
-        except (aiohttp.ClientError, OSError) as exc:
+        except (aiohttp.ClientError, OSError, ValueError) as exc:
             self.logger.warning(f"HTTP error: {url} → {exc}")
             return None
 

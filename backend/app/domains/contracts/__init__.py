@@ -12,7 +12,7 @@ domain. It defines the contracts that flow between ``sources``, ``fetch``,
   ``FinishContentResult``
 * :mod:`app.domains.contracts.enrich`  — ``EnrichRequest``,
   ``ReprocessRequest``
-* :mod:`app.domains.contracts.atoms`   — ``AtomRecord``, ``AtomReader``
+* :mod:`app.domains.contracts.atoms`   — ``AtomReader``
 
 Rules:
 

@@ -10,17 +10,9 @@ import re
 from typing import Any, Dict, List, Optional
 from urllib.parse import urlparse
 
+from app.utils.x_twitter_text import is_x_status_page_url, looks_like_x_interstitial_text
+
 ARTICLE_URL_RE = re.compile(r"(?:https?://)?(?:x\.com|twitter\.com)/i/article/\d+", re.IGNORECASE)
-_X_HOSTS = frozenset({"x.com", "twitter.com", "www.x.com", "www.twitter.com", "mobile.twitter.com"})
-_X_INTERSTITIAL_MARKERS = (
-    "javascript is disabled",
-    "enable javascript",
-    "switch to a supported browser",
-    "supported browser",
-    "help center",
-    "x corp",
-    "terms of service",
-)
 
 
 def extract_article_urls(text: str) -> List[str]:
@@ -57,7 +49,6 @@ def extract_tweet_id(value: str) -> Optional[str]:
     if match:
         return match.group(1)
     return None
-
 
 def normalize_tweet_url(url: str, logger=None) -> str:
     """Rewrite Nitter-style permalinks to canonical ``x.com/<user>/status/<id>``."""
@@ -209,26 +200,3 @@ def extract_username_from_url(url: str, metadata: Optional[Dict[str, Any]] = Non
     if re.match(r"^[a-zA-Z0-9_]+$", url):
         return url
     return None
-
-
-def is_x_status_page_url(url: str) -> bool:
-    """True for tweet permalinks — plain HTTP+cookie fetch returns JS interstitial, not tweet text."""
-    try:
-        parsed = urlparse((url or "").strip())
-        host = (parsed.hostname or "").lower()
-        if host.startswith("www."):
-            host = host[4:]
-        return host in _X_HOSTS and "/status/" in (parsed.path or "")
-    except Exception:  # noqa: BLE001 - urlparse should not raise, stay defensive
-        return False
-
-
-def looks_like_x_interstitial_text(text: str) -> bool:
-    """Detect X noscript / login-wall boilerplate mistaken for article body."""
-    normalized = re.sub(r"\s+", " ", (text or "").strip().lower())
-    if not normalized:
-        return False
-    hits = sum(1 for marker in _X_INTERSTITIAL_MARKERS if marker in normalized)
-    if hits >= 3:
-        return True
-    return "javascript is disabled" in normalized and "x.com" in normalized

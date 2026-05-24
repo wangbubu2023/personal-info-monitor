@@ -31,6 +31,9 @@ jobs:
       - name: Lint (ruff — BLE001/B904/B023/F821/F811 gate)
         run: cd backend && uv run ruff check app
 
+      - name: Verify domain import boundaries
+        run: cd backend && uv run python scripts/check_domain_imports.py --phase=7
+
       - name: Verify requirements.txt matches pyproject.toml
         run: |
           cd backend

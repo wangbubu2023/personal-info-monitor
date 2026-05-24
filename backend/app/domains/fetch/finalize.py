@@ -47,7 +47,7 @@ async def hydrate_fetched_content(
                     content.full_content = truncate_content(
                         fetched, url=content.original_url or ""
                     )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - cookie hydration is best-effort
             logger.debug("Cookie body hydration skipped for %s: %s", content.id, exc)
 
     await ensure_content_bodies_during_finish(content, source)

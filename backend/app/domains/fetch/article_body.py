@@ -15,7 +15,7 @@ from app.domains.fetch.collectors.x_twitter_text import (
 )
 from app.models import Content, Source
 from app.processors.extractor import ContentExtractor
-from app.platform.security.ssrf import assert_public_http_target
+from app.platform.security.ssrf import fetch_public_http_text
 from app.utils.http import permissive_session_kwargs
 from app.utils.datetime import utcnow_naive
 from app.utils.logger import get_logger
@@ -40,11 +40,6 @@ async def fetch_public_article_body(original_url: str) -> tuple[str, str]:
     if parsed.scheme not in {"http", "https"}:
         return "", ""
 
-    try:
-        await assert_public_http_target(url)
-    except ValueError:
-        return "", ""
-
     headers = {
         "User-Agent": (
             "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
@@ -59,12 +54,12 @@ async def fetch_public_article_body(original_url: str) -> tuple[str, str]:
         async with aiohttp.ClientSession(
             **permissive_session_kwargs(timeout=timeout, headers=headers)
         ) as session:
-            async with session.get(url, allow_redirects=True) as response:
-                if response.status != 200:
-                    return "", ""
-                html_text = await response.text(errors="ignore")
-                final_url = str(response.url)
-    except (aiohttp.ClientError, TimeoutError, UnicodeDecodeError) as exc:
+            response = await fetch_public_http_text(session, url, text_errors="ignore")
+            if response.status != 200:
+                return "", ""
+            html_text = response.text
+            final_url = response.url
+    except (aiohttp.ClientError, TimeoutError, UnicodeDecodeError, ValueError) as exc:
         logger.debug("Public article fetch failed for %s: %s", url, exc)
         return "", ""
 
@@ -140,11 +135,8 @@ def _load_source_cookies(source: Source | None) -> dict[str, str]:
     from app.domains.fetch.auth import try_parse_auth_credentials
     from app.utils.cookies import normalize_cookie_dict
 
-    try:
-        creds = try_parse_auth_credentials(source.auth_config)
-        return normalize_cookie_dict(creds.get("cookies"))
-    except Exception:
-        return {}
+    creds = try_parse_auth_credentials(source.auth_config)
+    return normalize_cookie_dict(creds.get("cookies"))
 
 
 def resolve_x_article_url(content: Content, metadata: dict) -> str:

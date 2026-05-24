@@ -6,6 +6,8 @@ import json
 import re
 from typing import Any
 
+from pydantic import ValidationError
+
 from app.domains.atoms.credibility import resolve_credibility
 from app.domains.atoms.extractor.normalize import normalize_extraction_domain, normalize_extraction_payload
 from app.domains.atoms.extractor.validate import resolve_source_sentence
@@ -152,7 +154,7 @@ def _item_to_atom_create(
 
     try:
         payload = payload_from_dict(atom_type, normalized_payload)
-    except Exception:
+    except (TypeError, ValueError, ValidationError):
         return None
 
     try:

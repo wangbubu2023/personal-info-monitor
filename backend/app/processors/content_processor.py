@@ -90,10 +90,8 @@ class ContentProcessor:
         self, url: str, cookies: Dict[str, str], source_url: str = "",
     ) -> Optional[str]:
         """Fetch first-party article page with cookies and extract readable text."""
-        from app.domains.fetch.collectors.x_twitter_text import (
-            is_x_status_page_url,
-            looks_like_x_interstitial_text,
-        )
+        from app.platform.security.ssrf import fetch_public_http_text
+        from app.utils.x_twitter_text import is_x_status_page_url, looks_like_x_interstitial_text
 
         if not url or not cookies or self._is_wrapper_url(url) or is_x_status_page_url(url):
             return None
@@ -120,15 +118,17 @@ class ContentProcessor:
             async with aiohttp.ClientSession(
                 **permissive_session_kwargs(cookie_jar=cookie_jar)
             ) as session:
-                async with session.get(
+                response = await fetch_public_http_text(
+                    session,
                     url,
+                    source_url=source_url,
+                    validation_cookies=cookies,
                     headers=headers,
                     timeout=aiohttp.ClientTimeout(total=20),
-                    allow_redirects=True,
-                ) as response:
-                    if response.status != 200:
-                        return None
-                    html = await response.text()
+                )
+                if response.status != 200:
+                    return None
+                html = response.text
 
             extracted = await self.extractor.extract(html, url)
             clean = strip_html_tags(extracted or "")

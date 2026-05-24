@@ -37,7 +37,7 @@ def _reader_translation_chunk_limit() -> int:
         num_ctx = resolve_ollama_num_ctx(cfg, default=OLLAMA_NUM_CTX_TRANSLATION_DEFAULT)
         # Leave room for system prompt + instruction (~768 tokens) in a 2K window.
         return max(200, min(1200, (num_ctx - 768) * 2))
-    except Exception:
+    except Exception:  # noqa: BLE001 - config/model resolution is best-effort sizing
         return 2400
 
 

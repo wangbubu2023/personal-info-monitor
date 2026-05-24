@@ -15,15 +15,16 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.domains.fetch.collectors.x_twitter_text import is_x_status_page_url
 from app.domains.enrich.reader.shared import (
     _clean_x_reader_body,
     _derive_title_from_body,
     _extract_x_article_url,
+    _is_x_status_page_url,
+    _looks_like_x_interstitial_text,
     _looks_like_translation_refusal,
     _title_looks_like_url,
 )
-from app.config import get_settings
+from app.platform.config.settings import get_settings
 from app.models import Content, Source
 from app.processors.extractor import ContentExtractor
 from app.processors.translator import Translator
@@ -32,7 +33,7 @@ from app.utils.cookies import normalize_cookie_dict
 from app.utils.datetime import utcnow_naive
 from app.utils.http import permissive_session_kwargs
 from app.utils.logger import get_logger
-from app.platform.security.ssrf import assert_public_http_target
+from app.platform.security.ssrf import assert_public_http_target, fetch_public_http_text  # noqa: F401
 from app.domains.ingest.quality_metadata import merge_content_quality_metadata
 from app.utils.text import strip_html_tags, truncate_content, normalize_article_text
 
@@ -65,15 +66,10 @@ async def fetch_reader_fulltext(original_url: str) -> tuple[str, str]:
     url = (original_url or "").strip()
     if not url:
         return "", ""
-    if is_x_status_page_url(url):
+    if _is_x_status_page_url(url):
         return "", ""
     parsed = urlparse(url)
     if parsed.scheme not in {"http", "https"}:
-        return "", ""
-
-    try:
-        await assert_public_http_target(url)
-    except ValueError:
         return "", ""
 
     headers = {
@@ -90,12 +86,12 @@ async def fetch_reader_fulltext(original_url: str) -> tuple[str, str]:
         async with aiohttp.ClientSession(
             **permissive_session_kwargs(timeout=timeout, headers=headers)
         ) as session:
-            async with session.get(url, allow_redirects=True) as response:
-                if response.status != 200:
-                    return "", ""
-                html_text = await response.text(errors="ignore")
-                final_url = str(response.url)
-    except (aiohttp.ClientError, TimeoutError, UnicodeDecodeError) as exc:
+            response = await fetch_public_http_text(session, url, text_errors="ignore")
+            if response.status != 200:
+                return "", ""
+            html_text = response.text
+            final_url = response.url
+    except (aiohttp.ClientError, TimeoutError, UnicodeDecodeError, ValueError) as exc:
         logger.debug("Reader fulltext fetch failed for %s: %s", url, exc)
         return "", ""
 
@@ -312,20 +308,15 @@ async def ensure_reader_body(content: Content, db: AsyncSession) -> tuple[str, d
     def _finalize(body: str, meta: dict) -> tuple[str, dict]:
         return normalize_article_text(body), meta
 
-    from app.domains.fetch.collectors.x_twitter_text import (
-        looks_like_x_interstitial_text,
-        is_x_status_page_url,
-    )
-
     metadata = content.metadata_ if isinstance(content.metadata_, dict) else {}
     body_raw = (content.full_content or "").strip() or (content.summary or "").strip()
     source_type = (content.content_type or "").strip().lower()
-    if source_type == "x" and body_raw and looks_like_x_interstitial_text(body_raw):
+    if source_type == "x" and body_raw and _looks_like_x_interstitial_text(body_raw):
         title_fallback = (content.title or "").strip()
         # Never replace a longer body with a truncated listing title (often ~82 chars).
         if (
             title_fallback
-            and not looks_like_x_interstitial_text(title_fallback)
+            and not _looks_like_x_interstitial_text(title_fallback)
             and len(title_fallback) > len(body_raw)
         ):
             body_raw = title_fallback

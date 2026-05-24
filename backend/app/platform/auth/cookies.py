@@ -13,6 +13,7 @@ from yarl import URL
 
 from app.utils.http import permissive_session_kwargs
 from app.platform.observability.logger import get_logger
+from app.platform.security.ssrf import fetch_public_http_text
 
 logger = get_logger(__name__)
 
@@ -66,19 +67,22 @@ async def cookies_appear_valid(site_url: str, cookies: dict) -> bool:
         async with aiohttp.ClientSession(
             **permissive_session_kwargs(timeout=timeout, cookie_jar=cookie_jar)
         ) as session:
-            async with session.get(
+            response = await fetch_public_http_text(
+                session,
                 site_url,
-                allow_redirects=True,
-            ) as response:
-                if response.status in {401, 403}:
-                    return False
-                final_url = str(response.url).lower()
-                if any(token in final_url for token in ("/login", "/signin", "/sign-in", "/subscribe", "captcha")):
-                    return False
-                body = (await response.text(errors="ignore"))[:5000].lower()
-                if any(marker in body for marker in markers):
-                    return False
-                return True
+                source_url=site_url,
+                validation_cookies={str(k): str(v) for k, v in cookies.items() if k and v is not None},
+                text_errors="ignore",
+            )
+            if response.status in {401, 403}:
+                return False
+            final_url = str(response.url).lower()
+            if any(token in final_url for token in ("/login", "/signin", "/sign-in", "/subscribe", "captcha")):
+                return False
+            body = response.text[:5000].lower()
+            if any(marker in body for marker in markers):
+                return False
+            return True
     except (aiohttp.ClientError, TimeoutError, ValueError) as exc:
         logger.debug("Skip cookie precheck for %s: %s", site_url, exc)
         return True

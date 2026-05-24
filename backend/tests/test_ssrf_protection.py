@@ -1,6 +1,11 @@
 import pytest
 
-from app.platform.security.ssrf import assert_public_http_target, check_before_fetch, hosts_match
+from app.platform.security.ssrf import (
+    assert_public_http_target,
+    check_before_fetch,
+    fetch_public_http_text,
+    hosts_match,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -121,3 +126,79 @@ async def test_check_before_fetch_cookies_no_source_ok():
         "https://example.com/article",
         cookies={"session": "abc"},
     )
+
+
+class _FakeResponse:
+    def __init__(self, status, *, url="https://example.com/start", headers=None, body="ok"):
+        self.status = status
+        self.url = url
+        self.headers = headers or {}
+        self._body = body
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb):
+        return False
+
+    async def text(self, **_kwargs):
+        return self._body
+
+
+class _FakeSession:
+    def __init__(self, responses):
+        self.responses = list(responses)
+        self.calls = []
+
+    def get(self, url, **kwargs):
+        self.calls.append((url, kwargs))
+        return self.responses.pop(0)
+
+
+@pytest.mark.asyncio
+async def test_fetch_public_http_text_revalidates_redirect_target(monkeypatch):
+    session = _FakeSession(
+        [
+            _FakeResponse(
+                302,
+                headers={"Location": "http://169.254.169.254/latest/meta-data"},
+            ),
+            _FakeResponse(200, url="http://169.254.169.254/latest/meta-data", body="secret"),
+        ]
+    )
+
+    async def _fake_resolve(hostname: str, _port: int):
+        return ["93.184.216.34"] if hostname == "example.com" else ["169.254.169.254"]
+
+    monkeypatch.setattr("app.platform.security.ssrf._resolve_host_addresses", _fake_resolve)
+
+    with pytest.raises(ValueError, match="private"):
+        await fetch_public_http_text(session, "https://example.com/start")
+
+    assert len(session.calls) == 1
+    assert session.calls[0][1]["allow_redirects"] is False
+
+
+@pytest.mark.asyncio
+async def test_fetch_public_http_text_blocks_cookie_cross_host_redirect(monkeypatch):
+    session = _FakeSession(
+        [
+            _FakeResponse(302, headers={"Location": "https://other.example/private"}),
+            _FakeResponse(200, url="https://other.example/private"),
+        ]
+    )
+
+    async def _fake_resolve(_hostname: str, _port: int):
+        return ["93.184.216.34"]
+
+    monkeypatch.setattr("app.platform.security.ssrf._resolve_host_addresses", _fake_resolve)
+
+    with pytest.raises(ValueError, match="Cookie host mismatch"):
+        await fetch_public_http_text(
+            session,
+            "https://example.com/start",
+            source_url="https://example.com",
+            validation_cookies={"session": "abc"},
+        )
+
+    assert len(session.calls) == 1
