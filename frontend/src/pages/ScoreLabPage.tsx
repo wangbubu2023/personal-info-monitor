@@ -75,7 +75,8 @@ const ScoreLabDetail: React.FC<{
   loading: boolean
   onFeedback: (direction: ScoreFeedbackDirection, note?: string) => void
   feedbackPending: boolean
-}> = ({ explain, loading, onFeedback, feedbackPending }) => {
+  submittedDirection: ScoreFeedbackDirection | null
+}> = ({ explain, loading, onFeedback, feedbackPending, submittedDirection }) => {
   const [note, setNote] = useState('')
 
   useEffect(() => {
@@ -195,18 +196,28 @@ const ScoreLabDetail: React.FC<{
             ['too_high', '偏高'],
             ['too_low', '偏低'],
             ['ok', '合理'],
-          ] as const).map(([dir, label]) => (
-            <button
-              key={dir}
-              type="button"
-              disabled={feedbackPending}
-              onClick={() => onFeedback(dir, note.trim() || undefined)}
-              className="rounded-xl border border-[rgba(88,100,118,0.15)] bg-white px-3 py-1.5 text-sm font-medium text-[#293859] hover:border-[#49A8C9] hover:text-[#49A8C9] disabled:opacity-50"
-            >
-              {label}
-            </button>
-          ))}
+          ] as const).map(([dir, label]) => {
+            const isSubmitted = dir === submittedDirection
+            return (
+              <button
+                key={dir}
+                type="button"
+                disabled={feedbackPending}
+                onClick={() => onFeedback(dir, note.trim() || undefined)}
+                className={
+                  isSubmitted
+                    ? 'rounded-xl border border-[#1f7a4d] bg-[#e8f7ef] px-3 py-1.5 text-sm font-medium text-[#1f7a4d] disabled:opacity-50'
+                    : 'rounded-xl border border-[rgba(88,100,118,0.15)] bg-white px-3 py-1.5 text-sm font-medium text-[#293859] hover:border-[#49A8C9] hover:text-[#49A8C9] disabled:opacity-50'
+                }
+              >
+                {isSubmitted ? `✓ ${label}（已记录）` : label}
+              </button>
+            )
+          })}
         </div>
+        {submittedDirection && (
+          <p className="mt-2 text-[12px] text-[#8a96a5]">点击其他选项可重新提交</p>
+        )}
       </section>
 
       {explain.content?.id ? (
@@ -232,6 +243,7 @@ const ScoreLabPage: React.FC = () => {
   const [explain, setExplain] = useState<ScoreExplainPayload | null>(null)
   const [explainLoading, setExplainLoading] = useState(false)
   const [feedbackPending, setFeedbackPending] = useState(false)
+  const [submittedFeedback, setSubmittedFeedback] = useState<ScoreFeedbackDirection | null>(null)
 
   const filters = useMemo(
     () => ({
@@ -279,6 +291,10 @@ const ScoreLabPage: React.FC = () => {
   }, [loadList])
 
   useEffect(() => {
+    setSubmittedFeedback(null)
+  }, [filters.selected])
+
+  useEffect(() => {
     if (filters.selected) {
       void loadExplain(filters.selected)
     } else if (items[0]?.id) {
@@ -298,6 +314,7 @@ const ScoreLabPage: React.FC = () => {
     setFeedbackPending(true)
     try {
       await scoreLabApi.submitFeedback({ content_id: contentId, direction, note })
+      setSubmittedFeedback(direction)
       message.success('反馈已记录')
     } catch (err) {
       message.error(err instanceof Error ? err.message : '提交失败')
@@ -453,6 +470,7 @@ const ScoreLabPage: React.FC = () => {
             loading={explainLoading}
             onFeedback={handleFeedback}
             feedbackPending={feedbackPending}
+            submittedDirection={submittedFeedback}
           />
         </div>
       </div>
