@@ -150,7 +150,9 @@ async def create_score_feedback(
         raise HTTPException(status_code=400, detail="Invalid expected_status")
 
     content = (
-        await db.execute(select(Content).where(Content.id == str(body.content_id)))
+        await db.execute(
+            select(Content).options(selectinload(Content.source)).where(Content.id == str(body.content_id))
+        )
     ).scalar_one_or_none()
     if not content:
         raise HTTPException(status_code=404, detail="Content not found")
