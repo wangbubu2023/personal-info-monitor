@@ -9,7 +9,7 @@
 - **后端** — FastAPI + SQLAlchemy 2 + SQLite (FTS5) + APScheduler，按
   `interfaces / domains / platform` 三层组织，导入边界由 CI 静态强制。
 - **前端** — Vite + React + Ant Design，Tauri 提供可选桌面壳。
-- **CLI** — `pimctl`（Click 包），通过 HTTP+`X-API-Key` 调用后端，不直接访问数据库。
+- **CLI** — `pimctl`（argparse + HTTP 客户端），通过 HTTP+`X-API-Key` 调用后端，不直接访问数据库。
 - **数据** — 单一 SQLite 数据库（`~/.pim/data/pim.db` 默认）+ `data_dir/` 下
   cookies / Playwright storage-state / metrics checkpoint 等文件。
 
@@ -105,7 +105,7 @@ cd personal-info-monitor
 ```bash
 ./pimctl auth login --server http://127.0.0.1:8000 --api-key <key>
 # 查 API Key
-cat ~/.pim/data/runtime-secrets.json | jq -r .api_key
+jq -r .PIM_API_KEY ~/.pim/data/runtime-secrets.json
 
 ./pimctl system health --json
 ./pimctl sources list --json
@@ -146,9 +146,9 @@ cd backend && alembic upgrade head   # 手动升级到最新 schema
 ```bash
 # 后端
 cd backend
-./venv/bin/pytest -q --no-cov           # 全部 914 个测试
-./venv/bin/ruff check app               # lint
-./venv/bin/python scripts/check_domain_imports.py --phase=7   # 架构边界
+./.venv/bin/pytest -q --no-cov          # 运行全部后端测试
+./.venv/bin/ruff check app              # lint
+./.venv/bin/python scripts/check_domain_imports.py --phase=7   # 架构边界
 
 # 前端
 cd frontend

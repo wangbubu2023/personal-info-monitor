@@ -137,8 +137,7 @@ const CredentialsTab: React.FC = () => {
     onError: (err: unknown) => {
       const detail =
         typeof err === 'object' && err && 'response' in err
-          ? // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            ((err as any).response?.data?.detail as string | undefined)
+          ? ((err as any).response?.data?.detail as string | undefined)
           : undefined
       message.error(detail || '创建失败')
     },
@@ -160,8 +159,7 @@ const CredentialsTab: React.FC = () => {
     onError: (err: unknown) => {
       const detail =
         typeof err === 'object' && err && 'response' in err
-          ? // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            ((err as any).response?.data?.detail as string | undefined)
+          ? ((err as any).response?.data?.detail as string | undefined)
           : undefined
       message.error(detail || '登录窗口打开失败，请查看后端日志')
     },
@@ -180,8 +178,7 @@ const CredentialsTab: React.FC = () => {
     onError: (err: unknown) => {
       const detail =
         typeof err === 'object' && err && 'response' in err
-          ? // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            ((err as any).response?.data?.detail as string | undefined)
+          ? ((err as any).response?.data?.detail as string | undefined)
           : undefined
       message.error(detail || '校验失败')
     },
@@ -210,8 +207,7 @@ const CredentialsTab: React.FC = () => {
     onError: (err: unknown) => {
       const detail =
         typeof err === 'object' && err && 'response' in err
-          ? // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            ((err as any).response?.data?.detail as string | undefined)
+          ? ((err as any).response?.data?.detail as string | undefined)
           : undefined
       message.error(detail || '绑定失败')
     },

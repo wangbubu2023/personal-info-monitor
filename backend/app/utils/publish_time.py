@@ -205,7 +205,17 @@ def extract_publish_time_from_html(html: str) -> Optional[datetime]:
 
 
 async def fetch_publish_time_from_url(url: str, timeout: int = 12) -> Optional[datetime]:
-    """Fetch article page and try extracting publish time."""
+    """Fetch article page and try extracting publish time.
+
+    ``url`` originates from fetched page content (``raw_content["url"]``) and is
+    therefore attacker-influenceable, so the request must go through the unified
+    SSRF guard (which also re-validates every redirect target) rather than a raw
+    aiohttp request.
+    """
+    # Local import keeps the security module off this util's import graph until
+    # a website source actually needs publish-time backfill.
+    from app.platform.security.ssrf import fetch_public_http_text
+
     headers = {
         "User-Agent": (
             "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
@@ -215,15 +225,20 @@ async def fetch_publish_time_from_url(url: str, timeout: int = 12) -> Optional[d
     }
     try:
         async with aiohttp.ClientSession() as session:
-            async with session.get(
+            result = await fetch_public_http_text(
+                session,
                 url,
                 headers=headers,
                 timeout=aiohttp.ClientTimeout(total=timeout),
-            ) as resp:
-                if resp.status != 200:
-                    return None
-                html = await resp.text()
-        return extract_publish_time_from_html(html)
+            )
+        if result.status != 200:
+            return None
+        return extract_publish_time_from_html(result.text)
+    except ValueError as exc:
+        # SSRF guard rejected the URL or a redirect target (private/internal
+        # address). Treat as a normal "no publish time" outcome.
+        logger.debug("fetch_publish_time_from_url(%s) blocked by SSRF guard: %s", url, exc)
+        return None
     except (aiohttp.ClientError, TimeoutError, UnicodeDecodeError) as exc:
         # Network flakes and malformed responses are expected — log at debug
         # so the fetch loop can move on without polluting the warning stream.

@@ -1,8 +1,9 @@
 # 项目结构说明（每个文件/文件夹的作用）
 
-> 适用版本：master 当前 HEAD（post-Phase-7 audit 之后），后端 232 个
-> Python 模块、66 个测试文件；前端 110 个 TS/TSX 文件；CLI 6 个模块；
-> 文档 16 篇活档 + reviews 归档。
+> 适用版本：master 当前 HEAD（post-Phase-7 audit 之后），后端约 270 个
+> Python 模块、约 80 个测试文件；前端约 100 个 TS/TSX 文件；CLI 7 个模块；
+> 文档 16 篇活档 + reviews 归档。具体数量随重构变动，以仓库实际为准
+> （例如 `find backend/app -name '*.py' | wc -l`）。
 >
 > 配套阅读：[`ARCHITECTURE.md`](./ARCHITECTURE.md)（架构总览）、
 > [`MODULE_BOUNDARIES.md`](./MODULE_BOUNDARIES.md)（边界一页纸）。
@@ -123,7 +124,7 @@ import 在合并前阻断。
 
 ### 2.4 `backend/tests/` 后端测试
 
-66 个测试文件，914 个测试用例，覆盖 atoms / collectors / API / pipeline /
+约 80 个测试文件（逾千个用例，具体数量以 `pytest` 实跑为准），覆盖 atoms / collectors / API / pipeline /
 auth / FTS / keyword / metrics / probe / ssrf / browser / hourly digest 等。
 
 按主题分组（部分代表性文件）：
@@ -134,7 +135,7 @@ auth / FTS / keyword / metrics / probe / ssrf / browser / hourly digest 等。
 | 抓取 / collectors | `test_website_collector.py`、`test_website_parser.py`、`test_collectors_base.py`、`test_collectors_rss_youtube.py`、`test_x_graphql.py`、`test_x_twitter_text.py`、`test_fetch_orchestrator.py`、`test_fetch_tasks_extended.py` |
 | Ingest / pipeline | `test_pipeline_stages.py`、`test_process_tasks_extended.py`、`test_content_quality_filters.py`、`test_content_quality_scoring.py`、`test_url_dedupe.py`、`test_keyword_*.py` |
 | Enrich | `test_processors.py`、`test_reader_split.py`、`test_contents_reader.py`、`test_hourly_digest_*.py`、`test_email_tasks.py` |
-| Atoms | `test_atoms_layer.py`（Phase 6 引入） |
+| Atoms | `test_atoms_api.py`、`test_atoms_extractor.py`、`test_atoms_repository.py`、`test_atoms_types.py`、`test_atoms_vocab.py`、`test_atoms_relations.py` |
 | 平台层 | `test_encryption_coverage.py`、`test_ssrf_protection.py`、`test_metrics_*.py`、`test_logger_job_id.py`、`test_task_queue.py`、`test_scheduler_jobs.py`、`test_background.py`、`test_browser_playwright_prefs.py`、`test_cookie_utils.py` |
 | 调度 / 边界 | `test_sources_scheduling.py`、`test_source_limits.py`、`test_system_settings_limits.py` |
 | 配置 / 浏览器 | `test_configs_browser.py`、`test_configs_common_browser.py`、`test_configs_api_auth_extended.py` |

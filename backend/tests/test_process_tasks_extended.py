@@ -289,3 +289,35 @@ def test_update_keyword_matches_sync_uses_cursor_pagination():
 
     assert fake_db.commit.call_count == 3
     assert all(content.keyword_matches == [{"id": "kw-1", "keyword": "test"}] for content in contents)
+
+
+@pytest.mark.asyncio
+async def test_batch_process_contents_honours_reprocess_flags():
+    """reprocess flags must drive a real process_content call, not be ignored."""
+    from app.tasks import process_tasks
+
+    with patch.object(process_tasks, "process_content", new=AsyncMock()) as mock_proc:
+        with patch("app.tasks.task_queue.task_queue") as mock_queue:
+            mock_queue.enqueue_ingest_finish = AsyncMock()
+            await process_tasks.batch_process_contents(
+                ["a", "b"], regenerate_summary=True, retranslate=False
+            )
+
+    assert mock_proc.await_count == 2
+    mock_proc.assert_any_await("a", regenerate_summary=True, retranslate=False)
+    mock_proc.assert_any_await("b", regenerate_summary=True, retranslate=False)
+    mock_queue.enqueue_ingest_finish.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_batch_process_contents_without_flags_enqueues_finish():
+    """With no reprocess flag set it stays the lightweight ingest-finish path."""
+    from app.tasks import process_tasks
+
+    with patch.object(process_tasks, "process_content", new=AsyncMock()) as mock_proc:
+        with patch("app.tasks.task_queue.task_queue") as mock_queue:
+            mock_queue.enqueue_ingest_finish = AsyncMock()
+            await process_tasks.batch_process_contents(["a", "b"])
+
+    mock_proc.assert_not_awaited()
+    assert mock_queue.enqueue_ingest_finish.await_count == 2

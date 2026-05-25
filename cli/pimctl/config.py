@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import tempfile
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path
@@ -83,11 +84,27 @@ def save_config(config: dict[str, Any]) -> None:
             lines.append(f"timeout = {int(timeout)}")
         lines.append("")
 
-    path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
+    _atomic_write_private(path, "\n".join(lines).rstrip() + "\n")
+
+
+def _atomic_write_private(path: Path, content: str) -> None:
+    """Write *content* to *path* with 0600 perms and no readable window.
+
+    ``mkstemp`` creates the temp file 0600 from the start, so the API key is
+    never momentarily group/world-readable (which a write-then-chmod sequence
+    allows). The atomic rename also avoids leaving a half-written config behind.
+    """
+    fd, tmp = tempfile.mkstemp(dir=str(path.parent), prefix=".config-", suffix=".tmp")
     try:
-        path.chmod(0o600)
-    except OSError:
-        pass
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(content)
+        os.replace(tmp, path)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
 
 
 def _escape(value: str) -> str:

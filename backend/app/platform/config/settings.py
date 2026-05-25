@@ -167,8 +167,26 @@ class Settings(BaseSettings):
 _RUNTIME_SECRETS_FILENAME = "runtime-secrets.json"
 
 
+class RuntimeSecretsError(RuntimeError):
+    """Raised when runtime-secrets.json exists but cannot be safely read.
+
+    We fail closed instead of regenerating: silently minting a new
+    ENCRYPTION_KEY would make every previously-encrypted credential
+    undecryptable and rotate PIM_API_KEY out from under existing clients.
+    A corrupt file almost always means a truncated write or disk issue, not
+    "start fresh", so we stop and let the operator restore or delete it.
+    """
+
+
 def _runtime_secrets_path(data_dir: str) -> Path:
     return Path(data_dir).expanduser() / _RUNTIME_SECRETS_FILENAME
+
+
+_RUNTIME_SECRETS_RECOVERY = (
+    "Refusing to regenerate secrets (that would orphan encrypted credentials "
+    "and invalidate the API key). Restore the file from backup, or — only if "
+    "you have no encrypted data to keep — delete it to mint fresh secrets."
+)
 
 
 def _read_runtime_secrets(path: Path) -> dict[str, str]:
@@ -176,11 +194,24 @@ def _read_runtime_secrets(path: Path) -> dict[str, str]:
         return {}
 
     try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return {}
+        raw = path.read_text(encoding="utf-8")
+    except OSError as exc:
+        raise RuntimeSecretsError(
+            f"Cannot read runtime secrets at {path}: {exc}. {_RUNTIME_SECRETS_RECOVERY}"
+        ) from exc
+
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise RuntimeSecretsError(
+            f"Runtime secrets at {path} are not valid JSON: {exc}. {_RUNTIME_SECRETS_RECOVERY}"
+        ) from exc
+
     if not isinstance(payload, dict):
-        return {}
+        raise RuntimeSecretsError(
+            f"Runtime secrets at {path} must be a JSON object. {_RUNTIME_SECRETS_RECOVERY}"
+        )
+
     return {
         "ENCRYPTION_KEY": str(payload.get("ENCRYPTION_KEY") or "").strip(),
         "PIM_API_KEY": str(payload.get("PIM_API_KEY") or "").strip(),

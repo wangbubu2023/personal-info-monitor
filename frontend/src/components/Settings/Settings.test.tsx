@@ -3,9 +3,13 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { MemoryRouter } from 'react-router-dom'
 import { describe, expect, it, vi } from 'vitest'
 
-vi.mock('../../config/features', () => ({
+// Partial mock: inherit real exports so newly added flags don't break the
+// mock, but pin the flags this test asserts on to a known-off state.
+vi.mock('../../config/features', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../config/features')>()),
   PODCAST_SOURCES_ENABLED: false,
   KEYWORD_MONITORING_ENABLED: false,
+  SCORE_LAB_BUILD_ENABLED: false,
 }))
 
 vi.mock('../SourceList/SourceManager', () => ({

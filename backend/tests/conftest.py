@@ -32,6 +32,35 @@ def _test_default_ai_settings(monkeypatch):
     get_settings.cache_clear()
 
 
+@pytest.fixture(autouse=True)
+def _disable_api_rate_limit():
+    """Neutralise the process-global APIRateLimitMiddleware between tests.
+
+    The whole suite shares the module-level ``app`` (and therefore one
+    middleware instance whose sliding-window ``_windows`` state persists
+    across tests). Unauthenticated test requests collapse to a single client
+    key, so after enough requests within the 60s window later tests start
+    getting 429s purely from accumulated state. Reset + disable per test so
+    rate-limit leakage can't cause order-dependent failures. Dedicated
+    rate-limit tests build their own app and are unaffected.
+    """
+    from app.main import app
+    from app.middleware.api_rate_limit import APIRateLimitMiddleware
+
+    if app.middleware_stack is None:
+        app.middleware_stack = app.build_middleware_stack()
+
+    node = app.middleware_stack
+    while node is not None:
+        if isinstance(node, APIRateLimitMiddleware):
+            node._windows.clear()
+            node._rpm = 0
+            node._local_token_rpm = 0
+            break
+        node = getattr(node, "app", None)
+    yield
+
+
 @pytest.fixture
 def anyio_backend() -> str:
     return "asyncio"

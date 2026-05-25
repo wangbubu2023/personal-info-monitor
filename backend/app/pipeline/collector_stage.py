@@ -118,20 +118,35 @@ class CollectorStage:
         # Fetch content across primary + extra URLs.
         source_urls = get_source_urls(source)
         raw_contents = []
+        fetch_success_count = 0
+        fetch_error_count = 0
+        last_fetch_error = ""
         for fetch_url in source_urls:
             try:
                 fetched = await fetch_at_ephemeral_source_url(collector, source, fetch_url)
+                fetch_success_count += 1
                 if fetched:
                     raw_contents.extend(fetched)
             except Exception as e:
+                fetch_error_count += 1
+                last_fetch_error = str(e)
                 logger.error(f"Error fetching from URL {fetch_url}: {e}")
                 continue
+
+        # Every URL raised: this is a real fetch failure, not "no new content".
+        # Surface it as an error warning so the coordinator records error state
+        # instead of reporting a silent success.
+        if source_urls and fetch_success_count == 0 and fetch_error_count > 0:
+            detail = last_fetch_error.strip() or "all fetch attempts failed"
+            warning_entries.append(
+                ("fetch_failed", "error", f"抓取失败：所有请求均未成功（{detail}）"[:500])
+            )
 
         raw_contents = dedupe_raw_contents(raw_contents)
         cookie_entry = cookie_hydration_warning_entry(source, runtime_auth)
         if cookie_entry:
             warning_entries.append(cookie_entry)
-            
+
         merged_warning = merge_warning_messages(*[item[2] for item in warning_entries])
         primary_warning = next((w for w in warning_entries if w[1] == "error"), warning_entries[0] if warning_entries else None)
         

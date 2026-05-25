@@ -303,50 +303,38 @@ class TestFetchPublishTimeFromUrl:
 
     @pytest.mark.asyncio
     async def test_successful_fetch(self):
+        # The request now flows through the SSRF-guarded fetch_public_http_text
+        # helper, so we mock at that boundary instead of session.get.
         html = '<html><head><meta property="article:published_time" content="2025-06-15 10:00:00"></head></html>'
+        from app.platform.security.ssrf import PublicHttpTextResult
 
-        mock_resp = MagicMock()
-        mock_resp.status = 200
-        mock_resp.text = AsyncMock(return_value=html)
-
-        mock_get_ctx = AsyncMock()
-        mock_get_ctx.__aenter__ = AsyncMock(return_value=mock_resp)
-        mock_get_ctx.__aexit__ = AsyncMock(return_value=False)
-
-        mock_session = MagicMock()
-        mock_session.get = MagicMock(return_value=mock_get_ctx)
-
-        mock_session_ctx = AsyncMock()
-        mock_session_ctx.__aenter__ = AsyncMock(return_value=mock_session)
-        mock_session_ctx.__aexit__ = AsyncMock(return_value=False)
-
-        with patch("app.utils.publish_time.aiohttp.ClientSession", return_value=mock_session_ctx):
+        with patch(
+            "app.platform.security.ssrf.fetch_public_http_text",
+            new=AsyncMock(return_value=PublicHttpTextResult(200, "https://example.com/article", html)),
+        ):
             result = await fetch_publish_time_from_url("https://example.com/article")
         assert result is not None
 
     @pytest.mark.asyncio
     async def test_non_200_returns_none(self):
-        # Mirrors the successful-fetch mock shape (MagicMock on session.get
-        # returning an async ctx manager) — AsyncMock on the method would yield
-        # a coroutine that isn't itself a context manager, which used to rely
-        # on the old `except Exception:` swallowing the TypeError.
-        mock_resp = MagicMock()
-        mock_resp.status = 404
+        from app.platform.security.ssrf import PublicHttpTextResult
 
-        mock_get_ctx = AsyncMock()
-        mock_get_ctx.__aenter__ = AsyncMock(return_value=mock_resp)
-        mock_get_ctx.__aexit__ = AsyncMock(return_value=False)
-
-        mock_session = MagicMock()
-        mock_session.get = MagicMock(return_value=mock_get_ctx)
-
-        mock_session_ctx = AsyncMock()
-        mock_session_ctx.__aenter__ = AsyncMock(return_value=mock_session)
-        mock_session_ctx.__aexit__ = AsyncMock(return_value=False)
-
-        with patch("app.utils.publish_time.aiohttp.ClientSession", return_value=mock_session_ctx):
+        with patch(
+            "app.platform.security.ssrf.fetch_public_http_text",
+            new=AsyncMock(return_value=PublicHttpTextResult(404, "https://example.com/404", "")),
+        ):
             result = await fetch_publish_time_from_url("https://example.com/404")
         assert result is None
+
+    @pytest.mark.asyncio
+    async def test_blocks_internal_target(self):
+        """URLs pointing at loopback/link-local addresses must be refused.
+
+        These resolve as IP literals so the SSRF guard rejects them before any
+        DNS lookup or HTTP request — no network access required.
+        """
+        assert await fetch_publish_time_from_url("http://127.0.0.1:8000/admin") is None
+        assert await fetch_publish_time_from_url("http://169.254.169.254/latest/meta-data/") is None
 
     @pytest.mark.asyncio
     async def test_network_error_returns_none(self):

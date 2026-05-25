@@ -1,6 +1,6 @@
 import axios from 'axios'
 import { promptApiKey } from '../components/ui/ApiKeyModal'
-import { clearApiKey, readApiKey, readBootstrapToken, writeApiKey } from './apiKeyStore'
+import { clearApiKey, isTauriRuntime, readApiKey, readBootstrapToken, writeApiKey } from './apiKeyStore'
 
 declare global {
   interface Window {
@@ -156,9 +156,11 @@ async function tryAutoProvision(): Promise<string | null> {
     const data = await resp.json()
     const key = typeof data?.api_key === 'string' ? data.api_key.trim() : null
     if (key) {
-      // Auto-provision implies an established trust boundary (Tauri runtime or
-      // one-shot bootstrap URL), so we can safely persist across restarts.
-      await writeApiKey(key, { remember: true })
+      // In the Tauri shell the key is owned by the Rust side (0600
+      // runtime-secrets.json), so persistence is safe. On the web, default to
+      // session-scoped storage so a future XSS bug can't lift a long-lived key
+      // out of localStorage; the user can still opt into "remember me" manually.
+      await writeApiKey(key, { remember: isTauriRuntime() })
     }
     return key || null
   } catch {

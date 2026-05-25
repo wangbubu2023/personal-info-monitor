@@ -77,7 +77,7 @@ class TestCollectorStage:
 
     @pytest.mark.asyncio
     async def test_handles_fetch_error_gracefully(self):
-        """CollectorStage should catch per-URL errors and continue."""
+        """All URLs failing must surface a fetch_failed error, not silent success."""
         from app.pipeline.collector_stage import CollectorStage
 
         source = _make_source(type=SourceType.RSS)
@@ -94,11 +94,46 @@ class TestCollectorStage:
              patch("app.pipeline.collector_stage.dedupe_raw_contents", side_effect=lambda x: x), \
              patch("app.pipeline.collector_stage.auth_warning_entry", return_value=None), \
              patch("app.pipeline.collector_stage.cookie_hydration_warning_entry", return_value=None), \
-             patch("app.pipeline.collector_stage.merge_warning_messages", return_value=None):
+             patch("app.pipeline.collector_stage.merge_warning_messages", side_effect=lambda *a: next((m for m in a if m), None)):
 
             raw, warning, primary = await CollectorStage.execute(db, source)
 
         assert raw == []
+        assert primary is not None
+        assert primary[0] == "fetch_failed"
+        assert primary[1] == "error"
+
+    @pytest.mark.asyncio
+    async def test_partial_fetch_failure_is_not_flagged_as_error(self):
+        """One URL failing while another succeeds must not be flagged fetch_failed."""
+        from app.pipeline.collector_stage import CollectorStage
+
+        source = _make_source(type=SourceType.RSS)
+        source.auth_config = None
+        source.auth_config_id = None
+
+        async def _fetch(src):
+            if src.url == "https://bad.com":
+                raise RuntimeError("network")
+            return [_raw()]
+
+        mock_collector = MagicMock()
+        mock_collector.fetch = AsyncMock(side_effect=_fetch)
+        mock_collector.filter_new_content = MagicMock(side_effect=lambda items, _: items)
+
+        db = MagicMock()
+
+        with patch("app.pipeline.collector_stage.get_collector", return_value=mock_collector), \
+             patch("app.pipeline.collector_stage.get_source_urls", return_value=["https://bad.com", "https://ok.com"]), \
+             patch("app.pipeline.collector_stage.dedupe_raw_contents", side_effect=lambda x: x), \
+             patch("app.pipeline.collector_stage.auth_warning_entry", return_value=None), \
+             patch("app.pipeline.collector_stage.cookie_hydration_warning_entry", return_value=None), \
+             patch("app.pipeline.collector_stage.merge_warning_messages", side_effect=lambda *a: next((m for m in a if m), None)):
+
+            raw, warning, primary = await CollectorStage.execute(db, source)
+
+        assert len(raw) == 1
+        assert primary is None
 
     @pytest.mark.asyncio
     async def test_multiple_urls_concatenated(self):
@@ -498,8 +533,10 @@ class TestBuildRawContentObjects:
             results, _build_failures = await build_raw_content_objects(raw, source)
 
         assert isinstance(results[0].metadata_, dict)
-        assert results[0].metadata_.get("ingest_finalize_pending") is True
-        assert "fulltext_status" not in results[0].metadata_
+        # Non-dict metadata is normalised to a dict and stamped with the
+        # content-quality signals merge_content_quality_metadata produces.
+        assert "content_quality" in results[0].metadata_
+        assert results[0].metadata_.get("fulltext_status") == "title_only"
 
 
 # ===========================================================================

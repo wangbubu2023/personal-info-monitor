@@ -95,6 +95,13 @@ async def test_translate_listing_fields_async_persists_title_and_summary():
     ), patch(
         "app.domains.enrich.content.listing_translation._resolve_target_language",
         return_value="zh-CN",
+    ), patch(
+        # This unit test exercises the translate+persist orchestration; the
+        # boilerplate/short-text heuristics of clean_listing_summary have their
+        # own tests. Stub it to a passthrough so a deliberately short fixture
+        # isn't dropped by the substantive-length gate.
+        "app.domains.enrich.content.listing_translation.clean_listing_summary",
+        side_effect=lambda text: (text or "").strip(),
     ):
         mock_sem.return_value.__aenter__ = AsyncMock(return_value=None)
         mock_sem.return_value.__aexit__ = AsyncMock(return_value=False)

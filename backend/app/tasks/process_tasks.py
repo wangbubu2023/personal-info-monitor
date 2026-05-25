@@ -64,9 +64,29 @@ async def _process_content_async(content_id: str, regenerate_summary: bool, retr
 
 
 async def batch_process_contents(content_ids: list, regenerate_summary: bool = False, retranslate: bool = False):
-    """Batch process multiple content items."""
+    """Batch process multiple content items.
+
+    When ``regenerate_summary`` or ``retranslate`` is requested this runs the
+    LLM-bearing manual reprocess (:func:`process_content`) for each item so the
+    flags are actually honoured. With no reprocess flag set it falls back to the
+    lightweight ingest-finish enqueue.
+    """
+    logger.info(
+        "Batch processing %d contents (regenerate_summary=%s, retranslate=%s)",
+        len(content_ids),
+        regenerate_summary,
+        retranslate,
+    )
+    if regenerate_summary or retranslate:
+        for content_id in content_ids:
+            await process_content(
+                content_id,
+                regenerate_summary=regenerate_summary,
+                retranslate=retranslate,
+            )
+        return
+
     from app.tasks.task_queue import task_queue
-    logger.info(f"Batch processing {len(content_ids)} contents")
     for content_id in content_ids:
         await task_queue.enqueue_ingest_finish(content_id, job_id=None)
 
