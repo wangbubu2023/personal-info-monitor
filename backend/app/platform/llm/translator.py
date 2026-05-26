@@ -26,7 +26,10 @@ def get_translation_settings():
         model_settings = settings.get("translation_model", {})
         if not isinstance(model_settings, dict):
             return {}
-        return enrich_model_settings_from_api_config(model_settings)
+        result = enrich_model_settings_from_api_config(model_settings)
+        if result.get("provider") == "ollama" and not result.get("api_base"):
+            result["api_base"] = "http://localhost:11434"
+        return result
     except Exception as exc:
         logger.warning("Translation config parsing failed: %s", exc)
         return {}

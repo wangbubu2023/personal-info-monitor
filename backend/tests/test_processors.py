@@ -420,6 +420,7 @@ class TestSummarizer:
         summarizer = self._make_summarizer()
         settings = {"ai_model": {"provider": "ollama", "model": "deepseek", "api_base": "http://localhost:11434"}}
         with patch.object(summarizer, "_get_runtime_settings", return_value=settings), \
+             patch("app.ai.provider.list_ollama_models", new_callable=AsyncMock, return_value=["deepseek"]), \
              patch.object(summarizer, "_extract_keywords_with_ollama", new_callable=AsyncMock, return_value="AI, ML, NLP"):
             result = await summarizer.extract_keywords("A" * 100)
         assert result == ["AI", "ML", "NLP"]
@@ -429,6 +430,7 @@ class TestSummarizer:
         summarizer = self._make_summarizer()
         settings = {"ai_model": {"provider": "ollama", "model": "deepseek", "api_base": "http://localhost:11434"}}
         with patch.object(summarizer, "_get_runtime_settings", return_value=settings), \
+             patch("app.ai.provider.list_ollama_models", new_callable=AsyncMock, return_value=["deepseek"]), \
              patch.object(summarizer, "_extract_keywords_with_ollama", new_callable=AsyncMock, return_value=None):
             result = await summarizer.extract_keywords("A" * 100)
         assert result == []
