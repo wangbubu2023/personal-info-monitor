@@ -128,7 +128,7 @@ const ModelProvidersTab: React.FC = () => {
   const columns = [
     { title: '提供商', dataIndex: 'platform', key: 'platform', render: (p: string) => platformLabels[p] || p },
     { title: '名称', dataIndex: 'name', key: 'name', render: (name: string) => name || '-' },
-    { title: 'API Base', dataIndex: 'api_base', key: 'api_base', render: (base: string) => base || '-' },
+    { title: '有效 API Base', dataIndex: 'api_base', key: 'api_base', render: (base: string) => base || '-' },
     {
       title: 'API Key',
       dataIndex: 'masked_key',

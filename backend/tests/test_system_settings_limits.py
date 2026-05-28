@@ -4,6 +4,7 @@ from app.platform.config.system_settings import (
     DEFAULT_SYSTEM_SETTINGS,
     HOURLY_DIGEST_DEFAULT_PROMPT,
     _apply_patch,
+    _settings_for_storage,
     effective_hourly_digest_prompt,
     get_system_settings_for_response,
     normalize_hourly_digest_content_types,
@@ -85,6 +86,37 @@ def test_apply_patch_custom_provider_drops_stale_ollama_base():
     )
 
     assert "api_base" not in updated["ai_model"]
+
+
+def test_settings_for_storage_drops_catalog_default_endpoints_only():
+    settings = copy.deepcopy(DEFAULT_SYSTEM_SETTINGS)
+    settings["ai_model"] = {
+        "provider": "minimax",
+        "model": "MiniMax-M2.7",
+        "api_base": "https://api.minimaxi.com/v1",
+    }
+    settings["translation_model"] = {
+        "provider": "minimax",
+        "model": "MiniMax-M2.7",
+        "api_base": "https://proxy.example.com/minimax/v1",
+    }
+    settings["atom_model"] = {
+        "provider": "deepseek",
+        "model": "deepseek-chat",
+        "api_base": "https://api.deepseek.com/v1",
+    }
+    settings["score_model"] = {
+        "provider": "ollama",
+        "model": "",
+        "api_base": "http://localhost:11434",
+    }
+
+    stored = _settings_for_storage(settings)
+
+    assert "api_base" not in stored["ai_model"]
+    assert stored["translation_model"]["api_base"] == "https://proxy.example.com/minimax/v1"
+    assert "api_base" not in stored["atom_model"]
+    assert stored["score_model"]["api_base"] == "http://localhost:11434"
 
 
 def test_apply_patch_fallback_bools_coerced():

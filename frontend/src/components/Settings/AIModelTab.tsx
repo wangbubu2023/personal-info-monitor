@@ -72,6 +72,12 @@ const AIModelTab: React.FC = () => {
       String(option?.label || '').toLowerCase().includes(normalizedInput)
     )
   }
+  const renderEffectiveBase = (label: string, base?: string) => (
+    <SectionNote style={{ marginBottom: 16 }}>
+      {label}（模型接入或厂商默认）：{' '}
+      <code className="text-[13px]">{base || '—'}</code>
+    </SectionNote>
+  )
 
   React.useEffect(() => {
     if (!settings) return
@@ -299,10 +305,7 @@ const AIModelTab: React.FC = () => {
         </Form.Item>
 
         {selectedProvider ? (
-          <SectionNote style={{ marginBottom: 16 }}>
-            当前通道服务地址（来自模型接入）：{' '}
-            <code className="text-[13px]">{currentProvider?.default_api_base || '—'}</code>
-          </SectionNote>
+          renderEffectiveBase('当前通道服务地址', currentProvider?.default_api_base)
         ) : null}
 
         <Form.Item name="temperature" label="Temperature" extra="控制输出的随机性，0 为确定性输出，2 为最大随机">
@@ -362,10 +365,7 @@ const AIModelTab: React.FC = () => {
               />
             </Form.Item>
             {selectedSumFbProvider ? (
-              <SectionNote style={{ marginBottom: 16 }}>
-                写作备用通道地址（来自模型接入）：{' '}
-                <code className="text-[13px]">{sumFbProvider?.default_api_base || '—'}</code>
-              </SectionNote>
+              renderEffectiveBase('写作备用通道地址', sumFbProvider?.default_api_base)
             ) : null}
           </>
         ) : null}
@@ -395,10 +395,7 @@ const AIModelTab: React.FC = () => {
         </Form.Item>
 
         {selectedTransProvider ? (
-          <SectionNote style={{ marginBottom: 16 }}>
-            当前翻译通道服务地址（来自模型接入）：{' '}
-            <code className="text-[13px]">{transProvider?.default_api_base || '—'}</code>
-          </SectionNote>
+          renderEffectiveBase('当前翻译通道服务地址', transProvider?.default_api_base)
         ) : null}
 
         {selectedTransProvider === 'ollama' ? (
@@ -454,10 +451,7 @@ const AIModelTab: React.FC = () => {
               />
             </Form.Item>
             {selectedTransFbProvider ? (
-              <SectionNote style={{ marginBottom: 16 }}>
-                翻译备用通道地址（来自模型接入）：{' '}
-                <code className="text-[13px]">{transFbProvider?.default_api_base || '—'}</code>
-              </SectionNote>
+              renderEffectiveBase('翻译备用通道地址', transFbProvider?.default_api_base)
             ) : null}
           </>
         ) : null}
@@ -491,10 +485,7 @@ const AIModelTab: React.FC = () => {
         </Form.Item>
 
         {selectedAtomProvider ? (
-          <SectionNote style={{ marginBottom: 16 }}>
-            当前原子化通道服务地址（来自模型接入）：{' '}
-            <code className="text-[13px]">{atomProvider?.default_api_base || '—'}</code>
-          </SectionNote>
+          renderEffectiveBase('当前原子化通道服务地址', atomProvider?.default_api_base)
         ) : null}
 
         <Form.Item name="atom_temperature" label="Temperature">
@@ -554,10 +545,7 @@ const AIModelTab: React.FC = () => {
         </Form.Item>
 
         {selectedScoreProvider ? (
-          <SectionNote style={{ marginBottom: 16 }}>
-            当前评分通道服务地址（来自模型接入）：{' '}
-            <code className="text-[13px]">{scoreProvider?.default_api_base || '—'}</code>
-          </SectionNote>
+          renderEffectiveBase('当前评分通道服务地址', scoreProvider?.default_api_base)
         ) : null}
 
         <Form.Item name="score_temperature" label="Temperature">

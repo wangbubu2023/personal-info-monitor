@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.platform.persistence.database import SessionLocal
 from app.models.system_setting import SystemSetting
 from app.platform.observability.logger import get_logger
-from app.utils.model_catalog import sanitize_provider_api_base
+from app.utils.model_catalog import provider_default_api_base, sanitize_provider_api_base
 
 logger = get_logger(__name__)
 
@@ -266,6 +266,28 @@ def _normalize_model_blocks(settings: Dict[str, Any]) -> None:
             _normalize_model_endpoint_fields(block)
 
 
+def _settings_for_storage(settings: Dict[str, Any]) -> Dict[str, Any]:
+    """Persist model choices without duplicating catalog default endpoints.
+
+    Runtime reads still resolve provider defaults through ``_normalize_model_blocks``.
+    Keeping catalog defaults out of ``system_settings`` prevents a stale model block
+    from pretending to be the endpoint source when「模型接入」is the real owner.
+    """
+    stored = copy.deepcopy(settings)
+    for key in ("ai_model", "translation_model", "atom_model", "score_model"):
+        block = stored.get(key)
+        if not isinstance(block, dict):
+            continue
+        provider = str(block.get("provider") or "ollama").strip().lower()
+        if provider == "ollama":
+            continue
+        base = str(block.get("api_base") or "").strip().rstrip("/")
+        default_base = provider_default_api_base(provider)
+        if base and default_base and base == default_base:
+            block.pop("api_base", None)
+    return stored
+
+
 def _apply_patch(current: Dict[str, Any], patch: Dict[str, Any]) -> Dict[str, Any]:
     updated = copy.deepcopy(current)
 
@@ -464,11 +486,12 @@ async def update_system_settings_async(db: AsyncSession, patch: Dict[str, Any]) 
 
     result = await db.execute(select(SystemSetting).filter(SystemSetting.key == SYSTEM_SETTINGS_KEY))
     row = result.scalar_one_or_none()
+    stored = _settings_for_storage(merged)
     if row is None:
-        row = SystemSetting(key=SYSTEM_SETTINGS_KEY, value=merged)
+        row = SystemSetting(key=SYSTEM_SETTINGS_KEY, value=stored)
         db.add(row)
     else:
-        row.value = merged
+        row.value = stored
 
     await db.commit()
     _cache_set(merged)
