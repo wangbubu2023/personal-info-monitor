@@ -13,10 +13,13 @@ Usage:
                             Use --skip-playwright to skip Chromium download.
     ./pim upgrade           Backup, fast-forward git pull, refresh deps/frontend, restart if local service is running
                             Use --server for backend-only VPS, --systemd <unit> for systemd, --no-pull for tag/detached deploys.
+                            Use --restart-mode ensure for no-systemd containers.
     ./pim install-service   Install macOS LaunchAgent (auto-starts on login, runs in background)
     ./pim uninstall-service Remove LaunchAgent and stop the service
     ./pim start             Start dev server (backend + frontend Vite :3000)
     ./pim start --prod      Start production server as background process (single :8000)
+    ./pim ensure            Idempotently ensure the production server is healthy; start/restart if needed
+    ./pim restart           Stop then start the production server
     ./pim stop              Stop the server (launchd-aware, falls back to pid scan)
     ./pim status            Show running status and atom feature flags
     ./pim fetch             Trigger a full fetch now
@@ -49,6 +52,7 @@ DEFAULT_PID_FILE = Path.home() / ".pim" / "run" / "pim.pid"
 LEGACY_PID_FILE = Path.home() / ".pim" / "pim.pid"
 PID_FILE = Path(os.environ.get("PIM_PID_FILE") or DEFAULT_PID_FILE).expanduser()
 LOG_FILE = Path.home() / ".pim" / "data" / "pim.log"
+DEFAULT_LOG_ROTATE_BYTES = 1024 * 1024
 BACKUP_DIR = Path.home() / ".pim" / "backups"
 ENV_FILE = BACKEND / ".env"
 ENV_EXAMPLE_FILE = BACKEND / ".env.example"
@@ -121,6 +125,15 @@ def _parse_env_bool(value: str | None, *, default: bool = False) -> bool:
     return default
 
 
+def _parse_env_int(value: str | None, *, default: int) -> int:
+    if value is None:
+        return default
+    try:
+        return int(value.strip())
+    except (TypeError, ValueError):
+        return default
+
+
 def _read_env_var(name: str) -> str | None:
     if name in os.environ and os.environ[name].strip():
         return os.environ[name]
@@ -190,7 +203,7 @@ def _bootstrap_runtime_api_key() -> Optional[str]:
             cwd=str(BACKEND),
             text=True,
         )
-    except Exception:
+    except (OSError, subprocess.SubprocessError):
         return None
 
     return output.strip() or None
@@ -215,7 +228,7 @@ def _bootstrap_token() -> Optional[str]:
             cwd=str(BACKEND),
             text=True,
         )
-    except Exception:
+    except (OSError, subprocess.SubprocessError):
         return None
 
     return output.strip() or None
@@ -242,7 +255,7 @@ def _read_runtime_metadata() -> dict:
             cwd=str(BACKEND),
             text=True,
         )
-    except Exception:
+    except (OSError, subprocess.SubprocessError):
         return {}
 
     try:
@@ -379,6 +392,44 @@ def _wait_for_port_8000(timeout_seconds: float = 12.0) -> bool:
     return False
 
 
+def _is_livez_healthy() -> bool:
+    import urllib.error
+    import urllib.request
+
+    try:
+        with urllib.request.urlopen("http://127.0.0.1:8000/livez", timeout=1.0) as resp:
+            return resp.status == 200
+    except (OSError, urllib.error.URLError):
+        return False
+
+
+def _wait_for_livez(timeout_seconds: float = 15.0) -> bool:
+    deadline = time.time() + timeout_seconds
+    while time.time() < deadline:
+        if _is_livez_healthy():
+            return True
+        time.sleep(0.3)
+    return False
+
+
+def _rotate_log_file_if_needed() -> None:
+    max_bytes = _parse_env_int(
+        os.environ.get("PIM_LOG_ROTATE_BYTES"),
+        default=DEFAULT_LOG_ROTATE_BYTES,
+    )
+    if max_bytes <= 0 or not LOG_FILE.exists():
+        return
+    try:
+        if LOG_FILE.stat().st_size < max_bytes:
+            return
+        rotated = LOG_FILE.with_name(f"{LOG_FILE.name}.1")
+        rotated.unlink(missing_ok=True)
+        LOG_FILE.replace(rotated)
+        print(f"  Rotated log: {rotated}")
+    except OSError as exc:
+        print(f"  Warning: failed to rotate log {LOG_FILE}: {exc}", file=sys.stderr)
+
+
 def cmd_setup():
     print("=== PIM Setup ===\n")
     _ensure_venv()
@@ -415,7 +466,7 @@ def _pid_file_candidates() -> list[Path]:
 def _read_pid_file(path: Path) -> int:
     try:
         return int(path.read_text().strip())
-    except Exception:
+    except (OSError, ValueError):
         return 0
 
 
@@ -503,6 +554,10 @@ def cmd_upgrade():
     no_backup = "--no-backup" in args
     no_restart = "--no-restart" in args
     systemd_unit = _arg_value(args, "--systemd")
+    restart_mode = _arg_value(args, "--restart-mode") or "auto"
+    if restart_mode not in {"auto", "stop-start", "ensure"}:
+        print("Usage: ./pim upgrade [--restart-mode auto|stop-start|ensure]", file=sys.stderr)
+        sys.exit(2)
 
     print("=== PIM Upgrade ===")
     _ensure_git_ready(no_pull=no_pull)
@@ -532,6 +587,8 @@ def cmd_upgrade():
     print("\n[4/4] Restart")
     if no_restart:
         print("Restart skipped (--no-restart).")
+    elif restart_mode == "ensure":
+        _run_with_args(cmd_ensure, args)
     elif systemd_unit:
         _restart_systemd_unit(systemd_unit)
     elif was_launchd:
@@ -564,7 +621,7 @@ def _read_pid_command(pid: int) -> str:
     try:
         out = subprocess.check_output(["ps", "-p", str(pid), "-o", "command="], text=True)
         return out.strip()
-    except Exception:
+    except (OSError, subprocess.SubprocessError):
         return ""
 
 
@@ -610,10 +667,10 @@ def _terminate_pid(pid: int, timeout_seconds: float = 4.0) -> bool:
 
 
 def _find_prod_uvicorn_pids() -> list[int]:
-    pattern = f"{_uvicorn()} app.main:app --host 127.0.0.1 --port 8000"
+    pattern = "app.main:app.*--port 8000"
     try:
         out = subprocess.check_output(["pgrep", "-f", pattern], text=True).strip()
-    except Exception:
+    except (OSError, subprocess.SubprocessError):
         return []
     pids: list[int] = []
     for raw in out.splitlines():
@@ -675,6 +732,7 @@ def _currently_running_pid() -> int | None:
 
     for pid in _find_prod_uvicorn_pids():
         if _is_prod_uvicorn_pid(pid):
+            _write_pid_file(pid)
             return pid
 
     return None
@@ -714,7 +772,7 @@ def cmd_up():
     # briefly interrupts an otherwise happy server; idempotent re-runs of
     # `./pim up` should feel like a no-op.
     already_running_pid = _currently_running_pid()
-    if already_running_pid and _is_port_8000_open():
+    if already_running_pid and _is_livez_healthy():
         print(f"  Already running (PID {already_running_pid}); no restart needed.")
         if not server_only and (FRONTEND / "dist" / "index.html").exists():
             print("  Web UI: http://127.0.0.1:8000/  (served by backend from frontend/dist)")
@@ -734,10 +792,10 @@ def cmd_up():
         if pid is not None:
             print(f"  PID: {pid}")
 
-    if _wait_for_port_8000():
+    if _wait_for_livez():
         print("  Backend is healthy on http://127.0.0.1:8000")
     else:
-        print("  Warning: port 8000 not listening yet; inspect ./pim logs")
+        print("  Warning: /livez did not return HTTP 200 yet; inspect ./pim logs")
 
     if not server_only and (FRONTEND / "dist" / "index.html").exists():
         print("  Web UI: http://127.0.0.1:8000/  (served by backend from frontend/dist)")
@@ -756,6 +814,7 @@ def _launch_detached_backend() -> int | None:
     human-readable context around this low-level primitive.
     """
     LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
+    _rotate_log_file_if_needed()
 
     for pid_file in _pid_file_candidates():
         if pid_file.exists():
@@ -801,11 +860,79 @@ def _launch_detached_backend() -> int | None:
         try:
             tail = subprocess.check_output(["tail", "-n", "30", str(LOG_FILE)], text=True)
             print(tail)
-        except Exception:
+        except (OSError, subprocess.SubprocessError):
             pass
         _unlink_pid_files()
         sys.exit(1)
     return proc.pid
+
+
+def _run_with_args(func, args: list[str]) -> None:
+    original_argv = sys.argv
+    sys.argv = [original_argv[0], original_argv[1], *args]
+    try:
+        func()
+    finally:
+        sys.argv = original_argv
+
+
+def cmd_ensure():
+    """Idempotently ensure the production backend is alive and HTTP-ready.
+
+    Designed for no-systemd containers where a heartbeat/cron runner invokes
+    this command repeatedly. It repairs stale PID files, restarts unhealthy PIM
+    uvicorn processes, and refuses to take over :8000 when a foreign process is
+    listening there.
+    """
+    args = sys.argv[2:]
+    server_only = any(flag in args for flag in ("--server", "--no-frontend"))
+    rebuild = "--rebuild" in args
+
+    print("=== PIM ensure ===")
+    api_key = _ensure_runtime_ready()
+    if server_only:
+        print("  Skipping frontend build (--server).")
+    else:
+        _ensure_frontend_built(rebuild=rebuild)
+
+    running_pid = _currently_running_pid()
+    if running_pid and _is_livez_healthy():
+        print(f"  Healthy (PID {running_pid}); no action needed.")
+        if api_key:
+            print(f"  API Key: {_mask_secret(api_key)}")
+        return
+
+    if running_pid:
+        print(f"  Existing PIM process is not healthy (PID {running_pid}); restarting.")
+        _stop_by_pid()
+    elif _is_port_8000_open():
+        print("  Port 8000 is already in use by another process. Abort ensure.", file=sys.stderr)
+        sys.exit(1)
+
+    if sys.platform == "darwin":
+        print("  Platform: macOS → ensuring LaunchAgent.")
+        cmd_install_service()
+    else:
+        print("  Platform: non-macOS → starting detached backend.")
+        pid = _launch_detached_backend()
+        if pid is not None:
+            print(f"  PID: {pid}")
+
+    if not _wait_for_livez():
+        print("  Failed: /livez did not return HTTP 200; inspect ./pim logs", file=sys.stderr)
+        sys.exit(1)
+
+    print("  Backend is healthy on http://127.0.0.1:8000")
+    if api_key:
+        print(f"  API Key: {_mask_secret(api_key)}")
+
+
+def cmd_restart():
+    """Stop then start the production backend."""
+    args = sys.argv[2:]
+    print("=== PIM restart ===")
+    cmd_stop()
+    _run_with_args(cmd_up, args)
 
 
 def cmd_start():
@@ -1265,6 +1392,8 @@ COMMANDS = {
     "setup": cmd_setup,
     "upgrade": cmd_upgrade,
     "start": cmd_start,
+    "ensure": cmd_ensure,
+    "restart": cmd_restart,
     "stop": cmd_stop,
     "status": cmd_status,
     "fetch": cmd_fetch,

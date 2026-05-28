@@ -124,6 +124,31 @@ cd /path/to/personal-info-monitor
 PIM_PUBLIC_URL=https://your-domain.com ./pim bootstrap-url
 ```
 
+## 4.1 无 systemd 容器守护
+
+如果运行环境没有 systemd（例如 OpenClaw / 轻量容器），不要依赖 `./pim up`
+的一次性后台进程长期存活。用外部 HEARTBEAT、cron 或平台心跳反复调用：
+
+```bash
+cd /path/to/personal-info-monitor
+./pim ensure --server
+```
+
+`ensure` 会检查 PID 文件、进程表、8000 端口和 `GET /livez`。服务健康时直接退出；
+PID 陈旧时会清理；PIM 进程存在但 `/livez` 不返回 HTTP 200 时会重启；如果 8000
+端口被非 PIM 进程占用则失败退出，避免双启。
+
+需要明确重启时可执行：
+
+```bash
+./pim restart --server
+```
+
+Linux 后台 PID 文件默认写入 `~/.pim/run/pim.pid`；可用 `PIM_PID_FILE=/path/to/pim.pid`
+覆盖。旧版 `~/.pim/pim.pid` 会被自动识别并迁移。detached 模式下主日志
+`~/.pim/data/pim.log` 默认超过 1MB 时轮转到 `pim.log.1`；可用
+`PIM_LOG_ROTATE_BYTES=0` 关闭，或设置为其它字节数。
+
 ## 5. 反向代理与安全加固
 
 ### 5.1 HTTPS（必须）
@@ -320,14 +345,23 @@ cd /path/to/personal-info-monitor
 ./pim upgrade --server --skip-playwright
 ```
 
+无 systemd 容器建议让升级末尾走同一套健康检查和自愈入口：
+
+```bash
+./pim upgrade --server --skip-playwright --restart-mode ensure
+```
+
 如果 VPS 部署固定在 tag / detached HEAD，先用外部发布流程切到目标版本，然后执行：
 
 ```bash
 ./pim upgrade --server --skip-playwright --no-pull --no-restart
 ```
 
-Linux 后台 PID 文件默认写入 `~/.pim/run/pim.pid`；可用 `PIM_PID_FILE=/path/to/pim.pid`
-覆盖。旧版 `~/.pim/pim.pid` 会被自动识别并迁移。
+随后由 HEARTBEAT、cron 或平台心跳继续调用：
+
+```bash
+./pim ensure --server
+```
 
 ## 8. 中文金融 / 科技舆情源
 

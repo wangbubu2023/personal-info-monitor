@@ -32,12 +32,23 @@ cd personal-info-monitor
 ```bash
 # 服务配置 /etc/systemd/system/pim.service
 [Service]
-ExecStart=/path/to/backend/.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000
+WorkingDirectory=/path/to/personal-info-monitor
+ExecStart=/path/to/personal-info-monitor/pim up --foreground --server
 Environment=TRUSTED_PROXY_IPS=127.0.0.1  # 若使用反向代理
 Restart=always
 
 sudo systemctl enable --now pim
 ```
+
+无 systemd 的容器环境中，让平台 HEARTBEAT、cron 或守护脚本反复调用：
+
+```bash
+cd /path/to/personal-info-monitor
+./pim ensure --server
+```
+
+该命令健康时无操作；进程缺失或 `/livez` 不返回 HTTP 200 时会拉起/重启；8000
+端口被非 PIM 进程占用时会失败退出，避免双启。
 
 ### 1.2 安装 pimctl
 
