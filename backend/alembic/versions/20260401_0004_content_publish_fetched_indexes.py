@@ -8,6 +8,7 @@ Create Date: 2026-04-01 12:00:00
 from __future__ import annotations
 
 from alembic import op
+import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
@@ -17,9 +18,19 @@ branch_labels = None
 depends_on = None
 
 
+def _index_exists(table_name: str, index_name: str) -> bool:
+    bind = op.get_bind()
+    return any(index["name"] == index_name for index in sa.inspect(bind).get_indexes(table_name))
+
+
+def _create_index_if_missing(index_name: str, table_name: str, columns: list[str]) -> None:
+    if not _index_exists(table_name, index_name):
+        op.create_index(index_name, table_name, columns, unique=False)
+
+
 def upgrade() -> None:
-    op.create_index("ix_content_publish_time", "contents", ["publish_time"], unique=False)
-    op.create_index("ix_content_fetched_at", "contents", ["fetched_at"], unique=False)
+    _create_index_if_missing("ix_content_publish_time", "contents", ["publish_time"])
+    _create_index_if_missing("ix_content_fetched_at", "contents", ["fetched_at"])
 
 
 def downgrade() -> None:

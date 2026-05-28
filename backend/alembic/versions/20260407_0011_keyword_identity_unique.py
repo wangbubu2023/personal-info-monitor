@@ -19,13 +19,26 @@ branch_labels = None
 depends_on = None
 
 
+def _column_exists(table_name: str, column_name: str) -> bool:
+    bind = op.get_bind()
+    return any(column["name"] == column_name for column in sa.inspect(bind).get_columns(table_name))
+
+
+def _index_exists(table_name: str, index_name: str) -> bool:
+    bind = op.get_bind()
+    return any(index["name"] == index_name for index in sa.inspect(bind).get_indexes(table_name))
+
+
 def upgrade() -> None:
     conn = op.get_bind()
 
-    op.add_column(
-        "keywords",
-        sa.Column("keyword_identity", sa.String(512), nullable=True),
-    )
+    added_keyword_identity = False
+    if not _column_exists("keywords", "keyword_identity"):
+        op.add_column(
+            "keywords",
+            sa.Column("keyword_identity", sa.String(512), nullable=True),
+        )
+        added_keyword_identity = True
 
     rows = conn.execute(text("SELECT id, keyword, created_at FROM keywords")).fetchall()
     for row in rows:
@@ -52,19 +65,21 @@ def upgrade() -> None:
         for dup_id, _c in items[1:]:
             conn.execute(text("DELETE FROM keywords WHERE id = :id"), {"id": dup_id})
 
-    with op.batch_alter_table("keywords") as batch_op:
-        batch_op.alter_column(
-            "keyword_identity",
-            existing_type=sa.String(512),
-            nullable=False,
-        )
+    if added_keyword_identity:
+        with op.batch_alter_table("keywords") as batch_op:
+            batch_op.alter_column(
+                "keyword_identity",
+                existing_type=sa.String(512),
+                nullable=False,
+            )
 
-    op.create_index(
-        "ix_keywords_keyword_identity",
-        "keywords",
-        ["keyword_identity"],
-        unique=True,
-    )
+    if not _index_exists("keywords", "ix_keywords_keyword_identity"):
+        op.create_index(
+            "ix_keywords_keyword_identity",
+            "keywords",
+            ["keyword_identity"],
+            unique=True,
+        )
 
 
 def downgrade() -> None:

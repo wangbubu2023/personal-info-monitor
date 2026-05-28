@@ -17,7 +17,35 @@ branch_labels = None
 depends_on = None
 
 
+def _table_exists(bind, name: str) -> bool:
+    return bool(
+        bind.execute(
+            sa.text(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name=:name LIMIT 1"
+            ),
+            {"name": name},
+        ).first()
+    )
+
+
+def _index_exists(table_name: str, index_name: str) -> bool:
+    bind = op.get_bind()
+    return any(index["name"] == index_name for index in sa.inspect(bind).get_indexes(table_name))
+
+
+def _create_score_feedback_indexes_if_missing() -> None:
+    if not _index_exists("score_feedback", "ix_score_feedback_content_id"):
+        op.create_index("ix_score_feedback_content_id", "score_feedback", ["content_id"])
+    if not _index_exists("score_feedback", "ix_score_feedback_created_at"):
+        op.create_index("ix_score_feedback_created_at", "score_feedback", ["created_at"])
+
+
 def upgrade() -> None:
+    bind = op.get_bind()
+    if _table_exists(bind, "score_feedback"):
+        _create_score_feedback_indexes_if_missing()
+        return
+
     op.create_table(
         "score_feedback",
         sa.Column("id", sa.String(length=36), primary_key=True, nullable=False),
@@ -28,8 +56,7 @@ def upgrade() -> None:
         sa.Column("snapshot", sa.JSON(), nullable=False),
         sa.Column("created_at", sa.DateTime(), nullable=False),
     )
-    op.create_index("ix_score_feedback_content_id", "score_feedback", ["content_id"])
-    op.create_index("ix_score_feedback_created_at", "score_feedback", ["created_at"])
+    _create_score_feedback_indexes_if_missing()
 
 
 def downgrade() -> None:

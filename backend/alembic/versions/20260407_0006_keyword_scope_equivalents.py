@@ -17,25 +17,32 @@ branch_labels = None
 depends_on = None
 
 
+def _column_exists(table_name: str, column_name: str) -> bool:
+    bind = op.get_bind()
+    return any(column["name"] == column_name for column in sa.inspect(bind).get_columns(table_name))
+
+
 def upgrade() -> None:
-    op.add_column(
-        "keywords",
-        sa.Column(
-            "match_scope",
-            sa.String(length=32),
-            nullable=True,
-            server_default=sa.text("'title_content'"),
-        ),
-    )
-    op.add_column(
-        "keywords",
-        sa.Column(
-            "equivalent_terms",
-            sa.JSON(),
-            nullable=True,
-            server_default=sa.text("'[]'"),
-        ),
-    )
+    if not _column_exists("keywords", "match_scope"):
+        op.add_column(
+            "keywords",
+            sa.Column(
+                "match_scope",
+                sa.String(length=32),
+                nullable=True,
+                server_default=sa.text("'title_content'"),
+            ),
+        )
+    if not _column_exists("keywords", "equivalent_terms"):
+        op.add_column(
+            "keywords",
+            sa.Column(
+                "equivalent_terms",
+                sa.JSON(),
+                nullable=True,
+                server_default=sa.text("'[]'"),
+            ),
+        )
 
 
 def downgrade() -> None:

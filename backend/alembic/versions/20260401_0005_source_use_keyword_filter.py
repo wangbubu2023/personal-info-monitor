@@ -17,11 +17,17 @@ branch_labels = None
 depends_on = None
 
 
+def _column_exists(table_name: str, column_name: str) -> bool:
+    bind = op.get_bind()
+    return any(column["name"] == column_name for column in sa.inspect(bind).get_columns(table_name))
+
+
 def upgrade() -> None:
-    op.add_column(
-        "sources",
-        sa.Column("use_keyword_filter", sa.Boolean(), nullable=True, server_default=sa.text("0")),
-    )
+    if not _column_exists("sources", "use_keyword_filter"):
+        op.add_column(
+            "sources",
+            sa.Column("use_keyword_filter", sa.Boolean(), nullable=True, server_default=sa.text("0")),
+        )
 
 
 def downgrade() -> None:

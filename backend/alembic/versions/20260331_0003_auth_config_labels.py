@@ -18,12 +18,19 @@ branch_labels = None
 depends_on = None
 
 
+def _column_exists(table_name: str, column_name: str) -> bool:
+    bind = op.get_bind()
+    return any(column["name"] == column_name for column in sa.inspect(bind).get_columns(table_name))
+
+
 def upgrade() -> None:
-    op.add_column("auth_configs", sa.Column("name", sa.String(length=255), nullable=True))
-    op.add_column(
-        "auth_configs",
-        sa.Column("is_shared", sa.Boolean(), nullable=False, server_default=sa.false()),
-    )
+    if not _column_exists("auth_configs", "name"):
+        op.add_column("auth_configs", sa.Column("name", sa.String(length=255), nullable=True))
+    if not _column_exists("auth_configs", "is_shared"):
+        op.add_column(
+            "auth_configs",
+            sa.Column("is_shared", sa.Boolean(), nullable=False, server_default=sa.false()),
+        )
 
 
 def downgrade() -> None:
