@@ -33,8 +33,24 @@ from app.interfaces.http.configs_common_cookies import (
     bind_auth_config_to_sources,
     normalize_cookies_input,
 )
+from app.utils.model_catalog import is_ollama_api_base, sanitize_provider_api_base
 
 router = APIRouter()
+
+_MODEL_PROVIDER_PLATFORMS = {
+    "openai",
+    "anthropic",
+    "google",
+    "qwen",
+    "volcengine",
+    "hunyuan",
+    "minimax",
+    "zhipu",
+    "moonshot",
+    "deepseek",
+    "openai_compatible",
+    "ollama",
+}
 
 
 @dataclass(frozen=True)
@@ -102,8 +118,35 @@ def _merge_api_credentials(config, config_data: APIConfigUpdate) -> None:
     if config_data.api_secret is not None:
         existing_creds["api_secret"] = config_data.api_secret
     if config_data.additional_config is not None:
-        existing_creds["additional"] = config_data.additional_config
+        existing_creds["additional"] = _normalize_api_additional_config(
+            config.platform,
+            config_data.additional_config,
+        )
     config.encrypted_credentials = encrypt_data(existing_creds)
+
+
+def _normalize_api_additional_config(platform: str, additional: dict | None) -> dict:
+    out = dict(additional or {})
+    provider = str(platform or "").strip().lower()
+    if provider not in _MODEL_PROVIDER_PLATFORMS:
+        return out
+
+    raw_base = out.get("api_base")
+    if provider != "ollama" and is_ollama_api_base(raw_base):
+        raise HTTPException(
+            status_code=422,
+            detail="api_base http://localhost:11434 is an Ollama endpoint; choose provider=ollama or use this provider's API base.",
+        )
+
+    api_base = sanitize_provider_api_base(provider, raw_base)
+    if api_base:
+        out["api_base"] = api_base
+    else:
+        out.pop("api_base", None)
+
+    if provider == "openai_compatible" and not out.get("api_base"):
+        raise HTTPException(status_code=422, detail="api_base is required for openai_compatible providers")
+    return out
 
 
 def _merge_auth_credentials(config, config_data: AuthConfigUpdate) -> None:
@@ -144,8 +187,12 @@ async def create_api_config(
     credentials = {"api_key": (config_data.api_key or "").strip()}
     if config_data.api_secret:
         credentials["api_secret"] = config_data.api_secret
-    if config_data.additional_config:
-        credentials["additional"] = config_data.additional_config
+    additional = _normalize_api_additional_config(
+        config_data.platform,
+        config_data.additional_config,
+    )
+    if additional:
+        credentials["additional"] = additional
 
     config = APIConfig(
         platform=config_data.platform,

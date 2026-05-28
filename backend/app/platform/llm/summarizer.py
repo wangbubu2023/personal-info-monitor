@@ -4,6 +4,7 @@ from typing import Any, Optional
 
 from app.platform.config.settings import get_settings
 from app.platform.observability.logger import get_logger
+from app.utils.model_catalog import sanitize_provider_api_base
 
 logger = get_logger(__name__)
 
@@ -97,7 +98,7 @@ class Summarizer:
         kwargs = {"api_key": resolved_api_key}
         if api_base:
             kwargs["base_url"] = api_base
-        self.client = openai.OpenAI(**kwargs)
+        self.client = openai.OpenAI(max_retries=0, **kwargs)
         self._client_key = key
         return self.client
 
@@ -116,7 +117,7 @@ class Summarizer:
         kwargs = {"api_key": resolved_api_key}
         if api_base:
             kwargs["base_url"] = api_base
-        self.async_client = openai.AsyncOpenAI(**kwargs)
+        self.async_client = openai.AsyncOpenAI(max_retries=0, **kwargs)
         self._async_client_key = key
         return self.async_client
     
@@ -198,14 +199,18 @@ class Summarizer:
                 summary = await try_fallback()
                 return summary or _truncate()
 
-            summary = await self._summarize_with_openai(
-                text=text,
-                max_length=max_length,
-                language=language,
-                model=model,
-                api_key=api_key,
-                api_base=api_base if provider != "openai" else None,
-            )
+            summary = None
+            if provider == "openai" or api_base:
+                summary = await self._summarize_with_openai(
+                    text=text,
+                    max_length=max_length,
+                    language=language,
+                    model=model,
+                    api_key=api_key,
+                    api_base=api_base if provider != "openai" else None,
+                )
+            else:
+                logger.warning("Summarization provider %s has no API base; skipping primary LLM call", provider)
             if summary:
                 return summary
 
@@ -318,7 +323,7 @@ class Summarizer:
     ) -> Optional[str]:
         provider = str(cfg.get("provider") or "ollama").strip().lower()
         model = str(cfg.get("model") or "").strip() or "gpt-4o-mini"
-        api_base = str(cfg.get("api_base") or "").strip() or "http://localhost:11434"
+        api_base = sanitize_provider_api_base(provider, cfg.get("api_base"))
         api_key = cfg.get("api_key")
         if provider == "ollama":
             return await self._summarize_with_ollama(
@@ -329,6 +334,9 @@ class Summarizer:
                 api_base=api_base,
                 model_settings=cfg,
             )
+        if provider != "openai" and not api_base:
+            logger.warning("Summarization fallback provider %s has no API base; skipping", provider)
+            return None
         return await self._summarize_with_openai(
             text=text,
             max_length=max_length,
@@ -370,6 +378,9 @@ class Summarizer:
                 if not keywords_str:
                     return []
             else:
+                if provider != "openai" and not api_base:
+                    logger.warning("Keyword provider %s has no API base; skipping", provider)
+                    return []
                 client = self._get_async_client(
                     api_key=api_key or self.api_key,
                     api_base=api_base,

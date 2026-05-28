@@ -526,7 +526,7 @@ class TestSummarizer:
         with patch("openai.AsyncOpenAI") as mock_openai:
             mock_openai.return_value = MagicMock()
             summarizer._get_async_client(api_key="k1", api_base="https://custom.api/v1")
-            mock_openai.assert_called_once_with(api_key="k1", base_url="https://custom.api/v1")
+            mock_openai.assert_called_once_with(max_retries=0, api_key="k1", base_url="https://custom.api/v1")
 
     def test_get_runtime_settings_fallback(self):
         summarizer = self._make_summarizer()

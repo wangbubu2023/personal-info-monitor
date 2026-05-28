@@ -18,6 +18,19 @@ import SectionNote from '../ui/SectionNote'
 
 const { Option } = Select
 const { Password } = Input
+const OLLAMA_DEFAULT_API_BASE = 'http://localhost:11434'
+const DEFAULT_API_BASE_BY_PLATFORM: Record<string, string> = {
+  openai: 'https://api.openai.com/v1',
+  google: 'https://generativelanguage.googleapis.com/v1beta/openai',
+  qwen: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+  volcengine: 'https://ark.cn-beijing.volces.com/api/v3',
+  hunyuan: 'https://api.hunyuan.cloud.tencent.com/v1',
+  minimax: 'https://api.minimaxi.com/v1',
+  zhipu: 'https://open.bigmodel.cn/api/paas/v4',
+  moonshot: 'https://api.moonshot.cn/v1',
+  deepseek: 'https://api.deepseek.com/v1',
+  ollama: OLLAMA_DEFAULT_API_BASE,
+}
 const MODEL_PROVIDER_PLATFORMS = [
   'openai',
   'anthropic',
@@ -33,12 +46,24 @@ const MODEL_PROVIDER_PLATFORMS = [
   'ollama',
 ] as const
 
+const isOllamaApiBase = (value?: string) => {
+  const text = String(value || '').trim()
+  if (!text) return false
+  try {
+    const url = new URL(text.includes('://') ? text : `http://${text}`)
+    return ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname) && url.port === '11434'
+  } catch {
+    return false
+  }
+}
+
 const ModelProvidersTab: React.FC = () => {
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingConfig, setEditingConfig] = useState<APIConfig | null>(null)
   const [form] = Form.useForm()
   const modalPlatform = Form.useWatch('platform', form)
   const isOllama = modalPlatform === 'ollama'
+  const isCustomCompatible = modalPlatform === 'openai_compatible'
   const queryClient = useQueryClient()
 
   const { data: apiKeys, isLoading } = useQuery({
@@ -124,7 +149,7 @@ const ModelProvidersTab: React.FC = () => {
               form.setFieldsValue({
                 platform: record.platform,
                 name: record.name,
-                api_base: record.api_base,
+                api_base: record.api_base || DEFAULT_API_BASE_BY_PLATFORM[record.platform],
               })
               setIsModalOpen(true)
             }}
@@ -157,7 +182,7 @@ const ModelProvidersTab: React.FC = () => {
               api_key: values.platform === 'ollama' ? (values.api_key || '') : values.api_key,
               api_secret: values.api_secret,
               additional_config: {
-                api_base: values.api_base,
+                api_base: String(values.api_base || '').trim() || undefined,
               },
             }
             if (editingConfig) {
@@ -177,9 +202,10 @@ const ModelProvidersTab: React.FC = () => {
             <Select
               placeholder="选择提供商"
               onChange={(v: string) => {
-                if (v === 'ollama') {
-                  const cur = form.getFieldValue('api_base')
-                  if (!cur) form.setFieldValue('api_base', 'http://localhost:11434')
+                const cur = form.getFieldValue('api_base')
+                const nextDefault = DEFAULT_API_BASE_BY_PLATFORM[v]
+                if (!cur || isOllamaApiBase(cur) || v === 'ollama') {
+                  form.setFieldValue('api_base', nextDefault || '')
                 }
               }}
             >
@@ -200,9 +226,23 @@ const ModelProvidersTab: React.FC = () => {
           <Form.Item name="name" label="名称 (可选)"><Input placeholder="例如：公司 OpenAI Key" /></Form.Item>
           <Form.Item
             name="api_base"
-            label={isOllama ? 'Ollama 服务地址' : 'API Base (可选)'}
-            rules={isOllama ? [{ required: true, message: '请填写 Ollama 根地址' }] : []}
-            extra={isOllama ? '一般为 http://localhost:11434，远程 Ollama 填实际可访问的 URL。' : undefined}
+            label={isOllama ? 'Ollama 服务地址' : isCustomCompatible ? 'API Base' : 'API Base (可选)'}
+            rules={[
+              ...(isOllama ? [{ required: true, message: '请填写 Ollama 根地址' }] : []),
+              ...(isCustomCompatible ? [{ required: true, message: '自定义兼容接口必须填写 API Base' }] : []),
+              {
+                validator: async (_, value) => {
+                  if (!isOllama && isOllamaApiBase(value)) {
+                    throw new Error('localhost:11434 是 Ollama 地址；请切换到 Ollama 或填写当前提供商的 API Base')
+                  }
+                },
+              },
+            ]}
+            extra={isOllama
+              ? '一般为 http://localhost:11434，远程 Ollama 填实际可访问的 URL。'
+              : DEFAULT_API_BASE_BY_PLATFORM[modalPlatform]
+                ? `默认：${DEFAULT_API_BASE_BY_PLATFORM[modalPlatform]}`
+                : '自定义兼容接口必须填写实际可访问的 OpenAI-compatible URL。'}
           >
             <Input placeholder={isOllama ? 'http://localhost:11434' : '不填将使用该厂商默认地址；自定义兼容接口建议手动填写'} />
           </Form.Item>

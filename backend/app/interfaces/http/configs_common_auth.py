@@ -24,6 +24,7 @@ from app.models.auth_config import APIConfig, AuthConfig
 from app.platform.auth.api_credentials import decrypt_api_credentials  # noqa: F401 - re-export
 from app.platform.auth.credentials import decrypt_auth_credentials  # noqa: F401 - re-export
 from app.utils.datetime import to_iso_z
+from app.utils.model_catalog import sanitize_provider_api_base
 from app.utils.url import normalize_host
 
 
@@ -48,7 +49,7 @@ def serialize_api_config(config: APIConfig) -> dict:
         "created_at": to_iso_z(config.created_at),
         "updated_at": to_iso_z(config.updated_at),
         "masked_key": masked_key,
-        "api_base": additional.get("api_base"),
+        "api_base": sanitize_provider_api_base(config.platform, additional.get("api_base")),
     }
 
 

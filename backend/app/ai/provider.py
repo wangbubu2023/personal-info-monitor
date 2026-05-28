@@ -13,6 +13,7 @@ import httpx
 from app.platform.config.settings import get_settings
 from app.services.api_config_credentials import enrich_model_settings_from_api_config
 from app.platform.config.system_settings import get_system_settings_sync
+from app.utils.model_catalog import sanitize_provider_api_base
 from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -105,30 +106,6 @@ def normalize_provider(provider: Optional[str], default_provider: str = "ollama"
     return normalized or default_provider
 
 
-def _provider_catalog_default_api_base(provider: str) -> Optional[str]:
-    """Look up ``default_api_base`` for *provider* from ``model_providers.json``.
-
-    Returns ``None`` when the provider is unknown or its entry has no
-    default base. Used so users can save a provider row without pasting the
-    endpoint and still get a sane URL at runtime (e.g. MiniMax → api.minimaxi.com/v1).
-    """
-    try:
-        from app.utils.model_catalog import load_model_providers
-    except Exception:
-        return None
-    plat = (provider or "").strip().lower()
-    if not plat:
-        return None
-    try:
-        for entry in load_model_providers():
-            if str(entry.get("id") or "").strip().lower() == plat:
-                base = str(entry.get("default_api_base") or "").strip().rstrip("/")
-                return base or None
-    except Exception:
-        return None
-    return None
-
-
 def _parse_bool_setting(value: Any, *, default: bool) -> bool:
     if value is None:
         return default
@@ -188,14 +165,13 @@ def normalize_model_runtime(
     """Build runtime from raw model settings."""
     provider = normalize_provider(model_settings.get("provider"), default_provider=default_provider)
     model = str(model_settings.get("model") or "").strip() or default_model
-    raw_api_base = str(model_settings.get("api_base") or "").strip()
-    if not raw_api_base:
-        # Prefer the provider's catalog default (e.g. MiniMax → api.minimaxi.com/v1)
-        # over the caller-supplied ``default_api_base`` which is typically Ollama's
-        # localhost URL. Falling back to ``default_api_base`` only when the provider
-        # is unknown keeps Ollama working without registering it in the catalog.
-        raw_api_base = _provider_catalog_default_api_base(provider) or (default_api_base or "")
-    api_base = raw_api_base or None
+    # Prefer the provider's catalog default (e.g. MiniMax → api.minimaxi.com/v1)
+    # over a stale Ollama localhost URL left behind after a provider switch.
+    api_base = sanitize_provider_api_base(
+        provider,
+        model_settings.get("api_base"),
+        fallback_default=default_api_base,
+    )
     api_key = str(model_settings.get("api_key") or "").strip() or fallback_api_key
     temperature = _coerce_float(model_settings.get("temperature"), default_temperature, min_value=0.0, max_value=2.0)
     max_tokens = _coerce_int(model_settings.get("max_tokens"), default_max_tokens, min_value=1, max_value=16000)
@@ -457,6 +433,9 @@ async def _resolve_runtime_from_model_settings(
 
     if runtime.provider not in {"openai", "ollama"} and not runtime.api_key:
         return None
+    if runtime.provider not in {"openai", "ollama"} and not runtime.api_base:
+        logger.warning("AI provider %s requires a configured API base; runtime disabled", runtime.provider)
+        return None
 
     return runtime
 
@@ -624,7 +603,7 @@ class ModelProviderClient:
         kwargs = {"api_key": runtime.api_key}
         if runtime.api_base:
             kwargs["base_url"] = runtime.api_base
-        client = openai.AsyncOpenAI(**kwargs)
+        client = openai.AsyncOpenAI(max_retries=0, **kwargs)
         resp = await client.chat.completions.create(
             model=runtime.model,
             messages=[

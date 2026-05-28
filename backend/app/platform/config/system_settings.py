@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.platform.persistence.database import SessionLocal
 from app.models.system_setting import SystemSetting
 from app.platform.observability.logger import get_logger
+from app.utils.model_catalog import sanitize_provider_api_base
 
 logger = get_logger(__name__)
 
@@ -98,6 +99,7 @@ _SETTINGS_BOOL_KEYS = (
 _AI_MODEL_KEYS = ("provider", "model", "api_base", "temperature", "max_tokens", "api_key", "ollama_num_ctx", "ollama_no_think")
 _TRANS_MODEL_KEYS = ("provider", "model", "api_base", "api_key", "ollama_num_ctx", "ollama_no_think")
 _ATOM_MODEL_KEYS = ("provider", "model", "api_base", "temperature", "max_tokens", "api_key", "ollama_num_ctx", "ollama_no_think")
+_SCORE_MODEL_KEYS = ("provider", "model", "api_base", "temperature", "max_tokens", "api_key", "ollama_num_ctx", "ollama_no_think")
 _LIMIT_RULES = {
     "max_sources": (200, 1, 5000),
     "max_digest_candidates": (12, 3, 30),
@@ -248,6 +250,22 @@ def _normalize_ollama_model_fields(target: dict, *, default_ctx: int) -> None:
         target["ollama_no_think"] = _parse_bool_value(target.get("ollama_no_think"))
 
 
+def _normalize_model_endpoint_fields(target: dict) -> None:
+    provider = str(target.get("provider") or "ollama").strip().lower()
+    api_base = sanitize_provider_api_base(provider, target.get("api_base"))
+    if api_base:
+        target["api_base"] = api_base
+    else:
+        target.pop("api_base", None)
+
+
+def _normalize_model_blocks(settings: Dict[str, Any]) -> None:
+    for key in ("ai_model", "translation_model", "atom_model", "score_model"):
+        block = settings.get(key)
+        if isinstance(block, dict):
+            _normalize_model_endpoint_fields(block)
+
+
 def _apply_patch(current: Dict[str, Any], patch: Dict[str, Any]) -> Dict[str, Any]:
     updated = copy.deepcopy(current)
 
@@ -257,6 +275,7 @@ def _apply_patch(current: Dict[str, Any], patch: Dict[str, Any]) -> Dict[str, An
         for key in _AI_MODEL_KEYS:
             if key in ai_model:
                 target[key] = ai_model[key]
+        _normalize_model_endpoint_fields(target)
         _normalize_ollama_model_fields(
             target,
             default_ctx=DEFAULT_SYSTEM_SETTINGS["ai_model"]["ollama_num_ctx"],
@@ -268,6 +287,7 @@ def _apply_patch(current: Dict[str, Any], patch: Dict[str, Any]) -> Dict[str, An
         for key in _TRANS_MODEL_KEYS:
             if key in translation_model:
                 target[key] = translation_model[key]
+        _normalize_model_endpoint_fields(target)
         _normalize_ollama_model_fields(
             target,
             default_ctx=DEFAULT_SYSTEM_SETTINGS["translation_model"]["ollama_num_ctx"],
@@ -279,9 +299,22 @@ def _apply_patch(current: Dict[str, Any], patch: Dict[str, Any]) -> Dict[str, An
         for key in _ATOM_MODEL_KEYS:
             if key in atom_model:
                 target[key] = atom_model[key]
+        _normalize_model_endpoint_fields(target)
         _normalize_ollama_model_fields(
             target,
             default_ctx=DEFAULT_SYSTEM_SETTINGS["atom_model"]["ollama_num_ctx"],
+        )
+
+    score_model = patch.get("score_model")
+    if isinstance(score_model, dict):
+        target = updated.setdefault("score_model", {})
+        for key in _SCORE_MODEL_KEYS:
+            if key in score_model:
+                target[key] = score_model[key]
+        _normalize_model_endpoint_fields(target)
+        _normalize_ollama_model_fields(
+            target,
+            default_ctx=DEFAULT_SYSTEM_SETTINGS["score_model"]["ollama_num_ctx"],
         )
 
     for fb_name in ("translation_fallback", "summarization_fallback"):
@@ -340,7 +373,7 @@ def _apply_patch(current: Dict[str, Any], patch: Dict[str, Any]) -> Dict[str, An
 
 def _mask_sensitive(settings: Dict[str, Any]) -> Dict[str, Any]:
     response = copy.deepcopy(settings)
-    for field in ("ai_model", "translation_model", "atom_model"):
+    for field in ("ai_model", "translation_model", "atom_model", "score_model"):
         model = response.get(field) or {}
         if isinstance(model, dict):
             model["has_api_key"] = bool(model.get("api_key"))
@@ -392,6 +425,7 @@ def get_system_settings_sync(force_refresh: bool = False) -> Dict[str, Any]:
 
     merged = _merge_dict(DEFAULT_SYSTEM_SETTINGS, payload)
     _normalize_fallback_settings(merged)
+    _normalize_model_blocks(merged)
     _cache_set(merged)
     return copy.deepcopy(merged)
 
@@ -413,6 +447,7 @@ async def get_system_settings_async(db: AsyncSession, force_refresh: bool = Fals
 
     merged = _merge_dict(DEFAULT_SYSTEM_SETTINGS, payload)
     _normalize_fallback_settings(merged)
+    _normalize_model_blocks(merged)
     _cache_set(merged)
     return copy.deepcopy(merged)
 
@@ -422,6 +457,7 @@ async def update_system_settings_async(db: AsyncSession, patch: Dict[str, Any]) 
     current = await get_system_settings_async(db, force_refresh=True)
     merged = _apply_patch(current, patch or {})
     _normalize_fallback_settings(merged)
+    _normalize_model_blocks(merged)
     # 避免新旧键并存时持久化层长期保留 legacy，导致前端 ?? 读到旧 false
     for legacy in _LEGACY_BOOL_KEYS:
         merged.pop(legacy, None)

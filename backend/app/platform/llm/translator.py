@@ -12,6 +12,7 @@ from app.ai.provider import (
 )
 from app.platform.config.settings import get_settings
 from app.platform.observability.logger import get_logger
+from app.utils.model_catalog import sanitize_provider_api_base
 
 logger = get_logger(__name__)
 
@@ -273,7 +274,7 @@ class Translator:
         kwargs = {"api_key": api_key}
         if api_base:
             kwargs["base_url"] = api_base
-        self._async_openai_client = openai.AsyncOpenAI(**kwargs)
+        self._async_openai_client = openai.AsyncOpenAI(max_retries=0, **kwargs)
         self._async_openai_key = api_key
         self._async_openai_base = api_base
         return self._async_openai_client
@@ -299,9 +300,13 @@ class Translator:
             return None
         model_cfg = trans_settings if isinstance(trans_settings, dict) else {}
         model = str(model_cfg.get("model") or "").strip() or "gpt-4o-mini"
-        api_base = str(model_cfg.get("api_base") or "").strip() or None
+        provider = str(model_cfg.get("provider") or "openai").strip().lower()
+        api_base = sanitize_provider_api_base(provider, model_cfg.get("api_base"))
         api_key = str(model_cfg.get("api_key") or "").strip() or self.settings.openai_api_key
         if not api_key:
+            return None
+        if provider != "openai" and not api_base:
+            logger.warning("Translation provider %s has no API base; skipping", provider)
             return None
 
         lang_name = {

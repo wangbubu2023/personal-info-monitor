@@ -9,6 +9,7 @@ from app.ai.provider import (
     OLLAMA_KEEP_ALIVE,
     OLLAMA_NUM_CTX_TRANSLATION_DEFAULT,
     append_ollama_no_think,
+    normalize_model_runtime,
     ollama_generate_text,
     ollama_request_options,
     resolve_ollama_no_think,
@@ -54,6 +55,33 @@ def test_snap_ollama_num_ctx():
 def test_resolve_ollama_no_think_respects_explicit_false():
     assert resolve_ollama_no_think({}, default=True) is True
     assert resolve_ollama_no_think({"ollama_no_think": False}, default=True) is False
+
+
+def test_normalize_model_runtime_replaces_stale_ollama_base_for_cloud_provider():
+    runtime = normalize_model_runtime(
+        {
+            "provider": "minimax",
+            "model": "MiniMax-M2.7",
+            "api_base": "http://localhost:11434",
+            "api_key": "sk-test",
+        }
+    )
+
+    assert runtime.provider == "minimax"
+    assert runtime.api_base == "https://api.minimaxi.com/v1"
+
+
+def test_normalize_model_runtime_requires_custom_base_instead_of_openai_default():
+    runtime = normalize_model_runtime(
+        {
+            "provider": "openai_compatible",
+            "model": "custom",
+            "api_base": "http://localhost:11434",
+            "api_key": "sk-test",
+        }
+    )
+
+    assert runtime.api_base is None
 
 
 @pytest.mark.asyncio

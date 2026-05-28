@@ -7,6 +7,7 @@ from typing import Any, Dict, Optional
 from app.database import SessionLocal
 from app.models.auth_config import APIConfig, AuthStatus
 from app.platform.auth.api_credentials import decrypt_api_credentials
+from app.utils.model_catalog import sanitize_provider_api_base
 from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -57,8 +58,11 @@ def enrich_model_settings_from_api_config(model_settings: Dict[str, Any] | None)
     cfg_base = additional.get("api_base")
     cfg_key = creds.get("api_key")
 
-    if cfg_base:
-        out["api_base"] = str(cfg_base).strip().rstrip("/")
+    resolved_base = sanitize_provider_api_base(provider, cfg_base or out.get("api_base"))
+    if resolved_base:
+        out["api_base"] = resolved_base
+    else:
+        out.pop("api_base", None)
     if provider != "ollama" and cfg_key:
         out["api_key"] = str(cfg_key).strip()
 

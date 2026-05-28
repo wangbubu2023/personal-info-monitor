@@ -17,7 +17,7 @@ from app.platform.config.system_settings import (
     update_system_settings_async,
 )
 from app.interfaces.http.configs_common_auth import decrypt_api_credentials
-from app.utils.model_catalog import load_model_providers
+from app.utils.model_catalog import load_model_providers, sanitize_provider_api_base
 
 router = APIRouter()
 
@@ -75,7 +75,7 @@ async def get_available_models(
     for row in rows:
         creds = decrypt_api_credentials(row)
         additional = creds.get("additional") or {}
-        api_base = additional.get("api_base")
+        api_base = sanitize_provider_api_base(row.platform, additional.get("api_base"))
         if api_base and row.platform not in api_base_map:
             api_base_map[row.platform] = api_base
         if row.platform == "ollama" and api_base:

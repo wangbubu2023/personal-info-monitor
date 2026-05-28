@@ -52,6 +52,41 @@ def test_apply_patch_ollama_model_options():
     assert updated["translation_model"]["ollama_no_think"] is False
 
 
+def test_apply_patch_replaces_stale_ollama_base_when_provider_changes():
+    current = copy.deepcopy(DEFAULT_SYSTEM_SETTINGS)
+    updated = _apply_patch(
+        current,
+        {
+            "ai_model": {
+                "provider": "minimax",
+                "model": "MiniMax-M2.7",
+            },
+            "translation_model": {
+                "provider": "deepseek",
+                "model": "deepseek-chat",
+            },
+        },
+    )
+
+    assert updated["ai_model"]["api_base"] == "https://api.minimaxi.com/v1"
+    assert updated["translation_model"]["api_base"] == "https://api.deepseek.com/v1"
+
+
+def test_apply_patch_custom_provider_drops_stale_ollama_base():
+    current = copy.deepcopy(DEFAULT_SYSTEM_SETTINGS)
+    updated = _apply_patch(
+        current,
+        {
+            "ai_model": {
+                "provider": "openai_compatible",
+                "model": "custom-model",
+            },
+        },
+    )
+
+    assert "api_base" not in updated["ai_model"]
+
+
 def test_apply_patch_fallback_bools_coerced():
     """避免 str/非 bool 被 Python truthiness 误判（如 bool('false') == True）。"""
     current = copy.deepcopy(DEFAULT_SYSTEM_SETTINGS)
