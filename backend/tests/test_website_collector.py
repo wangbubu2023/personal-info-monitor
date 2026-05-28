@@ -912,6 +912,38 @@ class TestHydrateDirectArticlesPacing:
         # Non-paced branch must not call inter-request pause.
         assert not pause_calls
 
+    @pytest.mark.asyncio
+    async def test_hydrated_articles_record_fetch_diagnostics(self):
+        collector = WebsiteCollector()
+        source = _make_source(
+            url="https://www.reuters.com",
+            metadata_={"direct_article_hydrate_limit": 1},
+        )
+        contents = [{"url": "https://www.reuters.com/world/story-1", "title": "Story"}]
+
+        html = '<html><script src="https://www.reuters.com/arc/subs/p.min.js"></script><article><p>Body</p></article></html>'
+
+        async def fake_fetch(url, *args, **kwargs):  # noqa: ARG001
+            return (html, url, None)
+
+        with patch.object(collector, "_fetch_article_html", side_effect=fake_fetch), \
+             patch.object(
+                 __import__("app.domains.fetch.collectors.website", fromlist=["_helpers"])._helpers,
+                 "looks_like_article_url",
+                 return_value=True,
+             ):
+            hydrated, diag = await collector._hydrate_direct_articles(
+                source,
+                contents,
+                cookies={},
+                browser_session=None,
+            )
+
+        item_diag = hydrated[0]["metadata"]["fetch_diagnostics"]
+        assert item_diag["paywall_vendors"] == [{"code": "arcxp", "label": "Arc XP subscriptions"}]
+        assert item_diag["profile_known_paywall_vendors"] == ["arcxp"]
+        assert diag["paywall_vendors"] == {"arcxp": 1}
+
 
 # ---------------------------------------------------------------------------
 # rss_only metadata flag — skip Playwright hydration, return RSS summaries

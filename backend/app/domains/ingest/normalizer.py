@@ -7,6 +7,7 @@ from app.models import Source, Content
 from app.utils.datetime import utcnow_naive
 from app.utils.logger import get_logger
 from app.utils.text import strip_html_tags, normalize_article_text
+from app.utils.structured_article import extract_structured_article
 from app.domains.ingest.dedupe import handle_external_id_duplicate
 from app.domains.ingest.quality import (
     get_non_article_format_reject_reason,
@@ -46,11 +47,17 @@ async def _materialize_hydrated_fulltext(raw_content: dict) -> None:
     if not html or len(existing_text) >= _MIN_FULLTEXT_CHARS:
         return
 
-    # Local import to avoid eager loading of extractor/lxml at module import.
-    from app.processors.extractor import ContentExtractor
-
+    method = "content_extractor"
     try:
-        extracted = await ContentExtractor().extract(html, raw_content.get("url"))
+        structured = extract_structured_article(str(html), min_chars=_MIN_FULLTEXT_CHARS)
+        if structured:
+            extracted = structured.text
+            method = f"structured:{structured.method}"
+        else:
+            # Local import to avoid eager loading of extractor/lxml at module import.
+            from app.processors.extractor import ContentExtractor
+
+            extracted = await ContentExtractor().extract(html, raw_content.get("url"))
     except Exception as exc:  # noqa: BLE001 - extractor can raise a variety of parse errors
         logger.debug("Pre-dedupe extraction failed for %s: %s", raw_content.get("url"), exc)
         return
@@ -78,6 +85,7 @@ async def _materialize_hydrated_fulltext(raw_content: dict) -> None:
     if not isinstance(metadata, dict):
         metadata = {}
     metadata["article_fulltext"] = True
+    metadata["article_extract_method"] = method
     raw_content["metadata"] = metadata
 
 # Scheduled runs default to a 60-minute freshness window for real-time sources (e.g. X).

@@ -109,6 +109,10 @@ def _looks_blocked(metadata: Mapping[str, Any], *, body_len: int, summary_len: i
         if severity == "error" and any(token in code for token in ("auth", "paywall", "forbidden", "blocked")):
             return True
 
+    fetch_diag = metadata.get("fetch_diagnostics")
+    if isinstance(fetch_diag, Mapping) and fetch_diag.get("shell_like"):
+        return body_len < 120 and summary_len < 120
+
     warning = " ".join(
         str(metadata.get(key) or "")
         for key in ("warning", "last_warning", "error", "last_error")

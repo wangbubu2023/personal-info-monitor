@@ -790,6 +790,30 @@ class TestMaterializeHydratedFulltext:
         assert raw_content["metadata"]["article_fulltext"] is True
 
     @pytest.mark.asyncio
+    async def test_structured_html_is_used_before_generic_extractor(self):
+        from app.pipeline.normalizer_stage import _materialize_hydrated_fulltext
+
+        body = "Structured article body from JSON-LD. " * 12
+        raw_content = {
+            "url": "https://example.com/article",
+            "content": "",
+            "html": (
+                '<html><head><script type="application/ld+json">'
+                f'{{"@type": "NewsArticle", "articleBody": "{body}"}}'
+                "</script></head><body><p>Subscribe</p></body></html>"
+            ),
+            "metadata": {},
+        }
+
+        with patch("app.processors.extractor.ContentExtractor") as MockExtractor:
+            await _materialize_hydrated_fulltext(raw_content)
+            MockExtractor.assert_not_called()
+
+        assert raw_content["content"].startswith("Structured article body")
+        assert raw_content["metadata"]["article_fulltext"] is True
+        assert raw_content["metadata"]["article_extract_method"] == "structured:json_ld"
+
+    @pytest.mark.asyncio
     async def test_noop_when_no_html(self):
         from app.pipeline.normalizer_stage import _materialize_hydrated_fulltext
 

@@ -37,6 +37,7 @@ from app.utils.logger import get_logger
 from app.utils.playwright_stealth import stealth_init_script
 from app.platform.security.ssrf import check_before_fetch, fetch_public_http_text
 
+from .fetch_profile import diagnose_article_html, get_fetch_profile
 from . import website_helpers as _helpers
 from . import website_parser as _parser
 
@@ -591,7 +592,9 @@ class WebsiteCollector(BaseCollector):
             ]
             html_results = await asyncio.gather(*tasks, return_exceptions=True)
         failure_reasons: Counter[str] = Counter()
+        vendor_counts: Counter[str] = Counter()
         hydrated_count = 0
+        fetch_profile = get_fetch_profile(source)
 
         for idx, result in zip(direct_indexes, html_results):
             if isinstance(result, Exception) or not result:
@@ -613,6 +616,22 @@ class WebsiteCollector(BaseCollector):
                 item_metadata["resolved_original_url"] = resolved_url
                 contents[idx]["metadata"] = item_metadata
                 contents[idx]["url"] = resolved_url
+            item_metadata = (
+                contents[idx].get("metadata")
+                if isinstance(contents[idx].get("metadata"), dict)
+                else {}
+            )
+            html_diag = diagnose_article_html(
+                html,
+                resolved_url or str(contents[idx].get("url") or ""),
+                fetch_profile,
+            )
+            if html_diag:
+                item_metadata["fetch_diagnostics"] = html_diag
+                for vendor in html_diag.get("paywall_vendors") or []:
+                    if isinstance(vendor, dict) and vendor.get("code"):
+                        vendor_counts[str(vendor["code"])] += 1
+                contents[idx]["metadata"] = item_metadata
             # Let ContentProcessor extractor derive main text from article HTML.
             contents[idx]["html"] = html
             contents[idx]["content"] = ""
@@ -621,6 +640,8 @@ class WebsiteCollector(BaseCollector):
             "hydrated": hydrated_count,
             "failures": dict(failure_reasons),
         }
+        if vendor_counts:
+            diag["paywall_vendors"] = dict(vendor_counts)
         return contents, diag
 
     # ------------------------------------------------------------------

@@ -29,6 +29,7 @@ from app.models import Content, Source
 from app.processors.extractor import ContentExtractor
 from app.processors.translator import Translator
 from app.domains.fetch.auth import try_parse_auth_credentials
+from app.utils.structured_article import extract_structured_article
 from app.utils.cookies import normalize_cookie_dict
 from app.utils.datetime import utcnow_naive
 from app.utils.http import permissive_session_kwargs
@@ -98,7 +99,8 @@ async def fetch_reader_fulltext(original_url: str) -> tuple[str, str]:
     if len(html_text) < 500:
         return "", ""
 
-    extracted = await ContentExtractor().extract(html_text, final_url)
+    structured = extract_structured_article(html_text, min_chars=120)
+    extracted = structured.text if structured else await ContentExtractor().extract(html_text, final_url)
     clean_text = normalize_article_text(extracted or "").strip()
     if len(clean_text) < 120:
         return "", ""

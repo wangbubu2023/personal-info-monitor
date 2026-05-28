@@ -6,7 +6,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.domains.fetch.article_body import ensure_article_body_during_finish
+from app.domains.fetch.article_body import ensure_article_body_during_finish, fetch_public_article_body
+from app.platform.security.ssrf import PublicHttpTextResult
 
 
 @pytest.mark.asyncio
@@ -36,3 +37,26 @@ async def test_ensure_article_body_during_finish_upgrades_short_rows():
     assert content.full_content == long_body
     assert content.metadata_.get("article_fulltext") is True
     assert content.metadata_.get("ingest_body_fetched_at")
+
+
+@pytest.mark.asyncio
+async def test_fetch_public_article_body_prefers_structured_json():
+    body = "Structured article body with enough meaningful context. " * 8
+    html = f"""
+    <html><head>
+      <script type="application/ld+json">
+      {{"@type": "NewsArticle", "articleBody": "{body}"}}
+      </script>
+    </head><body><p>Subscribe to continue</p></body></html>
+    """
+
+    with patch(
+        "app.domains.fetch.article_body.fetch_public_http_text",
+        new_callable=AsyncMock,
+        return_value=PublicHttpTextResult(200, "https://example.com/article", html),
+    ), patch("app.domains.fetch.article_body.ContentExtractor") as mock_extractor:
+        text, resolved_url = await fetch_public_article_body("https://example.com/article")
+
+    assert "Structured article body" in text
+    assert resolved_url == "https://example.com/article"
+    mock_extractor.assert_not_called()
