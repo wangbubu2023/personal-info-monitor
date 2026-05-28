@@ -25,10 +25,10 @@ git clone --depth 1 https://github.com/wangbubu2023/personal-info-monitor.git
 cd personal-info-monitor
 ```
 
-如需固定在 1.0.1 稳定版：
+如需固定在 1.0.2 稳定版：
 
 ```bash
-git clone --depth 1 --branch v1.0.1 https://github.com/wangbubu2023/personal-info-monitor.git
+git clone --depth 1 --branch v1.0.2 https://github.com/wangbubu2023/personal-info-monitor.git
 cd personal-info-monitor
 ```
 
