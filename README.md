@@ -141,6 +141,7 @@ Agent 集成方式见 [`docs/AGENT_GUIDE.md`](docs/AGENT_GUIDE.md)。CLI 早期
 ```bash
 ./pim backup                 # SQLite 热备份 + .env + runtime-secrets 归档到 ~/.pim/backups/
 ./pim upgrade                # 推荐更新路径：先备份，再 fast-forward 拉取并刷新依赖/前端
+./pim upgrade --no-pull      # tag/detached 部署：跳过 git pull，只刷新依赖/资产/迁移启动链路
 ./pim rollback <revision>    # 回滚到指定 Alembic revision
 cd backend && alembic upgrade head   # 手动升级到最新 schema
 ```

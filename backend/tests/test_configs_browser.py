@@ -12,7 +12,7 @@ import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from app.api.configs_browser import _browser_error_message
+from app.api.configs_browser import HeadfulBrowserUnavailableError, _browser_error_message
 from app.auth import verify_api_key
 from app.database import Base, get_async_db
 from app.main import app
@@ -201,6 +201,62 @@ class TestOpenBrowserSessionLogin:
                     json={"headless": True},
                 )
                 assert resp.status_code == 500
+
+    @pytest.mark.asyncio
+    async def test_x_headless_login_is_rejected_before_bootstrap(self, client: AsyncClient, _db_factory, tmp_path):
+        async with _db_factory() as db:
+            session = BrowserSession(
+                site_url="https://x.com",
+                site_host="x.com",
+                profile_name="x-com",
+                user_data_dir=str(tmp_path / "x-com"),
+                storage_state_path=str(tmp_path / "x-com" / "storage_state.json"),
+                status=BrowserSessionStatus.NEEDS_LOGIN,
+            )
+            db.add(session)
+            await db.commit()
+            session_id = session.id
+
+        with patch("app.api.configs_browser.ensure_x_shared_auth_config", new_callable=AsyncMock, return_value=None), \
+             patch("app.api.configs_browser.run_browser_bootstrap", new_callable=AsyncMock) as mock_boot:
+            resp = await client.post(
+                f"/api/configs/browser-sessions/{session_id}/open-login",
+                json={"headless": True},
+            )
+
+        assert resp.status_code == 422
+        assert "X 登录必须使用可视化浏览器" in resp.json()["detail"]
+        mock_boot.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_headful_display_error_is_actionable(self, client: AsyncClient, _db_factory, tmp_path):
+        async with _db_factory() as db:
+            session = BrowserSession(
+                site_url="https://example.com",
+                site_host="example.com",
+                profile_name="example-com",
+                user_data_dir=str(tmp_path / "example-com"),
+                storage_state_path=str(tmp_path / "example-com" / "storage_state.json"),
+                status=BrowserSessionStatus.NEEDS_LOGIN,
+            )
+            db.add(session)
+            await db.commit()
+            session_id = session.id
+
+        detail = "可视化浏览器无法启动：当前 Linux/VPS 环境没有 DISPLAY/WAYLAND_DISPLAY。"
+        with patch("app.api.configs_browser.extract_auth_cookies_for_host", return_value={}), \
+             patch(
+                 "app.api.configs_browser.run_browser_bootstrap",
+                 new_callable=AsyncMock,
+                 side_effect=HeadfulBrowserUnavailableError(detail),
+             ):
+            resp = await client.post(
+                f"/api/configs/browser-sessions/{session_id}/open-login",
+                json={"headless": False},
+            )
+
+        assert resp.status_code == 503
+        assert "DISPLAY" in resp.json()["detail"]
 
 
 # ---------------------------------------------------------------------------

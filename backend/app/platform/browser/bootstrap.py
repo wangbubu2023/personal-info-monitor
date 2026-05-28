@@ -16,6 +16,8 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import os
+import sys
 from typing import Any, Dict, List
 
 from app.features import PlaywrightDisabledError, playwright_enabled
@@ -37,11 +39,27 @@ _BROWSER_USER_AGENT = (
 )
 
 
+class HeadfulBrowserUnavailableError(RuntimeError):
+    """Raised when headed Playwright login cannot open a visible browser."""
+
+
 def _require_playwright(action: str) -> None:
     if not playwright_enabled():
         raise PlaywrightDisabledError(
             f"{action} requires Playwright (PIM_FEATURE_PLAYWRIGHT=true)."
         )
+
+
+def _require_headful_display() -> None:
+    if not sys.platform.startswith("linux"):
+        return
+    if os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"):
+        return
+    raise HeadfulBrowserUnavailableError(
+        "可视化浏览器无法启动：当前 Linux/VPS 环境没有 DISPLAY/WAYLAND_DISPLAY。"
+        "X 登录需要 headed 浏览器让用户手动完成 CAPTCHA/2FA；请在桌面环境运行，"
+        "或用 xvfb-run/系统级 Xvfb 启动 PIM 服务后重试。"
+    )
 
 
 async def run_browser_bootstrap(
@@ -54,6 +72,8 @@ async def run_browser_bootstrap(
     dwell_seconds: int,
 ) -> Dict[str, Any]:
     _require_playwright("Browser bootstrap")
+    if not headless:
+        _require_headful_display()
 
     async with async_playwright() as p:
         # Patchright's guidance for Datadome/Cloudflare-class sites: launch a

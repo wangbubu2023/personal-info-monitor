@@ -29,6 +29,7 @@ from app.domains.fetch.auth import (
     sync_cookies_to_auth_config,
 )
 from app.platform.browser import (
+    HeadfulBrowserUnavailableError,
     is_x_host,
     profiles_root,
     run_browser_bootstrap,
@@ -42,6 +43,12 @@ logger = get_logger(__name__)
 
 def _browser_error_message(action: str) -> str:
     return f"{action}失败，请查看服务端日志。"
+
+
+_X_HEADLESS_LOGIN_DETAIL = (
+    "X 登录必须使用可视化浏览器：需要人工完成 CAPTCHA/2FA 后才能捕获 auth_token/ct0。"
+    "请在有 DISPLAY 的桌面环境运行，或在 VPS 上用 xvfb-run/系统级 Xvfb 启动 PIM 服务后重试。"
+)
 
 
 @router.get("/browser-sessions")
@@ -144,6 +151,12 @@ async def open_browser_session_login(
             session.auth_config_id = x_cfg.id
             auth_config = x_cfg
 
+    if is_x_host(session.site_host) and req.headless:
+        session.status = BrowserSessionStatus.NEEDS_LOGIN
+        session.last_error = _X_HEADLESS_LOGIN_DETAIL
+        await db.commit()
+        raise HTTPException(status_code=422, detail=_X_HEADLESS_LOGIN_DETAIL)
+
     cookies = extract_auth_cookies_for_host(auth_config, session.site_host) if req.bootstrap_auth_cookies else {}
 
     try:
@@ -197,6 +210,12 @@ async def open_browser_session_login(
             status_code=503,
             detail="浏览器自动化已被管理员禁用（PIM_FEATURE_PLAYWRIGHT=false）。",
         ) from exc
+    except HeadfulBrowserUnavailableError as exc:
+        logger.warning("Headful browser bootstrap unavailable for session %s: %s", session_id, exc)
+        session.status = BrowserSessionStatus.ERROR
+        session.last_error = str(exc)
+        await db.commit()
+        raise HTTPException(status_code=503, detail=session.last_error) from exc
     except Exception as e:
         logger.exception("Browser bootstrap failed for session %s", session_id)
         if not req.headless:

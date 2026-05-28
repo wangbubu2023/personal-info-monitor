@@ -24,6 +24,8 @@
 - 先确认目标站点没有验证码或强制登录挑战
 - 检查 Playwright profile 目录是否可写
 - 查看后端日志中的 `configs_browser` 相关错误
+- VPS / Linux 容器里做 X 登录时，必须有可视化显示环境：设置 `DISPLAY` / `WAYLAND_DISPLAY`，
+  或用 `xvfb-run` / 系统级 Xvfb 启动 PIM。X 登录不能依赖纯 headless 浏览器完成。
 
 ## 分类/仪表盘数据看起来延迟
 

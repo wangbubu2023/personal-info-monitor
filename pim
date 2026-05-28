@@ -12,7 +12,7 @@ Usage:
     ./pim setup             First-time setup (venv, deps, runtime config, frontend build)
                             Use --skip-playwright to skip Chromium download.
     ./pim upgrade           Backup, fast-forward git pull, refresh deps/frontend, restart if local service is running
-                            Use --server for backend-only VPS, --systemd <unit> to restart a systemd service.
+                            Use --server for backend-only VPS, --systemd <unit> for systemd, --no-pull for tag/detached deploys.
     ./pim install-service   Install macOS LaunchAgent (auto-starts on login, runs in background)
     ./pim uninstall-service Remove LaunchAgent and stop the service
     ./pim start             Start dev server (backend + frontend Vite :3000)
@@ -45,7 +45,9 @@ ROOT = Path(__file__).resolve().parent
 BACKEND = ROOT / "backend"
 FRONTEND = ROOT / "frontend"
 VENV = BACKEND / ".venv"
-PID_FILE = Path.home() / ".pim" / "pim.pid"
+DEFAULT_PID_FILE = Path.home() / ".pim" / "run" / "pim.pid"
+LEGACY_PID_FILE = Path.home() / ".pim" / "pim.pid"
+PID_FILE = Path(os.environ.get("PIM_PID_FILE") or DEFAULT_PID_FILE).expanduser()
 LOG_FILE = Path.home() / ".pim" / "data" / "pim.log"
 BACKUP_DIR = Path.home() / ".pim" / "backups"
 ENV_FILE = BACKEND / ".env"
@@ -402,7 +404,34 @@ def _arg_value(args: list[str], name: str) -> str | None:
     return args[idx + 1].strip()
 
 
-def _ensure_git_clean() -> None:
+def _pid_file_candidates() -> list[Path]:
+    out: list[Path] = []
+    for path in (PID_FILE, LEGACY_PID_FILE):
+        if path not in out:
+            out.append(path)
+    return out
+
+
+def _read_pid_file(path: Path) -> int:
+    try:
+        return int(path.read_text().strip())
+    except Exception:
+        return 0
+
+
+def _write_pid_file(pid: int) -> None:
+    PID_FILE.parent.mkdir(parents=True, exist_ok=True)
+    PID_FILE.write_text(str(pid))
+    if LEGACY_PID_FILE != PID_FILE and LEGACY_PID_FILE.exists():
+        LEGACY_PID_FILE.unlink(missing_ok=True)
+
+
+def _unlink_pid_files() -> None:
+    for path in _pid_file_candidates():
+        path.unlink(missing_ok=True)
+
+
+def _ensure_git_ready(*, no_pull: bool) -> None:
     if not (ROOT / ".git").exists():
         print("Not a git checkout; cannot pull updates. Use ./pim setup instead.", file=sys.stderr)
         sys.exit(1)
@@ -422,10 +451,13 @@ def _ensure_git_clean() -> None:
         cwd=str(ROOT),
         text=True,
     ).strip()
-    if not branch:
+    if not branch and not no_pull:
         print("Current checkout is detached (likely a tag). Checkout main before upgrading.", file=sys.stderr)
         print("Example: git checkout main && git pull --ff-only", file=sys.stderr)
+        print("For tag/detached deployments that already have the desired code, use: ./pim upgrade --no-pull", file=sys.stderr)
         sys.exit(1)
+    if not branch and no_pull:
+        print("Detached checkout detected; continuing because --no-pull was supplied.")
 
 
 def _upgrade_dependencies_and_assets(*, server_only: bool, rebuild: bool) -> None:
@@ -439,6 +471,29 @@ def _upgrade_dependencies_and_assets(*, server_only: bool, rebuild: bool) -> Non
         _ensure_frontend_built(rebuild=rebuild)
 
 
+def _restart_systemd_unit(unit: str) -> bool:
+    if not shutil.which("systemctl") or not Path("/run/systemd/system").exists():
+        print(
+            f"systemd is not available in this environment; skipped restart for unit: {unit}",
+            file=sys.stderr,
+        )
+        return False
+    if os.geteuid() == 0:
+        cmd = ["systemctl", "restart", unit]
+    else:
+        sudo = shutil.which("sudo")
+        if not sudo:
+            print(
+                f"sudo is not available; skipped systemd restart for unit: {unit}",
+                file=sys.stderr,
+            )
+            return False
+        cmd = [sudo, "systemctl", "restart", unit]
+    subprocess.check_call(cmd)
+    print(f"Restarted systemd unit: {unit}")
+    return True
+
+
 def cmd_upgrade():
     """Upgrade an existing checkout with backup-first, fast-forward-only semantics."""
     args = sys.argv[2:]
@@ -450,7 +505,7 @@ def cmd_upgrade():
     systemd_unit = _arg_value(args, "--systemd")
 
     print("=== PIM Upgrade ===")
-    _ensure_git_clean()
+    _ensure_git_ready(no_pull=no_pull)
 
     was_running = _currently_running_pid() is not None or _is_port_8000_open()
     was_launchd = _is_launchd_backed()
@@ -478,8 +533,7 @@ def cmd_upgrade():
     if no_restart:
         print("Restart skipped (--no-restart).")
     elif systemd_unit:
-        subprocess.check_call(["sudo", "systemctl", "restart", systemd_unit])
-        print(f"Restarted systemd unit: {systemd_unit}")
+        _restart_systemd_unit(systemd_unit)
     elif was_launchd:
         cmd_install_service()
     elif was_running:
@@ -611,13 +665,13 @@ def _currently_running_pid() -> int | None:
                 if raw.isdigit():
                     return int(raw)
 
-    if PID_FILE.exists():
-        try:
-            pid = int(PID_FILE.read_text().strip())
-        except ValueError:
-            pid = 0
-        if pid and _is_prod_uvicorn_pid(pid):
-            return pid
+    for pid_file in _pid_file_candidates():
+        if pid_file.exists():
+            pid = _read_pid_file(pid_file)
+            if pid and _is_prod_uvicorn_pid(pid):
+                if pid_file != PID_FILE:
+                    _write_pid_file(pid)
+                return pid
 
     for pid in _find_prod_uvicorn_pids():
         if _is_prod_uvicorn_pid(pid):
@@ -701,23 +755,22 @@ def _launch_detached_backend() -> int | None:
     another process holds :8000. Callers are responsible for printing
     human-readable context around this low-level primitive.
     """
-    PID_FILE.parent.mkdir(parents=True, exist_ok=True)
     LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
 
-    if PID_FILE.exists():
-        try:
-            existing_pid = int(PID_FILE.read_text().strip())
-        except Exception:
-            existing_pid = 0
-        if existing_pid and _is_prod_uvicorn_pid(existing_pid):
-            print(f"  Already running (PID {existing_pid})")
-            return None
-        PID_FILE.unlink(missing_ok=True)
+    for pid_file in _pid_file_candidates():
+        if pid_file.exists():
+            existing_pid = _read_pid_file(pid_file)
+            if existing_pid and _is_prod_uvicorn_pid(existing_pid):
+                if pid_file != PID_FILE:
+                    _write_pid_file(existing_pid)
+                print(f"  Already running (PID {existing_pid})")
+                return None
+            pid_file.unlink(missing_ok=True)
 
     existing_pids = _find_prod_uvicorn_pids()
     if existing_pids:
         print(f"  Detected existing unmanaged server PID(s): {', '.join(str(p) for p in existing_pids)}")
-        PID_FILE.write_text(str(existing_pids[0]))
+        _write_pid_file(existing_pids[0])
         print(f"  Recovered PID file with PID {existing_pids[0]}")
         return existing_pids[0]
 
@@ -741,7 +794,7 @@ def _launch_detached_backend() -> int | None:
         start_new_session=True,
     )
     log_handle.close()
-    PID_FILE.write_text(str(proc.pid))
+    _write_pid_file(proc.pid)
     time.sleep(0.8)
     if proc.poll() is not None:
         print("  Failed to start. Last logs:")
@@ -750,7 +803,7 @@ def _launch_detached_backend() -> int | None:
             print(tail)
         except Exception:
             pass
-        PID_FILE.unlink(missing_ok=True)
+        _unlink_pid_files()
         sys.exit(1)
     return proc.pid
 
@@ -836,19 +889,17 @@ def _stop_by_pid():
     stopped_any = False
     handled_pids: set[int] = set()
 
-    if PID_FILE.exists():
-        try:
-            pid = int(PID_FILE.read_text().strip())
-        except Exception:
-            pid = 0
-        if pid:
-            if _terminate_pid(pid):
-                print(f"Stopped PID {pid}")
-                stopped_any = True
-                handled_pids.add(pid)
-            else:
-                print(f"Failed to stop PID {pid}")
-        PID_FILE.unlink(missing_ok=True)
+    for pid_file in _pid_file_candidates():
+        if pid_file.exists():
+            pid = _read_pid_file(pid_file)
+            if pid:
+                if _terminate_pid(pid):
+                    print(f"Stopped PID {pid}")
+                    stopped_any = True
+                    handled_pids.add(pid)
+                else:
+                    print(f"Failed to stop PID {pid}")
+            pid_file.unlink(missing_ok=True)
 
     extra_pids = [pid for pid in _find_prod_uvicorn_pids() if _is_pid_alive(pid)]
     for pid in extra_pids:
@@ -894,22 +945,21 @@ def cmd_status():
         return
 
     # Fallback: PID file / process scan
-    if PID_FILE.exists():
-        try:
-            pid = int(PID_FILE.read_text().strip())
-        except Exception:
-            pid = 0
-        if pid and _is_prod_uvicorn_pid(pid):
-            print(f"PIM is running (PID {pid})")
-            _print_atom_feature_status()
-            return
-        PID_FILE.unlink(missing_ok=True)
+    for pid_file in _pid_file_candidates():
+        if pid_file.exists():
+            pid = _read_pid_file(pid_file)
+            if pid and _is_prod_uvicorn_pid(pid):
+                if pid_file != PID_FILE:
+                    _write_pid_file(pid)
+                print(f"PIM is running (PID {pid})")
+                _print_atom_feature_status()
+                return
+            pid_file.unlink(missing_ok=True)
 
     discovered = [pid for pid in _find_prod_uvicorn_pids() if _is_prod_uvicorn_pid(pid)]
     if discovered:
         pid = discovered[0]
-        PID_FILE.parent.mkdir(parents=True, exist_ok=True)
-        PID_FILE.write_text(str(pid))
+        _write_pid_file(pid)
         print(f"PIM is running (PID {pid}, recovered PID file)")
         _print_atom_feature_status()
         return

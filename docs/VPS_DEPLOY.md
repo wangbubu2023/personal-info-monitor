@@ -52,6 +52,10 @@ cd backend
 ./.venv/bin/python -m playwright install chromium
 ```
 
+注意：X 登录态捕获必须使用可视化浏览器，让用户手动完成 CAPTCHA/2FA。纯 headless 模式无法可靠拿到
+`auth_token` / `ct0`。VPS 容器如果没有 `DISPLAY` / `WAYLAND_DISPLAY`，请在桌面环境操作，或用
+`xvfb-run` / 系统级 Xvfb 启动 PIM 服务后再打开浏览器会话登录。
+
 初始化会生成：
 
 - `backend/.venv`
@@ -307,13 +311,23 @@ cd /path/to/personal-info-monitor
 
 `./pim upgrade` 会先备份 SQLite 与运行时密钥，再执行 `git pull --ff-only`，然后刷新 Python
 依赖和前端静态资源。带 `--systemd personal-info-monitor` 时，最后会执行
-`sudo systemctl restart personal-info-monitor`。
+`systemctl restart personal-info-monitor`（非 root 时才尝试 `sudo`）。如果当前容器没有 systemd，
+升级会跳过 systemd 重启并给出提示，不会因为 `systemctl` 不可用而中断。
 
 如果你没有使用 systemd，而是用 `./pim up` / `./pim start --prod` 启动，直接执行：
 
 ```bash
 ./pim upgrade --server --skip-playwright
 ```
+
+如果 VPS 部署固定在 tag / detached HEAD，先用外部发布流程切到目标版本，然后执行：
+
+```bash
+./pim upgrade --server --skip-playwright --no-pull --no-restart
+```
+
+Linux 后台 PID 文件默认写入 `~/.pim/run/pim.pid`；可用 `PIM_PID_FILE=/path/to/pim.pid`
+覆盖。旧版 `~/.pim/pim.pid` 会被自动识别并迁移。
 
 ## 8. 中文金融 / 科技舆情源
 
