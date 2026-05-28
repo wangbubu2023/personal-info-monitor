@@ -46,6 +46,8 @@ const AIModelTab: React.FC = () => {
   const transProvider = modelsData?.providers?.find(p => p.id === selectedTransProvider)
   const selectedAtomProvider = Form.useWatch('atom_provider', form)
   const atomProvider = modelsData?.providers?.find(p => p.id === selectedAtomProvider)
+  const selectedScoreProvider = Form.useWatch('score_provider', form)
+  const scoreProvider = modelsData?.providers?.find(p => p.id === selectedScoreProvider)
   const selectedTransFbProvider = Form.useWatch('trans_fallback_provider', form)
   const transFbProvider = modelsData?.providers?.find(p => p.id === selectedTransFbProvider)
   const selectedSumFbProvider = Form.useWatch('sum_fallback_provider', form)
@@ -55,9 +57,10 @@ const AIModelTab: React.FC = () => {
   const modelOptions = (currentProvider?.models || []).map((m) => ({ value: m.id, label: m.name }))
   const transModelOptions = (transProvider?.models || []).map((m) => ({ value: m.id, label: m.name }))
   const atomModelOptions = (atomProvider?.models || []).map((m) => ({ value: m.id, label: m.name }))
+  const scoreModelOptions = (scoreProvider?.models || []).map((m) => ({ value: m.id, label: m.name }))
   const transFbModelOptions = (transFbProvider?.models || []).map((m) => ({ value: m.id, label: m.name }))
   const sumFbModelOptions = (sumFbProvider?.models || []).map((m) => ({ value: m.id, label: m.name }))
-  const buildModelFilter = (inputValue: string, option: { value?: string; label?: string } | undefined, fieldName: 'model' | 'trans_model' | 'atom_model' | 'trans_fallback_model' | 'sum_fallback_model') => {
+  const buildModelFilter = (inputValue: string, option: { value?: string; label?: string } | undefined, fieldName: 'model' | 'trans_model' | 'atom_model' | 'score_model' | 'trans_fallback_model' | 'sum_fallback_model') => {
     const normalizedInput = String(inputValue || '').toLowerCase().trim()
     if (!normalizedInput) return true
     const currentValue = String(form.getFieldValue(fieldName) || '').toLowerCase().trim()
@@ -88,6 +91,12 @@ const AIModelTab: React.FC = () => {
       atom_max_tokens: settings.atom_model?.max_tokens ?? 4000,
       atom_ollama_num_ctx: snapOllamaNumCtx(settings.atom_model?.ollama_num_ctx, 8192),
       atom_ollama_no_think: settings.atom_model?.ollama_no_think ?? false,
+      score_provider: settings.score_model?.provider || settings.ai_model.provider,
+      score_model: settings.score_model?.model || '',
+      score_temperature: settings.score_model?.temperature ?? 0.1,
+      score_max_tokens: settings.score_model?.max_tokens ?? 150,
+      score_ollama_num_ctx: snapOllamaNumCtx(settings.score_model?.ollama_num_ctx, 2048),
+      score_ollama_no_think: settings.score_model?.ollama_no_think ?? true,
       translation_fallback_enabled:
         settings.translation_fallback_enabled ?? settings.translation_cloud_fallback_enabled ?? false,
       summarization_fallback_enabled:
@@ -213,6 +222,18 @@ const AIModelTab: React.FC = () => {
           ? {
               ollama_num_ctx: values.atom_ollama_num_ctx,
               ollama_no_think: values.atom_ollama_no_think === true,
+            }
+          : {}),
+      },
+      score_model: {
+        provider: values.score_provider,
+        model: values.score_model,
+        temperature: values.score_temperature,
+        max_tokens: values.score_max_tokens,
+        ...(values.score_provider === 'ollama'
+          ? {
+              ollama_num_ctx: values.score_ollama_num_ctx,
+              ollama_no_think: values.score_ollama_no_think === true,
             }
           : {}),
       },
@@ -498,6 +519,69 @@ const AIModelTab: React.FC = () => {
               label="关闭思维链 (/no_think)"
               valuePropName="checked"
               extra="结构化 JSON 提取建议开启，减少思维链输出干扰。"
+            >
+              <Switch checkedChildren="开启" unCheckedChildren="关闭" />
+            </Form.Item>
+          </>
+        ) : null}
+
+        <Divider orientation="left">评分模型配置</Divider>
+
+        <SectionNote style={{ marginBottom: 16 }}>
+          内容主观评分专用模型。模型名称留空时后端会回退到固定基线；开启 LLM 主观评分后才会调用该通道。
+        </SectionNote>
+
+        <Form.Item name="score_provider" label="评分模型提供商" rules={[{ required: true }]}>
+          <Select placeholder="选择 AI 提供商">
+            {modelsData?.providers?.map(p => (
+              <Option key={p.id} value={p.id}>{p.name}</Option>
+            ))}
+          </Select>
+        </Form.Item>
+
+        <Form.Item
+          name="score_model"
+          label="评分模型"
+          extra={selectedScoreProvider === 'ollama'
+            ? '留空则使用固定基线；填写后在启用 LLM 主观评分时优先使用该模型。'
+            : '留空则使用固定基线。'}
+        >
+          <AutoComplete
+            options={scoreModelOptions}
+            placeholder="留空 = 使用固定基线"
+            filterOption={(inputValue, option) => buildModelFilter(inputValue, option, 'score_model')}
+          />
+        </Form.Item>
+
+        {selectedScoreProvider ? (
+          <SectionNote style={{ marginBottom: 16 }}>
+            当前评分通道服务地址（来自模型接入）：{' '}
+            <code className="text-[13px]">{scoreProvider?.default_api_base || '—'}</code>
+          </SectionNote>
+        ) : null}
+
+        <Form.Item name="score_temperature" label="Temperature">
+          <Slider min={0} max={1} step={0.05} />
+        </Form.Item>
+
+        <Form.Item name="score_max_tokens" label="Max Tokens">
+          <InputNumber min={32} max={2000} step={32} style={{ width: '100%' }} />
+        </Form.Item>
+
+        {selectedScoreProvider === 'ollama' ? (
+          <>
+            <Form.Item
+              name="score_ollama_num_ctx"
+              label="Context 窗口 (num_ctx)"
+              extra="评分任务使用的 Ollama 上下文长度，默认 2K。"
+            >
+              <OllamaCtxSlider />
+            </Form.Item>
+            <Form.Item
+              name="score_ollama_no_think"
+              label="关闭思维链 (/no_think)"
+              valuePropName="checked"
+              extra="短评分任务建议开启，避免模型输出冗长思考过程。"
             >
               <Switch checkedChildren="开启" unCheckedChildren="关闭" />
             </Form.Item>
