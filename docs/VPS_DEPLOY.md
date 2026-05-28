@@ -21,7 +21,7 @@
 ## 1. 拉取代码
 
 ```bash
-git clone <你的仓库地址> personal-info-monitor
+git clone --depth 1 https://github.com/wangbubu2023/personal-info-monitor.git
 cd personal-info-monitor
 ```
 
@@ -29,6 +29,20 @@ cd personal-info-monitor
 
 ```bash
 ./pim setup
+```
+
+如果 VPS 只使用 RSS / 普通网页抓取，暂时不需要浏览器登录、X、复杂动态网页抓取，可以先跳过
+Chromium 下载，减少首次安装体积：
+
+```bash
+./pim setup --skip-playwright
+```
+
+后续需要时再安装：
+
+```bash
+cd backend
+./.venv/bin/python -m playwright install chromium
 ```
 
 初始化会生成：
@@ -60,11 +74,12 @@ After=network.target
 
 [Service]
 Type=simple
-WorkingDirectory=/path/to/personal-info-monitor/backend
-ExecStart=/path/to/personal-info-monitor/backend/.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000
+WorkingDirectory=/path/to/personal-info-monitor
+ExecStart=/path/to/personal-info-monitor/pim up --foreground --server
 Restart=always
 RestartSec=3
 Environment=PYTHONUNBUFFERED=1
+Environment=PIM_PUBLIC_URL=https://your-domain.com
 
 [Install]
 WantedBy=multi-user.target
@@ -83,6 +98,19 @@ sudo systemctl daemon-reload
 sudo systemctl enable personal-info-monitor
 sudo systemctl start personal-info-monitor
 sudo systemctl status personal-info-monitor
+```
+
+`PIM_PUBLIC_URL` 用于生成公网引导链接。服务启动后可执行：
+
+```bash
+cd /path/to/personal-info-monitor
+./pim bootstrap-url --origin https://your-domain.com
+```
+
+或使用环境变量：
+
+```bash
+PIM_PUBLIC_URL=https://your-domain.com ./pim bootstrap-url
 ```
 
 ## 5. 反向代理与安全加固
@@ -211,6 +239,46 @@ cd /path/to/personal-info-monitor
 ./pim backup
 ```
 
+### 6.1 使用 systemd timer 自动备份
+
+创建备份 service：
+
+```ini
+# /etc/systemd/system/pim-backup.service
+[Unit]
+Description=Backup Personal Info Monitor data
+
+[Service]
+Type=oneshot
+WorkingDirectory=/path/to/personal-info-monitor
+ExecStart=/path/to/personal-info-monitor/pim backup
+```
+
+创建每日 timer：
+
+```ini
+# /etc/systemd/system/pim-backup.timer
+[Unit]
+Description=Run PIM backup daily
+
+[Timer]
+OnCalendar=*-*-* 03:20:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+```
+
+启用：
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now pim-backup.timer
+systemctl list-timers pim-backup.timer
+```
+
+`./pim backup` 默认写入 `~/.pim/backups/`。生产环境还应把该目录同步到另一台机器或对象存储。
+
 手动打包默认数据目录示例（包含 `pim.db` 与 `runtime-secrets.json`）：
 
 ```bash
@@ -232,7 +300,20 @@ git pull
 sudo systemctl restart personal-info-monitor
 ```
 
+## 8. 中文金融 / 科技舆情源
+
+项目不内置一套“默认中文金融源”。VPS 首次部署建议先从稳定的 RSS / website 类型开始，
+再按需要增加 X、YouTube、Podcast。这样可以降低登录态、Chromium、上游反爬变化带来的维护成本。
+
+推荐顺序：
+
+1. 优先添加官方 RSS、交易所/公司公告、媒体栏目页等稳定 URL。
+2. 对没有 RSS 的网站使用 `website` 类型，让系统做网页探测。
+3. X、YouTube、Podcast 只在确实需要时启用，并单独配置对应凭据或浏览器会话。
+
 ## 说明
 
 - 当前代码库不再把 Docker、PostgreSQL、Redis、Celery 作为主部署方式。
+- 当前依赖包覆盖 RSS、网页正文抽取、浏览器抓取、X、YouTube、Podcast 等能力，首次安装较重；
+  轻量 VPS 可用 `./pim setup --skip-playwright` 先跳过 Chromium，后续再按需补装。
 - 如果后续重新引入多进程或外部数据库，请同步更新本文件与 README。

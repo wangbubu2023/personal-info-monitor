@@ -51,10 +51,13 @@ flowchart LR
 git clone <repo-url> personal-info-monitor
 cd personal-info-monitor
 ./pim setup       # 创建 backend/venv、装依赖、Playwright Chromium、前端依赖
+# 轻量服务器可跳过 Chromium 下载：./pim setup --skip-playwright
 ```
 
 `./pim setup` 同时生成 `backend/.env` 模板与 `~/.pim/data/runtime-secrets.json`
 （含 `PIM_API_KEY` 与 `ENCRYPTION_KEY`，不会回写到 `.env`）。
+新安装默认关闭 outbound LLM 能力；配置模型后再把 `AI_PROCESSING_ENABLED` 与需要的
+`ENRICH_*` 开关改为 `true`。
 
 ### 日常启动（推荐：后台服务）
 
@@ -85,11 +88,12 @@ cd personal-info-monitor
 | 变量 | 默认 | 说明 |
 |---|---|---|
 | `DATA_DIR` | `~/.pim/data` | SQLite 主库与日志目录 |
+| `PIM_PUBLIC_URL` | — | VPS / 反向代理后的公网访问地址，用于 `./pim bootstrap-url` |
 | `FETCH_CONCURRENCY` | `20` | 并发抓取上限 |
-| `AI_PROCESSING_ENABLED` | `true` | LLM master kill switch（与 `ENRICH_*` 同时检查） |
+| `AI_PROCESSING_ENABLED` | `false` | LLM master kill switch（与 `ENRICH_*` 同时检查） |
 | `ENRICH_AUTO_ON_INGEST` | `false` | ingest 完成后是否自动触发 enrich 流水线 |
-| `ENRICH_SUMMARY_ENABLED` | `true` | 允许 Summarizer 调 LLM 生成摘要 |
-| `ENRICH_TRANSLATE_ENABLED` | `true` | 允许 Translator 调 LLM 做翻译 |
+| `ENRICH_SUMMARY_ENABLED` | `false` | 允许 Summarizer 调 LLM 生成摘要 |
+| `ENRICH_TRANSLATE_ENABLED` | `false` | 允许 Translator 调 LLM 做翻译 |
 | `ATOMS_ENABLED` | `false` | 可选 atoms 结构化原子事件层（Phase 6） |
 | `OPENAI_API_KEY` | — | 云端模型凭据（可选） |
 | `RSSHUB_URL` | `https://rsshub.app` | RSSHub 实例 |
@@ -140,6 +144,11 @@ cd backend && alembic upgrade head   # 手动升级到最新 schema
 ```
 
 应用启动时会自动执行 `alembic upgrade head`。
+VPS 首次登录 Web UI 时可生成公网引导链接：
+
+```bash
+./pim bootstrap-url --origin https://your-domain.com
+```
 
 ## 测试与质量门
 

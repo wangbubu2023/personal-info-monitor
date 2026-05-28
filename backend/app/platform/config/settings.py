@@ -98,10 +98,10 @@ class Settings(BaseSettings):
     # selection, etc.). The legacy ``AI_PROCESSING_ENABLED`` env name is still
     # accepted but now serves only as the *master* gate; new deployments configure
     # the per-feature ``ENRICH_*`` toggles below and leave this flag at its
-    # ``True`` default. Phase 7 of the modular refactor cleaned the
+    # ``False`` default. Phase 7 of the modular refactor cleaned the
     # "AI_PROCESSING_ENABLED is the only switch" narrative out of the docs and
     # runtime paths — the flag is no longer slated for removal.
-    ai_processing_enabled: bool = True
+    ai_processing_enabled: bool = False
     #: Rough daily cap on *estimated* LLM tokens (prompt + max output). ``0`` = unlimited.
     ai_daily_token_budget: int = 0
     cloud_fallback_enabled: bool = True
@@ -115,9 +115,10 @@ class Settings(BaseSettings):
     #   does not yet exist; Phase 4/5 will wire it up).
     # * ``enrich_summary_enabled`` — gate for :class:`Summarizer` text generation.
     # * ``enrich_translate_enabled`` — gate for :class:`Translator` LLM calls.
+    #   New installs keep outbound LLM calls off until the operator opts in.
     enrich_auto_on_ingest: bool = False
-    enrich_summary_enabled: bool = True
-    enrich_translate_enabled: bool = True
+    enrich_summary_enabled: bool = False
+    enrich_translate_enabled: bool = False
 
     #: After this many consecutive fetch *errors*, auto-disable the source (``0`` = never).
     fetch_error_disable_threshold: int = 12

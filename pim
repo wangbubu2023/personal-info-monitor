@@ -10,6 +10,7 @@ Usage:
     ./pim up --foreground   Run uvicorn in foreground (useful in containers).
 
     ./pim setup             First-time setup (venv, deps, runtime config, frontend build)
+                            Use --skip-playwright to skip Chromium download.
     ./pim install-service   Install macOS LaunchAgent (auto-starts on login, runs in background)
     ./pim uninstall-service Remove LaunchAgent and stop the service
     ./pim start             Start dev server (backend + frontend Vite :3000)
@@ -22,6 +23,7 @@ Usage:
     ./pim logs              Tail the log file
     ./pim cleanup           Remove stale caches, rotated logs, and Python __pycache__
     ./pim bootstrap-url     Print a one-shot URL containing the bootstrap token
+                            Use --origin https://example.com for VPS/public access.
                             for auto-provisioning a fresh web browser session
 """
 
@@ -91,6 +93,11 @@ def _install_deps():
 
 
 def _install_playwright():
+    args = set(sys.argv[2:])
+    if "--skip-playwright" in args or _parse_env_bool(os.environ.get("PIM_SKIP_PLAYWRIGHT_INSTALL")):
+        print("Skipping Playwright Chromium install.")
+        print("  To enable browser-backed collectors later: cd backend && ./.venv/bin/python -m playwright install chromium")
+        return
     print("Installing Playwright Chromium ...")
     subprocess.check_call(
         [_python(), "-m", "playwright", "install", "chromium"],
@@ -1075,12 +1082,26 @@ def cmd_bootstrap_url():
     from the address bar. Because the token lives in a 0600 file under
     ``runtime-secrets.json``, only the local user can print it.
     """
+    args = sys.argv[2:]
+    origin = None
+    if "--origin" in args:
+        idx = args.index("--origin")
+        if idx + 1 >= len(args) or not args[idx + 1].strip():
+            print("Usage: ./pim bootstrap-url [--origin https://your-domain.com]", file=sys.stderr)
+            sys.exit(2)
+        origin = args[idx + 1]
+
     token = _bootstrap_token()
     if not token:
         print("Bootstrap token unavailable. Run: ./pim setup", file=sys.stderr)
         sys.exit(1)
 
-    host = os.environ.get("PIM_PUBLIC_ORIGIN", "http://localhost:8000").rstrip("/")
+    host = (
+        origin
+        or _read_env_var("PIM_PUBLIC_URL")
+        or _read_env_var("PIM_PUBLIC_ORIGIN")
+        or "http://localhost:8000"
+    ).rstrip("/")
     url = f"{host}/?bootstrap_token={token}"
     print(url)
     print()

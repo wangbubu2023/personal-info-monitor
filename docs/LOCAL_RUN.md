@@ -21,6 +21,12 @@
 ./pim setup
 ```
 
+不需要浏览器登录/动态网页抓取时，可以跳过 Chromium 下载：
+
+```bash
+./pim setup --skip-playwright
+```
+
 ### 开发模式
 
 ```bash
@@ -98,11 +104,12 @@ uvicorn app.main:app --host 127.0.0.1 --port 8000
 | `ENCRYPTION_KEY` | 加密认证信息 |
 | `JWT_SECRET_KEY` | JWT/签名密钥 |
 | `DATA_DIR` | SQLite 数据目录 |
+| `PIM_PUBLIC_URL` | 公网部署时的浏览器访问地址，用于 `./pim bootstrap-url` |
 | `FETCH_CONCURRENCY` | 抓取并发 |
-| `AI_PROCESSING_ENABLED` | LLM master kill switch（与 `ENRICH_*` 同时检查） |
+| `AI_PROCESSING_ENABLED` | LLM master kill switch（与 `ENRICH_*` 同时检查，默认 false） |
 | `ENRICH_AUTO_ON_INGEST` | ingest 完成是否自动触发 enrich（默认 false） |
-| `ENRICH_SUMMARY_ENABLED` | Summarizer LLM 摘要开关（默认 true） |
-| `ENRICH_TRANSLATE_ENABLED` | Translator LLM 翻译开关（默认 true） |
+| `ENRICH_SUMMARY_ENABLED` | Summarizer LLM 摘要开关（默认 false） |
+| `ENRICH_TRANSLATE_ENABLED` | Translator LLM 翻译开关（默认 false） |
 | `OPENAI_API_KEY` | 可选，云端模型 Key |
 | `RSSHUB_URL` | 可选，RSSHub 地址 |
 

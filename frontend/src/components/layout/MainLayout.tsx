@@ -24,6 +24,7 @@ interface SidebarItemProps {
 }
 
 const iconStroke = 1.5
+const appVersion = __APP_VERSION__
 
 /** 侧栏分组标题：不透明深色胶囊（与侧栏底色差），区别于下方半透明可点击项；不用竖线以免与选中条重复 */
 const NavSectionLabel: React.FC = () => (
@@ -146,6 +147,9 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
               <span>K</span>
             </div>
           </button>
+          <div className="mt-4 px-1 text-[11px] font-medium tracking-[0.08em] text-[#7f93aa]">
+            PIM v{appVersion}
+          </div>
         </div>
       </aside>
 
@@ -188,6 +192,9 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                 ))}
                 </div>
               </nav>
+              <div className="mt-4 px-2 text-[11px] font-medium tracking-[0.08em] text-[#7f93aa]">
+                PIM v{appVersion}
+              </div>
             </motion.aside>
           </>
         )}
