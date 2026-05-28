@@ -91,7 +91,7 @@ async def _process_handler(content_id: str, job_id: str | None) -> None:
 app = FastAPI(
     title=settings.app_name,
     description="个人化资讯监控管理系统 API",
-    version="1.0.0",
+    version="1.0.1",
     lifespan=build_lifespan(
         fetch_handler=_fetch_handler,
         process_handler=_process_handler,
@@ -232,7 +232,7 @@ else:
             status = f"running (Frontend dev server: {DEV_FRONTEND_URL})"
         return {
             "name": settings.app_name,
-            "version": "1.0.0",
+            "version": "1.0.1",
             "status": status,
         }
 

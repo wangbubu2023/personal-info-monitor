@@ -25,6 +25,13 @@ git clone --depth 1 https://github.com/wangbubu2023/personal-info-monitor.git
 cd personal-info-monitor
 ```
 
+如需固定在 1.0.1 稳定版：
+
+```bash
+git clone --depth 1 --branch v1.0.1 https://github.com/wangbubu2023/personal-info-monitor.git
+cd personal-info-monitor
+```
+
 ## 2. 初始化
 
 ```bash
@@ -295,9 +302,17 @@ cp /path/to/personal-info-monitor/backend/.env ~/pim-env-backup-$(date +%Y%m%d).
 
 ```bash
 cd /path/to/personal-info-monitor
-git pull
-./pim setup
-sudo systemctl restart personal-info-monitor
+./pim upgrade --server --skip-playwright --systemd personal-info-monitor
+```
+
+`./pim upgrade` 会先备份 SQLite 与运行时密钥，再执行 `git pull --ff-only`，然后刷新 Python
+依赖和前端静态资源。带 `--systemd personal-info-monitor` 时，最后会执行
+`sudo systemctl restart personal-info-monitor`。
+
+如果你没有使用 systemd，而是用 `./pim up` / `./pim start --prod` 启动，直接执行：
+
+```bash
+./pim upgrade --server --skip-playwright
 ```
 
 ## 8. 中文金融 / 科技舆情源

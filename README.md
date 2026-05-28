@@ -48,7 +48,7 @@ flowchart LR
 要求：Python 3.11+、Node.js 18+、npm。Tauri 桌面端额外需要 Rust 工具链。
 
 ```bash
-git clone <repo-url> personal-info-monitor
+git clone --depth 1 https://github.com/wangbubu2023/personal-info-monitor.git
 cd personal-info-monitor
 ./pim setup       # 创建 backend/venv、装依赖、Playwright Chromium、前端依赖
 # 轻量服务器可跳过 Chromium 下载：./pim setup --skip-playwright
@@ -63,6 +63,7 @@ cd personal-info-monitor
 
 ```bash
 ./pim install-service   # 注册 macOS LaunchAgent，立即启动
+./pim upgrade           # 备份 → git pull --ff-only → 更新依赖/前端 → 重启本机服务
 ./pim status            # PID / 启动时间 / 健康状态
 ./pim logs              # 实时日志
 ./pim stop              # 暂停服务（重启仍会自动恢复）
@@ -139,6 +140,7 @@ Agent 集成方式见 [`docs/AGENT_GUIDE.md`](docs/AGENT_GUIDE.md)。CLI 早期
 
 ```bash
 ./pim backup                 # SQLite 热备份 + .env + runtime-secrets 归档到 ~/.pim/backups/
+./pim upgrade                # 推荐更新路径：先备份，再 fast-forward 拉取并刷新依赖/前端
 ./pim rollback <revision>    # 回滚到指定 Alembic revision
 cd backend && alembic upgrade head   # 手动升级到最新 schema
 ```

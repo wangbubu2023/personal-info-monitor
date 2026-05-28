@@ -27,6 +27,14 @@
 ./pim setup --skip-playwright
 ```
 
+### 更新
+
+```bash
+./pim upgrade
+```
+
+该命令会拒绝覆盖本地未提交改动；更新前会先备份已有 SQLite 数据库和运行时密钥。
+
 ### 开发模式
 
 ```bash

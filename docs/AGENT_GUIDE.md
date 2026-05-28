@@ -150,7 +150,7 @@ pimctl --profile prod sources list --json
   "error": null,
   "meta": {
     "server": "http://127.0.0.1:8000",
-    "cli_version": "1.0.0",
+    "cli_version": "1.0.1",
     "profile": "local"
   }
 }

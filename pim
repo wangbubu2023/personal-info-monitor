@@ -11,6 +11,8 @@ Usage:
 
     ./pim setup             First-time setup (venv, deps, runtime config, frontend build)
                             Use --skip-playwright to skip Chromium download.
+    ./pim upgrade           Backup, fast-forward git pull, refresh deps/frontend, restart if local service is running
+                            Use --server for backend-only VPS, --systemd <unit> to restart a systemd service.
     ./pim install-service   Install macOS LaunchAgent (auto-starts on login, runs in background)
     ./pim uninstall-service Remove LaunchAgent and stop the service
     ./pim start             Start dev server (backend + frontend Vite :3000)
@@ -388,6 +390,105 @@ def cmd_setup():
         print("Runtime secrets are stored in ~/.pim/data/runtime-secrets.json")
         print(f"API Key: {api_key}")
     print("Run: ./pim start --prod")
+
+
+def _arg_value(args: list[str], name: str) -> str | None:
+    if name not in args:
+        return None
+    idx = args.index(name)
+    if idx + 1 >= len(args) or not args[idx + 1].strip():
+        print(f"Usage: ./pim upgrade {name} <value>", file=sys.stderr)
+        sys.exit(2)
+    return args[idx + 1].strip()
+
+
+def _ensure_git_clean() -> None:
+    if not (ROOT / ".git").exists():
+        print("Not a git checkout; cannot pull updates. Use ./pim setup instead.", file=sys.stderr)
+        sys.exit(1)
+
+    status = subprocess.check_output(
+        ["git", "status", "--porcelain"],
+        cwd=str(ROOT),
+        text=True,
+    ).strip()
+    if status:
+        print("Working tree has local changes; refusing to upgrade.", file=sys.stderr)
+        print("Commit/stash them first, then rerun ./pim upgrade.", file=sys.stderr)
+        sys.exit(1)
+
+    branch = subprocess.check_output(
+        ["git", "symbolic-ref", "--short", "-q", "HEAD"],
+        cwd=str(ROOT),
+        text=True,
+    ).strip()
+    if not branch:
+        print("Current checkout is detached (likely a tag). Checkout main before upgrading.", file=sys.stderr)
+        print("Example: git checkout main && git pull --ff-only", file=sys.stderr)
+        sys.exit(1)
+
+
+def _upgrade_dependencies_and_assets(*, server_only: bool, rebuild: bool) -> None:
+    _ensure_venv()
+    _install_deps()
+    _install_playwright()
+    _ensure_env_file()
+    if server_only:
+        print("  Skipping frontend build (--server).")
+    else:
+        _ensure_frontend_built(rebuild=rebuild)
+
+
+def cmd_upgrade():
+    """Upgrade an existing checkout with backup-first, fast-forward-only semantics."""
+    args = sys.argv[2:]
+    server_only = "--server" in args or "--no-frontend" in args
+    rebuild = "--rebuild" in args
+    no_pull = "--no-pull" in args
+    no_backup = "--no-backup" in args
+    no_restart = "--no-restart" in args
+    systemd_unit = _arg_value(args, "--systemd")
+
+    print("=== PIM Upgrade ===")
+    _ensure_git_clean()
+
+    was_running = _currently_running_pid() is not None or _is_port_8000_open()
+    was_launchd = _is_launchd_backed()
+
+    runtime = _read_runtime_metadata() if VENV.exists() else {}
+    db_path = _sqlite_path_from_url(str(runtime.get("database_url") or ""))
+    if not no_backup and db_path and db_path.exists():
+        print("\n[1/4] Backup")
+        cmd_backup()
+    elif no_backup:
+        print("\n[1/4] Backup skipped (--no-backup).")
+    else:
+        print("\n[1/4] Backup skipped (SQLite database not found yet).")
+
+    if no_pull:
+        print("\n[2/4] Git pull skipped (--no-pull).")
+    else:
+        print("\n[2/4] Pull latest code")
+        subprocess.check_call(["git", "pull", "--ff-only"], cwd=str(ROOT))
+
+    print("\n[3/4] Refresh dependencies and frontend assets")
+    _upgrade_dependencies_and_assets(server_only=server_only, rebuild=rebuild)
+
+    print("\n[4/4] Restart")
+    if no_restart:
+        print("Restart skipped (--no-restart).")
+    elif systemd_unit:
+        subprocess.check_call(["sudo", "systemctl", "restart", systemd_unit])
+        print(f"Restarted systemd unit: {systemd_unit}")
+    elif was_launchd:
+        cmd_install_service()
+    elif was_running:
+        cmd_stop()
+        cmd_up()
+    else:
+        print("Service was not running before upgrade; leaving it stopped.")
+
+    print("\nUpgrade complete.")
 
 
 def _read_api_key():
@@ -1112,6 +1213,7 @@ def cmd_bootstrap_url():
 COMMANDS = {
     "up": cmd_up,
     "setup": cmd_setup,
+    "upgrade": cmd_upgrade,
     "start": cmd_start,
     "stop": cmd_stop,
     "status": cmd_status,
