@@ -152,6 +152,7 @@ export interface KeywordBatchUpdateResponse {
 // Digest types
 export interface DigestItem {
   id: string
+  source_id?: string
   source_name: string
   title: string
   translated_title?: string
@@ -272,6 +273,8 @@ export interface SystemSettings {
   email_notifications_enabled: boolean
   /** Dev-only score lab sidebar entry (ignored in production builds). */
   score_lab_enabled?: boolean
+  atoms_enabled?: boolean
+  atoms_relations_enabled?: boolean
   limits?: SystemSettingsLimits
   hourly_digest?: HourlyDigestSettings
 }
@@ -291,6 +294,8 @@ export interface AIModelTabFormValues {
   atom_model: string
   atom_temperature: number
   atom_max_tokens: number
+  atoms_enabled?: boolean
+  atoms_relations_enabled?: boolean
   atom_ollama_num_ctx?: number
   atom_ollama_no_think?: boolean
   score_provider: string

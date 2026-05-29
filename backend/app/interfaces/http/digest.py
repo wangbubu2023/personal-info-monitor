@@ -127,6 +127,7 @@ def _digest_item_from_content(content: Content) -> DigestItem:
 
     return DigestItem(
         id=content.id,
+        source_id=content.source_id,
         source_name=content.source.name if content.source else "Unknown",
         title=content.title,
         translated_title=content.translated_title,

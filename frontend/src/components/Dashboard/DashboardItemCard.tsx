@@ -13,6 +13,7 @@ import { motion } from 'framer-motion';
 import { KEYWORD_MONITORING_ENABLED } from '../../config/features';
 import type { DigestItem } from '../../types';
 import {
+  buildDashboardSourcePath,
   buildReaderPath,
   capDashboardListPreview,
   digestSummaryPlain,
@@ -30,6 +31,9 @@ interface DashboardItemCardProps {
   activeTab: string;
   /** 若来自搜索列表，用于返回时恢复 `?search=`（优先于 tab） */
   searchReturnQuery?: string;
+  /** 若来自单一信源视图，用于阅读页返回时恢复 `?source_id=` */
+  sourceReturnId?: string;
+  sourceReturnName?: string;
 }
 
 function splitSummaryLink(summary?: string): { text: string; hasInlineLink: boolean } {
@@ -43,10 +47,14 @@ const DashboardItemCard: React.FC<DashboardItemCardProps> = ({
   item,
   activeTab,
   searchReturnQuery,
+  sourceReturnId,
+  sourceReturnName,
 }) => {
-  const readerOpts = searchReturnQuery
-    ? { search: searchReturnQuery }
-    : { tab: activeTab };
+  const readerOpts = {
+    ...(searchReturnQuery ? { search: searchReturnQuery } : {}),
+    ...(sourceReturnId ? { sourceId: sourceReturnId, sourceName: sourceReturnName } : {}),
+    ...(!searchReturnQuery && !sourceReturnId ? { tab: activeTab } : {}),
+  };
   const rawSummary = item.translated_summary || item.summary || '';
   const plainSummary = digestSummaryPlain(rawSummary);
   const { text: summaryText, hasInlineLink } = splitSummaryLink(plainSummary || rawSummary);
@@ -79,9 +87,19 @@ const DashboardItemCard: React.FC<DashboardItemCardProps> = ({
       <div className="flex flex-col gap-3">
         <div className="flex flex-wrap items-center justify-between gap-2 text-[12px]">
           <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
-            <span className="font-medium tracking-tight text-[#7a7358]">
-              {item.source_name}
-            </span>
+            {item.source_id ? (
+              <Link
+                to={buildDashboardSourcePath(item.source_id, item.source_name)}
+                className="font-medium tracking-tight text-[#7a7358] underline-offset-2 transition-colors hover:text-[#49A8C9] hover:underline"
+                title={`查看 ${item.source_name} 的全部内容`}
+              >
+                {item.source_name}
+              </Link>
+            ) : (
+              <span className="font-medium tracking-tight text-[#7a7358]">
+                {item.source_name}
+              </span>
+            )}
             {sourceStars ? (
               <span className="inline-flex items-center gap-1 rounded-full border border-[#8C866A]/18 bg-[#8C866A]/8 px-2 py-0.5 text-[#7a7358]">
                 <Star size={11} className="shrink-0 fill-current" strokeWidth={1.5} />

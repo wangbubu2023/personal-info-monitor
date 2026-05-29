@@ -1,6 +1,7 @@
 """System settings persistence and runtime access helpers."""
 
 import copy
+import os
 import threading
 import time
 from typing import Any, Dict
@@ -29,6 +30,19 @@ _CACHE_TTL_SECONDS = 30
 _cache_lock = threading.Lock()
 _cache_value: Dict[str, Any] | None = None
 _cache_deadline = 0.0
+
+
+def _env_bool_default(name: str, default: bool = False) -> bool:
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    normalized = raw.strip().lower()
+    if normalized in ("1", "true", "yes", "on"):
+        return True
+    if normalized in ("0", "false", "no", "off"):
+        return False
+    return default
+
 
 DEFAULT_SYSTEM_SETTINGS: Dict[str, Any] = {
     "ai_model": {
@@ -75,6 +89,8 @@ DEFAULT_SYSTEM_SETTINGS: Dict[str, Any] = {
     "summarization_fallback": {"provider": "openai", "model": "gpt-4o-mini"},
     "email_notifications_enabled": False,
     "score_lab_enabled": False,
+    "atoms_enabled": _env_bool_default("ATOMS_ENABLED", False),
+    "atoms_relations_enabled": _env_bool_default("ATOMS_RELATIONS_ENABLED", False),
     "limits": {
         "max_sources": 200,
         "max_digest_candidates": 12,
@@ -95,6 +111,8 @@ _SETTINGS_BOOL_KEYS = (
     "summarization_fallback_enabled",
     "email_notifications_enabled",
     "score_lab_enabled",
+    "atoms_enabled",
+    "atoms_relations_enabled",
 )
 _AI_MODEL_KEYS = ("provider", "model", "api_base", "temperature", "max_tokens", "api_key", "ollama_num_ctx", "ollama_no_think")
 _TRANS_MODEL_KEYS = ("provider", "model", "api_base", "api_key", "ollama_num_ctx", "ollama_no_think")

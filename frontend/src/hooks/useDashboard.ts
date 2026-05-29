@@ -16,6 +16,8 @@ const DASHBOARD_TAB_KEYS = new Set(DASHBOARD_CATEGORIES.map((c) => c.key));
 export const useDashboard = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const searchQuery = searchParams.get('search') || '';
+  const selectedSourceId = searchParams.get('source_id') || '';
+  const selectedSourceName = searchParams.get('source') || '';
   const [selectedDate, setSelectedDate] = useState<Dayjs>(dayjs());
   const queryClient = useQueryClient();
 
@@ -43,10 +45,14 @@ export const useDashboard = () => {
   );
 
   // Queries
-  const { data: searchResults, isLoading: searchLoading } = useQuery({
-    queryKey: ['search-contents', searchQuery],
-    queryFn: () => contentsApi.list({ search: searchQuery, page_size: 50 }),
-    enabled: !!searchQuery,
+  const { data: contentResults, isLoading: contentLoading } = useQuery({
+    queryKey: ['dashboard-contents', searchQuery, selectedSourceId],
+    queryFn: () => contentsApi.list({
+      search: searchQuery || undefined,
+      source_id: selectedSourceId || undefined,
+      page_size: 50,
+    }),
+    enabled: !!searchQuery || !!selectedSourceId,
   });
 
   const { data: stats, isLoading: statsLoading } = useQuery({
@@ -81,13 +87,15 @@ export const useDashboard = () => {
 
   // Derived State
   const currentItems = useMemo(() => getDashboardItems(digest, activeTab), [digest, activeTab]);
-  const searchItems = useMemo(() => 
-    searchResults?.items.map((content: Content) => contentToDigestItem(content)) || [], 
-    [searchResults]
+  const contentItems = useMemo(() => 
+    contentResults?.items.map((content: Content) => contentToDigestItem(content)) || [], 
+    [contentResults]
   );
 
   return {
     searchQuery,
+    selectedSourceId,
+    selectedSourceName,
     selectedDate,
     setSelectedDate,
     activeTab,
@@ -99,15 +107,18 @@ export const useDashboard = () => {
     queueStatus,
     queueLoading,
     currentItems,
-    searchItems,
-    searchLoading,
+    contentItems,
+    contentTotal: contentResults?.total ?? 0,
+    contentLoading,
     fetchAll: fetchAllMutation.mutate,
     isFetchingAll: fetchAllMutation.isPending,
-    clearSearch: () =>
+    clearContentFilter: () =>
       setSearchParams(
         (prev) => {
           const next = new URLSearchParams(prev);
           next.delete('search');
+          next.delete('source_id');
+          next.delete('source');
           return next;
         },
         { replace: true },

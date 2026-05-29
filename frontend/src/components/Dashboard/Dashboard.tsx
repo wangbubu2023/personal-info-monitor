@@ -13,6 +13,8 @@ const DashboardSearchResults = React.lazy(() => import('./DashboardSearchResults
 const Dashboard: React.FC = () => {
   const {
     searchQuery,
+    selectedSourceId,
+    selectedSourceName,
     selectedDate,
     setSelectedDate,
     activeTab,
@@ -24,26 +26,29 @@ const Dashboard: React.FC = () => {
     queueStatus,
     queueLoading,
     currentItems,
-    searchItems,
-    searchLoading,
+    contentItems,
+    contentTotal,
+    contentLoading,
     fetchAll,
     isFetchingAll,
-    clearSearch,
+    clearContentFilter,
   } = useDashboard();
 
-  if (statsLoading && !searchQuery) {
+  if (statsLoading && !searchQuery && !selectedSourceId) {
     return <PageLoading />;
   }
 
-  if (searchQuery) {
+  if (searchQuery || selectedSourceId) {
     return (
       <Suspense fallback={<PageLoading />}>
         <DashboardSearchResults
           searchQuery={searchQuery}
-          total={searchItems.length}
-          items={searchItems}
-          isLoading={searchLoading}
-          onClearSearch={clearSearch}
+          sourceName={selectedSourceName}
+          sourceId={selectedSourceId}
+          total={contentTotal}
+          items={contentItems}
+          isLoading={contentLoading}
+          onClear={clearContentFilter}
         />
       </Suspense>
     );

@@ -6,20 +6,30 @@ import type { DigestItem } from '../../types';
 import DashboardItemCard from './DashboardItemCard';
 
 interface DashboardSearchResultsProps {
-  searchQuery: string;
+  searchQuery?: string;
+  sourceName?: string;
+  sourceId?: string;
   total: number;
   items: DigestItem[];
   isLoading: boolean;
-  onClearSearch: () => void;
+  onClear: () => void;
 }
 
 const DashboardSearchResults: React.FC<DashboardSearchResultsProps> = ({
   searchQuery,
+  sourceName,
+  sourceId,
   total,
   items,
   isLoading,
-  onClearSearch,
-}) => (
+  onClear,
+}) => {
+  const hasSearch = Boolean(searchQuery);
+  const hasSource = Boolean(sourceId);
+  const title = hasSource ? '信源内容' : '搜索结果';
+  const emptyText = hasSource ? '该信源暂无匹配内容。' : '试试更短的关键词，或换一种说法。';
+
+  return (
   <div className="space-y-4 pb-16 pt-1" data-testid="dashboard-search-page">
     <div className="mx-auto max-w-feed pl-5 pr-6 sm:pl-7 sm:pr-8 lg:pl-9 lg:pr-10">
       <div className="flex flex-col gap-3.5 border-b border-[rgba(88,100,118,0.1)] pb-3 pt-4 sm:gap-4 sm:pt-5">
@@ -29,24 +39,35 @@ const DashboardSearchResults: React.FC<DashboardSearchResultsProps> = ({
             <Search size={18} strokeWidth={1.5} />
           </div>
           <h1 className="text-[19px] font-semibold leading-tight tracking-tight text-[#2c3a50] sm:text-[20px]">
-            搜索结果
+            {title}
           </h1>
         </div>
 
         {/* 第二层：摘要文案 */}
         <p className="max-w-2xl text-[12px] leading-relaxed text-[#6b7c8f] sm:text-[13px]">
-          共 <span className="font-semibold tabular-nums text-[#2c3a50]">{total}</span> 条与关键词{' '}
-          <span className="font-medium text-[#49A8C9]">「{searchQuery}」</span>
-          匹配。
+          共 <span className="font-semibold tabular-nums text-[#2c3a50]">{total}</span> 条
+          {hasSource ? (
+            <>
+              来自信源 <span className="font-medium text-[#49A8C9]">「{sourceName || '当前信源'}」</span>
+            </>
+          ) : null}
+          {hasSearch ? (
+            <>
+              {hasSource ? '，且' : ''}与关键词{' '}
+              <span className="font-medium text-[#49A8C9]">「{searchQuery}」</span>
+              匹配
+            </>
+          ) : null}
+          。
         </p>
 
         {/* 第三层：操作 */}
         <div className="flex justify-end">
           <Button
-            onClick={onClearSearch}
+            onClick={onClear}
             className="!h-9 !rounded-lg !border-[rgba(88,100,118,0.12)] !bg-white/95 !px-4 !text-[13px] !font-medium !text-[#5f6f82] hover:!border-[#49A8C9]/28 hover:!text-[#2c3a50]"
           >
-            清除
+            返回全部
           </Button>
         </div>
       </div>
@@ -75,6 +96,8 @@ const DashboardSearchResults: React.FC<DashboardSearchResultsProps> = ({
                 item={item}
                 activeTab="all"
                 searchReturnQuery={searchQuery}
+                sourceReturnId={sourceId}
+                sourceReturnName={sourceName}
               />
             ))}
           </motion.div>
@@ -90,13 +113,14 @@ const DashboardSearchResults: React.FC<DashboardSearchResultsProps> = ({
             </div>
             <h3 className="mt-4 text-[15px] font-semibold text-[#2c3a50]">没有匹配结果</h3>
             <p className="mt-1.5 max-w-xs text-center text-[13px] leading-relaxed text-[#5f6f82]">
-              试试更短的关键词，或换一种说法。
+              {emptyText}
             </p>
           </motion.div>
         )}
       </AnimatePresence>
     </div>
   </div>
-);
+  );
+};
 
 export default DashboardSearchResults;

@@ -21,6 +21,9 @@ from app.utils.text import strip_html_tags, text_looks_like_embedded_binary
 logger = get_logger(__name__)
 
 
+MIN_RSS_PLAIN_TEXT_CHARS = 100
+
+
 class RSSCollector(BaseCollector):
     """Collector for RSS/Atom feeds."""
     
@@ -74,7 +77,7 @@ class RSSCollector(BaseCollector):
             return []
 
     def validate_content(self, content: Dict[str, Any]) -> bool:
-        """Require title/url plus meaningful description (filters channel hub rows with empty body)."""
+        """Require title/url plus meaningful text from RSS body or hydrated HTML."""
         if not super().validate_content(content):
             return False
         blob = str(content.get("content") or "")
@@ -82,7 +85,11 @@ class RSSCollector(BaseCollector):
             self.logger.debug("Skipping RSS entry with embedded binary in body: %s", (content.get("title") or "")[:60])
             return False
         plain = strip_html_tags(blob).strip()
-        if len(plain) < 20:
+        if len(plain) < MIN_RSS_PLAIN_TEXT_CHARS:
+            html_blob = str(content.get("html") or "")
+            if html_blob:
+                plain = strip_html_tags(html_blob).strip()
+        if len(plain) < MIN_RSS_PLAIN_TEXT_CHARS:
             self.logger.debug(
                 "Skipping RSS entry with insufficient plain text (%s chars): %s",
                 len(plain),

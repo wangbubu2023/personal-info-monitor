@@ -7,12 +7,35 @@ from app.collectors.youtube import YouTubeCollector
 def test_rss_validate_content_requires_plain_text_body():
     collector = RSSCollector()
     assert collector.validate_content(
-        {"title": "T", "url": "https://example.com/a", "content": "x" * 25},
+        {"title": "T", "url": "https://example.com/a", "content": "x" * 100},
     )
     assert not collector.validate_content(
-        {"title": "T", "url": "https://example.com/a", "content": "short"},
+        {"title": "T", "url": "https://example.com/a", "content": "x" * 99},
     )
     assert not collector.validate_content({"title": "T", "url": "https://example.com/a", "content": ""})
+
+
+def test_rss_validate_content_falls_back_to_hydrated_html():
+    collector = RSSCollector()
+    assert collector.validate_content(
+        {
+            "title": "T",
+            "url": "https://example.com/a",
+            "content": "",
+            "html": f"<html><body><article>{'article text ' * 12}</article></body></html>",
+        },
+    )
+
+
+def test_rss_validate_content_rejects_short_feed_without_hydrated_html():
+    collector = RSSCollector()
+    assert not collector.validate_content(
+        {
+            "title": "PromptLayer",
+            "url": "https://example.com/promptlayer",
+            "content": "Trace AI requests, workflows, and costs in one timeline\n\nDiscussion\n\n|\n\nLink",
+        },
+    )
 
 
 def test_rss_validate_content_rejects_embedded_png():

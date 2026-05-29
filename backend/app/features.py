@@ -81,7 +81,10 @@ def x_playwright_enabled() -> bool:
 
 def atoms_relations_enabled() -> bool:
     """Cross-article relation inference (P2). Requires atoms layer."""
-    return atoms_enabled() and feature_enabled("ATOMS_RELATIONS_ENABLED")
+    return atoms_enabled() and _settings_or_env_feature_enabled(
+        setting_key="atoms_relations_enabled",
+        env_name="ATOMS_RELATIONS_ENABLED",
+    )
 
 
 def atoms_enabled() -> bool:
@@ -91,7 +94,24 @@ def atoms_enabled() -> bool:
     extractor short-circuits without touching the DB and the
     :class:`SqlAtomReader` port returns an empty tuple.
     """
-    return feature_enabled("ATOMS_ENABLED")
+    return _settings_or_env_feature_enabled(
+        setting_key="atoms_enabled",
+        env_name="ATOMS_ENABLED",
+    )
+
+
+def _settings_or_env_feature_enabled(*, setting_key: str, env_name: str) -> bool:
+    if os.environ.get(env_name) is not None:
+        return feature_enabled(env_name)
+    try:
+        from app.platform.config.system_settings import get_system_settings_sync
+
+        return _parse_bool(
+            str((get_system_settings_sync() or {}).get(setting_key, "")),
+            default=_FEATURE_FLAG_DEFAULTS[env_name],
+        )
+    except (ImportError, KeyError, RuntimeError):
+        return feature_enabled(env_name)
 
 
 class PlaywrightDisabledError(RuntimeError):

@@ -11,6 +11,7 @@ class DigestItem(BaseModel):
     """Schema for a single digest item."""
     
     id: UUID
+    source_id: UUID
     source_name: str
     title: str
     translated_title: Optional[str] = None

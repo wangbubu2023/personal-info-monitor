@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import type { Content, Digest } from '../../types'
 import {
+  buildDashboardSourcePath,
   buildDashboardHomePath,
   buildReaderPath,
   capDashboardListPreview,
@@ -133,6 +134,7 @@ describe('dashboardUtils', () => {
 
     expect(contentToDigestItem(content)).toEqual({
       id: 'c-1',
+      source_id: 's-1',
       source_name: 'Source',
       title: 'Converted',
       translated_title: '已转换',
@@ -230,5 +232,12 @@ describe('buildReaderPath / buildDashboardHomePath', () => {
     expect(buildReaderPath('x', { search: 'foo' })).toBe('/reader/x?search=foo')
     expect(buildDashboardHomePath('rss', 'foo')).toBe('/?search=foo')
     expect(buildDashboardHomePath('rss', undefined)).toBe('/?tab=rss')
+  })
+
+  it('信源上下文附带 source_id，阅读页返回时保留信源过滤', () => {
+    expect(buildDashboardSourcePath('s-1', '36kr')).toBe('/?source_id=s-1&source=36kr')
+    expect(buildReaderPath('x', { sourceId: 's-1', sourceName: '36kr' })).toBe('/reader/x?source_id=s-1&source=36kr')
+    expect(buildDashboardHomePath('rss', undefined, 's-1', '36kr')).toBe('/?source_id=s-1&source=36kr')
+    expect(buildDashboardHomePath('rss', 'ai', 's-1', '36kr')).toBe('/?search=ai&source_id=s-1&source=36kr')
   })
 })

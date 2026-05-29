@@ -95,6 +95,8 @@ const AIModelTab: React.FC = () => {
       atom_model: settings.atom_model?.model || '',
       atom_temperature: settings.atom_model?.temperature ?? 0.1,
       atom_max_tokens: settings.atom_model?.max_tokens ?? 4000,
+      atoms_enabled: settings.atoms_enabled ?? false,
+      atoms_relations_enabled: settings.atoms_relations_enabled ?? false,
       atom_ollama_num_ctx: snapOllamaNumCtx(settings.atom_model?.ollama_num_ctx, 8192),
       atom_ollama_no_think: settings.atom_model?.ollama_no_think ?? false,
       score_provider: settings.score_model?.provider || settings.ai_model.provider,
@@ -231,6 +233,8 @@ const AIModelTab: React.FC = () => {
             }
           : {}),
       },
+      atoms_enabled: values.atoms_enabled === true,
+      atoms_relations_enabled: values.atoms_relations_enabled === true,
       score_model: {
         provider: values.score_provider,
         model: values.score_model,
@@ -461,6 +465,24 @@ const AIModelTab: React.FC = () => {
         <SectionNote style={{ marginBottom: 16 }}>
           新闻原子库 LLM 提取专用模型。模型名称留空时将回退使用上方「写作模型」；建议为结构化 JSON 任务选择更强模型。
         </SectionNote>
+
+        <Form.Item
+          name="atoms_enabled"
+          label="启用新闻原子库"
+          valuePropName="checked"
+          extra="开启后新入库文章会尝试提取结构化事实、观点与数据，并显示「原子库」页面内容。"
+        >
+          <Switch checkedChildren="开启" unCheckedChildren="关闭" />
+        </Form.Item>
+
+        <Form.Item
+          name="atoms_relations_enabled"
+          label="启用原子关联推断"
+          valuePropName="checked"
+          extra="开启后会在原子之间推断印证/矛盾关系；需要先启用新闻原子库。"
+        >
+          <Switch checkedChildren="开启" unCheckedChildren="关闭" />
+        </Form.Item>
 
         <Form.Item name="atom_provider" label="原子化模型提供商" rules={[{ required: true }]}>
           <Select placeholder="选择 AI 提供商">

@@ -133,6 +133,20 @@ def test_apply_patch_fallback_bools_coerced():
     assert updated["summarization_fallback_enabled"] is False
 
 
+def test_apply_patch_atoms_feature_bools_coerced():
+    current = copy.deepcopy(DEFAULT_SYSTEM_SETTINGS)
+    updated = _apply_patch(
+        current,
+        {
+            "atoms_enabled": "true",
+            "atoms_relations_enabled": "false",
+        },
+    )
+
+    assert updated["atoms_enabled"] is True
+    assert updated["atoms_relations_enabled"] is False
+
+
 def test_apply_patch_hourly_digest_prompt_and_content_types():
     current = copy.deepcopy(DEFAULT_SYSTEM_SETTINGS)
     updated = _apply_patch(

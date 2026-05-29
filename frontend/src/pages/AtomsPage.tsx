@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import AtomRelationsPanel from '../components/Atoms/AtomRelationsPanel'
 import { atomsApi } from '../services/atoms'
+import { configsApi } from '../services/configs'
 import { systemApi } from '../services/system'
 import type { AtomRecord } from '../types/atoms'
 
@@ -38,6 +39,7 @@ const AtomsPage: React.FC = () => {
   const [selected, setSelected] = useState<AtomRecord | null>(null)
   const [editPayload, setEditPayload] = useState('')
   const [saving, setSaving] = useState(false)
+  const [featureSaving, setFeatureSaving] = useState(false)
   const [atomsEnabled, setAtomsEnabled] = useState<boolean | null>(null)
   const [relationsEnabled, setRelationsEnabled] = useState(false)
   const [drawerTab, setDrawerTab] = useState<'edit' | 'relations'>('edit')
@@ -139,6 +141,21 @@ const AtomsPage: React.FC = () => {
     }
   }
 
+  const enableAtoms = async () => {
+    setFeatureSaving(true)
+    setError(null)
+    try {
+      await configsApi.updateSettings({ atoms_enabled: true })
+      const features = await systemApi.getFeatures()
+      setAtomsEnabled(features.atoms_enabled)
+      setRelationsEnabled(features.atoms_relations_enabled)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '启用失败')
+    } finally {
+      setFeatureSaving(false)
+    }
+  }
+
   return (
     <div className="mx-auto max-w-6xl space-y-6 px-4 py-8">
       <div>
@@ -153,13 +170,27 @@ const AtomsPage: React.FC = () => {
       )}
 
       {atomsEnabled === false && (
-        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4 text-sm text-amber-950">
-          <p className="font-medium">原子库尚未启用</p>
-          <p className="mt-2 text-amber-900/80">
-            在 <code className="rounded bg-amber-100 px-1.5 py-0.5 font-mono text-xs">backend/.env</code> 中设置{' '}
-            <code className="rounded bg-amber-100 px-1.5 py-0.5 font-mono text-xs">ATOMS_ENABLED=true</code>，
-            然后执行 <code className="rounded bg-amber-100 px-1.5 py-0.5 font-mono text-xs">./pim stop && ./pim up</code> 重启服务。
-          </p>
+        <div className="flex flex-col gap-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4 text-sm text-amber-950 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="font-medium">原子库尚未启用</p>
+            <p className="mt-2 text-amber-900/80">
+              可直接在前端开启；也可到「配置 → 智能引擎 → 原子化模型配置」调整模型与关联推断设置。
+            </p>
+          </div>
+          <button
+            type="button"
+            disabled={featureSaving}
+            onClick={() => void enableAtoms()}
+            className="shrink-0 rounded-xl border border-amber-300 bg-white px-4 py-2 text-sm font-semibold text-amber-950 shadow-sm transition hover:border-amber-400 hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {featureSaving ? '正在启用…' : '启用原子库'}
+          </button>
+        </div>
+      )}
+
+      {error && atomsEnabled !== true && (
+        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {error}
         </div>
       )}
 

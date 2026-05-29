@@ -22,17 +22,19 @@ const ReaderPage: React.FC = () => {
   const translateRequested = ['1', 'true', 'yes'].includes((searchParams.get('translate') || '').toLowerCase());
   const fromTab = searchParams.get('tab') || undefined;
   const fromSearch = searchParams.get('search') || undefined;
+  const fromSourceId = searchParams.get('source_id') || undefined;
+  const fromSourceName = searchParams.get('source') || undefined;
   const fromScoreLab = searchParams.get('from') === 'score-lab';
   const backHref = fromScoreLab && id
     ? `/score-lab?id=${encodeURIComponent(id)}`
-    : buildDashboardHomePath(fromTab, fromSearch);
+    : buildDashboardHomePath(fromTab, fromSearch, fromSourceId, fromSourceName);
   const readerTogglePath = id
     ? buildReaderPath(id, {
         translate: !translateRequested,
         ...(fromScoreLab
           ? { from: 'score-lab' }
-          : fromSearch
-            ? { search: fromSearch }
+          : fromSearch || fromSourceId
+            ? { search: fromSearch, sourceId: fromSourceId, sourceName: fromSourceName }
             : { tab: fromTab }),
       })
     : '/';

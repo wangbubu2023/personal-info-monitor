@@ -218,6 +218,7 @@ export const contentToDigestItem = (content: Content): DigestItem => {
   )
   return {
     id: content.id,
+    source_id: content.source_id,
     source_name: content.source_name || '',
     title: content.title,
     translated_title: content.translated_title,
@@ -234,23 +235,54 @@ export const contentToDigestItem = (content: Content): DigestItem => {
   }
 }
 
-/** 阅读页链接：可附带 translate，以及返回时恢复的 `?tab=`、`?search=` 或 `?from=` */
+export function buildDashboardSourcePath(sourceId?: string | null, sourceName?: string | null): string {
+  if (!sourceId) return '/'
+  const p = new URLSearchParams()
+  p.set('source_id', sourceId)
+  if (sourceName) p.set('source', sourceName)
+  return `/?${p.toString()}`
+}
+
+/** 阅读页链接：可附带 translate，以及返回时恢复的 `?tab=`、`?search=`、`?source_id=` 或 `?from=` */
 export function buildReaderPath(
   id: string,
-  opts?: { translate?: boolean; tab?: string; search?: string; from?: string },
+  opts?: {
+    translate?: boolean
+    tab?: string
+    search?: string
+    sourceId?: string
+    sourceName?: string
+    from?: string
+  },
 ): string {
   const p = new URLSearchParams()
   if (opts?.translate) p.set('translate', '1')
   if (opts?.from) p.set('from', opts.from)
   if (opts?.search) p.set('search', opts.search)
+  if (opts?.sourceId) {
+    p.set('source_id', opts.sourceId)
+    if (opts.sourceName) p.set('source', opts.sourceName)
+  }
   else if (opts?.tab && opts.tab !== 'all') p.set('tab', opts.tab)
   const q = p.toString()
   return q ? `/reader/${id}?${q}` : `/reader/${id}`
 }
 
-/** 资讯中心首页：`search` 优先（与当前页是否为搜索视图一致），否则保留分类 tab */
-export function buildDashboardHomePath(tab?: string | null, search?: string | null): string {
-  if (search) return `/?search=${encodeURIComponent(search)}`
+/** 资讯中心首页：保留搜索/信源过滤上下文，否则保留分类 tab */
+export function buildDashboardHomePath(
+  tab?: string | null,
+  search?: string | null,
+  sourceId?: string | null,
+  sourceName?: string | null,
+): string {
+  const p = new URLSearchParams()
+  if (search) p.set('search', search)
+  if (sourceId) {
+    p.set('source_id', sourceId)
+    if (sourceName) p.set('source', sourceName)
+  }
+  const q = p.toString()
+  if (q) return `/?${q}`
   if (tab && tab !== 'all') return `/?tab=${encodeURIComponent(tab)}`
   return '/'
 }

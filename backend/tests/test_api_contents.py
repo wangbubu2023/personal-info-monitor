@@ -7,8 +7,14 @@ from app.models.source import SourceType
 from app.utils.datetime import utcnow_naive
 
 
-async def _seed_content(db_session, *, source_url: str = "https://example.com/article", title: str = "Example Article"):
-    source = Source(name="Example", type=SourceType.WEBSITE, url="https://example.com")
+async def _seed_content(
+    db_session,
+    *,
+    source_name: str = "Example",
+    source_url: str = "https://example.com/article",
+    title: str = "Example Article",
+):
+    source = Source(name=source_name, type=SourceType.WEBSITE, url="https://example.com")
     content = Content(
         source=source,
         title=title,
@@ -60,6 +66,33 @@ async def test_contents_crud_endpoints(client, db_session):
     final_list = await client.get("/api/contents")
     assert final_list.status_code == 200
     assert final_list.json()["total"] == 0
+
+
+@pytest.mark.asyncio
+async def test_contents_list_filters_by_source_id(client, db_session):
+    source_a, content_a = await _seed_content(db_session, source_name="36kr", title="First article")
+    await _seed_content(db_session, source_name="TechCrunch", title="Second article")
+
+    response = await client.get("/api/contents", params={"source_id": str(source_a.id)})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["total"] == 1
+    assert payload["items"][0]["id"] == str(content_a.id)
+    assert payload["items"][0]["source_name"] == "36kr"
+
+
+@pytest.mark.asyncio
+async def test_contents_search_matches_source_name(client, db_session):
+    _, content = await _seed_content(db_session, source_name="Product Hunt", title="Unrelated launch")
+    await _seed_content(db_session, source_name="Other Source", title="Another item")
+
+    response = await client.get("/api/contents", params={"search": "Product Hunt"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["total"] == 1
+    assert payload["items"][0]["id"] == str(content.id)
 
 
 @pytest.mark.asyncio

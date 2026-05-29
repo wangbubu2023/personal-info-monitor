@@ -13,7 +13,7 @@ from sqlalchemy.orm import selectinload
 
 from app.interfaces.http.content_shared import _serialize_content
 from app.database import get_async_db
-from app.models import Content
+from app.models import Content, Source
 from app.schemas.content import ContentListResponse, ContentResponse, ContentUpdate, FavoriteBody
 from app.utils.logger import get_logger
 
@@ -35,6 +35,7 @@ def _content_ilike_search_clause(search: str):
         Content.translated_title.ilike(pat),
         Content.translated_summary.ilike(pat),
         Content.full_content.ilike(pat),
+        Content.source.has(or_(Source.name.ilike(pat), Source.url.ilike(pat))),
     )
 
 
