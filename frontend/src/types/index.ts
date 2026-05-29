@@ -21,6 +21,7 @@ export interface Source {
   last_content_id?: string
   last_error?: string
   error_count: number
+  content_count: number
   metadata?: Record<string, unknown>
   fetch_status: FetchStatus
   fetch_strategy: string

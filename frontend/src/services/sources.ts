@@ -9,6 +9,8 @@ export interface ListSourcesParams {
   type?: string
   enabled?: boolean
   search?: string
+  sort_by?: 'name' | 'content_count'
+  sort_order?: 'ascend' | 'descend' | 'asc' | 'desc'
 }
 
 /** Params for paginated source list (`listSources`). `scope` is client-only and not sent to the API. */
@@ -18,6 +20,8 @@ export interface SourceListParams {
   search?: string
   type?: string
   scope?: string
+  sort_by?: 'name' | 'content_count'
+  sort_order?: 'ascend' | 'descend' | 'asc' | 'desc'
 }
 
 export type PaginatedSourceResponse = PaginatedResponse<Source>

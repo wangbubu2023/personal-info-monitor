@@ -12,6 +12,7 @@ import {
   Tooltip,
   Dropdown,
 } from 'antd'
+import type { TableProps } from 'antd'
 import {
   PlusOutlined,
   EditOutlined,
@@ -91,6 +92,8 @@ const SourceListContainer: React.FC = () => {
     setPage,
     pageSize,
     setPageSize,
+    contentCountSortOrder,
+    setContentCountSortOrder,
     selectedRowKeys,
     setSelectedRowKeys,
     sources,
@@ -325,6 +328,18 @@ const SourceListContainer: React.FC = () => {
       ),
     },
     {
+      title: '内容量',
+      dataIndex: 'content_count',
+      key: 'content_count',
+      width: 96,
+      align: 'right' as const,
+      sorter: true,
+      sortOrder: contentCountSortOrder,
+      render: (count: number | null | undefined) => (
+        <span className="tabular-nums text-[#2c3a50]">{count ?? 0}</span>
+      ),
+    },
+    {
       title: '最后抓取',
       dataIndex: 'last_fetched_at',
       key: 'last_fetched_at',
@@ -374,6 +389,13 @@ const SourceListContainer: React.FC = () => {
   const rowSelection = {
     selectedRowKeys,
     onChange: (keys: React.Key[]) => setSelectedRowKeys(keys),
+  }
+
+  const handleTableChange: TableProps<Source>['onChange'] = (_pagination, _filters, sorter) => {
+    const activeSorter = Array.isArray(sorter)
+      ? sorter.find((item) => item.columnKey === 'content_count')
+      : sorter
+    setContentCountSortOrder(activeSorter?.columnKey === 'content_count' ? activeSorter.order ?? null : null)
   }
 
   return (
@@ -591,7 +613,8 @@ const SourceListContainer: React.FC = () => {
           dataSource={sources}
           loading={isLoading}
           rowKey="id"
-          scroll={{ x: 1348 }}
+          scroll={{ x: 1450 }}
+          onChange={handleTableChange}
           locale={{
             emptyText: (
               <Empty

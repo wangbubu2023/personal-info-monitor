@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import type React from 'react'
+import type { SortOrder } from 'antd/es/table/interface'
 import { useQuery, useQueries } from '@tanstack/react-query'
 import { listSources } from '../../../services/sources'
 import { configsApi } from '../../../services/configs'
@@ -15,6 +16,7 @@ export function useSourceList() {
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(20)
+  const [contentCountSortOrder, setContentCountSortOrder] = useState<SortOrder>(null)
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([])
 
   // Debounce search input
@@ -23,21 +25,23 @@ export function useSourceList() {
     return () => window.clearTimeout(t)
   }, [searchInput])
 
-  // Reset page on filter/search change
+  // Reset page on filter/search/sort change
   useEffect(() => {
     setPage(1)
-  }, [debouncedSearch, activeTypeFilter])
+  }, [debouncedSearch, activeTypeFilter, contentCountSortOrder])
 
   // Reset row selection when page/filter/search changes
   useEffect(() => {
     setSelectedRowKeys([])
-  }, [page, pageSize, debouncedSearch, activeTypeFilter])
+  }, [page, pageSize, debouncedSearch, activeTypeFilter, contentCountSortOrder])
 
   const listParams = {
     page,
     page_size: pageSize,
     search: debouncedSearch || undefined,
     type: activeTypeFilter === 'all' ? undefined : activeTypeFilter,
+    sort_by: contentCountSortOrder ? 'content_count' as const : undefined,
+    sort_order: contentCountSortOrder || undefined,
     scope: 'library' as const,
   }
 
@@ -112,6 +116,8 @@ export function useSourceList() {
     setPage,
     pageSize,
     setPageSize,
+    contentCountSortOrder,
+    setContentCountSortOrder,
     selectedRowKeys,
     setSelectedRowKeys,
     // Derived / query data

@@ -21,6 +21,7 @@ function makeSource(partial: Partial<Source> = {}): Source {
     use_keyword_filter: false,
     auth_required: false,
     error_count: 0,
+    content_count: 0,
     fetch_status: 'ok',
     fetch_strategy: 'scrape',
     fetch_status_message: '',

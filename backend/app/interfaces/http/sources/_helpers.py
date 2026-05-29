@@ -401,7 +401,7 @@ def _compute_probe_display(probe: dict) -> tuple[str, str, str]:
     return (status, strategy, message)
 
 
-def serialize_source(s: Source) -> dict:
+def serialize_source(s: Source, *, content_count: int | None = None) -> dict:
     meta = s.metadata_ if isinstance(s.metadata_, dict) else {}
     probe = meta.get("probe", {}) if isinstance(meta.get("probe"), dict) else {}
     fetch_status, fetch_strategy, fetch_message = _compute_fetch_status(s)
@@ -420,6 +420,7 @@ def serialize_source(s: Source) -> dict:
         "last_content_id": s.last_content_id,
         "last_error": s.last_error,
         "error_count": s.error_count,
+        "content_count": int(content_count or 0),
         "metadata": meta,
         "fetch_status": fetch_status,
         "fetch_strategy": fetch_strategy,

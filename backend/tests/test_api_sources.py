@@ -7,7 +7,7 @@ import pytest
 from app.api import sources as sources_api
 from app.api.sources import _helpers as sources_helpers
 from app.features import PODCAST_DISABLED_DETAIL
-from app.models import Source
+from app.models import Content, Source
 from app.models.source import SourceType
 
 
@@ -93,6 +93,52 @@ async def test_sources_crud_and_list_cache_invalidation(client, db_session, monk
 async def test_sources_page_size_has_explicit_upper_bound(client):
     response = await client.get("/api/sources", params={"page_size": 201})
     assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_list_sources_returns_content_count_and_sorts(client, db_session):
+    alpha = Source(name="Alpha", type=SourceType.RSS, url="https://example.com/alpha.xml")
+    beta = Source(name="Beta", type=SourceType.RSS, url="https://example.com/beta.xml")
+    empty = Source(name="Empty", type=SourceType.RSS, url="https://example.com/empty.xml")
+    db_session.add_all([alpha, beta, empty])
+    await db_session.flush()
+    db_session.add_all(
+        [
+            Content(
+                source_id=alpha.id,
+                title="Alpha One",
+                original_url="https://example.com/alpha-1",
+                content_type="rss",
+            ),
+            Content(
+                source_id=alpha.id,
+                title="Alpha Two",
+                original_url="https://example.com/alpha-2",
+                content_type="rss",
+            ),
+            Content(
+                source_id=beta.id,
+                title="Beta One",
+                original_url="https://example.com/beta-1",
+                content_type="rss",
+            ),
+        ]
+    )
+    await db_session.commit()
+    sources_api._invalidate_source_cache()
+
+    response = await client.get(
+        "/api/sources",
+        params={"sort_by": "content_count", "sort_order": "descend", "page_size": 3},
+    )
+
+    assert response.status_code == 200
+    items = response.json()["items"]
+    assert [(item["name"], item["content_count"]) for item in items] == [
+        ("Alpha", 2),
+        ("Beta", 1),
+        ("Empty", 0),
+    ]
 
 
 @pytest.mark.asyncio
