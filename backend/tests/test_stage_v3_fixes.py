@@ -74,4 +74,43 @@ async def test_translate_with_openai_respects_openai_compatible_settings(monkeyp
     assert captured["api_key"] == "deepseek-key"
 
 
+@pytest.mark.asyncio
+async def test_translate_with_openai_strips_reasoning_block(monkeypatch):
+    t = Translator()
 
+    class _FakeCompletions:
+        async def create(self, **kwargs):
+            content = "<think>用户要求我将这段内容翻译成简体中文。</think>\n真正的译文"
+            return type("Resp", (), {"choices": [type("C", (), {"message": type("M", (), {"content": content})()})()]})()
+
+    fake_client = type("Client", (), {"chat": type("Chat", (), {"completions": _FakeCompletions()})()})()
+    monkeypatch.setattr(t, "_get_async_openai_client", lambda api_key, api_base: fake_client)
+
+    result = await t._translate_with_openai(
+        "hello world",
+        "zh-CN",
+        {"provider": "minimax", "model": "MiniMax-M2.7", "api_base": "https://api.minimaxi.com/v1", "api_key": "k"},
+    )
+
+    assert result == "真正的译文"
+
+
+@pytest.mark.asyncio
+async def test_translate_with_openai_discards_truncated_reasoning(monkeypatch):
+    t = Translator()
+
+    class _FakeCompletions:
+        async def create(self, **kwargs):
+            content = "<think>用户要求我将这段内容翻译成简体中文。"
+            return type("Resp", (), {"choices": [type("C", (), {"message": type("M", (), {"content": content})()})()]})()
+
+    fake_client = type("Client", (), {"chat": type("Chat", (), {"completions": _FakeCompletions()})()})()
+    monkeypatch.setattr(t, "_get_async_openai_client", lambda api_key, api_base: fake_client)
+
+    result = await t._translate_with_openai(
+        "hello world",
+        "zh-CN",
+        {"provider": "minimax", "model": "MiniMax-M2.7", "api_base": "https://api.minimaxi.com/v1", "api_key": "k"},
+    )
+
+    assert result is None

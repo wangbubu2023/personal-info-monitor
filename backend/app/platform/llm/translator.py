@@ -98,6 +98,30 @@ def _provider_model_pair(cfg: dict) -> tuple[str, str]:
     )
 
 
+_REASONING_TAG_RE = re.compile(
+    r"<(?:think|reasoning|scratchpad|analysis)\b[^>]*>.*?</(?:think|reasoning|scratchpad|analysis)>",
+    flags=re.IGNORECASE | re.DOTALL,
+)
+_LEADING_OPEN_REASONING_TAG_RE = re.compile(
+    r"^\s*<(?:think|reasoning|scratchpad|analysis)\b[^>]*>.*$",
+    flags=re.IGNORECASE | re.DOTALL,
+)
+_STRAY_REASONING_CLOSE_RE = re.compile(
+    r"</(?:think|reasoning|scratchpad|analysis)>\s*",
+    flags=re.IGNORECASE,
+)
+
+
+def _strip_translation_reasoning(text: str) -> str:
+    """Drop chain-of-thought wrappers leaked by reasoning-tuned chat models."""
+    if not text:
+        return text
+    cleaned = _REASONING_TAG_RE.sub("", text)
+    cleaned = _LEADING_OPEN_REASONING_TAG_RE.sub("", cleaned)
+    cleaned = _STRAY_REASONING_CLOSE_RE.sub("", cleaned)
+    return cleaned.strip()
+
+
 def get_translation_cloud_fallback_openai_settings() -> dict:
     """Resolve OpenAI-compatible cloud fallback settings."""
     try:
@@ -331,7 +355,7 @@ class Translator:
                 max_tokens=1200,
                 temperature=0.1,
             )
-            translated = (response.choices[0].message.content or "").strip()
+            translated = _strip_translation_reasoning(response.choices[0].message.content or "")
             return translated or None
         except Exception as e:
             logger.warning(f"OpenAI-compatible translation failed: {e}")
