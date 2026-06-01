@@ -5,6 +5,10 @@ import type {
   AtomRecord,
   AtomStatsResponse,
   AtomUpdatePayload,
+  EntityAtomsResponse,
+  EntityListResponse,
+  EventClusterDetail,
+  EventClusterListResponse,
   RelationCreatePayload,
   RelationListResponse,
   RelationRecord,
@@ -60,5 +64,27 @@ export const atomsApi = {
 
   deleteRelation: async (relId: string): Promise<void> => {
     await api.delete(`/atom-relations/${relId}`)
+  },
+
+  listEvents: async (params: { domain?: string; limit?: number } = {}): Promise<EventClusterListResponse> => {
+    const response = await api.get<EventClusterListResponse>('/atoms/events', { params })
+    return response.data
+  },
+
+  getEvent: async (eventId: string): Promise<EventClusterDetail> => {
+    const response = await api.get<EventClusterDetail>(`/atoms/events/${eventId}`)
+    return response.data
+  },
+
+  listEntities: async (
+    params: { entity_type?: string; search?: string; limit?: number } = {},
+  ): Promise<EntityListResponse> => {
+    const response = await api.get<EntityListResponse>('/atoms/entities', { params })
+    return response.data
+  },
+
+  listEntityAtoms: async (entityId: string): Promise<EntityAtomsResponse> => {
+    const response = await api.get<EntityAtomsResponse>(`/atoms/entities/${entityId}/atoms`)
+    return response.data
   },
 }

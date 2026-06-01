@@ -28,6 +28,8 @@ export interface RuntimeFeatures {
   x_playwright_enabled: boolean
   atoms_enabled: boolean
   atoms_relations_enabled: boolean
+  atoms_reconcile_enabled?: boolean
+  atoms_knowledge_enabled?: boolean
 }
 
 export const systemApi = {

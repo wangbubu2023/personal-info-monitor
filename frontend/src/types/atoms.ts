@@ -102,3 +102,41 @@ export interface RelationCreatePayload {
   fact_confidence: number
   verified?: boolean
 }
+
+export interface EventClusterSummary {
+  event_id: string
+  title: string
+  domain: string
+  status: string
+  atom_count: number
+  canonical_summary: string | null
+  first_seen_at: string | null
+  last_seen_at: string | null
+}
+
+export interface EventClusterListResponse {
+  items: EventClusterSummary[]
+  total: number
+}
+
+export interface EventClusterDetail {
+  event_id: string
+  atom_ids: string[]
+}
+
+export interface KnowledgeEntitySummary {
+  entity_id: string
+  canonical_name: string
+  entity_type: string
+  atom_count: number
+}
+
+export interface EntityListResponse {
+  items: KnowledgeEntitySummary[]
+  total: number
+}
+
+export interface EntityAtomsResponse {
+  entity_id: string
+  atom_ids: string[]
+}

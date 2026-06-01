@@ -62,6 +62,8 @@ def get_runtime_features() -> Dict[str, Any]:
         "x_playwright_enabled": feat.x_playwright_enabled(),
         "atoms_enabled": feat.atoms_enabled(),
         "atoms_relations_enabled": feat.atoms_relations_enabled(),
+        "atoms_reconcile_enabled": feat.atoms_reconcile_enabled(),
+        "atoms_knowledge_enabled": feat.atoms_knowledge_enabled(),
     }
 
 

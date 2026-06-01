@@ -86,6 +86,18 @@ def same_site(source_url: str, candidate_url: str) -> bool:
     return candidate_host == source_host or candidate_host.endswith("." + source_host)
 
 
+# Path segments that strongly signal the *next* segment is an article slug,
+# e.g. ``/zhongwen/articles/<slug>/simp``. When one of these precedes the
+# tail, the URL is an article even if the tail itself is a bare word (locale
+# variants such as ``simp`` / ``trad`` carry no slug markers).
+ARTICLE_HUB_SEGMENTS = {
+    "articles",
+    "article",
+    "story",
+    "stories",
+}
+
+
 def is_google_news_wrapper(article_url: str) -> bool:
     try:
         parsed = urlparse(article_url)
@@ -140,6 +152,12 @@ def looks_like_article_url(source_url: str, candidate_url: str) -> bool:
     segments = [s for s in path.split("/") if s]
     if len(segments) < 1:
         return False
+
+    # An article-hub segment (``articles``/``story``/...) anywhere but the tail
+    # is a strong article signal: the slug follows it, and a trailing locale
+    # variant (``simp``/``trad``) or ``amp`` marker must not cause a reject.
+    if any(seg in ARTICLE_HUB_SEGMENTS for seg in segments[:-1]):
+        return True
 
     tail = segments[-1]
     # A bare tail without slug markers (dashes / dots / digits) typically

@@ -2,6 +2,8 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { Link, useSearchParams } from 'react-router-dom'
 import AtomRelationsPanel from '../components/Atoms/AtomRelationsPanel'
+import EntitiesPanel from '../components/Atoms/EntitiesPanel'
+import EventsPanel from '../components/Atoms/EventsPanel'
 import { atomsApi } from '../services/atoms'
 import { configsApi } from '../services/configs'
 import { systemApi } from '../services/system'
@@ -44,7 +46,10 @@ const AtomsPage: React.FC = () => {
   const [featureSaving, setFeatureSaving] = useState(false)
   const [atomsEnabled, setAtomsEnabled] = useState<boolean | null>(null)
   const [relationsEnabled, setRelationsEnabled] = useState(false)
+  const [knowledgeEnabled, setKnowledgeEnabled] = useState(false)
   const [drawerTab, setDrawerTab] = useState<'edit' | 'relations'>('edit')
+
+  const view = (searchParams.get('view') ?? 'atoms') as 'atoms' | 'events' | 'entities'
 
   const filters = useMemo(() => ({
     type: searchParams.get('type') ?? '',
@@ -84,6 +89,7 @@ const AtomsPage: React.FC = () => {
       .then((f) => {
         setAtomsEnabled(f.atoms_enabled)
         setRelationsEnabled(f.atoms_relations_enabled)
+        setKnowledgeEnabled(Boolean(f.atoms_knowledge_enabled))
       })
       .catch(() => setAtomsEnabled(false))
   }, [])
@@ -155,6 +161,7 @@ const AtomsPage: React.FC = () => {
       const features = await systemApi.getFeatures()
       setAtomsEnabled(features.atoms_enabled)
       setRelationsEnabled(features.atoms_relations_enabled)
+      setKnowledgeEnabled(Boolean(features.atoms_knowledge_enabled))
     } catch (err) {
       setError(err instanceof Error ? err.message : '启用失败')
     } finally {
@@ -201,6 +208,32 @@ const AtomsPage: React.FC = () => {
       )}
 
       {atomsEnabled === true && (
+      <>
+      <div className="flex gap-1 rounded-2xl border border-white/[0.08] bg-white/[0.03] p-1.5">
+        {([
+          ['atoms', '原子'],
+          ['events', '事件簇'],
+          ['entities', '实体'],
+        ] as const).map(([key, label]) => (
+          <button
+            key={key}
+            type="button"
+            onClick={() => setFilter('view', key === 'atoms' ? '' : key)}
+            className={`flex-1 rounded-xl px-4 py-2 text-sm font-medium transition ${
+              view === key
+                ? 'bg-[#49A8C9]/20 text-[#b9f0fb]'
+                : 'text-[#8ea3b8] hover:text-[#d1e0e9]'
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {view === 'events' && <EventsPanel knowledgeEnabled={knowledgeEnabled} />}
+      {view === 'entities' && <EntitiesPanel knowledgeEnabled={knowledgeEnabled} />}
+
+      {view === 'atoms' && (
       <>
       <div className="flex flex-wrap gap-3 rounded-2xl border border-white/[0.08] bg-white/[0.03] p-4">
         <select
@@ -392,6 +425,8 @@ const AtomsPage: React.FC = () => {
           </aside>
         )}
       </div>
+      </>
+      )}
       </>
       )}
     </div>

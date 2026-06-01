@@ -213,6 +213,23 @@ class TestLooksLikeArticleUrl:
             "https://example.com", "https://example.com/topics/tech"
         ) is False
 
+    def test_bbc_zhongwen_simp_accepted(self):
+        assert self.collector._looks_like_article_url(
+            "https://www.bbc.com/zhongwen/simp",
+            "https://www.bbc.com/zhongwen/articles/c0jz3ej8d3do/simp",
+        ) is True
+
+    def test_bbc_zhongwen_trad_accepted(self):
+        assert self.collector._looks_like_article_url(
+            "https://www.bbc.com/zhongwen/trad",
+            "https://www.bbc.com/zhongwen/articles/c0jz3ej8d3do/trad",
+        ) is True
+
+    def test_article_hub_without_locale_tail_accepted(self):
+        assert self.collector._looks_like_article_url(
+            "https://example.com", "https://example.com/articles/plainslug"
+        ) is True
+
 
 # ---------------------------------------------------------------------------
 # _cookie_items_for_hosts
