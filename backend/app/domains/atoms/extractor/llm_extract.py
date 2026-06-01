@@ -47,13 +47,21 @@ def build_extraction_prompt(
 ) -> tuple[str, str]:
     numbered = "\n".join(f"{i + 1}. {s}" for i, s in enumerate(sentences))
     system = (
-        "你是新闻结构化抽取助手。从给定句子中提取原子事实，严格输出 JSON。\n"
+        "你是新闻原子库的核心事实抽取助手。从给定句子中只提取高价值核心事实，严格输出 JSON。\n"
         "规则：\n"
-        "1. 每条原子只有一个 atom_type（信息/观点/数据）。一句可拆多条。\n"
-        "2. source_sentence 必须从原文句子逐字复制，禁止改写。\n"
-        "3. atom_source 是这条事实的陈述来源（如「据路透报道」→ 路透；否则用发文媒体）。\n"
-        "4. payload 内放类型专属字段；who 统一为 [{name,type}] 列表。\n"
-        "5. 只输出 JSON 对象 {\"atoms\":[...]}，不要 markdown 围栏。\n"
+        "1. 只抽对新闻理解、后续追踪、跨文档关联有价值的核心事实。\n"
+        "2. 不要抽标题、栏目名、代码片段、列表标签、广告声明、版权声明、作者介绍。\n"
+        "3. 每个输入 batch 最多输出 5 条 atom；宁缺毋滥。\n"
+        "4. 同一句 source_sentence 只能输出 1 条 atom_type，选择最能表达信息价值的类型。\n"
+        "5. source_sentence 必须从原文句子逐字复制，禁止改写。\n"
+        "6. atom_source 是这条事实的陈述来源（如「据路透报道」→ 路透；否则用发文媒体）。\n"
+        "7. payload 内放类型专属字段；who 统一为 [{name,type}] 列表。\n"
+        "8. 只输出 JSON 对象 {\"atoms\":[...]}，不要 markdown 围栏。\n"
+        "fact_confidence 校准：\n"
+        "- 0.9-1.0：原句有明确主体、动作/指标、时间/范围，且字段完整。\n"
+        "- 0.7-0.8：一般事实陈述，字段基本完整。\n"
+        "- 0.5-0.6：弱事实、语义不完整、来源不明、推断性强。\n"
+        "- 低于 0.7 的信息/数据不要输出；低于 0.6 的观点不要输出。\n"
         f"{_enum_doc()}"
     )
     user = (
