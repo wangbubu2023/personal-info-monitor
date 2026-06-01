@@ -51,6 +51,7 @@ from app.domains.enrich.hourly.text_utils import (
 )
 from app.services.ranking_service import RankingService
 from app.platform.config.system_settings import effective_hourly_digest_prompt
+from app.utils.llm_guardrail import is_rejected_selection
 from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -95,7 +96,11 @@ async def generate_previous_hour_digest() -> None:
         entries = ctx["entries"]
 
         def _ranked_clusters(n: int):
-            return RankingService().cluster_and_rank(entries)[:n]
+            # Keep content the selection stage already rejected/deferred out of
+            # AI fallbacks: it must not be resurrected (and risk being rewritten
+            # into something unrelated) just because the primary path failed.
+            eligible = [e for e in entries if not is_rejected_selection(e.get("selection_status"))]
+            return RankingService().cluster_and_rank(eligible)[:n]
 
         # --- Path 0: no AI runtime configured → emit a clean rule-based digest.
         if not runtime:

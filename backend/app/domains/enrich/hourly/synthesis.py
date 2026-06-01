@@ -181,8 +181,35 @@ def build_cluster_item_prompt(cluster: dict) -> str:
     )
 
 
+def _cluster_source_text(cluster: dict) -> tuple[str, str]:
+    """Return (zh_source, full_source) drawn from a cluster's materials.
+
+    ``zh_source`` keeps only Chinese-bearing fields, so char-n-gram grounding
+    is never run across scripts (a Chinese digest item vs an English-only
+    source would otherwise score ~0 and be wrongly rejected). ``full_source``
+    keeps everything for date grounding, which is script-aware on its own.
+    """
+    zh_parts: List[str] = []
+    full_parts: List[str] = []
+    for item in (cluster.get("items") or [])[:4]:
+        for key in ("translated_title", "original_title", "title", "translated_summary", "summary"):
+            val = (item.get(key) or "").strip()
+            if not val:
+                continue
+            full_parts.append(val)
+            if re.search(r"[\u4e00-\u9fff]", val):
+                zh_parts.append(val)
+    return " ".join(zh_parts), " ".join(full_parts)
+
+
 def parse_generated_digest_item(text: str, cluster: dict) -> Optional[dict]:
     from app.domains.enrich.hourly.text_utils import strip_llm_reasoning
+    from app.utils.llm_guardrail import (
+        check_dates_grounded,
+        check_grounding,
+        detect_llm_refusal,
+        first_issue,
+    )
 
     raw = strip_llm_reasoning((text or "").strip())
     if not raw:
@@ -198,6 +225,23 @@ def parse_generated_digest_item(text: str, cluster: dict) -> Optional[dict]:
         return None
 
     primary = (cluster.get("items") or [{}])[0]
+
+    # Guardrail: drop refusals, hallucinated stories, and invented dates before
+    # they get bound to a real content_id and rendered as a digest item.
+    output_text = f"{title} {summary}"
+    zh_source, full_source = _cluster_source_text(cluster)
+    guard = first_issue(
+        detect_llm_refusal(output_text),
+        check_grounding(output_text, zh_source, threshold=0.18),
+        check_dates_grounded(output_text, full_source),
+    )
+    if guard:
+        logger.warning(
+            "Digest item rejected by guardrail (%s): cid=%s title=%r",
+            guard, (primary.get("content_id") or "")[:12], title[:60],
+        )
+        return None
+
     category = normalize_digest_category(category_match.group(1) if category_match else "")
     if category == "重点":
         category = classify_digest_category(f"{cluster.get('topic','')} {title} {summary}")
