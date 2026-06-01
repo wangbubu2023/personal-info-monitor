@@ -107,6 +107,16 @@ def parse_publish_time_text(text: str) -> Optional[datetime]:
                 return dt.astimezone(timezone.utc).replace(tzinfo=None)
             return _to_utc_naive(dt, assume_cn_tz=False)
 
+    # Month-level dates used by some vendor blogs, e.g. "May 2026".
+    m = re.fullmatch(r"([A-Za-z]{3,9})\s+(\d{4})", cleaned, flags=re.IGNORECASE)
+    if m:
+        for fmt in ("%b %Y", "%B %Y"):
+            try:
+                dt = datetime.strptime(cleaned, fmt)
+            except ValueError:
+                continue
+            return _to_utc_naive(dt, assume_cn_tz=False)
+
     return None
 
 

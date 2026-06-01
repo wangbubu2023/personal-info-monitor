@@ -125,6 +125,13 @@ class TestParsePublishTimeText:
         assert result is not None
         assert result.year == 2026
 
+    def test_english_month_year(self):
+        result = parse_publish_time_text("May 2026")
+        assert result is not None
+        assert result.year == 2026
+        assert result.month == 5
+        assert result.day == 1
+
     def test_unparseable_returns_none(self):
         assert parse_publish_time_text("not a date") is None
 

@@ -93,7 +93,7 @@ async def fetch_reader_fulltext(original_url: str) -> tuple[str, str]:
             html_text = response.text
             final_url = response.url
     except (aiohttp.ClientError, TimeoutError, UnicodeDecodeError, ValueError) as exc:
-        logger.debug("Reader fulltext fetch failed for %s: %s", url, exc)
+        logger.warning("Reader fulltext fetch failed for %s: %s", url, exc)
         return "", ""
 
     if len(html_text) < 500:
@@ -274,7 +274,12 @@ async def backfill_website_reader_body(
 
     fetched_body, resolved_url = await fetch_reader_fulltext(content.original_url)
     if not fetched_body:
-        return body_raw, metadata
+        merged = dict(metadata)
+        merged["reader_fulltext_backfill_failed_at"] = utcnow_naive().isoformat()
+        merged["reader_fulltext_backfill_failed"] = True
+        content.metadata_ = merged
+        await db.commit()
+        return body_raw, merged
 
     content.full_content = truncate_content(fetched_body, url=resolved_url or content.original_url or "")
     if not (content.summary or "").strip():
@@ -283,6 +288,8 @@ async def backfill_website_reader_body(
 
     merged = clear_reader_translation_cache(metadata)
     merged["reader_fulltext_backfilled_at"] = utcnow_naive().isoformat()
+    merged.pop("reader_fulltext_backfill_failed", None)
+    merged.pop("reader_fulltext_backfill_failed_at", None)
     merged["article_fulltext"] = True
     if resolved_url and resolved_url != content.original_url:
         merged["resolved_original_url"] = resolved_url

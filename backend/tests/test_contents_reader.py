@@ -668,6 +668,29 @@ class TestBackfillWebsiteReaderBody:
                 db.commit.assert_called()
 
     @pytest.mark.asyncio
+    async def test_failed_summary_only_backfill_stamps_metadata(self):
+        content = MagicMock()
+        content.content_type = "website"
+        content.original_url = "https://deepmind.google/blog/post/"
+        content.summary = "RSS teaser"
+        content.full_content = content.summary
+        db = AsyncMock()
+        with patch("app.domains.enrich.reader.body_loader.fetch_reader_fulltext", new_callable=AsyncMock) as mock_fetch:
+            mock_fetch.return_value = ("", "")
+            body, meta = await _backfill_website_reader_body(
+                content,
+                {"fulltext_status": "summary_only"},
+                content.summary,
+                db,
+            )
+
+        assert body == content.summary
+        assert meta["reader_fulltext_backfill_failed"] is True
+        assert meta.get("reader_fulltext_backfill_failed_at")
+        assert content.metadata_ == meta
+        db.commit.assert_called()
+
+    @pytest.mark.asyncio
     async def test_non_website_skips(self):
         content = MagicMock()
         content.content_type = "x"

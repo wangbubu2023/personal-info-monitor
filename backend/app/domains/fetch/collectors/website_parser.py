@@ -55,7 +55,9 @@ def parse_article_candidate(
             try:
                 publish_time = datetime.fromisoformat(datetime_attr.replace("Z", "+00:00")).replace(tzinfo=None)
             except ValueError as exc:
-                logger.warning("Failed to parse article datetime '%s' for %s: %s", datetime_attr, source.url, exc)
+                publish_time = parse_publish_time_text(str(datetime_attr))
+                if not publish_time:
+                    logger.warning("Failed to parse article datetime '%s' for %s: %s", datetime_attr, source.url, exc)
         date_text = date_elem.get_text(" ", strip=True) or ""
         if not publish_time and date_text:
             publish_time = parse_publish_time_text(date_text)

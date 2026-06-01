@@ -1134,3 +1134,71 @@ class TestRssOnlyMode:
         assert result == []
         static_mock.assert_not_awaited()
         playwright_mock.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_public_static_listing_hydrates_short_article_cards(self):
+        """Public listing pages should hydrate direct article URLs even without auth."""
+        collector = WebsiteCollector()
+        source = _make_source(url="https://open.example.com/news")
+        listing_items = [
+            {
+                "url": "https://open.example.com/articles/story-123",
+                "title": "Story 123",
+                "content": "Short teaser",
+            },
+        ]
+        hydrated_items = [
+            {
+                "url": "https://open.example.com/articles/story-123",
+                "title": "Story 123",
+                "content": "Full article body",
+            },
+        ]
+
+        static_mock = AsyncMock(return_value=list(listing_items))
+        hydrate_mock = AsyncMock(return_value=hydrated_items)
+
+        with patch.object(collector, "_check_ssrf", new_callable=AsyncMock), \
+             patch.object(collector, "get_runtime_auth", return_value=None), \
+             patch.object(collector, "get_runtime_cookies", return_value={}), \
+             patch.object(collector, "get_runtime_browser_session", return_value=None), \
+             patch.object(collector.rss_collector, "discover_feed_url", new=AsyncMock(return_value=None)), \
+             patch.object(collector, "_fetch_static", new=static_mock), \
+             patch.object(collector, "_hydrate_candidate_contents", new=hydrate_mock):
+            result = await collector.fetch(source)
+
+        assert result == hydrated_items
+        static_mock.assert_awaited_once()
+        hydrate_mock.assert_awaited_once_with(
+            source,
+            listing_items,
+            {},
+            browser_session=None,
+        )
+
+    @pytest.mark.asyncio
+    async def test_public_static_listing_skips_hydration_when_body_is_already_long(self):
+        collector = WebsiteCollector()
+        source = _make_source(url="https://open.example.com/news")
+        listing_items = [
+            {
+                "url": "https://open.example.com/articles/story-123",
+                "title": "Story 123",
+                "content": "Full paragraph. " * 60,
+            },
+        ]
+
+        static_mock = AsyncMock(return_value=list(listing_items))
+        hydrate_mock = AsyncMock(return_value=[])
+
+        with patch.object(collector, "_check_ssrf", new_callable=AsyncMock), \
+             patch.object(collector, "get_runtime_auth", return_value=None), \
+             patch.object(collector, "get_runtime_cookies", return_value={}), \
+             patch.object(collector, "get_runtime_browser_session", return_value=None), \
+             patch.object(collector.rss_collector, "discover_feed_url", new=AsyncMock(return_value=None)), \
+             patch.object(collector, "_fetch_static", new=static_mock), \
+             patch.object(collector, "_hydrate_candidate_contents", new=hydrate_mock):
+            result = await collector.fetch(source)
+
+        assert result == listing_items
+        hydrate_mock.assert_not_awaited()

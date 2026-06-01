@@ -35,6 +35,7 @@ from app.utils.human_timing import (
 )
 from app.utils.logger import get_logger
 from app.utils.playwright_stealth import stealth_init_script
+from app.utils.text import strip_html_tags
 from app.platform.security.ssrf import check_before_fetch, fetch_public_http_text
 
 from .fetch_profile import diagnose_article_html, get_fetch_profile
@@ -268,6 +269,45 @@ class WebsiteCollector(BaseCollector):
         )
         setattr(source, "_runtime_fetch_diag", diag)
         return hydrated_contents or contents
+
+    async def _maybe_hydrate_public_listing_contents(
+        self,
+        source: Source,
+        contents: List[Dict[str, Any]],
+        cookies: Dict[str, str],
+        browser_session: Optional[Dict[str, Any]],
+    ) -> List[Dict[str, Any]]:
+        """Hydrate public listing-card results when they only contain teasers."""
+        if not contents:
+            return contents
+
+        metadata = source.metadata_ if isinstance(source.metadata_, dict) else {}
+        if metadata.get("skip_public_article_hydration"):
+            return contents
+
+        direct_contents = self._prefer_direct_article_links(source, contents)
+        if not direct_contents:
+            return contents
+
+        try:
+            min_chars = int(metadata.get("public_article_hydrate_min_chars", 500))
+        except (TypeError, ValueError):
+            min_chars = 500
+
+        def _body_len(item: Dict[str, Any]) -> int:
+            body = item.get("content") or item.get("summary") or ""
+            return len(strip_html_tags(str(body)).strip())
+
+        if min_chars > 0 and all(_body_len(item) >= min_chars for item in direct_contents):
+            return contents
+
+        hydrated = await self._hydrate_candidate_contents(
+            source,
+            contents,
+            cookies,
+            browser_session=browser_session,
+        )
+        return hydrated or contents
 
     # ------------------------------------------------------------------
     # Article HTML fetching.
@@ -786,10 +826,22 @@ class WebsiteCollector(BaseCollector):
 
         # Check if JS rendering is needed.
         if metadata.get("needs_js", False):
-            return await self._fetch_with_playwright(source)
+            contents = await self._fetch_with_playwright(source)
+            return await self._maybe_hydrate_public_listing_contents(
+                source,
+                contents,
+                cookies,
+                browser_session,
+            )
 
         # Fall back to static scraping.
-        return await self._fetch_static(source)
+        contents = await self._fetch_static(source)
+        return await self._maybe_hydrate_public_listing_contents(
+            source,
+            contents,
+            cookies,
+            browser_session,
+        )
 
     async def _fetch_static(self, source: Source) -> List[Dict[str, Any]]:
         """Fetch static website content using aiohttp."""

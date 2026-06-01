@@ -16,6 +16,7 @@ from app.domains.fetch.collectors.base import BaseCollector
 from app.models import Source
 from app.utils.logger import get_logger
 from app.platform.security.ssrf import check_before_fetch, fetch_public_http_text
+from app.utils.http import permissive_session_kwargs
 from app.utils.text import strip_html_tags, text_looks_like_embedded_binary
 
 logger = get_logger(__name__)
@@ -163,7 +164,7 @@ class RSSCollector(BaseCollector):
                 "Accept-Language": "en-US,en;q=0.5",
             }
 
-            async with aiohttp.ClientSession() as session:
+            async with aiohttp.ClientSession(**permissive_session_kwargs()) as session:
                 response = await fetch_public_http_text(
                     session,
                     url,
