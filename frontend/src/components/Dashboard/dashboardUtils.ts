@@ -103,17 +103,14 @@ export const renderDashboardTimePair = (publish?: string, fetched?: string) => {
   return `抓取 ${fetchedText || '--'} / 发布 ${publishText || '--'}`
 }
 
-/**
- * 资讯列表排序：优先「抓取/入库时间」再「发布时间」。
- * 若只按发布时间排，「全部」合并多源时老文章（如今日刚抓的 CNN）会沉底，单分类下却很明显。
- */
+/** 资讯列表排序：优先「发布时间」，抓取/入库时间只作为兜底。 */
 export function compareDashboardItemsForSort(a: DigestItem, b: DigestItem): number {
-  const fb = parseApiDate(b.fetched_at)?.getTime() ?? 0
-  const fa = parseApiDate(a.fetched_at)?.getTime() ?? 0
-  if (fb !== fa) return fb - fa
   const pb = parseApiDate(b.publish_time)?.getTime() ?? 0
   const pa = parseApiDate(a.publish_time)?.getTime() ?? 0
-  return pb - pa
+  if (pb !== pa) return pb - pa
+  const fb = parseApiDate(b.fetched_at)?.getTime() ?? 0
+  const fa = parseApiDate(a.fetched_at)?.getTime() ?? 0
+  return fb - fa
 }
 
 export const getDashboardItems = (digest: Digest | undefined, activeTab: string): DigestItem[] => {

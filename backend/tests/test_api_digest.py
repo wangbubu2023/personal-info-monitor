@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date, timezone
+from datetime import date, timedelta, timezone
 from uuid import uuid4
 from zoneinfo import ZoneInfo
 
@@ -131,6 +131,46 @@ async def test_digest_item_uses_summary_when_full_content_short(client, db_sessi
     item = response.json()["categories"]["rss"]["items"][0]
     assert item.get("body_preview")
     assert "摘要文字" in item["body_preview"]
+
+
+@pytest.mark.asyncio
+async def test_daily_digest_orders_items_by_publish_time_not_fetch_batch(client, db_session):
+    source = Source(name="Batchy", type=SourceType.WEBSITE, url="https://example.com")
+    now = utcnow_naive()
+    older_published_later_fetched = Content(
+        source=source,
+        title="Fetched later but published older",
+        summary="Summary",
+        original_url="https://example.com/old",
+        content_type="website",
+        fetched_at=now,
+        publish_time=now - timedelta(hours=3),
+        read_status=False,
+    )
+    newer_published_earlier_fetched = Content(
+        source=source,
+        title="Published newer",
+        summary="Summary",
+        original_url="https://example.com/new",
+        content_type="website",
+        fetched_at=now - timedelta(minutes=5),
+        publish_time=now - timedelta(hours=1),
+        read_status=False,
+    )
+    db_session.add_all([source, older_published_later_fetched, newer_published_earlier_fetched])
+    await db_session.commit()
+
+    response = await client.get(
+        "/api/digest",
+        params=[("date", _digest_date_param(now)), ("unread_only", "false")],
+    )
+
+    assert response.status_code == 200
+    items = response.json()["categories"]["websites"]["items"]
+    assert [item["title"] for item in items[:2]] == [
+        "Published newer",
+        "Fetched later but published older",
+    ]
 
 
 @pytest.mark.asyncio

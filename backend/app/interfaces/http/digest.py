@@ -192,8 +192,8 @@ async def get_daily_digest(
     # Note: keyword_ids filtering would require JSON query which is complex
     # For now, we filter after fetching
     
-    # 与前端资讯列表一致：先按抓取日内的入库时间，再按文章发布时间（避免多源合并时老稿沉底）
-    query = query.order_by(Content.fetched_at.desc(), Content.publish_time.desc().nulls_last())
+    # 信息流按文章发布时间排序；抓取/入库时间只在发布时间缺失或相同时兜底。
+    query = query.order_by(Content.publish_time.desc().nulls_last(), Content.fetched_at.desc())
     
     result = await db.execute(query)
     contents = result.scalars().all()

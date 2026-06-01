@@ -29,7 +29,6 @@ const digestFixture: Digest = {
           source_name: 'Website',
           title: 'Website item',
           url: 'https://website.example.com',
-          // 发布时间很旧、但今天才抓取：在「全部」里应靠抓取时间排在前面
           publish_time: '2018-06-01T12:00:00',
           fetched_at: '2026-03-31T06:00:00',
           read_status: false,
@@ -98,9 +97,9 @@ const digestFixture: Digest = {
 }
 
 describe('dashboardUtils', () => {
-  it('sorts merged items by fetched_at desc then publish_time (new fetches surface in 全部)', () => {
+  it('sorts merged items by publish_time desc then fetched_at', () => {
     const items = getDashboardItems(digestFixture, 'all')
-    expect(items.map((item) => item.id)).toEqual(['w-1', 'x-1', 'r-1', 'y-1'])
+    expect(items.map((item) => item.id)).toEqual(['x-1', 'r-1', 'y-1', 'w-1'])
   })
 
   it('returns category counts including the synthetic all bucket', () => {
