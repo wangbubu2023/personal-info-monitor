@@ -8,6 +8,7 @@ from typing import Any, Union
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.domains.atoms.vocab import (
+    AtomStatus,
     AtomType,
     ChinaStance,
     DataSourceType,
@@ -100,6 +101,11 @@ class AtomBaseFields(BaseModel):
 class AtomCreate(AtomBaseFields):
     atom_type: AtomType
     payload: InfoAtomPayload | OpinionAtomPayload | DataAtomPayload
+    canonical_text: str | None = None
+    quality_score: float | None = Field(default=None, ge=0.0, le=1.0)
+    quality_flags: list[str] = Field(default_factory=list)
+    tags: list[str] = Field(default_factory=list)
+    extraction_run_id: str | None = None
 
     @model_validator(mode="after")
     def payload_matches_type(self) -> AtomCreate:
@@ -139,6 +145,18 @@ class AtomRecord(BaseModel):
     source_credibility: float
     fact_confidence: float
     schema_version: int
+    status: AtomStatus = AtomStatus.ACTIVE
+    is_latest: bool = True
+    supersedes_atom_id: str | None = None
+    superseded_by_atom_id: str | None = None
+    reconcile_group_id: str | None = None
+    canonical_text: str | None = None
+    quality_score: float | None = None
+    quality_flags: list[str] = Field(default_factory=list)
+    evidence_count: int = 1
+    tags: list[str] = Field(default_factory=list)
+    extraction_run_id: str | None = None
+    reconcile_reason: str | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -273,4 +291,9 @@ def record_to_create(record: AtomRecord) -> AtomCreate:
         verified=record.verified,
         atom_type=record.atom_type,
         payload=payload_from_dict(record.atom_type, record.payload),
+        canonical_text=record.canonical_text,
+        quality_score=record.quality_score,
+        quality_flags=list(record.quality_flags),
+        tags=list(record.tags),
+        extraction_run_id=record.extraction_run_id,
     )

@@ -33,4 +33,8 @@ def next_rel_id(session: Session) -> str:
     return _next_id(session, "REL")
 
 
-__all__ = ["next_atom_id", "next_rel_id"]
+def next_operation_id(session: Session) -> str:
+    return _next_id(session, "OP")
+
+
+__all__ = ["next_atom_id", "next_operation_id", "next_rel_id"]

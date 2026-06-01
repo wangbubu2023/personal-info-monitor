@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { Link, useSearchParams } from 'react-router-dom'
 import AtomRelationsPanel from '../components/Atoms/AtomRelationsPanel'
 import { atomsApi } from '../services/atoms'
@@ -31,6 +32,7 @@ function payloadSummary(atom: AtomRecord): string {
 }
 
 const AtomsPage: React.FC = () => {
+  const queryClient = useQueryClient()
   const [searchParams, setSearchParams] = useSearchParams()
   const [items, setItems] = useState<AtomRecord[]>([])
   const [total, setTotal] = useState(0)
@@ -50,6 +52,7 @@ const AtomsPage: React.FC = () => {
     verified: searchParams.get('verified') ?? '',
     search: searchParams.get('search') ?? '',
     content_id: searchParams.get('content_id') ?? '',
+    status: searchParams.get('status') ?? 'active',
     page: Number(searchParams.get('page') ?? '1'),
   }), [searchParams])
 
@@ -63,6 +66,7 @@ const AtomsPage: React.FC = () => {
         verified: filters.verified === '' ? undefined : filters.verified === 'true',
         search: filters.search || undefined,
         content_id: filters.content_id || undefined,
+        status: filters.status || 'active',
         page: filters.page,
         page_size: 20,
       })
@@ -145,7 +149,9 @@ const AtomsPage: React.FC = () => {
     setFeatureSaving(true)
     setError(null)
     try {
-      await configsApi.updateSettings({ atoms_enabled: true })
+      const updatedSettings = await configsApi.updateSettings({ atoms_enabled: true })
+      queryClient.setQueryData(['system-settings'], updatedSettings)
+      void queryClient.invalidateQueries({ queryKey: ['system-settings'] })
       const features = await systemApi.getFeatures()
       setAtomsEnabled(features.atoms_enabled)
       setRelationsEnabled(features.atoms_relations_enabled)
@@ -224,6 +230,17 @@ const AtomsPage: React.FC = () => {
           <option value="true">已验证</option>
           <option value="false">未验证</option>
         </select>
+        <select
+          className="rounded-xl border border-white/10 bg-[#1a2636] px-3 py-2 text-sm text-[#d1e0e9]"
+          value={filters.status}
+          onChange={(e) => setFilter('status', e.target.value)}
+        >
+          <option value="active">当前有效</option>
+          <option value="shadow">已影子化</option>
+          <option value="superseded">被覆盖</option>
+          <option value="conflicted">冲突</option>
+          <option value="all">全部状态</option>
+        </select>
         <input
           className="min-w-[12rem] flex-1 rounded-xl border border-white/10 bg-[#1a2636] px-3 py-2 text-sm text-[#d1e0e9]"
           placeholder="搜索句子、信源…"
@@ -284,6 +301,9 @@ const AtomsPage: React.FC = () => {
                   <span>{atom.atom_source}</span>
                   <span>置信 {Math.round(atom.fact_confidence * 100)}%</span>
                   {atom.verified && <span className="text-emerald-300">已验证</span>}
+                  {atom.status && atom.status !== 'active' && (
+                    <span className="rounded-full bg-amber-500/20 px-2 py-0.5 text-amber-200">{atom.status}</span>
+                  )}
                 </div>
                 <p className="mt-2 text-sm font-medium text-[#e7f1f7]">{payloadSummary(atom)}</p>
                 <p className="mt-2 line-clamp-2 text-xs text-[#8ea3b8]">{atom.source_sentence}</p>

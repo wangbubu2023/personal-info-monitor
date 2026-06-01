@@ -1,5 +1,7 @@
 export type AtomType = '信息' | '观点' | '数据'
 
+export type AtomStatus = 'active' | 'shadow' | 'superseded' | 'conflicted' | 'archived' | 'rejected'
+
 export interface AtomRecord {
   atom_id: string
   content_id: string
@@ -13,6 +15,18 @@ export interface AtomRecord {
   source_credibility: number
   fact_confidence: number
   schema_version: number
+  status: AtomStatus
+  is_latest: boolean
+  supersedes_atom_id: string | null
+  superseded_by_atom_id: string | null
+  reconcile_group_id: string | null
+  canonical_text: string | null
+  quality_score: number | null
+  quality_flags: string[]
+  evidence_count: number
+  tags: string[]
+  extraction_run_id: string | null
+  reconcile_reason: string | null
   created_at: string
   updated_at: string
 }
@@ -39,6 +53,7 @@ export interface AtomListParams {
   atom_source?: string
   content_id?: string
   search?: string
+  status?: string
   page?: number
   page_size?: number
 }

@@ -11,6 +11,22 @@ class AtomType(StrEnum):
     DATA = "数据"
 
 
+class AtomStatus(StrEnum):
+    ACTIVE = "active"
+    SHADOW = "shadow"
+    SUPERSEDED = "superseded"
+    CONFLICTED = "conflicted"
+    ARCHIVED = "archived"
+    REJECTED = "rejected"
+
+
+class AtomOperationType(StrEnum):
+    EXTRACT = "extract"
+    FILTER = "filter"
+    RECONCILE = "reconcile"
+    MANUAL = "manual"
+
+
 class Domain(StrEnum):
     MACRO = "宏观经济"
     FINANCE = "金融市场"
@@ -155,6 +171,8 @@ class RelationDirection(StrEnum):
 
 
 __all__ = [
+    "AtomOperationType",
+    "AtomStatus",
     "AtomType",
     "ChinaStance",
     "DataSourceType",

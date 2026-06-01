@@ -11,13 +11,40 @@ from sqlalchemy.orm import Session
 from app.domains.atoms.id_gen import next_atom_id
 from app.domains.atoms.schema import CURRENT_SCHEMA_VERSION
 from app.domains.atoms.types import AtomCreate, AtomRecord, AtomUpdate
-from app.domains.atoms.vocab import AtomType
+from app.domains.atoms.vocab import AtomStatus, AtomType
 from app.features import atoms_enabled
 from app.models.atom import Atom
 from app.utils.datetime import utcnow_naive
 from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+_MISSING_FLAG = "missing_in_latest_extraction"
+
+
+def _new_atom_row(session: Session, data: AtomCreate) -> Atom:
+    return Atom(
+        atom_id=next_atom_id(session),
+        content_id=data.content_id,
+        atom_type=data.atom_type.value,
+        domain=data.domain.value,
+        source_sentence=data.source_sentence,
+        source_url=data.source_url,
+        atom_source=data.atom_source,
+        payload=data.payload.model_dump(mode="json"),
+        verified=data.verified,
+        source_credibility=data.source_credibility,
+        fact_confidence=data.fact_confidence,
+        schema_version=CURRENT_SCHEMA_VERSION,
+        status=AtomStatus.ACTIVE.value,
+        is_latest=True,
+        canonical_text=data.canonical_text,
+        quality_score=data.quality_score,
+        quality_flags=list(data.quality_flags or []),
+        evidence_count=1,
+        tags=list(data.tags or []),
+        extraction_run_id=data.extraction_run_id,
+    )
 
 
 @dataclass(frozen=True)
@@ -28,6 +55,8 @@ class AtomListFilters:
     atom_source: str | None = None
     content_id: str | None = None
     search: str | None = None
+    status: str | None = None
+    is_latest: bool | None = None
 
 
 def _row_to_record(row: Atom) -> AtomRecord:
@@ -44,6 +73,18 @@ def _row_to_record(row: Atom) -> AtomRecord:
         source_credibility=float(row.source_credibility),
         fact_confidence=float(row.fact_confidence),
         schema_version=int(row.schema_version),
+        status=AtomStatus(row.status or AtomStatus.ACTIVE.value),
+        is_latest=bool(row.is_latest),
+        supersedes_atom_id=row.supersedes_atom_id,
+        superseded_by_atom_id=row.superseded_by_atom_id,
+        reconcile_group_id=row.reconcile_group_id,
+        canonical_text=row.canonical_text,
+        quality_score=(float(row.quality_score) if row.quality_score is not None else None),
+        quality_flags=list(row.quality_flags or []),
+        evidence_count=int(row.evidence_count or 1),
+        tags=list(row.tags or []),
+        extraction_run_id=row.extraction_run_id,
+        reconcile_reason=row.reconcile_reason,
         created_at=row.created_at,
         updated_at=row.updated_at,
     )
@@ -71,20 +112,7 @@ class SqlAtomRepository:
                 session.refresh(existing)
                 return _row_to_record(existing)
 
-            row = Atom(
-                atom_id=next_atom_id(session),
-                content_id=data.content_id,
-                atom_type=data.atom_type.value,
-                domain=data.domain.value,
-                source_sentence=data.source_sentence,
-                source_url=data.source_url,
-                atom_source=data.atom_source,
-                payload=data.payload.model_dump(mode="json"),
-                verified=data.verified,
-                source_credibility=data.source_credibility,
-                fact_confidence=data.fact_confidence,
-                schema_version=CURRENT_SCHEMA_VERSION,
-            )
+            row = _new_atom_row(session, data)
             session.add(row)
             session.commit()
             session.refresh(row)
@@ -151,6 +179,10 @@ class SqlAtomRepository:
                 query = query.filter(Atom.atom_source.contains(filters.atom_source))
             if filters.content_id:
                 query = query.filter(Atom.content_id == filters.content_id)
+            if filters.status:
+                query = query.filter(Atom.status == filters.status)
+            if filters.is_latest is not None:
+                query = query.filter(Atom.is_latest.is_(filters.is_latest))
             if filters.search:
                 term = f"%{filters.search.strip()}%"
                 query = query.filter(
@@ -215,30 +247,33 @@ class SqlAtomRepository:
                 seen_keys.add(key)
                 row = existing_map.get(key)
                 if row is None:
-                    row = Atom(
-                        atom_id=next_atom_id(session),
-                        content_id=content_id,
-                        atom_type=item.atom_type.value,
-                        domain=item.domain.value,
-                        source_sentence=item.source_sentence,
-                        source_url=item.source_url,
-                        atom_source=item.atom_source,
-                        payload=item.payload.model_dump(mode="json"),
-                        verified=item.verified,
-                        source_credibility=item.source_credibility,
-                        fact_confidence=item.fact_confidence,
-                        schema_version=CURRENT_SCHEMA_VERSION,
-                    )
+                    row = _new_atom_row(session, item)
+                    row.content_id = content_id
                     session.add(row)
                 else:
                     row = self._update_row(session, row, item, preserve_verified=True)
+                    # Re-activate a previously shadowed atom that reappears.
+                    row.status = AtomStatus.ACTIVE.value
+                    row.is_latest = True
+                    flags = [f for f in (row.quality_flags or []) if f != _MISSING_FLAG]
+                    row.quality_flags = flags
                 session.flush()
                 results.append(_row_to_record(row))
 
+            # Old atoms missing from the latest extraction are shadowed, not
+            # deleted: the library stays auditable. Verified atoms are kept active.
             for row in existing_rows:
                 key = (row.source_sentence, row.atom_type)
-                if key not in seen_keys and not row.verified:
-                    session.delete(row)
+                if key in seen_keys or row.verified:
+                    continue
+                if row.status == AtomStatus.ACTIVE.value:
+                    row.status = AtomStatus.SHADOW.value
+                    row.is_latest = False
+                    flags = list(row.quality_flags or [])
+                    if _MISSING_FLAG not in flags:
+                        flags.append(_MISSING_FLAG)
+                    row.quality_flags = flags
+                    row.updated_at = utcnow_naive()
 
             session.commit()
             return results
@@ -248,15 +283,21 @@ class SqlAtomRepository:
         finally:
             session.close()
 
-    def list_atoms_for_content(self, content_id: str) -> list[AtomRecord]:
+    def list_atoms_for_content(
+        self,
+        content_id: str,
+        *,
+        active_only: bool = False,
+    ) -> list[AtomRecord]:
         session: Session = self._session_factory()
         try:
-            rows = (
-                session.query(Atom)
-                .filter(Atom.content_id == content_id)
-                .order_by(Atom.created_at.asc())
-                .all()
-            )
+            query = session.query(Atom).filter(Atom.content_id == content_id)
+            if active_only:
+                query = query.filter(
+                    Atom.status == AtomStatus.ACTIVE.value,
+                    Atom.is_latest.is_(True),
+                )
+            rows = query.order_by(Atom.created_at.asc()).all()
             return [_row_to_record(row) for row in rows]
         finally:
             session.close()
@@ -277,6 +318,14 @@ class SqlAtomRepository:
         row.fact_confidence = data.fact_confidence
         if not preserve_verified or not row.verified:
             row.verified = data.verified
+        if data.canonical_text is not None:
+            row.canonical_text = data.canonical_text
+        if data.quality_score is not None:
+            row.quality_score = data.quality_score
+        if data.extraction_run_id is not None:
+            row.extraction_run_id = data.extraction_run_id
+        if data.tags:
+            row.tags = list(data.tags)
         row.schema_version = CURRENT_SCHEMA_VERSION
         row.updated_at = utcnow_naive()
         session.flush()
@@ -293,7 +342,7 @@ class SqlAtomReader:
         if not atoms_enabled():
             return ()
         try:
-            return tuple(self._repo.list_atoms_for_content(content_id))
+            return tuple(self._repo.list_atoms_for_content(content_id, active_only=True))
         except Exception as exc:  # noqa: BLE001
             logger.warning(
                 "SqlAtomReader.get_atoms_for_content failed for %s: %s",

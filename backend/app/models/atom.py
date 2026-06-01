@@ -48,6 +48,21 @@ class Atom(Base):
     source_credibility = Column(Float, nullable=False)
     fact_confidence = Column(Float, nullable=False)
     schema_version = Column(Integer, nullable=False, default=2)
+
+    # Lifecycle / evolution (Schema v2.1)
+    status = Column(String(16), nullable=False, default="active", index=True)
+    is_latest = Column(Boolean, nullable=False, default=True, index=True)
+    supersedes_atom_id = Column(String(32), nullable=True)
+    superseded_by_atom_id = Column(String(32), nullable=True)
+    reconcile_group_id = Column(String(64), nullable=True, index=True)
+    canonical_text = Column(Text, nullable=True)
+    quality_score = Column(Float, nullable=True)
+    quality_flags = Column(JSON, nullable=False, default=list)
+    evidence_count = Column(Integer, nullable=False, default=1)
+    tags = Column(JSON, nullable=False, default=list)
+    extraction_run_id = Column(String(64), nullable=True)
+    reconcile_reason = Column(Text, nullable=True)
+
     created_at = Column(DateTime, nullable=False, default=utcnow_naive)
     updated_at = Column(
         DateTime,
@@ -89,6 +104,26 @@ class AtomRelation(Base):
         default=utcnow_naive,
         onupdate=utcnow_naive,
     )
+
+
+class AtomOperation(Base):
+    """Audit log of every LLM/rule decision affecting an atom (HY-memory pipeline log)."""
+
+    __tablename__ = "atom_operations"
+
+    operation_id = Column(String(32), primary_key=True)
+    operation_type = Column(String(16), nullable=False, index=True)
+    content_id = Column(UUIDString, nullable=True, index=True)
+    atom_id = Column(String(32), nullable=True, index=True)
+    related_atom_ids = Column(JSON, nullable=False, default=list)
+    model_provider = Column(String(64), nullable=True)
+    model_name = Column(String(128), nullable=True)
+    prompt = Column(Text, nullable=True)
+    raw_response = Column(Text, nullable=True)
+    parsed = Column(JSON, nullable=True)
+    reason = Column(Text, nullable=True)
+    quality_flags = Column(JSON, nullable=False, default=list)
+    created_at = Column(DateTime, nullable=False, default=utcnow_naive)
 
 
 class AtomIdSequence(Base):

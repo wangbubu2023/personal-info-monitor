@@ -58,11 +58,16 @@ def list_atoms(
     atom_source: str | None = None,
     content_id: str | None = None,
     search: str | None = None,
+    status: str | None = Query(
+        "active",
+        description="Lifecycle status filter; pass 'all' to include shadow/superseded.",
+    ),
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
 ) -> AtomListResponse:
     _require_atoms_enabled()
     repo = default_atom_repository()
+    status_filter = None if status in (None, "", "all") else status
     filters = AtomListFilters(
         atom_type=atom_type,
         domain=domain,
@@ -70,6 +75,7 @@ def list_atoms(
         atom_source=atom_source,
         content_id=content_id,
         search=search,
+        status=status_filter,
     )
     items, total = repo.list_atoms(filters, page=page, page_size=page_size)
     return AtomListResponse(items=items, total=total, page=page, page_size=page_size)
