@@ -478,7 +478,7 @@ class TestBuildRawContentObjects:
         assert results[0].publish_time.month == 6
 
     @pytest.mark.asyncio
-    async def test_publish_time_fallback_to_now(self):
+    async def test_missing_publish_time_stays_null(self):
         from app.domains.ingest.build_content import build_raw_content_objects
 
         source = _make_source()
@@ -488,7 +488,7 @@ class TestBuildRawContentObjects:
             MockExt.return_value = AsyncMock()
             results, _build_failures = await build_raw_content_objects(raw, source)
 
-        assert results[0].publish_time is not None
+        assert results[0].publish_time is None
 
     @pytest.mark.asyncio
     async def test_skips_items_on_error(self):

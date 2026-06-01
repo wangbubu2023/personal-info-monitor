@@ -74,9 +74,7 @@ async def build_raw_content_objects(
                 try:
                     publish_time = datetime.fromisoformat(publish_time.replace("Z", "+00:00"))
                 except Exception:
-                    publish_time = utcnow_naive()
-            elif not publish_time:
-                publish_time = utcnow_naive()
+                    publish_time = None
 
             metadata = raw.get("metadata")
             if not isinstance(metadata, dict):
