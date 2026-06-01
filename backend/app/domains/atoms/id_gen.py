@@ -37,4 +37,23 @@ def next_operation_id(session: Session) -> str:
     return _next_id(session, "OP")
 
 
-__all__ = ["next_atom_id", "next_operation_id", "next_rel_id"]
+def next_event_id(session: Session) -> str:
+    return _next_id(session, "EVT")
+
+
+def next_summary_id(session: Session) -> str:
+    return _next_id(session, "SUM")
+
+
+def next_entity_id(session: Session) -> str:
+    return _next_id(session, "ENT")
+
+
+__all__ = [
+    "next_atom_id",
+    "next_entity_id",
+    "next_event_id",
+    "next_operation_id",
+    "next_rel_id",
+    "next_summary_id",
+]

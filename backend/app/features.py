@@ -51,6 +51,7 @@ _FEATURE_FLAG_DEFAULTS = {
     "ATOMS_ENABLED": False,
     "ATOMS_RELATIONS_ENABLED": False,
     "ATOMS_RECONCILE_ENABLED": False,
+    "ATOMS_KNOWLEDGE_ENABLED": False,
     "PIM_SCORE_LLM_SUBJECTIVE": False,
 }
 
@@ -93,6 +94,14 @@ def atoms_reconcile_enabled() -> bool:
     return atoms_enabled() and _settings_or_env_feature_enabled(
         setting_key="atoms_reconcile_enabled",
         env_name="ATOMS_RECONCILE_ENABLED",
+    )
+
+
+def atoms_knowledge_enabled() -> bool:
+    """Event clustering + entity layer (L3/L5). Rule-based, requires atoms layer."""
+    return atoms_enabled() and _settings_or_env_feature_enabled(
+        setting_key="atoms_knowledge_enabled",
+        env_name="ATOMS_KNOWLEDGE_ENABLED",
     )
 
 

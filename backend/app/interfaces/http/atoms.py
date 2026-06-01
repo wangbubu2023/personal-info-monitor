@@ -95,6 +95,54 @@ def atom_quality() -> AtomQualityResponse:
     return AtomQualityResponse(**default_atom_repository().quality_stats())
 
 
+@router.get("/events")
+def list_event_clusters(
+    domain: str | None = None,
+    limit: int = Query(50, ge=1, le=200),
+) -> dict:
+    _require_atoms_enabled()
+    from app.domains.atoms.events import default_event_repository
+
+    items = default_event_repository().list_clusters(domain=domain, limit=limit)
+    return {"items": items, "total": len(items)}
+
+
+@router.get("/events/{event_id}")
+def get_event_cluster(event_id: str) -> dict:
+    _require_atoms_enabled()
+    from app.domains.atoms.events import default_event_repository
+
+    repo = default_event_repository()
+    atom_ids = repo.list_atom_ids(event_id)
+    if not atom_ids:
+        raise HTTPException(status_code=404, detail="Event cluster not found or empty")
+    return {"event_id": event_id, "atom_ids": atom_ids}
+
+
+@router.get("/entities")
+def list_entities(
+    entity_type: str | None = None,
+    search: str | None = None,
+    limit: int = Query(50, ge=1, le=200),
+) -> dict:
+    _require_atoms_enabled()
+    from app.domains.atoms.entities import default_entity_repository
+
+    items = default_entity_repository().list_entities(
+        entity_type=entity_type, search=search, limit=limit
+    )
+    return {"items": items, "total": len(items)}
+
+
+@router.get("/entities/{entity_id}/atoms")
+def list_entity_atoms(entity_id: str) -> dict:
+    _require_atoms_enabled()
+    from app.domains.atoms.entities import default_entity_repository
+
+    atom_ids = default_entity_repository().list_atoms_for_entity(entity_id)
+    return {"entity_id": entity_id, "atom_ids": atom_ids}
+
+
 @router.post("/backfill", response_model=AtomBackfillResponse, status_code=202)
 async def backfill_atoms(body: AtomBackfillRequest) -> AtomBackfillResponse:
     _require_atoms_enabled()

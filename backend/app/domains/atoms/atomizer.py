@@ -7,11 +7,17 @@ from sqlalchemy.orm import joinedload
 from app.database import SessionLocal
 from app.domains.atoms.extractor.pipeline import extract_atoms_from_content
 from app.domains.atoms.atom_reconcile.worker import enqueue_reconcile
+from app.domains.atoms.knowledge import link_atom_knowledge
 from app.domains.atoms.operations import default_atom_operation_repository
 from app.domains.atoms.relation_infer.worker import enqueue_relation_infer
 from app.domains.atoms.repository import default_atom_repository
 from app.domains.atoms.vocab import AtomOperationType, AtomType
-from app.features import atoms_enabled, atoms_reconcile_enabled, atoms_relations_enabled
+from app.features import (
+    atoms_enabled,
+    atoms_knowledge_enabled,
+    atoms_reconcile_enabled,
+    atoms_relations_enabled,
+)
 from app.models import Content
 from app.utils.logger import get_logger
 
@@ -56,7 +62,8 @@ async def atomize_content_async(content_id: str) -> bool:
 
         reconcile_on = atoms_reconcile_enabled()
         relations_on = atoms_relations_enabled()
-        if reconcile_on or relations_on:
+        knowledge_on = atoms_knowledge_enabled()
+        if reconcile_on or relations_on or knowledge_on:
             for record in upserted:
                 if record.atom_type not in (AtomType.INFO, AtomType.DATA):
                     continue
@@ -64,6 +71,8 @@ async def atomize_content_async(content_id: str) -> bool:
                     enqueue_reconcile(record.atom_id)
                 elif relations_on:
                     enqueue_relation_infer(record.atom_id)
+                if knowledge_on:
+                    link_atom_knowledge(record)
 
         content_meta = dict(content.metadata_ or {})
         content_meta["atoms"] = meta

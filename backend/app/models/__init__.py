@@ -10,6 +10,15 @@ from app.models.browser_session import BrowserSession
 from app.models.system_setting import SystemSetting
 from app.models.runtime_lock import RuntimeLock
 from app.models.atom import Atom, AtomIdSequence, AtomOperation, AtomRelation
+from app.models.atom_event import (
+    AtomEntity,
+    EntityAlias,
+    EntityRelation,
+    EventCluster,
+    EventClusterAtom,
+    EventSummary,
+    KnowledgeEntity,
+)
 from app.models.score_feedback import ScoreFeedback
 
 __all__ = [
@@ -27,5 +36,12 @@ __all__ = [
     "AtomRelation",
     "AtomIdSequence",
     "AtomOperation",
+    "EventCluster",
+    "EventClusterAtom",
+    "EventSummary",
+    "KnowledgeEntity",
+    "EntityAlias",
+    "AtomEntity",
+    "EntityRelation",
     "ScoreFeedback",
 ]
