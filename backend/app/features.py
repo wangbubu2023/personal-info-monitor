@@ -50,6 +50,7 @@ _FEATURE_FLAG_DEFAULTS = {
     "PIM_FEATURE_X_PLAYWRIGHT": False,
     "ATOMS_ENABLED": False,
     "ATOMS_RELATIONS_ENABLED": False,
+    "ATOMS_RECONCILE_ENABLED": False,
     "PIM_SCORE_LLM_SUBJECTIVE": False,
 }
 
@@ -84,6 +85,14 @@ def atoms_relations_enabled() -> bool:
     return atoms_enabled() and _settings_or_env_feature_enabled(
         setting_key="atoms_relations_enabled",
         env_name="ATOMS_RELATIONS_ENABLED",
+    )
+
+
+def atoms_reconcile_enabled() -> bool:
+    """Atom reconcile worker (ADD/MERGE/SUPERSEDE/CONTRADICT/IGNORE). Requires atoms layer."""
+    return atoms_enabled() and _settings_or_env_feature_enabled(
+        setting_key="atoms_reconcile_enabled",
+        env_name="ATOMS_RECONCILE_ENABLED",
     )
 
 

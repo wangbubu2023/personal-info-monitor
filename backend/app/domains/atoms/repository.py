@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from app.domains.atoms.id_gen import next_atom_id
 from app.domains.atoms.schema import CURRENT_SCHEMA_VERSION
 from app.domains.atoms.types import AtomCreate, AtomRecord, AtomUpdate
-from app.domains.atoms.vocab import AtomStatus, AtomType
+from app.domains.atoms.vocab import AtomOperationType, AtomStatus, AtomType
 from app.features import atoms_enabled
 from app.models.atom import Atom
 from app.utils.datetime import utcnow_naive
@@ -226,6 +226,98 @@ class SqlAtomRepository:
                 "by_domain": {str(k): int(v) for k, v in by_domain.items()},
                 "verified_count": int(verified_count),
                 "unverified_count": int(total) - int(verified_count),
+            }
+        finally:
+            session.close()
+
+    def quality_stats(self) -> dict[str, Any]:
+        session: Session = self._session_factory()
+        try:
+            from collections import Counter
+
+            from app.domains.atoms.extractor.sentence_split import sentence_quality_reason
+            from app.models.atom import AtomOperation
+
+            total = session.query(func.count(Atom.atom_id)).scalar() or 0
+            by_status = dict(
+                session.query(Atom.status, func.count(Atom.atom_id))
+                .group_by(Atom.status)
+                .all()
+            )
+
+            active_rows = (
+                session.query(Atom.content_id, Atom.source_sentence, Atom.atom_source, Atom.fact_confidence, Atom.quality_flags)
+                .filter(Atom.status == AtomStatus.ACTIVE.value)
+                .all()
+            )
+            active_count = len(active_rows)
+
+            per_content: Counter = Counter()
+            short_sentences = 0
+            source_counter: Counter = Counter()
+            confidence_hist = {"<0.6": 0, "0.6-0.7": 0, "0.7-0.8": 0, "0.8-0.9": 0, ">=0.9": 0}
+            flags_counter: Counter = Counter()
+            for content_id, sentence, source, confidence, flags in active_rows:
+                per_content[content_id] += 1
+                if sentence_quality_reason(sentence or "") is not None:
+                    short_sentences += 1
+                source_counter[source or "?"] += 1
+                conf = float(confidence or 0.0)
+                if conf < 0.6:
+                    confidence_hist["<0.6"] += 1
+                elif conf < 0.7:
+                    confidence_hist["0.6-0.7"] += 1
+                elif conf < 0.8:
+                    confidence_hist["0.7-0.8"] += 1
+                elif conf < 0.9:
+                    confidence_hist["0.8-0.9"] += 1
+                else:
+                    confidence_hist[">=0.9"] += 1
+                for flag in (flags or []):
+                    flags_counter[str(flag)] += 1
+
+            counts = sorted(per_content.values())
+
+            def _pct(p: float) -> int:
+                if not counts:
+                    return 0
+                idx = min(len(counts) - 1, int(round((p / 100.0) * (len(counts) - 1))))
+                return counts[idx]
+
+            # Rejection reasons aggregated from extraction operation logs.
+            reject_counter: Counter = Counter()
+            ops = (
+                session.query(AtomOperation.parsed)
+                .filter(AtomOperation.operation_type == AtomOperationType.EXTRACT.value)
+                .all()
+            )
+            for (parsed,) in ops:
+                if not isinstance(parsed, dict):
+                    continue
+                for stats_key in ("sentence_filter_stats", "atom_filter_stats"):
+                    stats = parsed.get(stats_key)
+                    if isinstance(stats, dict):
+                        for reason, n in stats.items():
+                            reject_counter[str(reason)] += int(n)
+
+            avg_per_content = (active_count / len(per_content)) if per_content else 0.0
+            return {
+                "total_atoms": int(total),
+                "active_atoms": int(by_status.get(AtomStatus.ACTIVE.value, 0)),
+                "shadow_atoms": int(by_status.get(AtomStatus.SHADOW.value, 0)),
+                "superseded_atoms": int(by_status.get(AtomStatus.SUPERSEDED.value, 0)),
+                "conflicted_atoms": int(by_status.get(AtomStatus.CONFLICTED.value, 0)),
+                "archived_atoms": int(by_status.get(AtomStatus.ARCHIVED.value, 0)),
+                "rejected_atoms": int(by_status.get(AtomStatus.REJECTED.value, 0)),
+                "short_sentence_rate": round(short_sentences / active_count, 4) if active_count else 0.0,
+                "avg_atoms_per_content": round(avg_per_content, 2),
+                "p95_atoms_per_content": _pct(95),
+                "p99_atoms_per_content": _pct(99),
+                "max_atoms_per_content": counts[-1] if counts else 0,
+                "top_sources_by_atom_count": dict(source_counter.most_common(10)),
+                "fact_confidence_histogram": confidence_hist,
+                "quality_flags_distribution": dict(flags_counter.most_common(20)),
+                "rejected_by_reason": dict(reject_counter.most_common(30)),
             }
         finally:
             session.close()

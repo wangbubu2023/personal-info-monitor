@@ -150,6 +150,21 @@ def test_verified_atom_not_shadowed(sync_session_factory, seeded_content):
     assert rows[0].verified is True
 
 
+def test_quality_stats_shape(sync_session_factory, seeded_content):
+    repo = SqlAtomRepository(sync_session_factory)
+    s1 = "华为发布旗舰芯片麒麟X1面向高端市场。"
+    s2 = "小米发布新款汽车SU8进军高端市场。"
+    repo.upsert_atoms_for_content(seeded_content, [_info_atom(seeded_content, s1), _info_atom(seeded_content, s2)])
+    repo.upsert_atoms_for_content(seeded_content, [_info_atom(seeded_content, s1)])
+
+    stats = repo.quality_stats()
+    assert stats["total_atoms"] == 2
+    assert stats["active_atoms"] == 1
+    assert stats["shadow_atoms"] == 1
+    assert "fact_confidence_histogram" in stats
+    assert stats["p95_atoms_per_content"] >= 1
+
+
 def test_operation_log_records(sync_session_factory):
     op_repo = SqlAtomOperationRepository(sync_session_factory)
     op_id = op_repo.record(

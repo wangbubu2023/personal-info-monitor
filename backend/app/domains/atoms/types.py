@@ -176,6 +176,27 @@ class AtomStatsResponse(BaseModel):
     unverified_count: int
 
 
+class AtomQualityResponse(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    total_atoms: int
+    active_atoms: int
+    shadow_atoms: int
+    superseded_atoms: int
+    conflicted_atoms: int
+    archived_atoms: int
+    rejected_atoms: int
+    short_sentence_rate: float
+    avg_atoms_per_content: float
+    p95_atoms_per_content: int
+    p99_atoms_per_content: int
+    max_atoms_per_content: int
+    top_sources_by_atom_count: dict[str, int]
+    fact_confidence_histogram: dict[str, int]
+    quality_flags_distribution: dict[str, int]
+    rejected_by_reason: dict[str, int]
+
+
 class AtomBackfillRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

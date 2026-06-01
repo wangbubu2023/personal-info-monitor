@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import uuid
 from typing import Any
 
 from app.ai.provider import ModelProviderClient, get_atom_extraction_runtime
+from app.domains.atoms.canonical import build_canonical_text
 from app.domains.atoms.extractor.llm_extract import build_extraction_prompt, parse_llm_atoms
 from app.domains.atoms.extractor.quality import filter_atoms, rank_atoms_for_cap
 from app.domains.atoms.extractor.sentence_split import (
@@ -91,6 +93,8 @@ async def extract_atoms_from_content(content: Content) -> tuple[list[AtomCreate]
         carrier = ""
 
     title = content.title or ""
+    run_id = uuid.uuid4().hex[:16]
+    metadata["extraction_run_id"] = run_id
     client = ModelProviderClient()
     collected: list[AtomCreate] = []
     seen_keys: set[tuple[str, str]] = set()
@@ -142,6 +146,16 @@ async def extract_atoms_from_content(content: Content) -> tuple[list[AtomCreate]
     if len(kept) > MAX_ATOMS_PER_CONTENT:
         kept = rank_atoms_for_cap(kept)[:MAX_ATOMS_PER_CONTENT]
         metadata["capped"] = True
+
+    kept = [
+        atom.model_copy(
+            update={
+                "canonical_text": build_canonical_text(atom),
+                "extraction_run_id": run_id,
+            }
+        )
+        for atom in kept
+    ]
 
     metadata["atom_count"] = len(kept)
     return kept, metadata

@@ -18,6 +18,7 @@ from app.domains.atoms.types import (
     AtomBackfillStatusResponse,
     AtomCreate,
     AtomListResponse,
+    AtomQualityResponse,
     AtomRecord,
     AtomStatsResponse,
     AtomUpdate,
@@ -86,6 +87,12 @@ def atom_stats() -> AtomStatsResponse:
     _require_atoms_enabled()
     stats = default_atom_repository().stats()
     return AtomStatsResponse(**stats)
+
+
+@router.get("/quality", response_model=AtomQualityResponse)
+def atom_quality() -> AtomQualityResponse:
+    _require_atoms_enabled()
+    return AtomQualityResponse(**default_atom_repository().quality_stats())
 
 
 @router.post("/backfill", response_model=AtomBackfillResponse, status_code=202)
