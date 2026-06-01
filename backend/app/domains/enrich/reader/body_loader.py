@@ -245,8 +245,14 @@ async def clean_x_body_if_needed(
 
 
 def _website_body_needs_reader_backfill(content: Content, metadata: dict, body_raw: str) -> bool:
-    """True when the stored body is an RSS/listing teaser, not article fulltext."""
-    if (content.content_type or "").strip().lower() != "website":
+    """True when the stored body is an RSS/listing teaser, not article fulltext.
+
+    Both ``website`` and ``rss`` rows can land here with only a feed teaser
+    (RSS ``<description>`` is often 100-300 chars). The earlier ``!= "website"``
+    guard silently excluded every ``rss`` row, defeating reader-time backfill
+    for the most common source type despite the docstring's stated intent.
+    """
+    if (content.content_type or "").strip().lower() not in {"website", "rss"}:
         return False
     if not (content.original_url or "").strip():
         return False

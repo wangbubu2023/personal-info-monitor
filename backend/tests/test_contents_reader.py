@@ -11,6 +11,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.domains.enrich.reader.body_loader import _website_body_needs_reader_backfill
 from app.api.contents_reader import (
     _backfill_website_reader_body,
     _build_reader_translation_done_payload,
@@ -159,6 +160,44 @@ class TestFetchReaderFulltext:
                     mock_extractor_cls.return_value = mock_extractor
                     with patch("app.domains.enrich.reader.body_loader.strip_html_tags", return_value="short"):
                         assert await _fetch_reader_fulltext("https://example.com/page") == ("", "")
+
+
+# ---------------------------------------------------------------------------
+# _website_body_needs_reader_backfill
+# ---------------------------------------------------------------------------
+
+class TestWebsiteBodyNeedsReaderBackfill:
+    @staticmethod
+    def _content(content_type: str, *, url: str = "https://www.huxiu.com/article/4863281.html?f=rss", body: str = ""):
+        return SimpleNamespace(content_type=content_type, original_url=url, full_content=body)
+
+    def test_rss_summary_only_needs_backfill(self):
+        # Regression: rss teaser must trigger reader-time backfill (was wrongly
+        # short-circuited by the old ``!= "website"`` guard).
+        content = self._content("rss", body="美国人一年吃掉181公斤冰块..." * 4)
+        meta = {"fulltext_status": "summary_only"}
+        assert _website_body_needs_reader_backfill(content, meta, content.full_content) is True
+
+    def test_website_summary_only_still_needs_backfill(self):
+        content = self._content("website", body="teaser" * 10)
+        assert _website_body_needs_reader_backfill(content, {"fulltext_status": "summary_only"}, content.full_content) is True
+
+    def test_rss_short_body_without_status_needs_backfill(self):
+        content = self._content("rss", body="x" * 111)
+        assert _website_body_needs_reader_backfill(content, {}, content.full_content) is True
+
+    def test_rss_full_article_does_not_need_backfill(self):
+        content = self._content("rss", body="完整正文内容" * 200)
+        meta = {"fulltext_status": "full", "article_fulltext": True}
+        assert _website_body_needs_reader_backfill(content, meta, content.full_content) is False
+
+    def test_other_types_skipped(self):
+        content = self._content("x", body="t")
+        assert _website_body_needs_reader_backfill(content, {"fulltext_status": "summary_only"}, content.full_content) is False
+
+    def test_rss_without_url_skipped(self):
+        content = self._content("rss", url="", body="x" * 50)
+        assert _website_body_needs_reader_backfill(content, {"fulltext_status": "summary_only"}, content.full_content) is False
 
 
 # ---------------------------------------------------------------------------
@@ -664,6 +703,29 @@ class TestBackfillWebsiteReaderBody:
                     db,
                 )
                 assert "Full article" in body
+                mock_fetch.assert_awaited_once()
+                db.commit.assert_called()
+
+    @pytest.mark.asyncio
+    async def test_rss_summary_only_teaser_triggers_backfill(self):
+        content = MagicMock()
+        content.content_type = "rss"
+        content.original_url = "https://www.huxiu.com/article/4863281.html?f=rss"
+        content.summary = "RSS teaser " * 5
+        content.full_content = content.summary
+        db = AsyncMock()
+        with patch("app.domains.enrich.reader.body_loader.fetch_reader_fulltext", new_callable=AsyncMock) as mock_fetch:
+            mock_fetch.return_value = ("Full RSS article " * 50, "https://www.huxiu.com/article/4863281.html")
+            with patch("app.domains.enrich.reader.body_loader.truncate_content", return_value="Full RSS article " * 50):
+                body, meta = await _backfill_website_reader_body(
+                    content,
+                    {"fulltext_status": "summary_only"},
+                    content.summary,
+                    db,
+                )
+                assert "Full RSS article" in body
+                assert meta.get("reader_fulltext_backfilled_at")
+                assert meta.get("article_fulltext") is True
                 mock_fetch.assert_awaited_once()
                 db.commit.assert_called()
 
