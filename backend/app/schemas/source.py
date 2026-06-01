@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from urllib.parse import urlparse
 
 from app.utils.url import normalize_source_url_input
+from app.domains.score.score_utils import normalize_authority_type
 
 _MAX_FETCH_LAG_MIN = 1
 _MAX_FETCH_LAG_MAX = 525600  # 365 days
@@ -43,7 +44,7 @@ def _normalize_source_quality_metadata(meta: Optional[Dict[str, Any]]) -> Option
         out["domain_focus"] = focus[:20]
 
     if "authority_type" in out and out.get("authority_type") is not None:
-        out["authority_type"] = str(out["authority_type"]).strip()[:80]
+        out["authority_type"] = normalize_authority_type(out["authority_type"])[:80]
 
     return out
 

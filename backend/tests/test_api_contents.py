@@ -96,6 +96,18 @@ async def test_contents_search_matches_source_name(client, db_session):
 
 
 @pytest.mark.asyncio
+async def test_reader_payload_includes_source_id(client, db_session):
+    source, content = await _seed_content(db_session, source_name="36kr")
+
+    response = await client.get(f"/api/contents/{content.id}/reader")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["source_id"] == str(source.id)
+    assert payload["source_name"] == "36kr"
+
+
+@pytest.mark.asyncio
 async def test_contents_cleanup_low_signal_dry_run_and_apply(client, db_session):
     source = Source(name="HBR", type=SourceType.WEBSITE, url="https://hbr.org")
     junk = Content(

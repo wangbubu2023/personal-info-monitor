@@ -227,8 +227,13 @@ class TestLooksLikeArticleUrl:
 
     def test_article_hub_without_locale_tail_accepted(self):
         assert self.collector._looks_like_article_url(
-            "https://example.com", "https://example.com/articles/plainslug"
+            "https://example.com", "https://example.com/articles/story-123"
         ) is True
+
+    def test_article_hub_section_page_rejected(self):
+        assert self.collector._looks_like_article_url(
+            "https://example.com", "https://example.com/articles/latest"
+        ) is False
 
 
 # ---------------------------------------------------------------------------

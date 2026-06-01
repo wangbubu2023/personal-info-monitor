@@ -109,8 +109,7 @@ describe('useSourceEditor', () => {
         use_keyword_filter: false,
         auth_required: false,
         source_stars: 3,
-        authority_type: 'official_blog',
-        domain_focus_text: 'AI\nmodel, developer',
+        authority_type: 'official',
         source_weight: 1.2,
       } as any)
     })
@@ -118,10 +117,10 @@ describe('useSourceEditor', () => {
     const payload = (sourcesApi.create as any).mock.calls[0][0]
     expect(payload.metadata).toMatchObject({
       source_stars: 3,
-      authority_type: 'official_blog',
-      domain_focus: ['AI', 'model', 'developer'],
+      authority_type: 'official',
       source_weight: 1.2,
     })
+    expect(payload.metadata).not.toHaveProperty('domain_focus')
   })
 
   it('omits metadata.rss_only when toggle is off on new source', async () => {
@@ -214,15 +213,14 @@ describe('useSourceEditor', () => {
         metadata: {
           source_stars: 3,
           authority_type: 'official_blog',
-          domain_focus: ['AI', 'model'],
           source_weight: 1.2,
         },
       } as any)
     })
 
     expect(result.current.form.getFieldValue('source_stars')).toBe(3)
-    expect(result.current.form.getFieldValue('authority_type')).toBe('official_blog')
-    expect(result.current.form.getFieldValue('domain_focus_text')).toBe('AI\nmodel')
+    expect(result.current.form.getFieldValue('authority_type')).toBe('official')
+    expect(result.current.form.getFieldValue('domain_focus_text')).toBeUndefined()
     expect(result.current.form.getFieldValue('source_weight')).toBe(1.2)
   })
 

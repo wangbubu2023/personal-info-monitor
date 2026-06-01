@@ -21,7 +21,7 @@ from app.domains.score.score_vocab import (
     SOURCE_STARS_AUTHORITY,
 )
 from app.domains.score.score_vocab_runtime import RuntimeScoringVocab
-from app.domains.score.score_utils import normalize_source_stars
+from app.domains.score.score_utils import normalize_authority_type, normalize_source_stars
 
 
 def _corpus(title: str, summary: str | None, full_content: str | None, *, limit: int = 800) -> str:
@@ -159,7 +159,7 @@ def score_authority(source_metadata: Mapping[str, Any] | None) -> float:
     source_metadata = source_metadata if isinstance(source_metadata, Mapping) else {}
     stars = normalize_source_stars(source_metadata.get("source_stars"))
     base = SOURCE_STARS_AUTHORITY.get(stars, 4.0)
-    auth_type = str(source_metadata.get("authority_type") or "").strip().lower()
+    auth_type = normalize_authority_type(source_metadata.get("authority_type"))
     bonus = AUTHORITY_TYPE_BONUS.get(auth_type, 0.0)
     return round(min(10.0, base + bonus), 1)
 

@@ -12,7 +12,7 @@ const EntitiesPanel: React.FC<{ knowledgeEnabled: boolean }> = ({ knowledgeEnabl
   const [entityType, setEntityType] = useState('')
   const [search, setSearch] = useState('')
   const [expanded, setExpanded] = useState<string | null>(null)
-  const [atomIds, setAtomIds] = useState<string[]>([])
+  const [atomIdsByEntity, setAtomIdsByEntity] = useState<Record<string, string[]>>({})
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -42,12 +42,12 @@ const EntitiesPanel: React.FC<{ knowledgeEnabled: boolean }> = ({ knowledgeEnabl
       return
     }
     setExpanded(entityId)
-    setAtomIds([])
+    if (atomIdsByEntity[entityId]) return
     try {
       const detail = await atomsApi.listEntityAtoms(entityId)
-      setAtomIds(detail.atom_ids)
+      setAtomIdsByEntity((prev) => ({ ...prev, [entityId]: detail.atom_ids }))
     } catch {
-      setAtomIds([])
+      setAtomIdsByEntity((prev) => ({ ...prev, [entityId]: [] }))
     }
   }
 
@@ -104,7 +104,7 @@ const EntitiesPanel: React.FC<{ knowledgeEnabled: boolean }> = ({ knowledgeEnabl
               </button>
               {expanded === entity.entity_id && (
                 <div className="mt-3 border-t border-white/10 pt-3">
-                  <AtomMiniList atomIds={atomIds} />
+                  <AtomMiniList atomIds={atomIdsByEntity[entity.entity_id] ?? []} />
                 </div>
               )}
             </div>

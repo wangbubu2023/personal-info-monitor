@@ -133,6 +133,7 @@ async def get_reader_payload(
 
     return {
         "id": str(content.id),
+        "source_id": str(content.source_id),
         "source_name": content.source.name if content.source else "",
         "title": content.title,
         "translated_title": content.translated_title,

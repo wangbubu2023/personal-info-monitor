@@ -26,6 +26,7 @@ export interface ContentUpdate {
 
 export interface ReaderPayload {
   id: string
+  source_id: string
   source_name: string
   title: string
   translated_title?: string

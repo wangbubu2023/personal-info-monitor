@@ -1,6 +1,6 @@
 import React from 'react';
 import { useParams, Link, useSearchParams } from 'react-router-dom';
-import { buildDashboardHomePath, buildReaderPath } from '../components/Dashboard/dashboardUtils';
+import { buildDashboardHomePath, buildDashboardSourcePath, buildReaderPath } from '../components/Dashboard/dashboardUtils';
 import {
   ArrowLeft,
   ExternalLink,
@@ -140,9 +140,19 @@ const ReaderPage: React.FC = () => {
             </h1>
 
             <div className="flex flex-wrap items-center gap-x-8 gap-y-3 border-b border-[rgba(88,100,118,0.14)] pb-9 text-[13px] font-medium text-[#586476]">
-              <div className="flex items-center gap-1.5 text-[#49A8C9]">
-                <Globe size={14} /> {data.source_name || '来源'}
-              </div>
+              {data.source_id ? (
+                <Link
+                  to={buildDashboardSourcePath(data.source_id, data.source_name)}
+                  className="flex items-center gap-1.5 text-[#49A8C9] underline-offset-2 transition-colors hover:text-[#3d94b3] hover:underline"
+                  title={`查看 ${data.source_name || '该信源'} 的全部内容`}
+                >
+                  <Globe size={14} /> {data.source_name || '来源'}
+                </Link>
+              ) : (
+                <div className="flex items-center gap-1.5 text-[#49A8C9]">
+                  <Globe size={14} /> {data.source_name || '来源'}
+                </div>
+              )}
               <div className="flex items-center gap-1.5">
                 <FileText size={14} /> 编号 #{id?.slice(0, 8)}
               </div>

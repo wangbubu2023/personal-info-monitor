@@ -8,6 +8,7 @@ from app.domains.score.score_event import compute_corroboration, compute_event_s
 from app.domains.score.score_rules import (
     classify_lane,
     compute_rule_dimension_scores,
+    score_authority,
     score_salience,
 )
 from app.domains.score.scoring import SCORE_VERSION, calculate_article_score, merge_rule_scoring_metadata
@@ -99,6 +100,13 @@ def test_merge_rule_scoring_metadata_stamps_v2():
     assert meta["subjective_meta"]["source"] == "fixed_baseline"
     assert meta["dimension_scores"]["subjective"] == 5.0
     assert meta["article_score"] == meta["final_score"]
+
+
+def test_authority_type_legacy_aliases_still_score():
+    assert score_authority({"source_stars": 3, "authority_type": "official_blog"}) == 9.5
+    assert score_authority({"source_stars": 3, "authority_type": "official"}) == 9.5
+    assert score_authority({"source_stars": 3, "authority_type": "paper"}) == 9.0
+    assert score_authority({"source_stars": 3, "authority_type": "primary"}) == 9.0
 
 
 def test_calculate_article_score_selected_threshold():

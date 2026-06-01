@@ -18,7 +18,7 @@ const EventsPanel: React.FC<{ knowledgeEnabled: boolean }> = ({ knowledgeEnabled
   const [error, setError] = useState<string | null>(null)
   const [domain, setDomain] = useState('')
   const [expanded, setExpanded] = useState<string | null>(null)
-  const [atomIds, setAtomIds] = useState<string[]>([])
+  const [atomIdsByEvent, setAtomIdsByEvent] = useState<Record<string, string[]>>({})
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -43,12 +43,12 @@ const EventsPanel: React.FC<{ knowledgeEnabled: boolean }> = ({ knowledgeEnabled
       return
     }
     setExpanded(eventId)
-    setAtomIds([])
+    if (atomIdsByEvent[eventId]) return
     try {
       const detail = await atomsApi.getEvent(eventId)
-      setAtomIds(detail.atom_ids)
+      setAtomIdsByEvent((prev) => ({ ...prev, [eventId]: detail.atom_ids }))
     } catch {
-      setAtomIds([])
+      setAtomIdsByEvent((prev) => ({ ...prev, [eventId]: [] }))
     }
   }
 
@@ -104,7 +104,7 @@ const EventsPanel: React.FC<{ knowledgeEnabled: boolean }> = ({ knowledgeEnabled
               </button>
               {expanded === event.event_id && (
                 <div className="mt-3 border-t border-white/10 pt-3">
-                  <AtomMiniList atomIds={atomIds} />
+                  <AtomMiniList atomIds={atomIdsByEvent[event.event_id] ?? []} />
                 </div>
               )}
             </div>

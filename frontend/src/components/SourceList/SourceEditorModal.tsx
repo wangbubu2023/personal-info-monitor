@@ -313,7 +313,7 @@ const SourceEditorModal: React.FC<SourceEditorModalProps> = ({
         <Divider style={{ marginTop: 8, marginBottom: 12 }}>信源质量</Divider>
 
         <SectionNote style={{ marginBottom: 12 }}>
-          星级只表示信源可信度和一手程度，不直接决定内容是否入选；后续评分仍会结合主题匹配、正文质量和推荐理由。
+          星级和权威类型会影响评分中的「权威性」维度；信源权重仅作为少量人工校准，通常保持 1。
         </SectionNote>
 
         <Form.Item
@@ -332,33 +332,18 @@ const SourceEditorModal: React.FC<SourceEditorModalProps> = ({
 
         <Form.Item
           name="authority_type"
-          label="权威类型"
+          label="权威类型（可选）"
+          tooltip="仅这些类型会被评分模型识别。普通媒体、Newsletter、KOL、聚合源通常留空即可。"
         >
           <Select
             allowClear
-            placeholder="选择信源性质"
+            placeholder="无额外权威加成"
             options={[
-              { value: 'official_blog', label: '官方博客 / 公告' },
-              { value: 'official_social', label: '官方社媒' },
-              { value: 'paper', label: '论文 / 研究' },
+              { value: 'official', label: '官方 / 一手发布' },
               { value: 'regulator', label: '监管 / 政策机构' },
-              { value: 'media', label: '专业媒体' },
-              { value: 'newsletter', label: 'Newsletter' },
-              { value: 'kol', label: 'KOL / 作者' },
-              { value: 'aggregator', label: '聚合源' },
-              { value: 'other', label: '其他' },
+              { value: 'primary', label: '一手资料 / 论文 / 原始报告' },
+              { value: 'wire', label: '通讯社 / 新闻线' },
             ]}
-          />
-        </Form.Item>
-
-        <Form.Item
-          name="domain_focus_text"
-          label="关注主题"
-          tooltip="每行一个主题词，用于判断高星信源是否与当前内容主题匹配。例如：AI、model、semiconductor。"
-        >
-          <Input.TextArea
-            placeholder={"AI\nmodel\nsemiconductor"}
-            autoSize={{ minRows: 2, maxRows: 5 }}
           />
         </Form.Item>
 

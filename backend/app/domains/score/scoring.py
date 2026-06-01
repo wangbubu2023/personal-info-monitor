@@ -20,7 +20,12 @@ from app.domains.score.score_vocab_runtime import (
     extract_keyword_vocab_terms,
     extract_matched_keyword_terms,
 )
-from app.domains.score.score_utils import clamp_float, normalize_dimension_score, normalize_source_stars
+from app.domains.score.score_utils import (
+    clamp_float,
+    normalize_authority_type,
+    normalize_dimension_score,
+    normalize_source_stars,
+)
 from app.domains.score.score_vocab import DIMENSION_LABELS, LANE_LABELS
 
 SCORE_VERSION = "pim-score-v2"
@@ -117,7 +122,7 @@ def build_recommendation_reason(
     why_now = f"本次窗口抓取到新的 {lane_label} 类可评估内容。"
 
     source_context = f"来自{source_stars}星信源"
-    authority_type = str(source_metadata.get("authority_type") or "").strip()
+    authority_type = normalize_authority_type(source_metadata.get("authority_type"))
     if authority_type:
         source_context += f"，权威类型为 {authority_type}"
     source_context += "。"

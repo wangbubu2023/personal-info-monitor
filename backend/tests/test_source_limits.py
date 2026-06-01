@@ -61,5 +61,5 @@ def test_source_metadata_quality_fields_are_normalized():
 
     assert source.metadata_["source_stars"] == 3
     assert source.metadata_["source_weight"] == 1.5
-    assert source.metadata_["authority_type"] == "official_blog"
+    assert source.metadata_["authority_type"] == "official"
     assert source.metadata_["domain_focus"] == ["AI", "model", "semiconductor"]

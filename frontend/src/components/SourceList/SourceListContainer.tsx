@@ -1,4 +1,5 @@
 import React from 'react'
+import { Link } from 'react-router-dom'
 import {
   Table,
   Button,
@@ -28,6 +29,7 @@ import { Database } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
 import { sourcesApi } from '../../services/sources'
 import { sourceKeys } from '../../services/queryKeys'
+import { buildDashboardSourcePath } from '../Dashboard/dashboardUtils'
 import { isXCookieProfile, getDefaultSharedXAuthConfigId } from '../../utils/sourceAuth'
 import type { Source } from '../../types'
 import { formatLocalDateTime } from '../../utils/datetime'
@@ -219,7 +221,21 @@ const SourceListContainer: React.FC = () => {
   }
 
   const columns = [
-    { title: '名称', dataIndex: 'name', key: 'name', width: 180 },
+    {
+      title: '名称',
+      dataIndex: 'name',
+      key: 'name',
+      width: 180,
+      render: (name: string, record: Source) => (
+        <Link
+          to={buildDashboardSourcePath(record.id, name)}
+          className="font-medium text-[#293859] underline-offset-2 transition-colors hover:text-[#49A8C9] hover:underline"
+          title={`查看 ${name} 的全部内容`}
+        >
+          {name}
+        </Link>
+      ),
+    },
     {
       title: '类型',
       dataIndex: 'type',
@@ -335,8 +351,14 @@ const SourceListContainer: React.FC = () => {
       align: 'right' as const,
       sorter: true,
       sortOrder: contentCountSortOrder,
-      render: (count: number | null | undefined) => (
-        <span className="tabular-nums text-[#2c3a50]">{count ?? 0}</span>
+      render: (count: number | null | undefined, record: Source) => (
+        <Link
+          to={buildDashboardSourcePath(record.id, record.name)}
+          className="inline-flex justify-end tabular-nums text-[#2c3a50] underline-offset-2 transition-colors hover:text-[#49A8C9] hover:underline"
+          title={`查看 ${record.name} 的全部内容`}
+        >
+          {count ?? 0}
+        </Link>
       ),
     },
     {

@@ -6,7 +6,7 @@ import math
 from datetime import datetime, timedelta
 from typing import Any, Mapping, Sequence
 
-from app.domains.score.score_utils import normalize_source_stars
+from app.domains.score.score_utils import normalize_authority_type, normalize_source_stars
 
 
 def _metadata(item: Mapping[str, Any]) -> dict[str, Any]:
@@ -48,12 +48,12 @@ def _max_source_stars(items: Sequence[Mapping[str, Any]]) -> int:
 def _is_official_source(item: Mapping[str, Any]) -> bool:
     source_meta = item.get("source_metadata") if isinstance(item.get("source_metadata"), dict) else {}
     meta = _metadata(item)
-    auth = str(
+    auth = normalize_authority_type(
         item.get("authority_type")
         or meta.get("authority_type")
         or source_meta.get("authority_type")
         or ""
-    ).strip().lower()
+    )
     return auth in {"official", "regulator"}
 
 

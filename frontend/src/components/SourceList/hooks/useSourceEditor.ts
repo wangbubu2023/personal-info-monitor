@@ -28,12 +28,25 @@ export interface SourceFormValues extends Omit<SourceCreate, 'extra_urls'> {
   rss_only_enabled?: boolean
   source_stars?: number
   authority_type?: string
-  domain_focus_text?: string
   source_weight?: number
   x_cookie_enabled?: boolean
   x_shared_auth_config_id?: string
   x_legacy_dedicated_auth?: boolean
   x_legacy_auth_name?: string
+}
+
+const authorityTypeAliases: Record<string, string> = {
+  official_blog: 'official',
+  official_social: 'official',
+  paper: 'primary',
+  media: 'wire',
+  newsletter: 'wire',
+}
+
+function normalizeAuthorityType(value: unknown): string | undefined {
+  const raw = String(value || '').trim()
+  if (!raw) return undefined
+  return authorityTypeAliases[raw] || raw
 }
 
 interface UseSourceEditorOptions {
@@ -148,7 +161,6 @@ export function useSourceEditor({
       rss_only_enabled,
       source_stars,
       authority_type,
-      domain_focus_text,
       source_weight,
       x_cookie_enabled,
       x_shared_auth_config_id,
@@ -178,16 +190,6 @@ export function useSourceEditor({
       baseMeta.authority_type = ''
     } else {
       delete baseMeta.authority_type
-    }
-    const domainFocus = parseUrlLines((domain_focus_text || '').replace(/[,，、]/g, '\n'))
-      .map((x) => x.replace(/^https?:\/\//i, '').trim())
-      .filter(Boolean)
-    if (domainFocus.length > 0) {
-      baseMeta.domain_focus = domainFocus
-    } else if (editingSource) {
-      baseMeta.domain_focus = []
-    } else {
-      delete baseMeta.domain_focus
     }
     const weight = Number(source_weight)
     if (Number.isFinite(weight)) {
@@ -299,11 +301,6 @@ export function useSourceEditor({
       source.type === 'x' && linkedAuth && !linkedAuth.is_shared && isXCookieProfile(linkedAuth)
     )
     const lag = source.metadata?.max_fetch_lag_minutes
-    const domainFocus = Array.isArray(source.metadata?.domain_focus)
-      ? (source.metadata?.domain_focus as unknown[]).map((x) => String(x)).join('\n')
-      : typeof source.metadata?.domain_focus === 'string'
-        ? String(source.metadata.domain_focus)
-        : ''
     const rssOnlyFromMeta = Boolean(
       source.type === 'website' && source.metadata?.rss_only
     )
@@ -311,8 +308,7 @@ export function useSourceEditor({
       ...source,
       metadata: source.metadata as any,
       source_stars: Number(source.metadata?.source_stars || 1),
-      authority_type: typeof source.metadata?.authority_type === 'string' ? source.metadata.authority_type : undefined,
-      domain_focus_text: domainFocus,
+      authority_type: normalizeAuthorityType(source.metadata?.authority_type),
       source_weight:
         source.metadata?.source_weight !== undefined && source.metadata?.source_weight !== null
           ? Number(source.metadata.source_weight)
@@ -348,7 +344,6 @@ export function useSourceEditor({
       rss_only_enabled: false,
       source_stars: 1,
       authority_type: undefined,
-      domain_focus_text: '',
       source_weight: 1,
       x_cookie_enabled: true,
       x_shared_auth_config_id: defaultSharedXAuthConfigId,
