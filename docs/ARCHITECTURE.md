@@ -136,6 +136,48 @@ sequenceDiagram
   URL/Cookie 判定在 `domains/fetch/collectors/website_helpers.py`，
   HTML 解析在 `domains/fetch/collectors/website_parser.py`，后者纯函
   数、直接 fixture 可测。
+- **统一失败分类**：`domains/fetch/failures.py` 把异构异常 / HTTP 状态
+  归一成稳定的 `FetchFailureCode`（`timeout / dns_error / tls_error /
+  http_403 / http_429 / http_5xx / redirect_blocked / ssrf_blocked /
+  login_required / session_expired / bot_wall / captcha / rss_stale /
+  rss_parse_error / html_parse_empty / body_incomplete / unknown` 等）。
+  `classify_exception()` / `classify_http_status()` 产出不可变的
+  `FetchFailure` DTO（含 `retryable`、`severity`、`cooldown_seconds`），
+  `to_warning_entry()` 适配回 `CollectorStage` / `coordinator` 既有的
+  `(code, severity, message)` 三元组协议。
+- **重试 / 冷却 / 熔断**：`domains/fetch/retry_policy.py` 在
+  `Source.metadata_['fetch_failure']` 维护熔断记录（`last_code`、
+  `cooldown_until`、`consecutive_by_code`，按连续失败次数升级冷却并封顶
+  6 小时）。`coordinator._update_source_status` 在失败时
+  `record_fetch_failure`、成功时 `clear_fetch_failure`；
+  `domains/sources/scheduling.py` 的 `is_due` / `next_fetch_at_for` 读取
+  `cooldown_until` 跳过自动抓取（429/403/bot wall 不再按普通 interval
+  反复打），手动抓取不走 `is_due` 因而绕过冷却。
+- **站点抓取画像**：`domains/fetch/profile.py` 以每日桶聚合 7 天滚动画像
+  （成功/失败/空跑次数、saved 数、平均延时、正文完整率、最近失败 code、
+  preferred_strategy），存于 `metadata['fetch_profile']`；
+  `summarize_profile()` 输出 `*_7d` 摘要，经 `serialize_source` 的
+  `fetch_profile_summary` / `last_failure_code` / `cooldown_until` 字段透
+  出给前端。
+- **正文质量层**：`domains/fetch/fulltext_quality.py` 把抓到的标题/正文
+  归类为 `full / partial / summary_only / title_only / login_required /
+  bot_wall / captcha / boilerplate_only / non_article / empty`，输出
+  `FulltextQuality`（score、reason、boilerplate_ratio、title_match_score），
+  并通过 `coarse_status()` 映射回 ingest 既有的 `FULLTEXT_STATUS_*` 评分门。
+- **列表页发现**：`domains/fetch/discovery/{rules,listing}.py` 提供受控的
+  栏目页发现（非全站遍历）：`parse_discovery_rules` 解析
+  `metadata['discovery']`（listing_urls、allow/deny、same_domain、max_links、
+  freshness、selectors，深度硬封顶为 1），`filter_candidates` 做同域 / 模式 /
+  去重 / 时效过滤并产出可解释 diagnostics；`WebsiteCollector` 在 RSS 路径
+  耗尽后、静态抓取前接入（仅在配置 discovery 时启用）。
+- **RSS 健康**：`domains/fetch/rss_health.py` 评估 feed 健康
+  （`ok/stale/empty/parse_error`，stale≠失败）、缓存自动发现的 feed URL、
+  多 feed 去重；`RSSCollector` 抓取后写 `metadata['rss_health']`。
+- **浏览器会话健康**：`domains/fetch/session_health.py` 纯函数分类
+  `login_required / captcha / bot_wall / expired / selector_missing` 并给出
+  `relogin / switch_rss_only / disable_playwright / retry_later` 建议动作。
+- 以上画像/失败/质量/健康一律落在 `Source.metadata_` / `Content.metadata_`
+  的 JSON 上（MVP 不新建表），分类逻辑均为纯函数、可直接 fixture 测试。
 - **入库收束于 `finish_content`**：`domains/ingest/finish.py` 是
   ingest → enrich → atoms → notifications 的唯一汇合点。AI Stage 这个
   历史抽象已在 Phase 7 删除——AI 触发改由 `domains/enrich/*` 的

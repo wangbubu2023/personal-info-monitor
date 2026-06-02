@@ -6,6 +6,69 @@ export type FetchStatus = 'ok' | 'warning' | 'error' | 'unknown'
 /** Result of an explicit URL probe — separate from fetch_status (real grab history). */
 export type ProbeStatus = FetchStatus | 'pending' | 'not_probed' | 'failed'
 
+/** Rolling 7-day fetch profile summary (backend: domains.fetch.profile.summarize_profile). */
+export interface FetchProfileSummary {
+  attempts_7d: number
+  success_count_7d: number
+  failure_count_7d: number
+  empty_count_7d: number
+  saved_count_7d: number
+  success_rate_7d: number | null
+  avg_latency_ms_7d: number | null
+  fulltext_success_rate_7d: number | null
+  last_success_at?: string | null
+  last_failure_at?: string | null
+  last_failure_code?: string | null
+  preferred_strategy?: string | null
+}
+
+/** Circuit-breaker record (backend: metadata.fetch_failure). */
+export interface FetchFailureMeta {
+  last_code?: string
+  last_status?: number | null
+  severity?: string
+  retryable?: boolean
+  cooldown_until?: string
+  cooldown_seconds?: number
+  consecutive_by_code?: Record<string, number>
+  consecutive_failures?: number
+  updated_at?: string
+}
+
+/** RSS feed health (backend: metadata.rss_health). */
+export interface RssHealthMeta {
+  status?: 'ok' | 'stale' | 'empty' | 'parse_error'
+  healthy?: boolean
+  item_count?: number
+  last_update?: string | null
+  stale_days?: number | null
+  reason?: string
+  checked_at?: string
+  feed_url?: string
+}
+
+/** Listing-discovery diagnostics (backend: metadata.discovery_diagnostics). */
+export interface DiscoveryDiagnostics {
+  total?: number
+  kept?: number
+  dropped_no_url?: number
+  dropped_off_domain?: number
+  dropped_deny?: number
+  dropped_allow_miss?: number
+  dropped_short_title?: number
+  dropped_duplicate?: number
+  dropped_stale?: number
+  truncated?: number
+}
+
+export interface SourceMetadata {
+  fetch_failure?: FetchFailureMeta
+  fetch_profile?: Record<string, unknown>
+  rss_health?: RssHealthMeta
+  discovery_diagnostics?: DiscoveryDiagnostics
+  [key: string]: unknown
+}
+
 export interface Source {
   id: string
   name: string
@@ -22,7 +85,7 @@ export interface Source {
   last_error?: string
   error_count: number
   content_count: number
-  metadata?: Record<string, unknown>
+  metadata?: SourceMetadata
   fetch_status: FetchStatus
   fetch_strategy: string
   fetch_status_message: string
@@ -30,6 +93,10 @@ export interface Source {
   probe_strategy: string
   probe_message: string
   probed_at?: string
+  // Fetch-health fields surfaced by serialize_source (enhancement plan).
+  fetch_profile_summary?: FetchProfileSummary
+  last_failure_code?: string | null
+  cooldown_until?: string | null
   created_at: string
   updated_at: string
 }

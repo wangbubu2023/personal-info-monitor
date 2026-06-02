@@ -108,6 +108,51 @@ class TestIsDue:
         assert is_due(source, now=datetime(2026, 5, 1, 12, 30, 0)) is False
 
 
+class TestCooldownIntegration:
+    """Cooldown set by the fetch retry policy defers automatic scheduling."""
+
+    def _cooling_source(self, cooldown_until: datetime, **overrides):
+        from app.domains.fetch.retry_policy import record_fetch_failure
+
+        src = _make_source(metadata_={}, **overrides)
+        # Pin the cooldown deadline by recording a 429 at a known instant.
+        record_fetch_failure(src, code="http_429", now=cooldown_until - timedelta(seconds=900))
+        return src
+
+    def test_not_due_while_in_cooldown_even_if_interval_passed(self):
+        cooldown_until = datetime(2026, 5, 1, 13, 0, 0)
+        source = self._cooling_source(
+            cooldown_until,
+            fetch_interval=10,
+            last_fetched_at=datetime(2026, 5, 1, 12, 0, 0),
+        )
+        # Interval (10m) elapsed by 12:30 but cooldown runs to 13:00.
+        assert is_due(source, now=datetime(2026, 5, 1, 12, 45, 0)) is False
+
+    def test_due_again_after_cooldown_expires(self):
+        cooldown_until = datetime(2026, 5, 1, 13, 0, 0)
+        source = self._cooling_source(
+            cooldown_until,
+            fetch_interval=10,
+            last_fetched_at=datetime(2026, 5, 1, 12, 0, 0),
+        )
+        assert is_due(source, now=datetime(2026, 5, 1, 13, 1, 0)) is True
+
+    def test_next_fetch_at_reflects_cooldown(self):
+        cooldown_until = datetime(2026, 5, 1, 13, 0, 0)
+        source = self._cooling_source(
+            cooldown_until,
+            fetch_interval=10,
+            last_fetched_at=datetime(2026, 5, 1, 12, 0, 0),
+        )
+        assert next_fetch_at_for(source) == cooldown_until
+
+    def test_source_without_metadata_attr_still_works(self):
+        # Existing SimpleNamespace sources have no metadata_ — must not raise.
+        source = _make_source(last_fetched_at=None)
+        assert is_due(source, now=datetime(2026, 5, 1, 12, 0, 0)) is True
+
+
 class TestListDueSourceIds:
     def _fake_db(self, sources):
         """Build a minimal ``db.query(...).filter(...).filter(...).all()`` chain."""

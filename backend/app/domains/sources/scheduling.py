@@ -57,21 +57,33 @@ def next_fetch_at_for(source: Source) -> datetime | None:
     has not yet been fetched is *immediately* due (the scheduler picks it
     up on the next tick), so there is no meaningful future timestamp to
     show in the UI.
+
+    An active fetch cooldown (set after a classified failure such as 429 /
+    403 / bot-wall — see ``domains.fetch.retry_policy``) pushes the next-due
+    moment out to the cooldown deadline so the scheduler stops hammering a
+    rate-limited or blocked site. Manual fetches do not call this helper and
+    therefore bypass the cooldown entirely.
     """
+    from app.domains.fetch.retry_policy import get_cooldown_until
+
+    cooldown_until = get_cooldown_until(source)
     if source.last_fetched_at is None:
-        return None
+        # Never fetched: due immediately unless a cooldown is still pending.
+        return cooldown_until
     interval_minutes = effective_due_interval_minutes(source)
-    return source.last_fetched_at + timedelta(minutes=interval_minutes)
+    interval_due = source.last_fetched_at + timedelta(minutes=interval_minutes)
+    if cooldown_until is not None and cooldown_until > interval_due:
+        return cooldown_until
+    return interval_due
 
 
 def is_due(source: Source, *, now: datetime | None = None) -> bool:
     """Whether ``source`` is currently due for fetching."""
-    if source.last_fetched_at is None:
-        return True
+    now = now or utcnow_naive()
     next_fetch = next_fetch_at_for(source)
     if next_fetch is None:
         return True
-    return (now or utcnow_naive()) >= next_fetch
+    return now >= next_fetch
 
 
 def list_due_source_ids(

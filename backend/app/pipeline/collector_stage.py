@@ -22,6 +22,20 @@ from app.pipeline.utils import get_source_urls, dedupe_raw_contents
 logger = get_logger(__name__)
 
 
+def _classify_fetch_failure(exc: Exception | None, last_error: str) -> Tuple[str, str, str]:
+    """Turn an all-URLs-failed fetch error into a structured warning tuple.
+
+    Falls back to the legacy ``fetch_failed`` entry when there is no exception
+    to classify (e.g. collectors that swallowed the error and returned ``[]``).
+    """
+    from app.domains.fetch.failures import classify_exception, to_warning_entry
+
+    if exc is not None:
+        return to_warning_entry(classify_exception(exc))
+    detail = last_error.strip() or "all fetch attempts failed"
+    return ("fetch_failed", "error", f"抓取失败：所有请求均未成功（{detail}）"[:500])
+
+
 async def fetch_at_ephemeral_source_url(collector, source: Source, fetch_url: str):
     """Run ``collector.fetch`` while temporarily overriding ``source.url`` (restored in ``finally``)."""
     prev = source.url
@@ -121,6 +135,7 @@ class CollectorStage:
         fetch_success_count = 0
         fetch_error_count = 0
         last_fetch_error = ""
+        last_fetch_exc: Exception | None = None
         for fetch_url in source_urls:
             try:
                 fetched = await fetch_at_ephemeral_source_url(collector, source, fetch_url)
@@ -130,17 +145,15 @@ class CollectorStage:
             except Exception as e:
                 fetch_error_count += 1
                 last_fetch_error = str(e)
+                last_fetch_exc = e
                 logger.error(f"Error fetching from URL {fetch_url}: {e}")
                 continue
 
         # Every URL raised: this is a real fetch failure, not "no new content".
-        # Surface it as an error warning so the coordinator records error state
-        # instead of reporting a silent success.
+        # Surface it as a structured warning (classified failure code) so the
+        # coordinator records error state instead of reporting a silent success.
         if source_urls and fetch_success_count == 0 and fetch_error_count > 0:
-            detail = last_fetch_error.strip() or "all fetch attempts failed"
-            warning_entries.append(
-                ("fetch_failed", "error", f"抓取失败：所有请求均未成功（{detail}）"[:500])
-            )
+            warning_entries.append(_classify_fetch_failure(last_fetch_exc, last_fetch_error))
 
         raw_contents = dedupe_raw_contents(raw_contents)
         cookie_entry = cookie_hydration_warning_entry(source, runtime_auth)

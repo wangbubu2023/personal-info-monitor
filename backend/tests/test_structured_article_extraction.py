@@ -29,6 +29,26 @@ def test_extracts_json_ld_article_body():
     assert "Paragraph two adds details" in result.text
 
 
+def test_rejects_json_ld_body_that_is_tiny_vs_visible_article_text():
+    summary_body = "AI-style topic overview that is only a compressed summary of the article. " * 4
+    visible_article = "Real article paragraph with reporting detail, author voice, and source evidence. " * 80
+    html = f"""
+    <html><head>
+      <script type="application/ld+json">
+      {{
+        "@type": "NewsArticle",
+        "headline": "Important Report",
+        "articleBody": "{summary_body}"
+      }}
+      </script>
+    </head><body><article>{visible_article}</article></body></html>
+    """
+
+    result = extract_structured_article(html, min_chars=80)
+
+    assert result is None
+
+
 def test_extracts_next_data_content_html():
     html = """
     <html><body>

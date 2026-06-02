@@ -50,10 +50,24 @@ class RSSCollector(BaseCollector):
                 if cookie_header:
                     request_headers = {"Cookie": cookie_header}
             feed = await asyncio.to_thread(feedparser.parse, source.url, request_headers=request_headers)
-            
+
+            self._record_feed_health(source, feed)
+
+            status = int(getattr(feed, "status", 0) or 0)
+            if status >= 400:
+                from app.domains.fetch.failures import FetchFailureError, classify_http_status
+
+                failure = classify_http_status(status, detail=f"RSS feed request failed: {source.url}")
+                if failure is not None:
+                    raise FetchFailureError(failure)
+
             if feed.bozo and not feed.entries:
+                from app.domains.fetch.failures import FetchFailureCode, FetchFailureError, make_failure
+
                 self.logger.error(f"Failed to parse RSS feed: {feed.bozo_exception}")
-                return []
+                raise FetchFailureError(
+                    make_failure(FetchFailureCode.RSS_PARSE_ERROR, detail=str(feed.bozo_exception))
+                )
             
             contents = []
             # 并行获取所有条目的摘要
@@ -74,8 +88,22 @@ class RSSCollector(BaseCollector):
             return contents
             
         except Exception as e:
+            from app.domains.fetch.failures import FetchFailureError
+
+            if isinstance(e, FetchFailureError):
+                raise
             self.logger.error(f"Error fetching RSS feed: {e}")
             return []
+
+    def _record_feed_health(self, source: Source, feed: Any) -> None:
+        """Stamp feed health into source metadata (best-effort, never fatal)."""
+        try:
+            from app.domains.fetch.rss_health import assess_parsed_feed_health, record_feed_health
+
+            health = assess_parsed_feed_health(feed)
+            record_feed_health(source, health, feed_url=source.url)
+        except Exception as exc:  # noqa: BLE001 — health bookkeeping is non-critical
+            self.logger.debug("Failed to record RSS feed health for %s: %s", source.url, exc)
 
     def validate_content(self, content: Dict[str, Any]) -> bool:
         """Require title/url plus meaningful text from RSS body or hydrated HTML."""

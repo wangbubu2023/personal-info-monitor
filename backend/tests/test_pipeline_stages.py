@@ -100,7 +100,38 @@ class TestCollectorStage:
 
         assert raw == []
         assert primary is not None
-        assert primary[0] == "fetch_failed"
+        # A bare RuntimeError can't be classified further -> unified "unknown".
+        assert primary[0] == "unknown"
+        assert primary[1] == "error"
+
+    @pytest.mark.asyncio
+    async def test_fetch_failure_is_classified_with_structured_code(self):
+        """A classifiable fetch exception surfaces its taxonomy code, not 'fetch_failed'."""
+        from app.pipeline.collector_stage import CollectorStage
+
+        source = _make_source(type=SourceType.RSS)
+        source.auth_config = None
+        source.auth_config_id = None
+
+        mock_collector = MagicMock()
+        mock_collector.fetch = AsyncMock(
+            side_effect=ValueError("private address is not allowed: 10.0.0.1")
+        )
+
+        db = MagicMock()
+
+        with patch("app.pipeline.collector_stage.get_collector", return_value=mock_collector), \
+             patch("app.pipeline.collector_stage.get_source_urls", return_value=["https://example.com"]), \
+             patch("app.pipeline.collector_stage.dedupe_raw_contents", side_effect=lambda x: x), \
+             patch("app.pipeline.collector_stage.auth_warning_entry", return_value=None), \
+             patch("app.pipeline.collector_stage.cookie_hydration_warning_entry", return_value=None), \
+             patch("app.pipeline.collector_stage.merge_warning_messages", side_effect=lambda *a: next((m for m in a if m), None)):
+
+            raw, warning, primary = await CollectorStage.execute(db, source)
+
+        assert raw == []
+        assert primary is not None
+        assert primary[0] == "ssrf_blocked"
         assert primary[1] == "error"
 
     @pytest.mark.asyncio
@@ -562,6 +593,19 @@ class TestUpdateSourceStatus:
         _update_source_status(source, "msg", ("stale", "warning", "内容过时"), "ok", "info", "ok")
 
         assert source.error_count == 0
+        assert "fetch_failure" not in source.metadata_
+
+    def test_cooldown_warning_records_fetch_failure_without_error_count(self):
+        from app.pipeline.coordinator import _update_source_status
+
+        source = _make_source(error_count=5)
+        source.metadata_ = {}
+        _update_source_status(source, "msg", ("http_429", "warning", "请求限流"), "ok", "info", "ok")
+
+        assert source.error_count == 0
+        assert source.metadata_["fetch_failure"]["last_code"] == "http_429"
+        assert source.metadata_["fetch_failure"]["severity"] == "warning"
+        assert source.metadata_["fetch_failure"]["cooldown_until"]
 
     def test_no_warning_resets_error_count(self):
         from app.pipeline.coordinator import _update_source_status

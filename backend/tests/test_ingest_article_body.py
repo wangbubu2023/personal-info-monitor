@@ -50,13 +50,45 @@ async def test_fetch_public_article_body_prefers_structured_json():
     </head><body><p>Subscribe to continue</p></body></html>
     """
 
-    with patch(
-        "app.domains.fetch.article_body.fetch_public_http_text",
-        new_callable=AsyncMock,
-        return_value=PublicHttpTextResult(200, "https://example.com/article", html),
-    ), patch("app.domains.fetch.article_body.ContentExtractor") as mock_extractor:
+    with (
+        patch(
+            "app.domains.fetch.article_body.fetch_public_http_text",
+            new_callable=AsyncMock,
+            return_value=PublicHttpTextResult(200, "https://example.com/article", html),
+        ),
+        patch("app.domains.fetch.article_body.ContentExtractor") as mock_extractor,
+    ):
         text, resolved_url = await fetch_public_article_body("https://example.com/article")
 
     assert "Structured article body" in text
     assert resolved_url == "https://example.com/article"
     mock_extractor.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_fetch_public_article_body_falls_back_when_structured_body_is_summary_sized():
+    summary_body = "AI-style topic overview that is only a compressed summary of the article. " * 4
+    readable_body = "Real article paragraph with reporting detail, author voice, and source evidence. " * 80
+    html = f"""
+    <html><head>
+      <script type="application/ld+json">
+      {{"@type": "NewsArticle", "articleBody": "{summary_body}"}}
+      </script>
+    </head><body><article>{readable_body}</article></body></html>
+    """
+
+    with (
+        patch(
+            "app.domains.fetch.article_body.fetch_public_http_text",
+            new_callable=AsyncMock,
+            return_value=PublicHttpTextResult(200, "https://example.com/article", html),
+        ),
+        patch("app.domains.fetch.article_body.ContentExtractor") as mock_extractor_cls,
+    ):
+        mock_extractor_cls.return_value.extract = AsyncMock(return_value=readable_body)
+
+        text, resolved_url = await fetch_public_article_body("https://example.com/article")
+
+    assert text.startswith("Real article paragraph")
+    assert resolved_url == "https://example.com/article"
+    mock_extractor_cls.return_value.extract.assert_awaited_once()

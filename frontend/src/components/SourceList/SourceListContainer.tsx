@@ -25,7 +25,7 @@ import {
   RadarChartOutlined,
   SearchOutlined,
 } from '@ant-design/icons'
-import { Database } from 'lucide-react'
+import { Database, HeartPulse } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
 import { sourcesApi } from '../../services/sources'
 import { sourceKeys } from '../../services/queryKeys'
@@ -34,6 +34,7 @@ import { isXCookieProfile, getDefaultSharedXAuthConfigId } from '../../utils/sou
 import type { Source } from '../../types'
 import { formatLocalDateTime } from '../../utils/datetime'
 import FetchStatusIcon from './FetchStatusIcon'
+import FetchHealthDrawer from './FetchHealthDrawer'
 import CategoryPillTabs from '../common/CategoryPillTabs'
 import SourceEditorModal from './SourceEditorModal'
 import SourceImportModal from './SourceImportModal'
@@ -82,6 +83,7 @@ const SourceListContainer: React.FC = () => {
   const queryClient = useQueryClient()
   const [isExportingAll, setIsExportingAll] = React.useState(false)
   const [isExportingSelected, setIsExportingSelected] = React.useState(false)
+  const [healthSource, setHealthSource] = React.useState<Source | null>(null)
 
   const listState = useSourceList()
   const {
@@ -371,7 +373,7 @@ const SourceListContainer: React.FC = () => {
     {
       title: '操作',
       key: 'actions',
-      width: 292,
+      width: 332,
       fixed: 'right' as const,
       align: 'center' as const,
       onCell: () => ({ style: { whiteSpace: 'nowrap' } }),
@@ -385,6 +387,16 @@ const SourceListContainer: React.FC = () => {
               className="!text-[#5f6f82] hover:!text-[#49A8C9]"
               onClick={() => probeMutation.mutate(record.id)}
               loading={probeMutation.isPending && probeMutation.variables === record.id}
+            />
+          </Tooltip>
+          <Tooltip title="抓取健康诊断">
+            <Button
+              type="text"
+              icon={<HeartPulse size={15} strokeWidth={1.8} />}
+              size="small"
+              className="!inline-flex !items-center !text-[#5f6f82] hover:!text-[#49A8C9]"
+              data-testid={`source-health-${record.id}`}
+              onClick={() => setHealthSource(record)}
             />
           </Tooltip>
           <Button type="link" size="small" className="!px-1" icon={<SyncOutlined />} onClick={() => fetchMutation.mutate(record.id)}>
@@ -688,6 +700,16 @@ const SourceListContainer: React.FC = () => {
         remainingSources={remainingSources}
         onImport={handleBulkImport}
         onClose={() => { setIsImportModalOpen(false); setImportPreview([]) }}
+      />
+
+      <FetchHealthDrawer
+        source={healthSource}
+        open={!!healthSource}
+        onClose={() => setHealthSource(null)}
+        onFetch={(id) => fetchMutation.mutate(id)}
+        onProbe={(id) => probeMutation.mutate(id)}
+        fetchLoading={fetchMutation.isPending && fetchMutation.variables === healthSource?.id}
+        probeLoading={probeMutation.isPending && probeMutation.variables === healthSource?.id}
       />
     </div>
   )

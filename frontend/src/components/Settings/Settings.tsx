@@ -1,12 +1,13 @@
 import React, { Suspense, lazy, useMemo, useCallback, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Cpu, Database, Tag as TagIcon, MessageSquareText, ShieldAlert, ShieldCheck, Gauge } from 'lucide-react';
+import { Cpu, Database, Tag as TagIcon, MessageSquareText, ShieldAlert, ShieldCheck, Gauge, Activity } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { KEYWORD_MONITORING_ENABLED, SCORE_LAB_BUILD_ENABLED } from '../../config/features';
 import PanelLoading from '../common/PanelLoading';
 import PageHeroTitle from '../common/PageHeroTitle';
 
 const SourceManager = lazy(() => import('../SourceList/SourceManager'));
+const FetchHealthTab = lazy(() => import('./FetchHealthTab'));
 const CredentialsTab = lazy(() => import('./CredentialsTab'));
 const AIModelTab = lazy(() => import('./AIModelTab'));
 const TaskPromptsTab = lazy(() => import('./TaskPromptsTab'));
@@ -36,7 +37,7 @@ const Settings: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
 
   const validTabKeys = useMemo(() => {
-    const keys: string[] = ['sources', 'credentials', 'ai-model', 'task-prompts'];
+    const keys: string[] = ['sources', 'fetch-health', 'credentials', 'ai-model', 'task-prompts'];
     if (KEYWORD_MONITORING_ENABLED) keys.push('keywords');
     if (SCORE_LAB_BUILD_ENABLED) keys.push('score-lab');
     return keys;
@@ -66,6 +67,13 @@ const Settings: React.FC = () => {
       icon: Database,
       description: '管理 RSS、网站与 X 等订阅。',
       content: <SourceManager />,
+    },
+    {
+      key: 'fetch-health',
+      label: '抓取健康',
+      icon: Activity,
+      description: '查看各信源的抓取成功率、失败诊断、冷却状态与 7 天画像。',
+      content: <FetchHealthTab />,
     },
     {
       key: 'credentials',

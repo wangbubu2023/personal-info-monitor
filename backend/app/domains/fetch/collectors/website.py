@@ -824,6 +824,12 @@ class WebsiteCollector(BaseCollector):
             )
             return []
 
+        # Controlled listing-page discovery (opt-in via metadata['discovery']).
+        # Runs after RSS paths are exhausted, before generic static scraping.
+        discovered = await self._maybe_fetch_via_discovery(source, cookies, browser_session)
+        if discovered is not None:
+            return discovered
+
         # Check if JS rendering is needed.
         if metadata.get("needs_js", False):
             contents = await self._fetch_with_playwright(source)
@@ -841,6 +847,107 @@ class WebsiteCollector(BaseCollector):
             contents,
             cookies,
             browser_session,
+        )
+
+    async def _fetch_listing_html(self, source: Source, url: str) -> Optional[str]:
+        """Fetch a single listing page's raw HTML (SSRF-checked)."""
+        headers = {
+            "User-Agent": random.choice(self.user_agents),
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.5",
+        }
+        cookies = self.get_runtime_cookies(source)
+        try:
+            async with aiohttp.ClientSession(**permissive_session_kwargs()) as session:
+                response = await fetch_public_http_text(
+                    session,
+                    url,
+                    source_url=source.url,
+                    validation_cookies=cookies or None,
+                    headers=headers,
+                    cookies=cookies if cookies else None,
+                    timeout=aiohttp.ClientTimeout(total=30),
+                )
+                if response.status != 200:
+                    from app.domains.fetch.failures import FetchFailureError, classify_http_status
+
+                    self.logger.warning("Discovery listing fetch non-200 (%s) for %s", response.status, url)
+                    failure = classify_http_status(response.status, detail=f"Discovery listing fetch failed: {url}")
+                    if failure is not None:
+                        raise FetchFailureError(failure)
+                    return None
+                return response.text
+        except (aiohttp.ClientError, TimeoutError, ValueError) as exc:
+            self.logger.warning("Discovery listing fetch failed for %s: %s", url, exc)
+            return None
+
+    async def _maybe_fetch_via_discovery(
+        self, source: Source, cookies, browser_session
+    ) -> Optional[List[Dict[str, Any]]]:
+        """Run controlled listing-page discovery when the source opts in.
+
+        Returns ``None`` when discovery is not configured (so the caller falls
+        back to its normal static/Playwright path); otherwise returns the
+        hydrated content list (possibly empty) and stamps explainable
+        diagnostics into ``source.metadata_['discovery_diagnostics']``.
+        """
+        from app.domains.fetch.discovery import filter_candidates, parse_discovery_rules
+
+        rules = parse_discovery_rules(source.metadata_ or {})
+        if rules is None or not rules.enabled:
+            return None
+
+        self.logger.info("Listing discovery enabled for %s (%d listing urls)", source.url, len(rules.listing_urls))
+
+        # Build a per-source selector override so the HTML parser honours the
+        # discovery-specific selectors without mutating the real source.
+        selector_overrides = {
+            k: v
+            for k, v in {
+                "article_selector": rules.article_selector,
+                "title_selector": rules.title_selector,
+                "link_selector": rules.link_selector,
+                "content_selector": None,
+                "date_selector": rules.date_selector,
+            }.items()
+            if v
+        }
+
+        raw_candidates: List[Dict[str, Any]] = []
+        for listing_url in rules.listing_urls:
+            html = await self._fetch_listing_html(source, listing_url)
+            if not html:
+                continue
+            listing_source = _helpers.source_with_url(source, listing_url)
+            if selector_overrides:
+                listing_source.metadata_ = {**(source.metadata_ or {}), **selector_overrides}
+            raw_candidates.extend(self._parse_html(html, listing_source))
+
+        kept, diagnostics = filter_candidates(raw_candidates, rules, source.url)
+        diag_meta = dict(source.metadata_ or {})
+        diag_meta["discovery_diagnostics"] = diagnostics
+        source.metadata_ = diag_meta
+        self.logger.info("Listing discovery for %s: %s", source.url, diagnostics)
+
+        contents: List[Dict[str, Any]] = [
+            {
+                "external_id": article.url,
+                "title": article.title,
+                "content": "",
+                "url": article.url,
+                "publish_time": article.publish_time,
+                "metadata": {
+                    "publish_time_estimated": article.publish_time is None,
+                    "publish_time_raw": "",
+                    "discovered_via": "listing",
+                },
+            }
+            for article in kept
+        ]
+        if not contents:
+            return []
+        return await self._maybe_hydrate_public_listing_contents(
+            source, contents, cookies, browser_session
         )
 
     async def _fetch_static(self, source: Source) -> List[Dict[str, Any]]:
@@ -864,7 +971,12 @@ class WebsiteCollector(BaseCollector):
                     timeout=aiohttp.ClientTimeout(total=30),
                 )
                 if response.status != 200:
+                    from app.domains.fetch.failures import FetchFailureError, classify_http_status
+
                     self.logger.warning(f"Static fetch non-200 ({response.status}) for {source.url}")
+                    failure = classify_http_status(response.status, detail=f"Static fetch failed: {source.url}")
+                    if failure is not None:
+                        raise FetchFailureError(failure)
                     return []
                 html = response.text
 

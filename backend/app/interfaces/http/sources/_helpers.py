@@ -401,6 +401,26 @@ def _compute_probe_display(probe: dict) -> tuple[str, str, str]:
     return (status, strategy, message)
 
 
+def _fetch_health_fields(s: Source, meta: dict) -> dict:
+    """Surface the structured fetch-failure code + rolling profile for the UI.
+
+    Reads the JSON written by ``domains.fetch.retry_policy`` /
+    ``domains.fetch.profile``; degrades silently to an empty dict so a missing
+    or malformed blob never breaks source listing.
+    """
+    fields: dict = {}
+    try:
+        from app.domains.fetch.profile import summarize_profile
+
+        failure = meta.get("fetch_failure") if isinstance(meta.get("fetch_failure"), dict) else {}
+        fields["last_failure_code"] = failure.get("last_code")
+        fields["cooldown_until"] = failure.get("cooldown_until")
+        fields["fetch_profile_summary"] = summarize_profile(s)
+    except Exception as exc:  # noqa: BLE001 — serialization must stay resilient
+        logger.debug("Fetch health serialization failed for %s: %s", getattr(s, "id", "?"), exc)
+    return fields
+
+
 def serialize_source(s: Source, *, content_count: int | None = None) -> dict:
     meta = s.metadata_ if isinstance(s.metadata_, dict) else {}
     probe = meta.get("probe", {}) if isinstance(meta.get("probe"), dict) else {}
@@ -429,6 +449,7 @@ def serialize_source(s: Source, *, content_count: int | None = None) -> dict:
         "probe_strategy": probe_strategy,
         "probe_message": probe_message,
         "probed_at": probe.get("probed_at"),
+        **_fetch_health_fields(s, meta),
         "created_at": to_iso_z(s.created_at),
         "updated_at": to_iso_z(s.updated_at),
     }

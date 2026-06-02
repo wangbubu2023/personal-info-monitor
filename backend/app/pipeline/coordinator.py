@@ -24,6 +24,41 @@ __all__ = [
 ]
 
 
+def _record_fetch_profile(
+    source: Source,
+    *,
+    outcome: str,
+    eff_code: str,
+    severity: str = "error",
+    saved_count: int,
+    latency_ms: float | None,
+) -> None:
+    """Best-effort: fold this attempt into the rolling fetch profile + cooldown.
+
+    Wrapped in a broad ``except`` because profiling/cooldown bookkeeping must
+    never break the fetch path — a malformed metadata blob should degrade to
+    "no profile" rather than fail the whole pipeline.
+    """
+    try:
+        from app.domains.fetch.profile import record_fetch_result
+        from app.domains.fetch.retry_policy import clear_fetch_failure, record_fetch_failure
+
+        if outcome == "failure":
+            record_fetch_failure(source, code=eff_code, severity=severity)
+        else:
+            clear_fetch_failure(source)
+
+        record_fetch_result(
+            source,
+            outcome=outcome,  # type: ignore[arg-type]
+            saved_count=saved_count,
+            latency_ms=latency_ms,
+            failure_code=eff_code if outcome == "failure" else None,
+        )
+    except Exception as exc:  # noqa: BLE001 — profiling is non-critical
+        logger.debug("Fetch profile/cooldown bookkeeping failed for %s: %s", source.name, exc)
+
+
 def _update_source_status(
     source: Source,
     merged_warning: str | None,
@@ -31,6 +66,9 @@ def _update_source_status(
     code: str,
     severity: str,
     message: str,
+    *,
+    saved_count: int = 0,
+    latency_ms: float | None = None,
 ):
     """Centralised helper to update source metadata after a fetch attempt."""
     from app.domains.sources.status import set_last_fetch_outcome
@@ -38,8 +76,17 @@ def _update_source_status(
     source.last_fetched_at = utcnow_naive()
     source.last_error = merged_warning
     if primary_warning and primary_warning[1] == "error":
+        eff_code = primary_warning[0]
         source.error_count = (source.error_count or 0) + 1
-        set_last_fetch_outcome(source, primary_warning[0], "error", merged_warning or primary_warning[2])
+        set_last_fetch_outcome(source, eff_code, "error", merged_warning or primary_warning[2])
+        _record_fetch_profile(
+            source,
+            outcome="failure",
+            eff_code=eff_code,
+            severity="error",
+            saved_count=0,
+            latency_ms=latency_ms,
+        )
         from app.config import get_settings
 
         th = int(get_settings().fetch_error_disable_threshold or 0)
@@ -57,10 +104,31 @@ def _update_source_status(
             )
     elif primary_warning:
         source.error_count = 0
-        set_last_fetch_outcome(source, primary_warning[0], "warning", merged_warning or primary_warning[2])
+        eff_code = primary_warning[0]
+        set_last_fetch_outcome(source, eff_code, "warning", merged_warning or primary_warning[2])
+        from app.domains.fetch.retry_policy import cooldown_seconds_for_code
+
+        outcome = "failure" if cooldown_seconds_for_code(eff_code) else ("success" if saved_count > 0 else "empty")
+        _record_fetch_profile(
+            source,
+            outcome=outcome,
+            eff_code=eff_code,
+            severity="warning",
+            saved_count=saved_count,
+            latency_ms=latency_ms,
+        )
     else:
         source.error_count = 0
         set_last_fetch_outcome(source, code, severity, message)
+        outcome = "success" if saved_count > 0 else "empty"
+        _record_fetch_profile(
+            source,
+            outcome=outcome,
+            eff_code=code,
+            severity=severity,
+            saved_count=saved_count,
+            latency_ms=latency_ms,
+        )
 
 
 def _apply_keyword_filter(db: Session, source: Source, content_objects: list[Content]) -> tuple[list[Content], int]:
@@ -101,9 +169,16 @@ async def run_fetch_pipeline(db: Session, source: Source, manual_trigger: bool =
     Flow: Collect → Normalise → Store raw → dispatch post-processing tasks (async).
     """
     # Import stages lazily to avoid circular import (fetch_tasks → coordinator → collector → … → fetch_tasks).
+    import time
+
     from app.pipeline.collector_stage import CollectorStage
     from app.domains.ingest.normalizer import NormalizerStage
     from app.domains.ingest.storage import StorageStage
+
+    started_at = time.monotonic()
+
+    def _elapsed_ms() -> float:
+        return (time.monotonic() - started_at) * 1000.0
 
     # 1. Collector Stage
     raw_contents, merged_warning, primary_warning = await CollectorStage.execute(db, source)
@@ -111,7 +186,8 @@ async def run_fetch_pipeline(db: Session, source: Source, manual_trigger: bool =
     if not raw_contents:
         logger.info(f"No new content from source: {source.name}")
         _update_source_status(source, merged_warning, primary_warning,
-                              "no_new_content", "info", "最近抓取完成但暂无新内容")
+                              "no_new_content", "info", "最近抓取完成但暂无新内容",
+                              latency_ms=_elapsed_ms())
         db.commit()
         if primary_warning:
             level = "error" if primary_warning[1] == "error" else "warning"
@@ -124,7 +200,8 @@ async def run_fetch_pipeline(db: Session, source: Source, manual_trigger: bool =
     if not valid_raw_contents:
         logger.info(f"All content already fetched from: {source.name}")
         _update_source_status(source, merged_warning, primary_warning,
-                              "up_to_date", "info", "内容已是最新")
+                              "up_to_date", "info", "内容已是最新",
+                              latency_ms=_elapsed_ms())
         db.commit()
         if primary_warning:
             level = "error" if primary_warning[1] == "error" else "warning"
@@ -139,7 +216,8 @@ async def run_fetch_pipeline(db: Session, source: Source, manual_trigger: bool =
         if not content_objects:
             logger.info(f"All {keyword_filtered_count} items filtered out by keywords for: {source.name}")
             _update_source_status(source, merged_warning, primary_warning,
-                                  "keyword_filtered", "info", f"抓取到 {keyword_filtered_count} 条内容，均不匹配关键词")
+                                  "keyword_filtered", "info", f"抓取到 {keyword_filtered_count} 条内容，均不匹配关键词",
+                                  latency_ms=_elapsed_ms())
             db.commit()
             return {
                 "status": "success",
@@ -158,7 +236,8 @@ async def run_fetch_pipeline(db: Session, source: Source, manual_trigger: bool =
         source.last_content_id = None
 
     _update_source_status(source, merged_warning, primary_warning,
-                          "ok", "info", "抓取成功")
+                          "ok", "info", "抓取成功",
+                          saved_count=saved_count, latency_ms=_elapsed_ms())
     db.commit()
 
     # 5. Collect new content IDs for async post-processing

@@ -10,12 +10,17 @@ from __future__ import annotations
 
 import html as html_lib
 import json
+import os
 from dataclasses import dataclass, field
 from typing import Any, Iterable
 
 from bs4 import BeautifulSoup
 
 from app.utils.text import normalize_article_text, strip_html_tags
+from app.utils.logger import get_logger
+
+
+logger = get_logger(__name__)
 
 
 ARTICLE_TYPES = {
@@ -37,6 +42,19 @@ BODY_KEYS = (
     "html",
     "text",
 )
+
+_DEFAULT_BODY_MIN_PAGE_RATIO = 0.30
+_MIN_VISIBLE_TEXT_CHARS_FOR_RATIO_CHECK = 800
+_VISIBLE_TEXT_EXCLUDED_TAGS = {
+    "script",
+    "style",
+    "noscript",
+    "template",
+    "svg",
+    "title",
+    "meta",
+    "link",
+}
 
 
 @dataclass(frozen=True)
@@ -109,7 +127,70 @@ def _best_body_from_node(node: dict[str, Any]) -> tuple[str, str] | None:
     return max(candidates, key=lambda item: len(item[1]))
 
 
-def _extract_from_json_ld(soup: BeautifulSoup, min_chars: int) -> StructuredArticleExtraction | None:
+def _configured_body_min_page_ratio() -> float:
+    raw = os.environ.get("PIM_STRUCTURED_BODY_MIN_RATIO")
+    if raw is None:
+        return _DEFAULT_BODY_MIN_PAGE_RATIO
+    try:
+        value = float(raw)
+    except ValueError:
+        logger.warning("Invalid PIM_STRUCTURED_BODY_MIN_RATIO=%r; using %.2f", raw, _DEFAULT_BODY_MIN_PAGE_RATIO)
+        return _DEFAULT_BODY_MIN_PAGE_RATIO
+    return max(0.0, min(value, 1.0))
+
+
+def _visible_page_text(soup: BeautifulSoup) -> str:
+    parts: list[str] = []
+    for node in soup.find_all(string=True):
+        parent = node.parent
+        if parent and str(parent.name or "").lower() in _VISIBLE_TEXT_EXCLUDED_TAGS:
+            continue
+        text = str(node).strip()
+        if text:
+            parts.append(text)
+    return normalize_article_text("\n".join(parts)).strip()
+
+
+def _passes_page_ratio_check(
+    text: str,
+    *,
+    visible_text_chars: int,
+    min_ratio: float,
+    method: str,
+    body_key: str,
+) -> tuple[bool, dict[str, Any]]:
+    signals: dict[str, Any] = {
+        "visible_text_chars": visible_text_chars,
+        "body_min_page_ratio": min_ratio,
+    }
+    if min_ratio <= 0 or visible_text_chars < _MIN_VISIBLE_TEXT_CHARS_FOR_RATIO_CHECK:
+        return True, signals
+
+    ratio = len(text) / max(1, visible_text_chars)
+    signals["body_page_ratio"] = round(ratio, 4)
+    if ratio >= min_ratio:
+        return True, signals
+
+    logger.debug(
+        "Structured %s %s too small for visible page text: body=%d visible=%d ratio=%.1f%% < %.1f%%; falling back",
+        method,
+        body_key,
+        len(text),
+        visible_text_chars,
+        ratio * 100,
+        min_ratio * 100,
+    )
+    signals["rejected_reason"] = "body_page_ratio_too_low"
+    return False, signals
+
+
+def _extract_from_json_ld(
+    soup: BeautifulSoup,
+    min_chars: int,
+    *,
+    visible_text_chars: int,
+    min_ratio: float,
+) -> StructuredArticleExtraction | None:
     for script in soup.select('script[type="application/ld+json"]'):
         raw = script.string or script.get_text() or ""
         try:
@@ -130,11 +211,20 @@ def _extract_from_json_ld(soup: BeautifulSoup, min_chars: int) -> StructuredArti
             body_key, text = body
             if len(text) < min_chars:
                 continue
+            accepted, ratio_signals = _passes_page_ratio_check(
+                text,
+                visible_text_chars=visible_text_chars,
+                min_ratio=min_ratio,
+                method="json_ld",
+                body_key=body_key,
+            )
+            if not accepted:
+                continue
             candidate = StructuredArticleExtraction(
                 text=text,
                 method="json_ld",
                 title=_title_from_node(node),
-                signals={"body_key": body_key, "chars": len(text)},
+                signals={"body_key": body_key, "chars": len(text), **ratio_signals},
             )
             if best is None or len(candidate.text) > len(best.text):
                 best = candidate
@@ -143,7 +233,13 @@ def _extract_from_json_ld(soup: BeautifulSoup, min_chars: int) -> StructuredArti
     return None
 
 
-def _extract_from_next_data(soup: BeautifulSoup, min_chars: int) -> StructuredArticleExtraction | None:
+def _extract_from_next_data(
+    soup: BeautifulSoup,
+    min_chars: int,
+    *,
+    visible_text_chars: int,
+    min_ratio: float,
+) -> StructuredArticleExtraction | None:
     script = soup.select_one("script#__NEXT_DATA__")
     if not script:
         return None
@@ -164,11 +260,20 @@ def _extract_from_next_data(soup: BeautifulSoup, min_chars: int) -> StructuredAr
     if not best:
         return None
     body_key, text = best
+    accepted, ratio_signals = _passes_page_ratio_check(
+        text,
+        visible_text_chars=visible_text_chars,
+        min_ratio=min_ratio,
+        method="next_data",
+        body_key=body_key,
+    )
+    if not accepted:
+        return None
     return StructuredArticleExtraction(
         text=text,
         method="next_data",
         title=title,
-        signals={"body_key": body_key, "chars": len(text)},
+        signals={"body_key": body_key, "chars": len(text), **ratio_signals},
     )
 
 
@@ -181,11 +286,18 @@ def extract_structured_article(
     if not html:
         return None
     soup = BeautifulSoup(html, "lxml")
+    visible_text_chars = len(_visible_page_text(soup))
+    min_ratio = _configured_body_min_page_ratio()
     for extractor in (
         _extract_from_json_ld,
         _extract_from_next_data,
     ):
-        result = extractor(soup, min_chars)
+        result = extractor(
+            soup,
+            min_chars,
+            visible_text_chars=visible_text_chars,
+            min_ratio=min_ratio,
+        )
         if result:
             return result
     return None
