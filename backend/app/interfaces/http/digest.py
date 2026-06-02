@@ -5,7 +5,7 @@ from typing import List, Optional
 from uuid import UUID
 from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import case, extract, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -18,8 +18,11 @@ from app.schemas.digest import (
 )
 from app.platform.config.system_settings import (
     get_system_settings_async,
-    normalize_hourly_digest_content_types,
     normalize_hourly_digest_window_hours,
+)
+from app.domains.enrich.hourly.repository import (
+    HOURLY_DIGEST_CANDIDATE_LIMIT,
+    candidate_ordering,
 )
 from app.utils.datetime import to_iso_z, utcnow_naive
 from app.utils.logger import get_logger
@@ -156,24 +159,47 @@ def get_category_key(content_type: str) -> str:
     return mapping.get(content_type, "websites")
 
 
+def _parse_digest_date(value: str) -> date:
+    try:
+        return datetime.strptime(value, "%Y-%m-%d").date()
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail="Date must use YYYY-MM-DD") from exc
+
+
 @router.get("", response_model=DigestResponse)
 async def get_daily_digest(
     digest_date: Optional[str] = Query(None, alias="date"),
+    date_from: Optional[str] = Query(None),
+    date_to: Optional[str] = Query(None),
+    sort: str = Query("time_desc"),
     keyword_ids: Optional[List[UUID]] = Query(None),
     unread_only: bool = True,
     source_types: Optional[List[str]] = Query(None),
     db: AsyncSession = Depends(get_async_db)
 ):
     """Get daily digest for a specific date."""
-    # Default to today
-    if digest_date:
-        target_date = datetime.strptime(digest_date, "%Y-%m-%d").date()
+    if sort not in {"time_desc", "score_desc"}:
+        raise HTTPException(status_code=422, detail="sort must be time_desc or score_desc")
+
+    # Default to today. When date_from/date_to are provided, they define an
+    # inclusive local-date range; the legacy date parameter remains a one-day
+    # shorthand for existing callers.
+    if date_from or date_to:
+        start_date = _parse_digest_date(date_from or date_to or "")
+        end_date = _parse_digest_date(date_to or date_from or "")
+    elif digest_date:
+        start_date = _parse_digest_date(digest_date)
+        end_date = start_date
     else:
-        target_date = date.today()
+        start_date = date.today()
+        end_date = start_date
+
+    if end_date < start_date:
+        raise HTTPException(status_code=422, detail="date_to must be on or after date_from")
     
     # Convert local date to UTC range to leverage ix_content_fetched_at index
-    day_start = datetime(target_date.year, target_date.month, target_date.day, tzinfo=SYSTEM_TZ).astimezone(timezone.utc).replace(tzinfo=None)
-    day_end = day_start + timedelta(days=1)
+    day_start = datetime(start_date.year, start_date.month, start_date.day, tzinfo=SYSTEM_TZ).astimezone(timezone.utc).replace(tzinfo=None)
+    day_end = datetime(end_date.year, end_date.month, end_date.day, tzinfo=SYSTEM_TZ).astimezone(timezone.utc).replace(tzinfo=None) + timedelta(days=1)
 
     # Build query
     query = (
@@ -192,8 +218,11 @@ async def get_daily_digest(
     # Note: keyword_ids filtering would require JSON query which is complex
     # For now, we filter after fetching
     
-    # 信息流按文章发布时间排序；抓取/入库时间只在发布时间缺失或相同时兜底。
-    query = query.order_by(Content.publish_time.desc().nulls_last(), Content.fetched_at.desc())
+    if sort == "score_desc":
+        query = query.order_by(*candidate_ordering(Content))
+    else:
+        # 信息流按文章发布时间排序；抓取/入库时间只在发布时间缺失或相同时兜底。
+        query = query.order_by(Content.publish_time.desc().nulls_last(), Content.fetched_at.desc())
     
     result = await db.execute(query)
     contents = result.scalars().all()
@@ -211,8 +240,13 @@ async def get_daily_digest(
         contents = filtered_contents
     
     # Build digest response
+    response_date = (
+        start_date.isoformat()
+        if start_date == end_date
+        else f"{start_date.isoformat()}..{end_date.isoformat()}"
+    )
     digest = DigestResponse(
-        date=target_date.isoformat(),
+        date=response_date,
         total_items=len(contents),
         categories={
             "websites": DigestCategory(count=0, items=[]),
@@ -404,7 +438,6 @@ async def get_hourly_digest_detail(
         )
 
     merged = await get_system_settings_async(db)
-    hourly_types = normalize_hourly_digest_content_types(merged)
     window_hours = normalize_hourly_digest_window_hours(merged)
     start_utc, end_utc = _completed_hour_label_to_utc_window(
         target_date,
@@ -414,10 +447,10 @@ async def get_hourly_digest_detail(
     result = await db.execute(
         select(Content)
         .options(selectinload(Content.source))
-        .filter(Content.content_type.in_(hourly_types))
         .filter(Content.fetched_at >= start_utc)
         .filter(Content.fetched_at < end_utc)
-        .order_by(Content.publish_time.desc().nulls_last(), Content.fetched_at.desc())
+        .order_by(*candidate_ordering(Content))
+        .limit(HOURLY_DIGEST_CANDIDATE_LIMIT)
     )
     contents = result.scalars().all()
 

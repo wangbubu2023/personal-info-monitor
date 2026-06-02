@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
-import { renderHook, act } from '@testing-library/react'
+import { renderHook, act, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import React from 'react'
 
@@ -117,9 +117,9 @@ describe('useSourceEditor', () => {
     const payload = (sourcesApi.create as any).mock.calls[0][0]
     expect(payload.metadata).toMatchObject({
       source_stars: 3,
-      authority_type: 'official',
       source_weight: 1.2,
     })
+    expect(payload.metadata).not.toHaveProperty('authority_type')
     expect(payload.metadata).not.toHaveProperty('domain_focus')
   })
 
@@ -219,9 +219,60 @@ describe('useSourceEditor', () => {
     })
 
     expect(result.current.form.getFieldValue('source_stars')).toBe(3)
-    expect(result.current.form.getFieldValue('authority_type')).toBe('official')
+    expect(result.current.form.getFieldValue('authority_type')).toBeUndefined()
     expect(result.current.form.getFieldValue('domain_focus_text')).toBeUndefined()
     expect(result.current.form.getFieldValue('source_weight')).toBe(1.2)
+  })
+
+  it('preserves hidden legacy metadata when editing a source', async () => {
+    const { sourcesApi } = await import('../../../services/sources')
+    const { result } = renderHook(
+      () => useSourceEditor({ authConfigs: [], sourceLimitReached: false, maxSources: 200, defaultSharedXAuthConfigId: undefined }),
+      { wrapper },
+    )
+    act(() => {
+      result.current.handleEdit({
+        id: 'src-legacy',
+        name: 'Legacy',
+        type: 'rss',
+        url: 'https://example.com/feed.xml',
+        enabled: true,
+        fetch_interval: 60,
+        use_keyword_filter: false,
+        auth_required: false,
+        auth_config_id: null,
+        extra_urls: [],
+        metadata: {
+          source_stars: 2,
+          authority_type: 'official',
+          max_fetch_lag_minutes: 120,
+        },
+      } as any)
+    })
+    await waitFor(() => expect(result.current.editingSource?.id).toBe('src-legacy'))
+
+    await act(async () => {
+      await result.current.handleSubmit({
+        name: 'Legacy',
+        type: 'rss',
+        url: 'https://example.com/feed.xml',
+        enabled: true,
+        fetch_interval: 60,
+        use_keyword_filter: false,
+        auth_required: false,
+        metadata: {
+          source_stars: 2,
+          authority_type: 'official',
+          max_fetch_lag_minutes: 120,
+        },
+        source_stars: 2,
+        source_weight: 1,
+      } as any)
+    })
+
+    const payload = (sourcesApi.update as any).mock.calls[0][1]
+    expect(payload.metadata.authority_type).toBe('official')
+    expect(payload.metadata.max_fetch_lag_minutes).toBe(120)
   })
 
   it('handleEdit defaults rss_only_enabled to false when metadata is silent', () => {

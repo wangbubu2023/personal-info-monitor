@@ -313,7 +313,7 @@ const SourceEditorModal: React.FC<SourceEditorModalProps> = ({
         <Divider style={{ marginTop: 8, marginBottom: 12 }}>信源质量</Divider>
 
         <SectionNote style={{ marginBottom: 12 }}>
-          星级和权威类型会影响评分中的「权威性」维度；信源权重仅作为少量人工校准，通常保持 1。
+          星级会影响评分中的「权威性」维度；信源权重仅作为少量人工校准，通常保持 1。
         </SectionNote>
 
         <Form.Item
@@ -323,26 +323,9 @@ const SourceEditorModal: React.FC<SourceEditorModalProps> = ({
         >
           <Select
             options={[
-              { value: 3, label: '三星 · 官方 / 一手 / 高可信' },
-              { value: 2, label: '二星 · 专业媒体 / 可信作者 / 官方社媒' },
-              { value: 1, label: '一星 · 聚合 / 泛资讯 / 待验证' },
-            ]}
-          />
-        </Form.Item>
-
-        <Form.Item
-          name="authority_type"
-          label="权威类型（可选）"
-          tooltip="仅这些类型会被评分模型识别。普通媒体、Newsletter、KOL、聚合源通常留空即可。"
-        >
-          <Select
-            allowClear
-            placeholder="无额外权威加成"
-            options={[
-              { value: 'official', label: '官方 / 一手发布' },
-              { value: 'regulator', label: '监管 / 政策机构' },
-              { value: 'primary', label: '一手资料 / 论文 / 原始报告' },
-              { value: 'wire', label: '通讯社 / 新闻线' },
+              { value: 3, label: '三星 · 官方信源 / 权威媒体 / 一手信源' },
+              { value: 2, label: '二星 · 垂直媒体 / 认证作者' },
+              { value: 1, label: '一星 · 聚合信源 / 泛资讯 / 个人作者' },
             ]}
           />
         </Form.Item>
@@ -408,20 +391,6 @@ const SourceEditorModal: React.FC<SourceEditorModalProps> = ({
               </SectionNote>
             )
           }}
-        </Form.Item>
-
-        <Form.Item
-          name="max_fetch_lag_minutes"
-          label="抓取回溯时间（分钟）"
-          tooltip="只保留「发布时间」距离抓取时刻不超过该分钟数的条目；用于控制时效。留空表示使用默认 60 分钟。手动触发「全量抓取」时未单独配置则仍为 7 天窗口。"
-        >
-          <InputNumber
-            min={1}
-            max={525600}
-            placeholder="默认 60"
-            style={{ width: '100%' }}
-            controls
-          />
         </Form.Item>
 
         <Form.Item>

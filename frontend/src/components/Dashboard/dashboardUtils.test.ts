@@ -34,7 +34,7 @@ const digestFixture: Digest = {
           read_status: false,
           favorited: false,
           keyword_matches: [],
-          metadata: {},
+          metadata: { final_score: 99 },
         },
       ],
     },
@@ -51,7 +51,7 @@ const digestFixture: Digest = {
           read_status: false,
           favorited: false,
           keyword_matches: [],
-          metadata: {},
+          metadata: { final_score: 60 },
         },
       ],
     },
@@ -68,7 +68,7 @@ const digestFixture: Digest = {
           read_status: false,
           favorited: false,
           keyword_matches: [],
-          metadata: {},
+          metadata: { final_score: 70 },
         },
       ],
     },
@@ -85,7 +85,7 @@ const digestFixture: Digest = {
           read_status: false,
           favorited: true,
           keyword_matches: [],
-          metadata: {},
+          metadata: { article_score: 80 },
         },
       ],
     },
@@ -100,6 +100,11 @@ describe('dashboardUtils', () => {
   it('sorts merged items by publish_time desc then fetched_at', () => {
     const items = getDashboardItems(digestFixture, 'all')
     expect(items.map((item) => item.id)).toEqual(['x-1', 'r-1', 'y-1', 'w-1'])
+  })
+
+  it('sorts merged items by score desc when requested', () => {
+    const items = getDashboardItems(digestFixture, 'all', 'score_desc')
+    expect(items.map((item) => item.id)).toEqual(['w-1', 'y-1', 'x-1', 'r-1'])
   })
 
   it('returns category counts including the synthetic all bucket', () => {

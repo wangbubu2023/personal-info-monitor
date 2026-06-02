@@ -21,6 +21,8 @@ export interface DigestItemRecommendationReason {
   reason_source?: string
 }
 
+export type DashboardSortMode = 'time_desc' | 'score_desc'
+
 function readNumericMetadata(item: DigestItem, key: string): number | undefined {
   const raw = item.metadata?.[key]
   if (typeof raw === 'number' && Number.isFinite(raw)) return raw
@@ -38,7 +40,7 @@ function readStringMetadata(item: DigestItem, key: string): string | undefined {
 }
 
 export function getDigestItemFinalScore(item: DigestItem): number | undefined {
-  const score = readNumericMetadata(item, 'final_score')
+  const score = readNumericMetadata(item, 'final_score') ?? readNumericMetadata(item, 'article_score')
   if (score === undefined) return undefined
   return Math.max(0, Math.min(100, score))
 }
@@ -103,8 +105,7 @@ export const renderDashboardTimePair = (publish?: string, fetched?: string) => {
   return `抓取 ${fetchedText || '--'} / 发布 ${publishText || '--'}`
 }
 
-/** 资讯列表排序：优先「发布时间」，抓取/入库时间只作为兜底。 */
-export function compareDashboardItemsForSort(a: DigestItem, b: DigestItem): number {
+function compareDashboardItemsByTimeDesc(a: DigestItem, b: DigestItem): number {
   const pb = parseApiDate(b.publish_time)?.getTime() ?? 0
   const pa = parseApiDate(a.publish_time)?.getTime() ?? 0
   if (pb !== pa) return pb - pa
@@ -113,7 +114,25 @@ export function compareDashboardItemsForSort(a: DigestItem, b: DigestItem): numb
   return fb - fa
 }
 
-export const getDashboardItems = (digest: Digest | undefined, activeTab: string): DigestItem[] => {
+/** 资讯列表排序：默认按时间倒排；也支持按评分倒排，缺失评分的条目排在最后。 */
+export function compareDashboardItemsForSort(
+  a: DigestItem,
+  b: DigestItem,
+  sortMode: DashboardSortMode = 'time_desc',
+): number {
+  if (sortMode === 'score_desc') {
+    const bs = getDigestItemFinalScore(b) ?? -1
+    const as = getDigestItemFinalScore(a) ?? -1
+    if (bs !== as) return bs - as
+  }
+  return compareDashboardItemsByTimeDesc(a, b)
+}
+
+export const getDashboardItems = (
+  digest: Digest | undefined,
+  activeTab: string,
+  sortMode: DashboardSortMode = 'time_desc',
+): DigestItem[] => {
   if (!digest) return []
 
   if (activeTab === 'all') {
@@ -123,7 +142,7 @@ export const getDashboardItems = (digest: Digest | undefined, activeTab: string)
       ...(digest.categories.x_accounts.items || []),
       ...(digest.categories.youtube.items || []),
       ...(digest.categories.podcasts.items || []),
-    ].sort(compareDashboardItemsForSort)
+    ].sort((a, b) => compareDashboardItemsForSort(a, b, sortMode))
   }
 
   const categoryMap: Record<string, DigestItem[]> = {
@@ -134,7 +153,7 @@ export const getDashboardItems = (digest: Digest | undefined, activeTab: string)
     podcasts: digest.categories.podcasts.items || [],
   }
 
-  return (categoryMap[activeTab] || []).sort(compareDashboardItemsForSort)
+  return (categoryMap[activeTab] || []).sort((a, b) => compareDashboardItemsForSort(a, b, sortMode))
 }
 
 export const getDashboardCategoryCount = (digest: Digest | undefined, key: string): number => {

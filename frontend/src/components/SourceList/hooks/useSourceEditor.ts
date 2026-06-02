@@ -16,7 +16,6 @@ import { normalizeSourceUrl } from '../../../utils/sourceUrl'
 
 export interface SourceFormValues extends Omit<SourceCreate, 'extra_urls'> {
   extra_urls_text?: string
-  /** 抓取回溯时间（分钟）；留空表示使用全局默认 60；写入 metadata.max_fetch_lag_minutes */
   max_fetch_lag_minutes?: number | null
   paywall_enabled?: boolean
   /** 用户为 website 源选中的已有 auth_config.id；监控源编辑弹窗里的唯一凭据入口。 */
@@ -24,7 +23,7 @@ export interface SourceFormValues extends Omit<SourceCreate, 'extra_urls'> {
   /**
    * "仅 RSS 摘要" 开关：true 时跳过全文抓取（Playwright hydration），只保留
    * RSS 摘要。写入 metadata.rss_only，用于被 DataDome 等反爬系统挡住的源。
-   */
+  */
   rss_only_enabled?: boolean
   source_stars?: number
   authority_type?: string
@@ -33,20 +32,6 @@ export interface SourceFormValues extends Omit<SourceCreate, 'extra_urls'> {
   x_shared_auth_config_id?: string
   x_legacy_dedicated_auth?: boolean
   x_legacy_auth_name?: string
-}
-
-const authorityTypeAliases: Record<string, string> = {
-  official_blog: 'official',
-  official_social: 'official',
-  paper: 'primary',
-  media: 'wire',
-  newsletter: 'wire',
-}
-
-function normalizeAuthorityType(value: unknown): string | undefined {
-  const raw = String(value || '').trim()
-  if (!raw) return undefined
-  return authorityTypeAliases[raw] || raw
 }
 
 interface UseSourceEditorOptions {
@@ -171,26 +156,11 @@ export function useSourceEditor({
 
     const baseMeta: Record<string, unknown> =
       typeof formMetadata === 'object' && formMetadata !== null ? { ...formMetadata } : {}
-    if (max_fetch_lag_minutes != null) {
-      const n = Number(max_fetch_lag_minutes)
-      if (!Number.isNaN(n)) {
-        baseMeta.max_fetch_lag_minutes = n
-      }
-    } else if (editingSource) {
-      baseMeta.max_fetch_lag_minutes = null
-    } else {
-      delete baseMeta.max_fetch_lag_minutes
-    }
+    void authority_type
+    void max_fetch_lag_minutes
 
     const stars = Number(source_stars)
     baseMeta.source_stars = Number.isFinite(stars) ? Math.max(1, Math.min(3, Math.round(stars))) : 1
-    if (authority_type && authority_type.trim()) {
-      baseMeta.authority_type = authority_type.trim()
-    } else if (editingSource) {
-      baseMeta.authority_type = ''
-    } else {
-      delete baseMeta.authority_type
-    }
     const weight = Number(source_weight)
     if (Number.isFinite(weight)) {
       baseMeta.source_weight = Math.max(0.5, Math.min(1.5, weight))
@@ -300,7 +270,6 @@ export function useSourceEditor({
     const xUsesLegacyDedicatedAuth = Boolean(
       source.type === 'x' && linkedAuth && !linkedAuth.is_shared && isXCookieProfile(linkedAuth)
     )
-    const lag = source.metadata?.max_fetch_lag_minutes
     const rssOnlyFromMeta = Boolean(
       source.type === 'website' && source.metadata?.rss_only
     )
@@ -308,13 +277,10 @@ export function useSourceEditor({
       ...source,
       metadata: source.metadata as any,
       source_stars: Number(source.metadata?.source_stars || 1),
-      authority_type: normalizeAuthorityType(source.metadata?.authority_type),
       source_weight:
         source.metadata?.source_weight !== undefined && source.metadata?.source_weight !== null
           ? Number(source.metadata.source_weight)
           : 1,
-      max_fetch_lag_minutes:
-        lag !== undefined && lag !== null && lag !== '' ? Number(lag) : undefined,
       extra_urls_text: (source.extra_urls || []).join('\n'),
       paywall_enabled: Boolean(source.auth_required || source.auth_config_id || linkedAuth),
       website_auth_config_id:
@@ -343,7 +309,6 @@ export function useSourceEditor({
       website_auth_config_id: undefined,
       rss_only_enabled: false,
       source_stars: 1,
-      authority_type: undefined,
       source_weight: 1,
       x_cookie_enabled: true,
       x_shared_auth_config_id: defaultSharedXAuthConfigId,

@@ -7,7 +7,11 @@ import { digestApi } from '../services/digest';
 import { sourcesApi } from '../services/sources';
 import { contentsApi } from '../services/contents';
 import { systemApi } from '../services/system';
-import { contentToDigestItem, getDashboardItems } from '../components/Dashboard/dashboardUtils';
+import {
+  contentToDigestItem,
+  getDashboardItems,
+  type DashboardSortMode,
+} from '../components/Dashboard/dashboardUtils';
 import { DASHBOARD_CATEGORIES } from '../components/Dashboard/dashboardTypes';
 import type { Content } from '../types';
 
@@ -18,7 +22,8 @@ export const useDashboard = () => {
   const searchQuery = searchParams.get('search') || '';
   const selectedSourceId = searchParams.get('source_id') || '';
   const selectedSourceName = searchParams.get('source') || '';
-  const [selectedDate, setSelectedDate] = useState<Dayjs>(dayjs());
+  const [selectedRange, setSelectedRange] = useState<[Dayjs, Dayjs]>([dayjs(), dayjs()]);
+  const [sortMode, setSortMode] = useState<DashboardSortMode>('time_desc');
   const queryClient = useQueryClient();
 
   /** 与 URL `?tab=` 同步，刷新后保留资讯分类 tab */
@@ -61,8 +66,17 @@ export const useDashboard = () => {
   });
 
   const { data: digest, isLoading: digestLoading } = useQuery({
-    queryKey: ['digest', selectedDate.format('YYYY-MM-DD')],
-    queryFn: () => digestApi.getDigest({ date: selectedDate.format('YYYY-MM-DD') }),
+    queryKey: [
+      'digest',
+      selectedRange[0].format('YYYY-MM-DD'),
+      selectedRange[1].format('YYYY-MM-DD'),
+      sortMode,
+    ],
+    queryFn: () => digestApi.getDigest({
+      date_from: selectedRange[0].format('YYYY-MM-DD'),
+      date_to: selectedRange[1].format('YYYY-MM-DD'),
+      sort: sortMode,
+    }),
   });
 
   const { data: queueStatus, isLoading: queueLoading } = useQuery({
@@ -86,7 +100,7 @@ export const useDashboard = () => {
   });
 
   // Derived State
-  const currentItems = useMemo(() => getDashboardItems(digest, activeTab), [digest, activeTab]);
+  const currentItems = useMemo(() => getDashboardItems(digest, activeTab, sortMode), [digest, activeTab, sortMode]);
   const contentItems = useMemo(() => 
     contentResults?.items.map((content: Content) => contentToDigestItem(content)) || [], 
     [contentResults]
@@ -96,8 +110,10 @@ export const useDashboard = () => {
     searchQuery,
     selectedSourceId,
     selectedSourceName,
-    selectedDate,
-    setSelectedDate,
+    selectedRange,
+    setSelectedRange,
+    sortMode,
+    setSortMode,
     activeTab,
     setActiveTab,
     stats,

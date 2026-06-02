@@ -1,6 +1,5 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import type { Dayjs } from 'dayjs';
 import type { DigestItem } from '../../types';
 import type { CategoryTab } from './dashboardTypes';
 import DashboardItemCard from './DashboardItemCard';
@@ -9,7 +8,7 @@ import { Loader2, SearchX } from 'lucide-react';
 interface DashboardDigestListProps {
   isLoading: boolean;
   items: DigestItem[];
-  selectedDate: Dayjs;
+  rangeLabel: string;
   activeTab: string;
   categories: CategoryTab[];
 }
@@ -17,7 +16,7 @@ interface DashboardDigestListProps {
 const DashboardDigestList: React.FC<DashboardDigestListProps> = ({
   isLoading,
   items,
-  selectedDate,
+  rangeLabel,
   activeTab,
   categories,
 }) => (
@@ -54,7 +53,7 @@ const DashboardDigestList: React.FC<DashboardDigestListProps> = ({
           </div>
           <h3 className="mt-4 text-[15px] font-semibold text-[#2c3a50]">这一天没有新条目</h3>
           <p className="mt-1.5 max-w-sm text-center text-[13px] leading-relaxed text-[#5f6f82]">
-            {selectedDate.format('YYYY-MM-DD')}
+            {rangeLabel}
             {activeTab === 'all'
               ? ' 暂无内容。'
               : ` 在「${categories.find((c) => c.key === activeTab)?.label || ''}」分类下暂无内容。`}

@@ -1,24 +1,29 @@
 import React from 'react';
-import { DatePicker } from 'antd';
-import { RefreshCw, Calendar, Inbox, TrendingUp } from 'lucide-react';
+import { DatePicker, Segmented } from 'antd';
+import { RefreshCw, Calendar, Inbox, TrendingUp, ArrowDownWideNarrow } from 'lucide-react';
 import type { Dayjs } from 'dayjs';
 import type { DashboardStats } from '../../types';
 import PageHeroTitle from '../common/PageHeroTitle';
+import type { DashboardSortMode } from './dashboardUtils';
 
 const iconStroke = 1.5
 
 interface DashboardHeaderProps {
   stats?: DashboardStats;
-  selectedDate: Dayjs;
-  onDateChange: (date: Dayjs) => void;
+  selectedRange: [Dayjs, Dayjs];
+  onRangeChange: (range: [Dayjs, Dayjs]) => void;
+  sortMode: DashboardSortMode;
+  onSortModeChange: (mode: DashboardSortMode) => void;
   onFetchAll: () => void;
   isFetching: boolean;
 }
 
 const DashboardHeader: React.FC<DashboardHeaderProps> = ({
   stats,
-  selectedDate,
-  onDateChange,
+  selectedRange,
+  onRangeChange,
+  sortMode,
+  onSortModeChange,
   onFetchAll,
   isFetching,
 }) => (
@@ -33,13 +38,28 @@ const DashboardHeader: React.FC<DashboardHeaderProps> = ({
       <div className="flex shrink-0 flex-wrap items-center gap-2 sm:justify-end">
         <div className="flex items-center gap-1.5 rounded-lg border border-[rgba(88,100,118,0.1)] bg-white/95 px-2.5 py-1.5 shadow-sm">
           <Calendar size={15} className="ml-0.5 shrink-0 text-[#5f6f82]" strokeWidth={iconStroke} />
-          <DatePicker
-            value={selectedDate}
-            onChange={(date) => date && onDateChange(date)}
+          <DatePicker.RangePicker
+            value={selectedRange}
+            onChange={(range) => {
+              if (range?.[0] && range?.[1]) onRangeChange([range[0], range[1]])
+            }}
             allowClear={false}
             size="small"
-            className="!min-w-0 !border-none !bg-transparent !shadow-none !text-[13px] !text-[#4a5a6e] hover:!text-[#2c3a50] focus:!text-[#2c3a50]"
+            className="!w-[220px] !min-w-0 !border-none !bg-transparent !shadow-none !text-[13px] !text-[#4a5a6e] hover:!text-[#2c3a50] focus:!text-[#2c3a50] sm:!w-[250px]"
             suffixIcon={null}
+          />
+        </div>
+
+        <div className="flex items-center gap-1.5 rounded-lg border border-[rgba(88,100,118,0.1)] bg-white/95 px-2 py-1.5 shadow-sm">
+          <ArrowDownWideNarrow size={15} className="ml-0.5 shrink-0 text-[#5f6f82]" strokeWidth={iconStroke} />
+          <Segmented
+            size="small"
+            value={sortMode}
+            onChange={(value) => onSortModeChange(value as DashboardSortMode)}
+            options={[
+              { label: '时间倒排', value: 'time_desc' },
+              { label: '得分倒排', value: 'score_desc' },
+            ]}
           />
         </div>
 

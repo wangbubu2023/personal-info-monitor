@@ -297,11 +297,12 @@ export interface SystemSettingsLimits {
   max_hourly_digest_input_items: number
 }
 
-/** 简报窗口：统一任务提示词、参与扫描的入库类型与窗口长度 */
+/** 简报窗口：统一任务提示词与窗口长度 */
 export interface HourlyDigestSettings {
   /** 已保存的自定义文案；空字符串表示未自定义（整点任务用内置默认） */
   prompt: string
-  content_types: string[]
+  /** 旧版兼容字段：生成简报时已不再按入库类型过滤 */
+  content_types?: string[]
   window_hours?: number
   /** GET 响应只读：实际用于整点简报的提示词（含内置默认合并结果） */
   prompt_effective?: string

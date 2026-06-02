@@ -15,8 +15,10 @@ const Dashboard: React.FC = () => {
     searchQuery,
     selectedSourceId,
     selectedSourceName,
-    selectedDate,
-    setSelectedDate,
+    selectedRange,
+    setSelectedRange,
+    sortMode,
+    setSortMode,
     activeTab,
     setActiveTab,
     stats,
@@ -60,8 +62,10 @@ const Dashboard: React.FC = () => {
         <div className="border-b border-[rgba(88,100,118,0.1)] pb-3">
           <DashboardHeader
             stats={stats}
-            selectedDate={selectedDate}
-            onDateChange={setSelectedDate}
+            selectedRange={selectedRange}
+            onRangeChange={setSelectedRange}
+            sortMode={sortMode}
+            onSortModeChange={setSortMode}
             onFetchAll={fetchAll}
             isFetching={isFetchingAll}
           />
@@ -84,7 +88,11 @@ const Dashboard: React.FC = () => {
             <DashboardDigestList
               isLoading={digestLoading}
               items={currentItems}
-              selectedDate={selectedDate}
+              rangeLabel={
+                selectedRange[0].isSame(selectedRange[1], 'day')
+                  ? selectedRange[0].format('YYYY-MM-DD')
+                  : `${selectedRange[0].format('YYYY-MM-DD')} 至 ${selectedRange[1].format('YYYY-MM-DD')}`
+              }
               activeTab={activeTab}
               categories={DASHBOARD_CATEGORIES}
             />

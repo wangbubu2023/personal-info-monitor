@@ -240,7 +240,7 @@ HourlyDigestContentType = Literal["website", "rss", "x", "youtube", "podcast"]
 
 
 class HourlyDigestSettings(BaseModel):
-    """简报窗口：统一任务提示词（选稿+综述）、扫描类型与窗口长度。"""
+    """简报窗口：统一任务提示词（选稿+综述）与窗口长度。"""
 
     prompt: str = Field(
         default="",
@@ -253,7 +253,7 @@ class HourlyDigestSettings(BaseModel):
     )
     content_types: List[HourlyDigestContentType] = Field(
         default_factory=lambda: ["website", "rss"],
-        description="参与简报扫描的入库类型（content_type）。",
+        description="旧版兼容字段：生成简报时已不再按入库类型过滤。",
     )
     window_hours: int = Field(
         default=3,

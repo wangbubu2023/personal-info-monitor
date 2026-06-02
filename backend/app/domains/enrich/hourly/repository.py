@@ -13,24 +13,45 @@ from __future__ import annotations
 
 import asyncio
 from datetime import datetime, timedelta
-from typing import List, Optional
+from typing import Optional
 
+from sqlalchemy import Float, cast, func
 from sqlalchemy.exc import IntegrityError
 
 from app.domains.enrich.hourly.text_utils import (
     SYSTEM_TZ,
     format_digest_title,
-    get_digest_limits,
     get_digest_window_hours,
     local_to_utc_naive,
-)
-from app.platform.config.system_settings import (
-    get_system_settings_sync,
-    normalize_hourly_digest_content_types,
 )
 from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+HOURLY_DIGEST_CANDIDATE_LIMIT = 20
+
+
+def candidate_score_expr(content_model):
+    """Score used to pick hourly digest candidates.
+
+    ``final_score`` is the release-facing aggregate. Some older rows only have
+    ``article_score``, so keep it as a compatibility fallback and put unscored
+    rows last.
+    """
+    return func.coalesce(
+        cast(func.json_extract(content_model.metadata_, "$.final_score"), Float),
+        cast(func.json_extract(content_model.metadata_, "$.article_score"), Float),
+        -1.0,
+    )
+
+
+def candidate_ordering(content_model):
+    """Order newest-window candidates by score, then deterministic freshness."""
+    return (
+        candidate_score_expr(content_model).desc(),
+        content_model.fetched_at.desc(),
+        content_model.publish_time.desc().nulls_last(),
+    )
 
 
 def build_digest_text_seed(content) -> str:
@@ -117,21 +138,16 @@ def load_digest_rows(
     start_utc: datetime,
     end_utc: datetime,
     *,
-    max_input_items: int,
-    content_types: List[str],
+    candidate_limit: int = HOURLY_DIGEST_CANDIDATE_LIMIT,
 ):
     from app.models import Content
 
-    types = [t for t in (content_types or []) if t]
-    if not types:
-        types = ["website", "rss"]
     return (
         db.query(Content)
-        .filter(Content.content_type.in_(types))
         .filter(Content.fetched_at >= start_utc)
         .filter(Content.fetched_at < end_utc)
-        .order_by(Content.fetched_at.desc())
-        .limit(max_input_items)
+        .order_by(*candidate_ordering(Content))
+        .limit(max(1, int(candidate_limit or HOURLY_DIGEST_CANDIDATE_LIMIT)))
         .all()
     )
 
@@ -209,17 +225,11 @@ def build_digest_generation_context(db) -> Optional[dict]:
         now_local,
         window_hours=window_hours,
     )
-    digest_limits = get_digest_limits()
-    max_input_items = digest_limits["max_input_items"]
-
-    settings = get_system_settings_sync() or {}
-    content_types = normalize_hourly_digest_content_types(settings)
     rows = load_digest_rows(
         db,
         start_utc,
         end_utc,
-        max_input_items=max_input_items,
-        content_types=content_types,
+        candidate_limit=HOURLY_DIGEST_CANDIDATE_LIMIT,
     )
     digest_date = end_local.date()
     digest_hour = end_local.hour
@@ -231,7 +241,7 @@ def build_digest_generation_context(db) -> Optional[dict]:
             db,
             digest,
             title,
-            f"过去 {window_hours} 小时内暂无符合所选类型的入库内容。可在设置 → 模型与限制中调整简报扫描类型。",
+            f"过去 {window_hours} 小时内暂无新增入库内容。",
             content_count=0,
             sources=[],
         )

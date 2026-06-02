@@ -134,7 +134,7 @@ async def llm_select_content_ids(
         f"你正在生成「每小时简报」，当前是选稿步骤。下列任务说明在后续写综述时同样有效，请一并遵守。\n\n"
         f"{task_prompt}\n\n"
         f"---\n"
-        f"输出格式要求：下面是一小时内入库的候选（每条以 content_id= 开头，id 必须原样复制到输出中）。\n"
+        f"输出格式要求：下面是本次简报窗口内新增入库、得分排名前 20 的候选（每条以 content_id= 开头，id 必须原样复制到输出中）。\n"
         f"请最多选出 {max_pick} 条，按重要性降序。\n"
         f"只输出一个 JSON 对象，形如 {{\"ids\":[\"uuid\",...]}}。不要 markdown 围栏，不要解释。\n\n"
         f"{catalog}"

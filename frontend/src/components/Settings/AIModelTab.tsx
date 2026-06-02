@@ -124,9 +124,6 @@ const AIModelTab: React.FC = () => {
       trans_fallback_model: settings.translation_fallback?.model,
       sum_fallback_provider: settings.summarization_fallback?.provider,
       sum_fallback_model: settings.summarization_fallback?.model,
-      max_sources: settings.limits?.max_sources ?? 200,
-      max_digest_candidates: settings.limits?.max_digest_candidates ?? 12,
-      max_hourly_digest_input_items: settings.limits?.max_hourly_digest_input_items ?? 200,
     })
   }, [settings, form])
 
@@ -267,11 +264,6 @@ const AIModelTab: React.FC = () => {
       summarization_fallback: {
         provider: values.sum_fallback_provider,
         model: values.sum_fallback_model,
-      },
-      limits: {
-        max_sources: values.max_sources,
-        max_digest_candidates: values.max_digest_candidates,
-        max_hourly_digest_input_items: values.max_hourly_digest_input_items,
       },
     })
   }
@@ -618,32 +610,6 @@ const AIModelTab: React.FC = () => {
             </Form.Item>
           </>
         ) : null}
-
-        <FormGroupHeading>系统上限</FormGroupHeading>
-
-        <Form.Item
-          name="max_sources"
-          label="监控源上限"
-          extra="达到上限后，后端会拒绝新增 source（创建与批量导入都会校验）。"
-        >
-          <InputNumber min={1} max={5000} style={{ width: '100%' }} />
-        </Form.Item>
-
-        <Form.Item
-          name="max_digest_candidates"
-          label="每小时简报候选事件上限"
-          extra="每轮简报最多让模型处理的事件簇数量。"
-        >
-          <InputNumber min={3} max={30} style={{ width: '100%' }} />
-        </Form.Item>
-
-        <Form.Item
-          name="max_hourly_digest_input_items"
-          label="每小时简报输入内容上限"
-          extra="每轮简报读取的原始内容条数上限，避免输入无限增长。选稿与综述提示词在「任务提示」选项卡。"
-        >
-          <InputNumber min={20} max={2000} style={{ width: '100%' }} />
-        </Form.Item>
 
         <Form.Item>
           <Button type="primary" htmlType="submit" loading={updateMutation.isPending}>保存设置</Button>
