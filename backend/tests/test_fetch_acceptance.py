@@ -48,6 +48,23 @@ def test_assess_fetch_acceptance_accepts_full_website_row():
     assert reason == "ok"
 
 
+def test_assess_fetch_acceptance_rejects_long_flat_website_body():
+    content = _content(full_content="这是一段被拍平的长正文。" * 140)
+    metadata = {
+        "fulltext_status": "partial",
+        "content_quality": 0.5,
+        "content_quality_signals": {
+            "body_length": 2100,
+            "paragraph_count": 1,
+        },
+    }
+
+    accepted, reason = assess_fetch_acceptance(content, metadata)
+
+    assert accepted is False
+    assert reason == "suspicious_flat_text"
+
+
 def test_assess_fetch_acceptance_accepts_summary_only_website():
     content = _content(full_content="Only the RSS description is available here for now and long enough.")
     metadata = {"fulltext_status": FULLTEXT_STATUS_SUMMARY_ONLY}

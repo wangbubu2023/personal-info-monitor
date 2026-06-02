@@ -16,7 +16,7 @@ from typing import Any, Iterable
 
 from bs4 import BeautifulSoup
 
-from app.utils.text import normalize_article_text, strip_html_tags
+from app.utils.text import html_to_text_preserving_blocks, normalize_article_text, strip_html_tags
 from app.utils.logger import get_logger
 
 
@@ -72,6 +72,39 @@ def _loads_json(text: str) -> Any:
     return json.loads(text)
 
 
+def _loads_assigned_json_object(text: str, marker: str) -> Any:
+    """Parse a JSON object assigned to a JS global, e.g. ``window.initialState=...``."""
+    idx = (text or "").find(marker)
+    if idx < 0:
+        raise ValueError("marker not found")
+    start = text.find("{", idx + len(marker))
+    if start < 0:
+        raise ValueError("object start not found")
+
+    depth = 0
+    in_string = False
+    escaped = False
+    for pos in range(start, len(text)):
+        ch = text[pos]
+        if in_string:
+            if escaped:
+                escaped = False
+            elif ch == "\\":
+                escaped = True
+            elif ch == '"':
+                in_string = False
+            continue
+        if ch == '"':
+            in_string = True
+        elif ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                return _loads_json(text[start : pos + 1])
+    raise ValueError("object end not found")
+
+
 def _iter_json_nodes(value: Any) -> Iterable[Any]:
     yield value
     if isinstance(value, dict):
@@ -103,7 +136,7 @@ def _clean_candidate_text(value: Any) -> str:
 
     text = html_lib.unescape(value).replace("\\n", "\n")
     if "<" in text and ">" in text:
-        text = strip_html_tags(text)
+        text = html_to_text_preserving_blocks(text)
     return normalize_article_text(text).strip()
 
 
@@ -277,6 +310,53 @@ def _extract_from_next_data(
     )
 
 
+def _extract_from_36kr_newsflash_state(
+    soup: BeautifulSoup,
+    min_chars: int,
+    *,
+    visible_text_chars: int,
+    min_ratio: float,
+) -> StructuredArticleExtraction | None:
+    """Extract the canonical body from 36Kr newsflash detail bootstrap state.
+
+    36Kr newsflash pages render the current item, the next item, latest list,
+    hot list, and footer in the same DOM. Generic readability extraction can
+    therefore blend unrelated entries into the article body. The server-side
+    ``window.initialState.newsflashDetail.detailData.data`` object carries the
+    current newsflash body directly, so prefer it when present.
+    """
+    del visible_text_chars, min_ratio  # This state path is already item-scoped.
+
+    for script in soup.find_all("script"):
+        raw = script.string or script.get_text() or ""
+        if "window.initialState" not in raw or "newsflashDetail" not in raw:
+            continue
+        try:
+            data = _loads_assigned_json_object(raw, "window.initialState")
+        except (TypeError, ValueError, json.JSONDecodeError):
+            continue
+        if not isinstance(data, dict):
+            continue
+        detail = (
+            data.get("newsflashDetail", {})
+            .get("detailData", {})
+            .get("data", {})
+        )
+        if not isinstance(detail, dict):
+            continue
+        text = _clean_candidate_text(detail.get("widgetContent"))
+        if len(text) < min_chars:
+            continue
+        title = _clean_candidate_text(detail.get("widgetTitle")) or None
+        return StructuredArticleExtraction(
+            text=text,
+            method="36kr_newsflash_state",
+            title=title,
+            signals={"body_key": "newsflashDetail.detailData.data.widgetContent", "chars": len(text)},
+        )
+    return None
+
+
 def extract_structured_article(
     html: str,
     *,
@@ -289,6 +369,7 @@ def extract_structured_article(
     visible_text_chars = len(_visible_page_text(soup))
     min_ratio = _configured_body_min_page_ratio()
     for extractor in (
+        _extract_from_36kr_newsflash_state,
         _extract_from_json_ld,
         _extract_from_next_data,
     ):

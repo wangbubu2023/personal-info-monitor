@@ -64,6 +64,22 @@ _ARTICLE_NOISE_LINE_RE = re.compile(
     re.IGNORECASE,
 )
 
+_HTML_TEXT_BLOCK_TAGS = (
+    "p",
+    "li",
+    "blockquote",
+    "pre",
+    "h1",
+    "h2",
+    "h3",
+    "h4",
+    "h5",
+    "h6",
+    "div",
+    "section",
+    "article",
+)
+
 
 def truncate_content(text: str, url: str = "") -> str:
     """Truncate text to MAX_FULL_CONTENT_LENGTH, logging if truncation occurs."""
@@ -94,6 +110,43 @@ def strip_html_tags(text: str) -> str:
     clean = clean.replace("&#39;", "'")
     clean = clean.replace("&hellip;", "...")
     return clean.strip()
+
+
+def html_to_text_preserving_blocks(html: str) -> str:
+    """Convert HTML to plain text while preserving block-level paragraph breaks.
+
+    Global ``get_text(separator="\n\n")`` over-splits inline tags, while
+    ``separator="\n"`` flattens adjacent paragraphs for Markdown rendering.
+    This extracts leaf block nodes, keeps inline text within each block, and
+    joins blocks with blank lines.
+    """
+    if not html:
+        return html
+    try:
+        from bs4 import BeautifulSoup
+
+        soup = BeautifulSoup(str(html), "lxml")
+    except Exception:
+        return strip_html_tags(html)
+
+    for element in soup.find_all(["script", "style", "noscript", "template", "svg"]):
+        element.decompose()
+
+    blocks: list[str] = []
+    for node in soup.find_all(_HTML_TEXT_BLOCK_TAGS):
+        if node.find(_HTML_TEXT_BLOCK_TAGS):
+            continue
+        text = node.get_text(separator=" ", strip=True)
+        text = re.sub(r"\s+", " ", text).strip()
+        text = re.sub(r"\s+([，。！？；：、,.!?;:])", r"\1", text)
+        if text:
+            blocks.append(text)
+
+    if not blocks:
+        fallback = soup.get_text(separator=" ", strip=True)
+        fallback = re.sub(r"\s+", " ", fallback).strip()
+        return re.sub(r"\s+([，。！？；：、,.!?;:])", r"\1", fallback)
+    return "\n\n".join(blocks).strip()
 
 
 def strip_markdown(text: str) -> str:

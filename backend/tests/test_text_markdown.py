@@ -1,4 +1,4 @@
-from app.utils.text import normalize_article_text, strip_markdown
+from app.utils.text import html_to_text_preserving_blocks, normalize_article_text, strip_markdown
 
 
 SAMPLE = (
@@ -66,4 +66,23 @@ def test_normalize_article_text_single_newline_blocks_become_paragraphs():
         "Paragraph one.",
         "Paragraph two.",
         "Paragraph three.",
+    ]
+
+
+def test_html_to_text_preserving_blocks_keeps_paragraphs_without_splitting_inline_tags():
+    html = """
+    <article>
+      <p>第一段里有 <strong>重点词</strong> 和 <a href="/x">链接文字</a>。</p>
+      <p>第二段应该作为新的 Markdown 段落。</p>
+      <p>第三段继续保留。</p>
+    </article>
+    """
+
+    cleaned = html_to_text_preserving_blocks(html)
+
+    parts = [p for p in cleaned.split("\n\n") if p.strip()]
+    assert parts == [
+        "第一段里有 重点词 和 链接文字。",
+        "第二段应该作为新的 Markdown 段落。",
+        "第三段继续保留。",
     ]

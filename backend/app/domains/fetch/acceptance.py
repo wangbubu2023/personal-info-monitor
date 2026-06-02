@@ -103,6 +103,16 @@ def assess_fetch_acceptance(content: Any, metadata: Mapping[str, Any]) -> tuple[
             return False, "blocked"
         if status not in _ACCEPTED_WEB_FULLTEXT:
             return False, f"insufficient_body_{status or 'unknown'}"
+        signals = metadata.get("content_quality_signals")
+        if isinstance(signals, Mapping) and status in {FULLTEXT_STATUS_FULL, FULLTEXT_STATUS_PARTIAL}:
+            try:
+                signal_body_len = int(signals.get("body_length") or len(body))
+                signal_paragraphs = int(signals.get("paragraph_count") or 0)
+            except (TypeError, ValueError):
+                signal_body_len = 0
+                signal_paragraphs = 0
+            if signal_body_len > 1500 and signal_paragraphs <= 2:
+                return False, "suspicious_flat_text"
         return True, "ok"
 
     if content_type == "x":

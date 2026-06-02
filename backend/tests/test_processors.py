@@ -71,6 +71,68 @@ class TestContentExtractor:
         assert "word" in result
 
     @pytest.mark.asyncio
+    async def test_extract_beautifulsoup_preserves_article_paragraphs(self):
+        from app.processors.extractor import ContentExtractor
+
+        extractor = ContentExtractor()
+        html = "<html><body><article>" + "".join(
+            f"<p>Paragraph {idx} carries enough text to count as a readable block.</p>"
+            for idx in range(1, 6)
+        ) + "</article></body></html>"
+
+        with patch.object(extractor, "_extract_with_readability", return_value=""):
+            with patch.object(extractor, "_extract_with_trafilatura", return_value=""):
+                result = await extractor.extract(html)
+
+        parts = [p for p in result.split("\n\n") if p.strip()]
+        assert len(parts) == 5
+        assert parts[0].startswith("Paragraph 1")
+        assert parts[-1].startswith("Paragraph 5")
+
+    @pytest.mark.asyncio
+    async def test_extract_prefers_36kr_newsflash_state_over_related_cards(self):
+        from app.processors.extractor import ContentExtractor
+
+        extractor = ContentExtractor()
+        html = """
+        <html><body>
+          <script>
+          window.initialState={
+            "newsflashDetail": {
+              "detailData": {
+                "data": {
+                  "widgetTitle": "快手：平台累计催生189个新职业",
+                  "widgetContent": "36氪获悉，6月2日，快手发布《2025年度快手企业社会责任报告》。报告显示，截至2025年底，快手平台共带动4860万个就业机会，其中平台直接带动就业2600万个。与此同时，平台累计催生189个新职业，其中由AI发展带来的新职业达到15个。"
+                }
+              },
+              "detailNextData": {
+                "data": {
+                  "nextItem": {
+                    "itemTitle": "沪深两市成交额突破2.5万亿元",
+                    "itemContent": "36氪获悉，沪深两市成交额突破2.5万亿元。"
+                  }
+                }
+              }
+            }
+          };
+          </script>
+          <div class="kr-newsflash-detail">
+            <p>36氪获悉，6月2日，快手发布《2025年度快手企业社会责任报告》。</p>
+            <section>
+              <h2>下一篇</h2>
+              <h3>沪深两市成交额突破2.5万亿元</h3>
+              <p>36氪获悉，沪深两市成交额突破2.5万亿元。</p>
+            </section>
+          </div>
+        </body></html>
+        """
+
+        result = await extractor.extract(html, "https://36kr.com/newsflashes/3835661619246471?f=rss")
+
+        assert "平台累计催生189个新职业" in result
+        assert "沪深两市成交额突破2.5万亿元" not in result
+
+    @pytest.mark.asyncio
     async def test_extract_trafilatura_short_falls_back(self):
         from app.processors.extractor import ContentExtractor
 

@@ -21,7 +21,8 @@ import re
 
 from app.domains.ingest.quality import _word_count
 from app.utils.logger import get_logger
-from app.utils.text import strip_html_tags, normalize_article_text
+from app.utils.structured_article import extract_structured_article
+from app.utils.text import html_to_text_preserving_blocks, strip_html_tags, normalize_article_text
 
 logger = get_logger(__name__)
 
@@ -87,6 +88,10 @@ class ContentExtractor:
         """
         if not html:
             return ""
+
+        structured = extract_structured_article(html, min_chars=120)
+        if structured:
+            return normalize_article_text(structured.text)
 
         # 1. Try Readability LXML (best for structure preservation)
         content = self._extract_with_readability(html)
@@ -219,7 +224,7 @@ class ContentExtractor:
             if not main_content:
                 return ""
 
-            text = main_content.get_text(separator="\n", strip=True)
+            text = html_to_text_preserving_blocks(str(main_content))
 
             import re
             text = re.sub(r'\n{3,}', '\n\n', text)
