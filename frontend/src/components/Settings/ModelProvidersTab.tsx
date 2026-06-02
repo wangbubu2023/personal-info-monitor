@@ -14,7 +14,6 @@ import {
 } from 'antd'
 import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons'
 import { configsApi, type APIConfig } from '../../services/configs'
-import SectionNote from '../ui/SectionNote'
 
 const { Option } = Select
 const { Password } = Input
@@ -166,9 +165,6 @@ const ModelProvidersTab: React.FC = () => {
 
   return (
     <div>
-      <SectionNote style={{ marginBottom: 16 }}>
-        先在这里配置模型供应商：<strong>云端</strong>接口填写 API Key（及必要时 API Base）；<strong>Ollama 本地</strong>请选择「Ollama (本地)」并填写服务地址（默认本机 <code className="text-[13px]">http://localhost:11434</code>），无需 Key。配置保存后，写作、翻译、原子化与评分模型中才会出现对应提供商。
-      </SectionNote>
       <Button type="primary" icon={<PlusOutlined />} onClick={() => { setEditingConfig(null); form.resetFields(); setIsModalOpen(true) }} style={{ marginBottom: 16 }}>添加模型接入</Button>
       <Table columns={columns} dataSource={modelConfigs} loading={isLoading} rowKey="id" />
       <Modal title={editingConfig ? '编辑模型接入' : '添加模型接入'} open={isModalOpen} onCancel={() => { setIsModalOpen(false); setEditingConfig(null) }} footer={null}>

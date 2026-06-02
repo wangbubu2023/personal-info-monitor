@@ -13,6 +13,7 @@ import type {
   MatchType,
 } from '../../types'
 import SectionNote from '../ui/SectionNote'
+import SettingsSection from './SettingsSection'
 import { parseKeywordBatchInput } from './keywordInputUtils'
 import {
   KEYWORD_LABEL_COLORS,
@@ -310,7 +311,10 @@ const KeywordsTab: React.FC = () => {
   }
 
   return (
-    <div className="p-4 sm:p-5">
+    <SettingsSection
+      title="关键词规则"
+      description="维护用于信源过滤和提醒的搜索词，支持等价词、匹配范围、颜色和批量操作。"
+    >
       <SectionNote
         className="mb-4"
         title="关键词如何生效"
@@ -424,7 +428,7 @@ const KeywordsTab: React.FC = () => {
         onFinish={handleSubmit}
         submitLoading={createBatchMutation.isPending || updateMutation.isPending}
       />
-    </div>
+    </SettingsSection>
   )
 }
 

@@ -2,6 +2,7 @@ import React from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Switch, message } from 'antd'
 import { configsApi } from '../../services/configs'
+import SettingsSection from './SettingsSection'
 
 const ScoreLabSettingsTab: React.FC = () => {
   const queryClient = useQueryClient()
@@ -22,15 +23,16 @@ const ScoreLabSettingsTab: React.FC = () => {
   const enabled = Boolean(settings?.score_lab_enabled)
 
   return (
-    <div className="max-w-2xl space-y-6">
-      <div>
-        <h3 className="text-lg font-semibold text-[#293859]">评分实验室</h3>
-        <p className="mt-2 text-sm leading-relaxed text-[#586476]">
+    <SettingsSection
+      title="评分实验室"
+      description={
+        <>
           开发模式下可用的打分调试入口：查看得分拆解、对比库内快照、提交偏高/偏低反馈。
           生产构建（<code className="rounded bg-[#eef2f8] px-1">./pim start --prod</code>）不会包含此功能。
-        </p>
-      </div>
-
+        </>
+      }
+      className="max-w-2xl"
+    >
       <div className="flex items-start justify-between gap-4 rounded-2xl border border-[rgba(88,100,118,0.12)] bg-white px-5 py-4">
         <div>
           <p className="font-medium text-[#293859]">显示侧栏入口</p>
@@ -44,7 +46,7 @@ const ScoreLabSettingsTab: React.FC = () => {
           onChange={(checked) => mutation.mutate({ score_lab_enabled: checked })}
         />
       </div>
-    </div>
+    </SettingsSection>
   )
 }
 

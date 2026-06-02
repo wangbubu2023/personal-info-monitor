@@ -1,5 +1,5 @@
 import React from 'react'
-import { Table, Tag, Button, Tooltip, Space, Alert, Empty } from 'antd'
+import { Table, Tag, Button, Tooltip, Alert, Empty } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { SyncOutlined } from '@ant-design/icons'
 import { HeartPulse } from 'lucide-react'
@@ -21,6 +21,7 @@ import {
   HEALTH_SEVERITY_ORDER,
   type HealthSeverity,
 } from '../../utils/fetchHealth'
+import SettingsSection from './SettingsSection'
 
 const typeLabels: Record<string, string> = {
   website: '网站',
@@ -196,8 +197,20 @@ const FetchHealthTab: React.FC = () => {
   ]
 
   return (
-    <div className="flex flex-col gap-4" data-testid="fetch-health-tab">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+    <div className="flex flex-col gap-5" data-testid="fetch-health-tab">
+      <SettingsSection
+        title="抓取健康总览"
+        description="按失败、冷却、告警和正常状态聚合所有信源，每 30 秒自动刷新。"
+        actions={
+          <Button
+            icon={<SyncOutlined spin={isFetching} />}
+            onClick={() => refetch()}
+            size="small"
+          >
+            刷新
+          </Button>
+        }
+      >
         <div className="flex flex-1 flex-wrap gap-2.5">
           <SummaryCard label="信源总数" value={sources.length} color="#2c3a50" />
           <SummaryCard label="失败" value={counts.error} color={HEALTH_SEVERITY_META.error.color} />
@@ -205,14 +218,7 @@ const FetchHealthTab: React.FC = () => {
           <SummaryCard label="告警" value={counts.warning} color={HEALTH_SEVERITY_META.warning.color} />
           <SummaryCard label="正常" value={counts.ok} color={HEALTH_SEVERITY_META.ok.color} />
         </div>
-        <Button
-          icon={<SyncOutlined spin={isFetching} />}
-          onClick={() => refetch()}
-          size="small"
-        >
-          刷新
-        </Button>
-      </div>
+      </SettingsSection>
 
       {isError ? (
         <Alert
@@ -227,21 +233,27 @@ const FetchHealthTab: React.FC = () => {
         />
       ) : null}
 
-      <div className="min-w-0 overflow-x-auto">
-        <Table
-          rowKey="id"
-          columns={columns}
-          dataSource={sorted}
-          loading={isLoading}
-          size="middle"
-          scroll={{ x: 1320 }}
-          pagination={{ pageSize: 20, showSizeChanger: true, showTotal: (t) => `共 ${t} 个信源` }}
-          locale={{
-            emptyText: <Empty description="暂无信源" image={Empty.PRESENTED_IMAGE_SIMPLE} />,
-          }}
-          style={{ backgroundColor: '#fff' }}
-        />
-      </div>
+      <SettingsSection
+        title="信源明细"
+        description="失败码、冷却、7 天画像与 RSS 健康由后端抓取链路实时记录。"
+        contentClassName="pt-0"
+      >
+        <div className="min-w-0 overflow-x-auto">
+          <Table
+            rowKey="id"
+            columns={columns}
+            dataSource={sorted}
+            loading={isLoading}
+            size="middle"
+            scroll={{ x: 1320 }}
+            pagination={{ pageSize: 20, showSizeChanger: true, showTotal: (t) => `共 ${t} 个信源` }}
+            locale={{
+              emptyText: <Empty description="暂无信源" image={Empty.PRESENTED_IMAGE_SIMPLE} />,
+            }}
+            style={{ backgroundColor: '#fff' }}
+          />
+        </div>
+      </SettingsSection>
 
       <FetchHealthDrawer
         source={healthSource}
@@ -250,10 +262,6 @@ const FetchHealthTab: React.FC = () => {
         onFetch={(id) => sourcesApi.triggerFetch(id)}
         onProbe={(id) => sourcesApi.probeSource(id)}
       />
-
-      <Space className="text-[12px] text-[#8a96a5]">
-        <span>说明：失败码、冷却、7 天画像与 RSS 健康由后端抓取链路实时记录，每 30 秒自动刷新。</span>
-      </Space>
     </div>
   )
 }

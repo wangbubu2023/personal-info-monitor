@@ -79,7 +79,7 @@ const Settings: React.FC = () => {
       key: 'credentials',
       label: '登录与凭据',
       icon: ShieldAlert,
-      description: '站点登录会话（NYT、WSJ、X 等）、平台 API Key，一页管好。',
+      description: '管理站点登录会话、YouTube / X 平台 API Key，以及旧版手动 Cookie。',
       content: <CredentialsTab />,
     },
     {
@@ -162,7 +162,7 @@ const Settings: React.FC = () => {
           </div>
         </div>
 
-        {/* 第三层：Tab + 当前页说明 */}
+        {/* 第二层：Tab + 当前页说明 */}
         <div
           className="mt-1 flex flex-col gap-2.5 border-b border-[rgba(88,100,118,0.1)] pb-3 pt-1 sm:flex-row sm:items-start sm:justify-between sm:gap-5"
           data-testid="settings-tabs"
@@ -213,16 +213,12 @@ const Settings: React.FC = () => {
       <div className="mx-auto mt-5 max-w-page pl-5 pr-6 sm:pl-7 sm:pr-8 lg:pl-9 lg:pr-10" data-testid="settings-content">
         <Suspense
           fallback={
-            <div className="overflow-hidden rounded-2xl border border-[rgba(88,100,118,0.1)] bg-white/95 shadow-[0_8px_28px_-12px_rgba(41,56,89,0.12)] backdrop-blur-sm">
-              <div className="min-w-0 px-4 pb-5 pt-4 sm:px-5 sm:pb-6 sm:pt-5">
+            <div className="rounded-2xl border border-[rgba(88,100,118,0.1)] bg-white px-4 py-5 shadow-[0_8px_28px_-18px_rgba(41,56,89,0.18)]">
                 <PanelLoading message="正在加载该设置页…" />
-              </div>
             </div>
           }
         >
-          <div className="overflow-hidden rounded-2xl border border-[rgba(88,100,118,0.1)] bg-white/95 shadow-[0_8px_28px_-12px_rgba(41,56,89,0.12)] backdrop-blur-sm">
-            <div className="min-w-0 px-4 pb-5 pt-4 sm:px-5 sm:pb-6 sm:pt-5">{activeItem.content}</div>
-          </div>
+          <div className="min-w-0">{activeItem.content}</div>
         </Suspense>
       </div>
     </div>

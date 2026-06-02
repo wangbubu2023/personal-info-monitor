@@ -9,7 +9,6 @@ import {
   message,
   InputNumber,
   Slider,
-  Divider,
 } from 'antd'
 import { configsApi } from '../../services/configs'
 import type { AIModelTabFormValues } from '../../types'
@@ -17,8 +16,20 @@ import ModelProvidersTab from './ModelProvidersTab'
 import SectionNote from '../ui/SectionNote'
 import PanelLoading from '../common/PanelLoading'
 import OllamaCtxSlider, { snapOllamaNumCtx } from './OllamaCtxSlider'
+import SettingsSection from './SettingsSection'
 
 const { Option } = Select
+
+const FormGroupHeading: React.FC<{ children: React.ReactNode; first?: boolean }> = ({
+  children,
+  first = false,
+}) => (
+  <h4
+    className={`${first ? 'mt-0' : 'mt-8 border-t border-[rgba(88,100,118,0.1)] pt-5'} mb-4 text-[14px] font-semibold tracking-tight text-[#2c3a50]`}
+  >
+    {children}
+  </h4>
+)
 
 const AIModelTab: React.FC = () => {
   const [form] = Form.useForm()
@@ -270,20 +281,30 @@ const AIModelTab: React.FC = () => {
   }
 
   return (
-    <div>
-      <Divider orientation="left">模型接入设置</Divider>
-      <ModelProvidersTab />
+    <div className="flex flex-col gap-5">
+      <SettingsSection
+        title="模型接入"
+        description={
+          <>
+            先配置可用的模型供应商。云端接口填写 API Key 和必要的 API Base；Ollama 本地填写服务地址，默认{' '}
+            <code className="rounded bg-[#eef2f8] px-1 text-[12px]">http://localhost:11434</code>，无需 Key。
+          </>
+        }
+      >
+        <ModelProvidersTab />
+      </SettingsSection>
 
-      <SectionNote style={{ marginBottom: 16, marginTop: 24 }}>
-        已接入的提供商才会出现在下面的模型选择中。API Key 与网关地址只在上方「模型接入」维护；此处仅选择提供商、模型及生成参数（Temperature 等）。
-      </SectionNote>
+      <SettingsSection
+        title="模型选择与生成参数"
+        description="已接入的提供商才会出现在这里；此处只选择写作、翻译、原子化和评分通道使用的模型与生成参数。"
+      >
       {selectedProvider === 'ollama' && currentProvider?.availability_message ? (
         <SectionNote tone="caution" style={{ marginBottom: 16 }}>
           {currentProvider.availability_message}
         </SectionNote>
       ) : null}
       <Form form={form} layout="vertical" onFinish={handleSave} style={{ maxWidth: 600 }}>
-        <Divider orientation="left">写作模型配置</Divider>
+        <FormGroupHeading first>写作模型配置</FormGroupHeading>
 
         <Form.Item name="provider" label="AI 提供商" rules={[{ required: true }]}>
           <Select placeholder="选择 AI 提供商">
@@ -374,7 +395,7 @@ const AIModelTab: React.FC = () => {
           </>
         ) : null}
 
-        <Divider orientation="left">翻译模型配置</Divider>
+        <FormGroupHeading>翻译模型配置</FormGroupHeading>
 
         <Form.Item name="trans_provider" label="翻译模型提供商" rules={[{ required: true }]}>
           <Select placeholder="选择提供商">
@@ -460,7 +481,7 @@ const AIModelTab: React.FC = () => {
           </>
         ) : null}
 
-        <Divider orientation="left">原子化模型配置</Divider>
+        <FormGroupHeading>原子化模型配置</FormGroupHeading>
 
         <SectionNote style={{ marginBottom: 16 }}>
           新闻原子库 LLM 提取专用模型。模型名称留空时将回退使用上方「写作模型」；建议为结构化 JSON 任务选择更强模型。
@@ -538,7 +559,7 @@ const AIModelTab: React.FC = () => {
           </>
         ) : null}
 
-        <Divider orientation="left">评分模型配置</Divider>
+        <FormGroupHeading>评分模型配置</FormGroupHeading>
 
         <SectionNote style={{ marginBottom: 16 }}>
           内容主观评分专用模型。模型名称留空时后端会回退到固定基线；开启 LLM 主观评分后才会调用该通道。
@@ -598,7 +619,7 @@ const AIModelTab: React.FC = () => {
           </>
         ) : null}
 
-        <Divider orientation="left">系统上限</Divider>
+        <FormGroupHeading>系统上限</FormGroupHeading>
 
         <Form.Item
           name="max_sources"
@@ -628,6 +649,7 @@ const AIModelTab: React.FC = () => {
           <Button type="primary" htmlType="submit" loading={updateMutation.isPending}>保存设置</Button>
         </Form.Item>
       </Form>
+      </SettingsSection>
     </div>
   )
 }

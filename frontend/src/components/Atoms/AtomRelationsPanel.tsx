@@ -88,19 +88,19 @@ const AtomRelationsPanel: React.FC<Props> = ({ atom, onOpenAtom, onRelationVerif
   }
 
   if (loading) {
-    return <p className="text-xs text-[#8ea3b8]">加载关联…</p>
+    return <p className="text-xs text-[#536b82]">加载关联…</p>
   }
 
   return (
     <div className="space-y-3">
       {error && (
-        <p className="rounded-lg border border-red-400/30 bg-red-500/10 px-3 py-2 text-xs text-red-200">
+        <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
           {error}
         </p>
       )}
 
       {relations.length === 0 ? (
-        <p className="text-xs text-[#8ea3b8]">暂无跨文关系。启用 ATOMS_RELATIONS_ENABLED 后新原子会自动推断。</p>
+        <p className="text-xs text-[#536b82]">暂无跨文关系。启用 ATOMS_RELATIONS_ENABLED 后新原子会自动推断。</p>
       ) : (
         relations.map((rel) => {
           const peerId = rel.atom_a === atom.atom_id ? rel.atom_b : rel.atom_a
@@ -112,30 +112,30 @@ const AtomRelationsPanel: React.FC<Props> = ({ atom, onOpenAtom, onRelationVerif
               key={rel.rel_id}
               className={`rounded-xl border p-3 ${
                 isContradiction
-                  ? 'border-amber-400/30 bg-amber-500/5'
+                  ? 'border-amber-200 bg-amber-50'
                   : isCorroboration
-                    ? 'border-emerald-400/30 bg-emerald-500/5'
-                    : 'border-white/10 bg-white/[0.02]'
+                    ? 'border-emerald-200 bg-emerald-50'
+                    : 'border-[#d8e4ec] bg-[#f8fbfc]'
               }`}
             >
               <div className="flex flex-wrap items-center gap-2 text-xs">
-                <span className="font-medium text-[#e7f1f7]">{rel.relation_type}</span>
-                <span className="text-[#8ea3b8]">{rel.direction}</span>
-                <span className="text-[#8ea3b8]">置信 {Math.round(rel.fact_confidence * 100)}%</span>
-                {rel.verified && <span className="text-emerald-300">已确认</span>}
+                <span className="font-medium text-[#22324a]">{rel.relation_type}</span>
+                <span className="text-[#536b82]">{rel.direction}</span>
+                <span className="text-[#536b82]">置信 {Math.round(rel.fact_confidence * 100)}%</span>
+                {rel.verified && <span className="font-medium text-emerald-700">已确认</span>}
               </div>
               {isContradiction && peer ? (
                 <div className="mt-2 grid gap-2 text-xs">
-                  <p className="text-[#8ea3b8]">本句：{atom.source_sentence}</p>
-                  <p className="text-amber-100/90">对句：{peer.source_sentence}</p>
+                  <p className="text-[#536b82]">本句：{atom.source_sentence}</p>
+                  <p className="text-amber-900">对句：{peer.source_sentence}</p>
                 </div>
               ) : peer ? (
-                <p className="mt-2 line-clamp-3 text-xs text-[#8ea3b8]">{peer.source_sentence}</p>
+                <p className="mt-2 line-clamp-3 text-xs text-[#536b82]">{peer.source_sentence}</p>
               ) : null}
               <div className="mt-2 flex flex-wrap gap-2">
                 <button
                   type="button"
-                  className="text-xs text-[#89dcef] underline"
+                  className="text-xs font-medium text-[#0b6f91] underline"
                   onClick={() => onOpenAtom(peerId)}
                 >
                   {peerId}
@@ -145,7 +145,7 @@ const AtomRelationsPanel: React.FC<Props> = ({ atom, onOpenAtom, onRelationVerif
                     type="button"
                     disabled={busyId === rel.rel_id}
                     onClick={() => void verifyRelation(rel.rel_id)}
-                    className="rounded-lg border border-emerald-400/40 px-2 py-1 text-xs text-emerald-200 disabled:opacity-50"
+                    className="rounded-lg border border-emerald-300 bg-white px-2 py-1 text-xs font-medium text-emerald-800 disabled:opacity-50"
                   >
                     确认印证
                   </button>
@@ -155,7 +155,7 @@ const AtomRelationsPanel: React.FC<Props> = ({ atom, onOpenAtom, onRelationVerif
                     type="button"
                     disabled={busyId === rel.rel_id}
                     onClick={() => void rejectRelation(rel.rel_id)}
-                    className="rounded-lg border border-white/15 px-2 py-1 text-xs text-[#8ea3b8] disabled:opacity-50"
+                    className="rounded-lg border border-[#c7d6e0] bg-white px-2 py-1 text-xs font-medium text-[#536b82] disabled:opacity-50"
                   >
                     拒绝
                   </button>
@@ -166,11 +166,11 @@ const AtomRelationsPanel: React.FC<Props> = ({ atom, onOpenAtom, onRelationVerif
         })
       )}
 
-      <div className="border-t border-white/10 pt-3">
-        <p className="text-xs text-[#8ea3b8]">手动添加印证关系</p>
+      <div className="border-t border-[#d8e4ec] pt-3">
+        <p className="text-xs text-[#536b82]">手动添加印证关系</p>
         <div className="mt-2 flex gap-2">
           <input
-            className="min-w-0 flex-1 rounded-lg border border-white/10 bg-[#0f1724] px-2 py-1.5 font-mono text-xs text-[#d1e0e9]"
+            className="min-w-0 flex-1 rounded-lg border border-[#c7d6e0] bg-white px-2 py-1.5 font-mono text-xs text-[#22324a] placeholder:text-[#7b8fa4]"
             placeholder="对方 atom_id"
             value={manualPeerId}
             onChange={(e) => setManualPeerId(e.target.value)}
@@ -179,7 +179,7 @@ const AtomRelationsPanel: React.FC<Props> = ({ atom, onOpenAtom, onRelationVerif
             type="button"
             disabled={busyId === 'create'}
             onClick={() => void createManual()}
-            className="rounded-lg bg-white/10 px-3 py-1.5 text-xs text-[#d1e0e9] disabled:opacity-50"
+            className="rounded-lg bg-[#22324a] px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50"
           >
             添加
           </button>

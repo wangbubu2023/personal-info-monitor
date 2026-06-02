@@ -209,7 +209,7 @@ const AtomsPage: React.FC = () => {
 
       {atomsEnabled === true && (
       <>
-      <div className="flex gap-1 rounded-2xl border border-white/[0.08] bg-white/[0.03] p-1.5">
+      <div className="flex gap-1 rounded-2xl border border-[#d8e4ec] bg-white p-1.5 shadow-sm">
         {([
           ['atoms', '原子'],
           ['events', '事件簇'],
@@ -221,8 +221,8 @@ const AtomsPage: React.FC = () => {
             onClick={() => setFilter('view', key === 'atoms' ? '' : key)}
             className={`flex-1 rounded-xl px-4 py-2 text-sm font-medium transition ${
               view === key
-                ? 'bg-[#49A8C9]/20 text-[#b9f0fb]'
-                : 'text-[#8ea3b8] hover:text-[#d1e0e9]'
+                ? 'bg-[#dff3f9] text-[#0f4d68] shadow-sm'
+                : 'text-[#536b82] hover:bg-[#f1f6f9] hover:text-[#22324a]'
             }`}
           >
             {label}
@@ -235,9 +235,9 @@ const AtomsPage: React.FC = () => {
 
       {view === 'atoms' && (
       <>
-      <div className="flex flex-wrap gap-3 rounded-2xl border border-white/[0.08] bg-white/[0.03] p-4">
+      <div className="flex flex-wrap gap-3 rounded-2xl border border-[#d8e4ec] bg-white p-4 shadow-sm">
         <select
-          className="rounded-xl border border-white/10 bg-[#1a2636] px-3 py-2 text-sm text-[#d1e0e9]"
+          className="rounded-xl border border-[#c7d6e0] bg-white px-3 py-2 text-sm text-[#22324a] shadow-sm"
           value={filters.type}
           onChange={(e) => setFilter('type', e.target.value)}
         >
@@ -246,7 +246,7 @@ const AtomsPage: React.FC = () => {
           ))}
         </select>
         <select
-          className="rounded-xl border border-white/10 bg-[#1a2636] px-3 py-2 text-sm text-[#d1e0e9]"
+          className="rounded-xl border border-[#c7d6e0] bg-white px-3 py-2 text-sm text-[#22324a] shadow-sm"
           value={filters.domain}
           onChange={(e) => setFilter('domain', e.target.value)}
         >
@@ -255,7 +255,7 @@ const AtomsPage: React.FC = () => {
           ))}
         </select>
         <select
-          className="rounded-xl border border-white/10 bg-[#1a2636] px-3 py-2 text-sm text-[#d1e0e9]"
+          className="rounded-xl border border-[#c7d6e0] bg-white px-3 py-2 text-sm text-[#22324a] shadow-sm"
           value={filters.verified}
           onChange={(e) => setFilter('verified', e.target.value)}
         >
@@ -264,7 +264,7 @@ const AtomsPage: React.FC = () => {
           <option value="false">未验证</option>
         </select>
         <select
-          className="rounded-xl border border-white/10 bg-[#1a2636] px-3 py-2 text-sm text-[#d1e0e9]"
+          className="rounded-xl border border-[#c7d6e0] bg-white px-3 py-2 text-sm text-[#22324a] shadow-sm"
           value={filters.status}
           onChange={(e) => setFilter('status', e.target.value)}
         >
@@ -275,7 +275,7 @@ const AtomsPage: React.FC = () => {
           <option value="all">全部状态</option>
         </select>
         <input
-          className="min-w-[12rem] flex-1 rounded-xl border border-white/10 bg-[#1a2636] px-3 py-2 text-sm text-[#d1e0e9]"
+          className="min-w-[12rem] flex-1 rounded-xl border border-[#c7d6e0] bg-white px-3 py-2 text-sm text-[#22324a] shadow-sm placeholder:text-[#7b8fa4]"
           placeholder="搜索句子、信源…"
           value={filters.search}
           onChange={(e) => setFilter('search', e.target.value)}
@@ -297,7 +297,7 @@ const AtomsPage: React.FC = () => {
                 }
               })()
             }}
-            className="rounded-xl border border-[#49A8C9]/40 px-3 py-2 text-sm text-[#b9f0fb] disabled:opacity-50"
+            className="rounded-xl border border-[#49A8C9]/50 bg-[#edf9fc] px-3 py-2 text-sm font-medium text-[#0f4d68] disabled:opacity-50"
           >
             重新提取
           </button>
@@ -305,7 +305,7 @@ const AtomsPage: React.FC = () => {
       </div>
 
       {error && (
-        <div className="rounded-xl border border-red-400/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
           {error}
         </div>
       )}
@@ -313,7 +313,7 @@ const AtomsPage: React.FC = () => {
       <div className="grid gap-6 lg:grid-cols-[1fr_380px]">
         <div className="space-y-3">
           {loading ? (
-            <p className="text-sm text-[#8ea3b8]">加载中…</p>
+            <p className="text-sm text-[#536b82]">加载中…</p>
           ) : items.length === 0 ? (
             <p className="text-sm text-[#586476]">暂无原子。新文章入库后会自动提取，也可通过 API 手动录入。</p>
           ) : (
@@ -324,32 +324,32 @@ const AtomsPage: React.FC = () => {
                 onClick={() => void openAtom(atom.atom_id)}
                 className={`w-full rounded-2xl border px-4 py-4 text-left transition ${
                   selected?.atom_id === atom.atom_id
-                    ? 'border-[#49A8C9]/40 bg-[#49A8C9]/10'
-                    : 'border-white/[0.08] bg-white/[0.03] hover:border-white/15'
+                    ? 'border-[#49A8C9]/60 bg-[#edf9fc] shadow-sm'
+                    : 'border-[#d8e4ec] bg-white shadow-sm hover:border-[#9ec9d8] hover:bg-[#f8fbfc]'
                 }`}
               >
-                <div className="flex flex-wrap items-center gap-2 text-xs text-[#8ea3b8]">
-                  <span className="rounded-full bg-white/10 px-2 py-0.5">{atom.atom_type}</span>
+                <div className="flex flex-wrap items-center gap-2 text-xs text-[#536b82]">
+                  <span className="rounded-full bg-[#e8f0f6] px-2 py-0.5 text-[#22324a]">{atom.atom_type}</span>
                   <span>{atom.domain}</span>
                   <span>{atom.atom_source}</span>
                   <span>置信 {Math.round(atom.fact_confidence * 100)}%</span>
-                  {atom.verified && <span className="text-emerald-300">已验证</span>}
+                  {atom.verified && <span className="font-medium text-emerald-700">已验证</span>}
                   {atom.status && atom.status !== 'active' && (
-                    <span className="rounded-full bg-amber-500/20 px-2 py-0.5 text-amber-200">{atom.status}</span>
+                    <span className="rounded-full bg-amber-100 px-2 py-0.5 text-amber-800">{atom.status}</span>
                   )}
                 </div>
-                <p className="mt-2 text-sm font-medium text-[#e7f1f7]">{payloadSummary(atom)}</p>
-                <p className="mt-2 line-clamp-2 text-xs text-[#8ea3b8]">{atom.source_sentence}</p>
+                <p className="mt-2 text-sm font-semibold text-[#22324a]">{payloadSummary(atom)}</p>
+                <p className="mt-2 line-clamp-2 text-xs text-[#5e7288]">{atom.source_sentence}</p>
               </button>
             ))
           )}
         </div>
 
         {selected && (
-          <aside className="rounded-2xl border border-white/[0.08] bg-[#121c29] p-4 lg:sticky lg:top-6 lg:self-start">
-            <p className="text-xs text-[#8ea3b8]">{selected.atom_id}</p>
-            <p className="mt-2 text-sm text-[#d1e0e9]">{selected.source_sentence}</p>
-            <p className="mt-3 text-xs text-[#8ea3b8]">
+          <aside className="rounded-2xl border border-[#d8e4ec] bg-white p-4 shadow-sm lg:sticky lg:top-6 lg:self-start">
+            <p className="text-xs text-[#536b82]">{selected.atom_id}</p>
+            <p className="mt-2 text-sm text-[#22324a]">{selected.source_sentence}</p>
+            <p className="mt-3 text-xs text-[#536b82]">
               原子信源：{selected.atom_source} · 置信度 {Math.round(selected.fact_confidence * 100)}%
               · 来源可信度 {Math.round(selected.source_credibility * 100)}%
             </p>
@@ -358,27 +358,27 @@ const AtomsPage: React.FC = () => {
                 href={selected.source_url}
                 target="_blank"
                 rel="noreferrer"
-                className="text-xs text-[#89dcef] underline"
+                className="text-xs font-medium text-[#0b6f91] underline"
               >
                 原文链接
               </a>
-              <Link to={`/reader/${selected.content_id}`} className="text-xs text-[#89dcef] underline">
+              <Link to={`/reader/${selected.content_id}`} className="text-xs font-medium text-[#0b6f91] underline">
                 打开 Reader
               </Link>
             </div>
             {relationsEnabled && (
-              <div className="mt-4 flex gap-2 border-b border-white/10 pb-2">
+              <div className="mt-4 flex gap-2 border-b border-[#d8e4ec] pb-2">
                 <button
                   type="button"
                   onClick={() => setDrawerTab('edit')}
-                  className={`text-xs ${drawerTab === 'edit' ? 'text-[#b9f0fb]' : 'text-[#8ea3b8]'}`}
+                  className={`text-xs font-medium ${drawerTab === 'edit' ? 'text-[#0b6f91]' : 'text-[#536b82]'}`}
                 >
                   编辑
                 </button>
                 <button
                   type="button"
                   onClick={() => setDrawerTab('relations')}
-                  className={`text-xs ${drawerTab === 'relations' ? 'text-[#b9f0fb]' : 'text-[#8ea3b8]'}`}
+                  className={`text-xs font-medium ${drawerTab === 'relations' ? 'text-[#0b6f91]' : 'text-[#536b82]'}`}
                 >
                   关联原子
                 </button>
@@ -394,9 +394,9 @@ const AtomsPage: React.FC = () => {
               </div>
             ) : (
               <>
-                <label className="mt-4 block text-xs text-[#8ea3b8]">payload（JSON）</label>
+                <label className="mt-4 block text-xs text-[#536b82]">payload（JSON）</label>
                 <textarea
-                  className="mt-1 h-48 w-full rounded-xl border border-white/10 bg-[#0f1724] p-3 font-mono text-xs text-[#d1e0e9]"
+                  className="mt-1 h-48 w-full rounded-xl border border-[#c7d6e0] bg-[#f8fbfc] p-3 font-mono text-xs text-[#22324a]"
                   value={editPayload}
                   onChange={(e) => setEditPayload(e.target.value)}
                 />
@@ -414,7 +414,7 @@ const AtomsPage: React.FC = () => {
                       type="button"
                       disabled={saving}
                       onClick={() => void verifySelected()}
-                      className="rounded-xl border border-emerald-400/40 px-4 py-2 text-sm text-emerald-200 disabled:opacity-50"
+                      className="rounded-xl border border-emerald-300 bg-emerald-50 px-4 py-2 text-sm font-medium text-emerald-800 disabled:opacity-50"
                     >
                       标记已验证
                     </button>

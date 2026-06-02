@@ -34,7 +34,7 @@ import {
 import { configsApi, type APIConfig, type AuthConfig } from '../../services/configs'
 import { formatLocalDateTime } from '../../utils/datetime'
 import { isXCookieProfile } from '../../utils/sourceAuth'
-import SectionNote from '../ui/SectionNote'
+import SettingsSection from './SettingsSection'
 
 const { Text, Paragraph } = Typography
 const { Password } = Input
@@ -586,42 +586,27 @@ const CredentialsTab: React.FC = () => {
   })
 
   return (
-    <div className="flex flex-col gap-6">
-      <SectionNote>
-        <div>
-          <Text strong>登录与凭据</Text>
-          <span className="ml-2 text-[#6b7c8f]">
-            一个页面管理三类身份：站点登录会话（纽约时报、WSJ、X 等需要登录的网站）、YouTube / X 平台 API Key、以及历史遗留的手动 Cookie。
-          </span>
-        </div>
-      </SectionNote>
-
-      <div className="flex justify-end">
-        <Button
-          type="primary"
-          icon={<PlusOutlined />}
-          onClick={() => handleCreateSessionPreset('')}
-        >
-          新建站点登录
-        </Button>
-      </div>
-
-      {/* ---- 站点登录会话 ---- */}
-      <section>
-        <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
-          <div>
-            <h3 className="mb-1 text-[15px] font-semibold text-[#2c3a50]">站点登录会话</h3>
-            <p className="mb-0 text-[12px] leading-relaxed text-[#6b7c8f]">
-              推荐的登录方式。点击「重新登录」会弹出可视化浏览器，你在里面完成登录（验证码 /
-              2FA / 扫码都行），关掉窗口即保存。NYT、WSJ、X（Twitter）等都走这条路。
-            </p>
-          </div>
+    <div className="flex flex-col gap-5">
+      <SettingsSection
+        title="站点登录会话"
+        description="用于需要网页登录态的站点，如纽约时报、WSJ、X 等。点击「重新登录」会弹出可视化浏览器，完成验证码、2FA 或扫码后关闭窗口即可保存会话。"
+        actions={
           <Space>
             <Button size="small" onClick={() => refetchSessions()}>
               刷新
             </Button>
+            <Button
+              type="primary"
+              size="small"
+              icon={<PlusOutlined />}
+              onClick={() => handleCreateSessionPreset('')}
+            >
+              新建站点登录
+            </Button>
           </Space>
-        </div>
+        }
+        contentClassName="pt-0"
+      >
         <Table<BrowserSession>
           rowKey="id"
           loading={isLoadingSessions}
@@ -638,26 +623,25 @@ const CredentialsTab: React.FC = () => {
             ),
           }}
         />
-      </section>
+      </SettingsSection>
 
-      {/* ---- 平台 API Key ---- */}
-      <section>
-        <div className="mb-3">
-          <h3 className="mb-1 text-[15px] font-semibold text-[#2c3a50]">平台 API Key</h3>
-          <p className="mb-0 text-[12px] leading-relaxed text-[#6b7c8f]">
-            官方 API 凭据：YouTube Data API 用于部分探测与元数据场景（日常频道抓取以 yt-dlp 为主，可不填）；X API 为付费 Key，按需配置。
-          </p>
-        </div>
-
-        <div className="mb-5">
-          <div className="mb-2 flex items-center justify-between">
-            <Text strong className="text-[13px]">
-              YouTube API
-            </Text>
-            <Button size="small" icon={<PlusOutlined />} onClick={() => openApiKeyModal('youtube')}>
-              添加
-            </Button>
-          </div>
+      <SettingsSection
+        title="平台 API Key"
+        description="官方平台接口凭据。YouTube Data API 主要用于部分探测与元数据场景；X API 为付费 Key，按需配置。日常 YouTube 频道抓取仍以 yt-dlp 为主，可不填。"
+      >
+        <div className="grid gap-4 xl:grid-cols-2">
+          <div className="rounded-xl border border-[rgba(88,100,118,0.1)] bg-[#f8fbfc]">
+            <div className="flex items-center justify-between gap-3 border-b border-[rgba(88,100,118,0.1)] px-3 py-2.5">
+              <div>
+                <Text strong className="text-[13px] text-[#2c3a50]">
+                  YouTube API
+                </Text>
+                <p className="mb-0 mt-0.5 text-[12px] text-[#7a8799]">YouTube Data API 凭据</p>
+              </div>
+              <Button size="small" icon={<PlusOutlined />} onClick={() => openApiKeyModal('youtube')}>
+                添加
+              </Button>
+            </div>
           <Table
             columns={apiKeyColumns}
             dataSource={youtubeConfigs}
@@ -671,17 +655,20 @@ const CredentialsTab: React.FC = () => {
               ),
             }}
           />
-        </div>
-
-        <div>
-          <div className="mb-2 flex items-center justify-between">
-            <Text strong className="text-[13px]">
-              X API
-            </Text>
-            <Button size="small" icon={<PlusOutlined />} onClick={() => openApiKeyModal('x_twitter')}>
-              添加
-            </Button>
           </div>
+
+          <div className="rounded-xl border border-[rgba(88,100,118,0.1)] bg-[#f8fbfc]">
+            <div className="flex items-center justify-between gap-3 border-b border-[rgba(88,100,118,0.1)] px-3 py-2.5">
+              <div>
+                <Text strong className="text-[13px] text-[#2c3a50]">
+                  X API
+                </Text>
+                <p className="mb-0 mt-0.5 text-[12px] text-[#7a8799]">X / Twitter 官方 API Key</p>
+              </div>
+              <Button size="small" icon={<PlusOutlined />} onClick={() => openApiKeyModal('x_twitter')}>
+                添加
+              </Button>
+            </div>
           <Table
             columns={apiKeyColumns}
             dataSource={xApiConfigs}
@@ -694,11 +681,15 @@ const CredentialsTab: React.FC = () => {
             }}
           />
         </div>
-      </section>
+        </div>
+      </SettingsSection>
 
       {/* ---- 旧版手动 Cookie ---- */}
       {legacyEntriesToShow.length > 0 ? (
-        <section>
+        <SettingsSection
+          title="旧版手动 Cookie"
+          description="仅保留历史手动粘贴的 X Cookie 记录，建议迁移到站点登录会话。"
+        >
           <Collapse
             ghost
             items={[
@@ -737,7 +728,7 @@ const CredentialsTab: React.FC = () => {
               },
             ]}
           />
-        </section>
+        </SettingsSection>
       ) : null}
 
       {/* ---- Modals ---- */}

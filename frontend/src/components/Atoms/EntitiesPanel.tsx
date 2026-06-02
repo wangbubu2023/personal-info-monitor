@@ -53,9 +53,9 @@ const EntitiesPanel: React.FC<{ knowledgeEnabled: boolean }> = ({ knowledgeEnabl
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-white/[0.08] bg-white/[0.03] p-4">
+      <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-[#d8e4ec] bg-white p-4 shadow-sm">
         <select
-          className="rounded-xl border border-white/10 bg-[#1a2636] px-3 py-2 text-sm text-[#d1e0e9]"
+          className="rounded-xl border border-[#c7d6e0] bg-white px-3 py-2 text-sm text-[#22324a] shadow-sm"
           value={entityType}
           onChange={(e) => setEntityType(e.target.value)}
         >
@@ -64,26 +64,26 @@ const EntitiesPanel: React.FC<{ knowledgeEnabled: boolean }> = ({ knowledgeEnabl
           ))}
         </select>
         <input
-          className="min-w-[12rem] flex-1 rounded-xl border border-white/10 bg-[#1a2636] px-3 py-2 text-sm text-[#d1e0e9]"
+          className="min-w-[12rem] flex-1 rounded-xl border border-[#c7d6e0] bg-white px-3 py-2 text-sm text-[#22324a] shadow-sm placeholder:text-[#7b8fa4]"
           placeholder="搜索实体名称…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
-        <span className="text-xs text-[#8ea3b8]">共 {items.length} 个实体</span>
+        <span className="text-xs text-[#536b82]">共 {items.length} 个实体</span>
       </div>
 
       {!knowledgeEnabled && (
-        <div className="rounded-xl border border-amber-200/40 bg-amber-50/10 px-4 py-3 text-sm text-amber-200">
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
           知识层（事件聚类/实体）未开启，已有数据仍可浏览。开启 atoms_knowledge_enabled 后新入库内容会自动抽取实体。
         </div>
       )}
 
       {error && (
-        <div className="rounded-xl border border-red-400/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">{error}</div>
+        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
       )}
 
       {loading ? (
-        <p className="text-sm text-[#8ea3b8]">加载中…</p>
+        <p className="text-sm text-[#536b82]">加载中…</p>
       ) : items.length === 0 ? (
         <p className="text-sm text-[#586476]">暂无实体。开启知识层后，公司、人物、机构等会从原子 payload 自动归并。</p>
       ) : (
@@ -91,19 +91,19 @@ const EntitiesPanel: React.FC<{ knowledgeEnabled: boolean }> = ({ knowledgeEnabl
           {items.map((entity) => (
             <div
               key={entity.entity_id}
-              className="rounded-2xl border border-white/[0.08] bg-white/[0.03] px-4 py-3"
+              className="rounded-2xl border border-[#d8e4ec] bg-white px-4 py-3 shadow-sm"
             >
               <button
                 type="button"
                 onClick={() => void toggle(entity.entity_id)}
                 className="flex w-full items-center gap-2 text-left"
               >
-                <span className="rounded-full bg-white/10 px-2 py-0.5 text-[11px] text-[#8ea3b8]">{entity.entity_type}</span>
-                <span className="text-sm font-medium text-[#e7f1f7]">{entity.canonical_name}</span>
-                <span className="ml-auto text-xs text-[#8ea3b8]">{entity.atom_count} 原子</span>
+                <span className="rounded-full bg-[#e8f0f6] px-2 py-0.5 text-[11px] text-[#22324a]">{entity.entity_type}</span>
+                <span className="text-sm font-semibold text-[#22324a]">{entity.canonical_name}</span>
+                <span className="ml-auto text-xs text-[#536b82]">{entity.atom_count} 原子</span>
               </button>
               {expanded === entity.entity_id && (
-                <div className="mt-3 border-t border-white/10 pt-3">
+                <div className="mt-3 border-t border-[#d8e4ec] pt-3">
                   <AtomMiniList atomIds={atomIdsByEntity[entity.entity_id] ?? []} />
                 </div>
               )}

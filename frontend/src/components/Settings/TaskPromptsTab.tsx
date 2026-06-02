@@ -1,11 +1,12 @@
 import React, { useMemo, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Button, Select, Divider, Input, message } from 'antd'
+import { Button, Select, Input, message } from 'antd'
 import { HOURLY_DIGEST_DEFAULT_PROMPT } from '../../config/taskPromptDefaults'
 import { SOURCE_TYPE_CATALOG } from '../../config/sourceTypes'
 import { configsApi } from '../../services/configs'
 import type { SystemSettings } from '../../types'
 import PanelLoading from '../common/PanelLoading'
+import SettingsSection from './SettingsSection'
 
 const { Option } = Select
 const { TextArea } = Input
@@ -94,10 +95,12 @@ const TaskPromptsTab: React.FC = () => {
   }
 
   return (
-    <div className="max-w-[720px]">
-      <Divider orientation="left">每小时简报</Divider>
-
-      <div className="mb-4">
+    <SettingsSection
+      title="每小时简报"
+      description="配置每小时简报参与扫描的内容类型，以及选稿与综述任务使用的提示词。"
+      className="max-w-[800px]"
+    >
+      <div className="mb-5">
         <div className="mb-2 text-sm font-medium text-[#293859]">参与扫描的入库类型</div>
         <Select
           mode="multiple"
@@ -154,7 +157,7 @@ const TaskPromptsTab: React.FC = () => {
           </div>
         </>
       )}
-    </div>
+    </SettingsSection>
   )
 }
 
