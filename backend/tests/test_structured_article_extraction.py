@@ -104,6 +104,29 @@ def test_extracts_structured_html_body_with_paragraph_breaks():
     assert parts[-1].startswith("第5段虎嗅正文")
 
 
+def test_rejects_long_flat_plaintext_json_ld_body():
+    flat_body = "虎嗅结构化正文没有任何段落边界但长度很长。" * 180
+    visible_article = "".join(
+        f"<p>第{i}段可见正文，包含真实段落边界和足够的正文信息。</p>"
+        for i in range(1, 10)
+    )
+    html = f"""
+    <html><head>
+      <script type="application/ld+json">
+        {{
+        "@type": "NewsArticle",
+        "headline": "虎嗅长文",
+        "articleBody": {json.dumps(flat_body, ensure_ascii=False)}
+      }}
+      </script>
+    </head><body><article>{visible_article}</article></body></html>
+    """
+
+    result = extract_structured_article(html, min_chars=80)
+
+    assert result is None
+
+
 def test_extracts_36kr_newsflash_detail_without_next_item():
     html = """
     <html><body>

@@ -170,6 +170,58 @@ async def test_finish_content_stamps_baseline_score():
 
 
 @pytest.mark.asyncio
+async def test_finish_content_clears_suspicious_flat_full_content():
+    mock_sem = MagicMock()
+    mock_sem.__aenter__ = AsyncMock(return_value=None)
+    mock_sem.__aexit__ = AsyncMock(return_value=False)
+
+    mock_tracker = MagicMock()
+    mock_tracker.start_process = AsyncMock()
+    mock_tracker.end_process = AsyncMock()
+
+    flat_body = "虎嗅正文被拍平成一段，没有任何真实段落边界。" * 160
+    mock_source = SimpleNamespace(auth_config_id=None, metadata_={"source_stars": 3})
+    mock_content = SimpleNamespace(
+        id="content-flat",
+        source_id="source-1",
+        content_type="website",
+        title="虎嗅长文",
+        full_content=flat_body,
+        summary="虎嗅长文摘要足够长，可以在正文被拒绝后作为列表摘要继续展示。",
+        translated_summary=None,
+        translated_title=None,
+        keyword_matches=[],
+        metadata_={"article_fulltext": True, "article_extract_method": "structured:json_ld"},
+        original_url="https://example.com/article",
+        source=mock_source,
+        auth_config_id=None,
+    )
+
+    mock_db = MagicMock()
+    mock_db.query.return_value.options.return_value.filter.return_value.first.return_value = mock_content
+    mock_db.close = MagicMock()
+    mock_db.commit = MagicMock()
+
+    with patch("app.domains.ingest.finish.get_llm_semaphore", return_value=mock_sem):
+        with patch("app.domains.ingest.finish.task_tracker", mock_tracker):
+            with patch("app.domains.ingest.finish.KEYWORD_MONITORING_ENABLED", False):
+                with patch("app.database.SessionLocal", return_value=mock_db):
+                    with patch("app.domains.fetch.finalize.hydrate_fetched_content", new_callable=AsyncMock):
+                        from app.domains.ingest.finish import finish_content
+
+                        await finish_content("content-flat")
+
+    assert mock_content.full_content is None
+    assert mock_content.metadata_["fetch_acceptance"] == "incomplete"
+    assert mock_content.metadata_["fetch_incomplete_reason"] == "suspicious_flat_text"
+    assert mock_content.metadata_["selection_status"] == "deferred"
+    assert mock_content.metadata_["rejected_full_content_chars"] == len(flat_body)
+    assert mock_content.metadata_["rejected_full_content_reason"] == "suspicious_flat_text"
+    assert mock_content.metadata_["fulltext_status"] == "summary_only"
+    assert "article_fulltext" not in mock_content.metadata_
+
+
+@pytest.mark.asyncio
 async def test_process_content_not_found():
     """Manual reprocess: content not found logs error without exception."""
     mock_sem = MagicMock()

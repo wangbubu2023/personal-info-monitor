@@ -11,6 +11,7 @@ from __future__ import annotations
 import html as html_lib
 import json
 import os
+import re
 from dataclasses import dataclass, field
 from typing import Any, Iterable
 
@@ -45,6 +46,7 @@ BODY_KEYS = (
 
 _DEFAULT_BODY_MIN_PAGE_RATIO = 0.30
 _MIN_VISIBLE_TEXT_CHARS_FOR_RATIO_CHECK = 800
+_MIN_FLAT_STRUCTURED_TEXT_CHARS = 1500
 _VISIBLE_TEXT_EXCLUDED_TAGS = {
     "script",
     "style",
@@ -138,6 +140,36 @@ def _clean_candidate_text(value: Any) -> str:
     if "<" in text and ">" in text:
         text = html_to_text_preserving_blocks(text)
     return normalize_article_text(text).strip()
+
+
+def _paragraph_count(text: str) -> int:
+    if not text:
+        return 0
+    parts = [p.strip() for p in re.split(r"\n{2,}|(?<=[.!?。！？])\s+", text) if p.strip()]
+    meaningful = [p for p in parts if len(p) >= 40]
+    if meaningful:
+        return len(meaningful)
+    return 1 if len(text) >= 80 else 0
+
+
+def _passes_flatness_check(text: str, *, method: str, body_key: str) -> tuple[bool, dict[str, Any]]:
+    signals = {
+        "paragraph_count": _paragraph_count(text),
+    }
+    if len(text) <= _MIN_FLAT_STRUCTURED_TEXT_CHARS:
+        return True, signals
+    if "\n\n" in text or signals["paragraph_count"] > 2:
+        return True, signals
+
+    logger.debug(
+        "Structured %s %s is suspiciously flat: body=%d paragraphs=%d; falling back",
+        method,
+        body_key,
+        len(text),
+        signals["paragraph_count"],
+    )
+    signals["rejected_reason"] = "suspicious_flat_text"
+    return False, signals
 
 
 def _title_from_node(node: dict[str, Any]) -> str | None:
@@ -244,6 +276,13 @@ def _extract_from_json_ld(
             body_key, text = body
             if len(text) < min_chars:
                 continue
+            flat_ok, flat_signals = _passes_flatness_check(
+                text,
+                method="json_ld",
+                body_key=body_key,
+            )
+            if not flat_ok:
+                continue
             accepted, ratio_signals = _passes_page_ratio_check(
                 text,
                 visible_text_chars=visible_text_chars,
@@ -257,7 +296,7 @@ def _extract_from_json_ld(
                 text=text,
                 method="json_ld",
                 title=_title_from_node(node),
-                signals={"body_key": body_key, "chars": len(text), **ratio_signals},
+                signals={"body_key": body_key, "chars": len(text), **flat_signals, **ratio_signals},
             )
             if best is None or len(candidate.text) > len(best.text):
                 best = candidate
@@ -293,6 +332,13 @@ def _extract_from_next_data(
     if not best:
         return None
     body_key, text = best
+    flat_ok, flat_signals = _passes_flatness_check(
+        text,
+        method="next_data",
+        body_key=body_key,
+    )
+    if not flat_ok:
+        return None
     accepted, ratio_signals = _passes_page_ratio_check(
         text,
         visible_text_chars=visible_text_chars,
@@ -306,7 +352,7 @@ def _extract_from_next_data(
         text=text,
         method="next_data",
         title=title,
-        signals={"body_key": body_key, "chars": len(text), **ratio_signals},
+        signals={"body_key": body_key, "chars": len(text), **flat_signals, **ratio_signals},
     )
 
 

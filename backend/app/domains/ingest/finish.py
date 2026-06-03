@@ -122,6 +122,21 @@ async def _finish_content_async(content_id: str) -> None:
                 keyword_matches=content.keyword_matches if KEYWORD_MONITORING_ENABLED else None,
             )
         else:
+            if accept_reason == "suspicious_flat_text":
+                rejected_body_len = len((content.full_content or "").strip())
+                if rejected_body_len:
+                    content.full_content = None
+                    meta["rejected_full_content_reason"] = accept_reason
+                    meta["rejected_full_content_chars"] = rejected_body_len
+                    meta.pop("article_fulltext", None)
+                    meta.pop("article_text_chars", None)
+                    meta = merge_content_quality_metadata(
+                        meta,
+                        title=content.title or "",
+                        full_content=content.full_content,
+                        summary=content.summary,
+                        translated_summary=content.translated_summary,
+                    )
             meta = stamp_fetch_acceptance_metadata(
                 meta,
                 accepted=False,

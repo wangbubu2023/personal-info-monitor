@@ -5,6 +5,7 @@ had no production callers; the tests that pinned it were removed alongside
 the implementation).
 """
 
+import json
 from datetime import datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
@@ -856,6 +857,36 @@ class TestMaterializeHydratedFulltext:
         assert raw_content["content"].startswith("Structured article body")
         assert raw_content["metadata"]["article_fulltext"] is True
         assert raw_content["metadata"]["article_extract_method"] == "structured:json_ld"
+
+    @pytest.mark.asyncio
+    async def test_flat_structured_html_falls_back_to_generic_extractor(self):
+        from app.pipeline.normalizer_stage import _materialize_hydrated_fulltext
+
+        flat_body = "虎嗅结构化正文没有段落边界但长度很长。" * 180
+        fallback_body = "\n\n".join(
+            f"第{i}段真实正文，来自 DOM 提取路径，保留了段落结构，并包含足够的正文细节用于通过全文长度阈值。"
+            for i in range(1, 8)
+        )
+        raw_content = {
+            "url": "https://example.com/article",
+            "content": "",
+            "html": (
+                '<html><head><script type="application/ld+json">'
+                f'{{"@type": "NewsArticle", "articleBody": {json.dumps(flat_body, ensure_ascii=False)}}}'
+                "</script></head><body><article>"
+                + "".join(f"<p>第{i}段真实正文。</p>" for i in range(1, 8))
+                + "</article></body></html>"
+            ),
+            "metadata": {},
+        }
+
+        with patch("app.processors.extractor.ContentExtractor") as MockExtractor:
+            MockExtractor.return_value.extract = AsyncMock(return_value=fallback_body)
+            await _materialize_hydrated_fulltext(raw_content)
+
+        assert raw_content["content"] == fallback_body
+        assert raw_content["metadata"]["article_fulltext"] is True
+        assert raw_content["metadata"]["article_extract_method"] == "content_extractor"
 
     @pytest.mark.asyncio
     async def test_noop_when_no_html(self):
