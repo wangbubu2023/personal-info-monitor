@@ -21,13 +21,14 @@ from app.utils.http import permissive_session_kwargs
 from app.utils.datetime import utcnow_naive
 from app.utils.logger import get_logger
 from app.utils.text import normalize_article_text, truncate_content
+from app.domains.fetch.collectors.bpc_strategies import get_spoofed_headers
 
 logger = get_logger(__name__)
 
 _MIN_ARTICLE_BODY_CHARS = 280
 
 
-async def fetch_public_article_body(original_url: str) -> tuple[str, str]:
+async def fetch_public_article_body(original_url: str, metadata: dict | None = None) -> tuple[str, str]:
     """Best-effort public-URL fetch + extraction for ingest finalize / reader.
 
     Returns ``("", "")`` on failure or when extracted text is shorter than 120 chars.
@@ -41,13 +42,16 @@ async def fetch_public_article_body(original_url: str) -> tuple[str, str]:
     if parsed.scheme not in {"http", "https"}:
         return "", ""
 
+    ua_default = (
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+    )
+    bpc_headers = get_spoofed_headers(metadata or {}, ua_default)
+
     headers = {
-        "User-Agent": (
-            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-            "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
-        ),
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         "Accept-Language": "en-US,en;q=0.9",
+        **bpc_headers,
     }
     timeout = aiohttp.ClientTimeout(total=20, connect=8, sock_read=12)
 
@@ -104,7 +108,7 @@ async def ensure_article_body_during_finish(content: Content) -> bool:
     if not website_body_needs_public_fetch(content, metadata) and len(body_raw) >= _MIN_ARTICLE_BODY_CHARS:
         return False
 
-    fetched_body, resolved_url = await fetch_public_article_body(content.original_url or "")
+    fetched_body, resolved_url = await fetch_public_article_body(content.original_url or "", metadata)
     if not fetched_body:
         return False
 

@@ -170,6 +170,123 @@ describe('useSourceEditor', () => {
     expect(payload.metadata).not.toHaveProperty('rss_only')
   })
 
+  it('writes BPC metadata for website sources', async () => {
+    const { sourcesApi } = await import('../../../services/sources')
+    const { result } = renderHook(
+      () => useSourceEditor({ authConfigs: [], sourceLimitReached: false, maxSources: 200, defaultSharedXAuthConfigId: undefined }),
+      { wrapper },
+    )
+    await act(async () => {
+      await result.current.handleSubmit({
+        name: 'Strict Site',
+        type: 'website',
+        url: 'https://example.com',
+        enabled: true,
+        fetch_interval: 60,
+        use_keyword_filter: false,
+        auth_required: false,
+        paywall_enabled: false,
+        bpc_spoof_ua: 'googlebot',
+        bpc_spoof_referer: 'google',
+        bpc_random_ip: true,
+        bpc_block_paywalls: true,
+        bpc_ephemeral_context: true,
+      } as any)
+    })
+
+    const payload = (sourcesApi.create as any).mock.calls[0][0]
+    expect(payload.metadata).toMatchObject({
+      bpc_spoof_ua: 'googlebot',
+      bpc_spoof_referer: 'google',
+      bpc_random_ip: true,
+      bpc_block_paywalls: true,
+      bpc_ephemeral_context: true,
+    })
+  })
+
+  it('strips BPC metadata for non-website source types', async () => {
+    const { sourcesApi } = await import('../../../services/sources')
+    const { result } = renderHook(
+      () => useSourceEditor({ authConfigs: [], sourceLimitReached: false, maxSources: 200, defaultSharedXAuthConfigId: undefined }),
+      { wrapper },
+    )
+    await act(async () => {
+      await result.current.handleSubmit({
+        name: 'RSS',
+        type: 'rss',
+        url: 'https://example.com/feed.xml',
+        enabled: true,
+        fetch_interval: 60,
+        use_keyword_filter: false,
+        auth_required: false,
+        metadata: {
+          bpc_spoof_ua: 'googlebot',
+          bpc_block_paywalls: true,
+        },
+        bpc_spoof_ua: 'bingbot',
+        bpc_spoof_referer: 'twitter',
+        bpc_random_ip: true,
+        bpc_block_paywalls: true,
+        bpc_ephemeral_context: true,
+      } as any)
+    })
+
+    const payload = (sourcesApi.create as any).mock.calls[0][0]
+    expect(payload.metadata).not.toHaveProperty('bpc_spoof_ua')
+    expect(payload.metadata).not.toHaveProperty('bpc_spoof_referer')
+    expect(payload.metadata).not.toHaveProperty('bpc_random_ip')
+    expect(payload.metadata).not.toHaveProperty('bpc_block_paywalls')
+    expect(payload.metadata).not.toHaveProperty('bpc_ephemeral_context')
+  })
+
+  it('rejects BPC ephemeral mode when website credentials are enabled', async () => {
+    const { sourcesApi } = await import('../../../services/sources')
+    const { result } = renderHook(
+      () => useSourceEditor({ authConfigs: [], sourceLimitReached: false, maxSources: 200, defaultSharedXAuthConfigId: undefined }),
+      { wrapper },
+    )
+    await act(async () => {
+      await result.current.handleSubmit({
+        name: 'Credential Site',
+        type: 'website',
+        url: 'https://example.com',
+        enabled: true,
+        fetch_interval: 60,
+        use_keyword_filter: false,
+        auth_required: false,
+        paywall_enabled: true,
+        bpc_ephemeral_context: true,
+      } as any)
+    })
+
+    expect(sourcesApi.create).not.toHaveBeenCalled()
+    expect(result.current.submitError).toContain('强制无痕模式不能与登录凭据复用同时开启')
+  })
+
+  it('clears BPC form fields when switching a new source to X', () => {
+    const { result } = renderHook(
+      () => useSourceEditor({ authConfigs: [], sourceLimitReached: false, maxSources: 200, defaultSharedXAuthConfigId: undefined }),
+      { wrapper },
+    )
+    act(() => {
+      result.current.handleAdd()
+      result.current.form.setFieldsValue({
+        bpc_spoof_ua: 'googlebot',
+        bpc_spoof_referer: 'google',
+        bpc_random_ip: true,
+        bpc_block_paywalls: true,
+        bpc_ephemeral_context: true,
+      })
+      result.current.handleTypeChange('x')
+    })
+
+    expect(result.current.form.getFieldValue('bpc_spoof_ua')).toBeUndefined()
+    expect(result.current.form.getFieldValue('bpc_spoof_referer')).toBeUndefined()
+    expect(result.current.form.getFieldValue('bpc_random_ip')).toBe(false)
+    expect(result.current.form.getFieldValue('bpc_block_paywalls')).toBe(false)
+    expect(result.current.form.getFieldValue('bpc_ephemeral_context')).toBe(false)
+  })
+
   it('handleEdit hydrates rss_only_enabled from metadata.rss_only', () => {
     const { result } = renderHook(
       () => useSourceEditor({ authConfigs: [], sourceLimitReached: false, maxSources: 200, defaultSharedXAuthConfigId: undefined }),
@@ -296,5 +413,39 @@ describe('useSourceEditor', () => {
       } as any)
     })
     expect(result.current.form.getFieldValue('rss_only_enabled')).toBe(false)
+  })
+
+  it('handleEdit hydrates BPC metadata fields', () => {
+    const { result } = renderHook(
+      () => useSourceEditor({ authConfigs: [], sourceLimitReached: false, maxSources: 200, defaultSharedXAuthConfigId: undefined }),
+      { wrapper },
+    )
+    act(() => {
+      result.current.handleEdit({
+        id: 'src-bpc',
+        name: 'Strict Site',
+        type: 'website',
+        url: 'https://example.com',
+        enabled: true,
+        fetch_interval: 60,
+        use_keyword_filter: false,
+        auth_required: false,
+        auth_config_id: null,
+        extra_urls: [],
+        metadata: {
+          bpc_spoof_ua: 'googlebot',
+          bpc_spoof_referer: 'google',
+          bpc_random_ip: true,
+          bpc_block_paywalls: true,
+          bpc_ephemeral_context: true,
+        },
+      } as any)
+    })
+
+    expect(result.current.form.getFieldValue('bpc_spoof_ua')).toBe('googlebot')
+    expect(result.current.form.getFieldValue('bpc_spoof_referer')).toBe('google')
+    expect(result.current.form.getFieldValue('bpc_random_ip')).toBe(true)
+    expect(result.current.form.getFieldValue('bpc_block_paywalls')).toBe(true)
+    expect(result.current.form.getFieldValue('bpc_ephemeral_context')).toBe(true)
   })
 })

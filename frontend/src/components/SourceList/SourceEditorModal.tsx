@@ -366,6 +366,47 @@ const SourceEditorModal: React.FC<SourceEditorModalProps> = ({
                     )
                   }}
                 </Form.Item>
+                <Divider style={{ marginTop: 8, marginBottom: 12 }}>高级穿透（BPC 策略）</Divider>
+                <SectionNote style={{ marginBottom: 12 }}>
+                  以下高级策略建议仅在目标网站触发了严格反爬（如验证码或付费拦截）时按需开启，避免对正常站点产生不必要的负面干扰。
+                </SectionNote>
+                <Form.Item name="bpc_spoof_ua" label="伪装 User-Agent">
+                  <Select allowClear placeholder="默认（真实浏览器 UA）">
+                    <Option value="googlebot">Googlebot (部分付费墙对搜索引擎放行)</Option>
+                    <Option value="bingbot">Bingbot</Option>
+                  </Select>
+                </Form.Item>
+                <Form.Item name="bpc_spoof_referer" label="伪装 Referer">
+                  <Select allowClear placeholder="默认（无或当前域名）">
+                    <Option value="google">从 Google 搜索跳转过来</Option>
+                    <Option value="facebook">从 Facebook 跳转过来</Option>
+                    <Option value="twitter">从 Twitter 跳转过来</Option>
+                  </Select>
+                </Form.Item>
+                <Form.Item
+                  name="bpc_random_ip"
+                  valuePropName="checked"
+                  initialValue={false}
+                  tooltip="自动伪造 X-Forwarded-For 随机 IP。主要针对根据 IP 限流计量的站点。"
+                >
+                  <Switch checkedChildren="开启 IP 伪装" unCheckedChildren="关闭 IP 伪装" />
+                </Form.Item>
+                <Form.Item
+                  name="bpc_block_paywalls"
+                  valuePropName="checked"
+                  initialValue={false}
+                  tooltip="直接在浏览器内核拦截常见付费墙提供商的 JavaScript 脚本（如 Piano.io, Tinypass）。"
+                >
+                  <Switch checkedChildren="开启 SaaS 拦截" unCheckedChildren="关闭 SaaS 拦截" />
+                </Form.Item>
+                <Form.Item
+                  name="bpc_ephemeral_context"
+                  valuePropName="checked"
+                  initialValue={false}
+                  tooltip="为每次抓取创建一个干净的无痕模式，不保留任何 Cookie 和存储。适用于重置免费试读篇数（需关闭上述登录凭据复用功能）。"
+                >
+                  <Switch checkedChildren="强制无痕模式" unCheckedChildren="复用缓存与状态" />
+                </Form.Item>
               </>
             )
           }}

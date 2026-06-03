@@ -41,6 +41,7 @@ from app.platform.security.ssrf import check_before_fetch, fetch_public_http_tex
 from .fetch_profile import diagnose_article_html, get_fetch_profile
 from . import website_helpers as _helpers
 from . import website_parser as _parser
+from . import bpc_strategies
 
 logger = get_logger(__name__)
 
@@ -350,8 +351,13 @@ class WebsiteCollector(BaseCollector):
         try:
             from app.utils.playwright_runtime import is_patchright_active
 
+            metadata = metadata if isinstance(metadata, dict) else {}
             prefs = local_playwright_fetch_prefs(metadata)
-            ua = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            ephemeral_context = bool(metadata.get("bpc_ephemeral_context"))
+            effective_cookies = {} if ephemeral_context else cookies
+            ua_default = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            bpc_headers = bpc_strategies.get_spoofed_headers(metadata, ua_default)
+            ua = bpc_headers.pop("User-Agent", ua_default)
 
             hosts: set[str] = set()
             source_host = (urlparse(source_url).hostname or "").lower()
@@ -370,6 +376,10 @@ class WebsiteCollector(BaseCollector):
             )
             storage_state = _helpers.storage_state_path_for_playwright(browser_session)
 
+            if ephemeral_context:
+                user_data_dir = None
+                storage_state = None
+
             async with get_browser_context(
                 headless=prefs["headless"],
                 user_data_dir=user_data_dir,
@@ -378,16 +388,24 @@ class WebsiteCollector(BaseCollector):
                 viewport=prefs.get("viewport"),
                 locale=prefs.get("locale"),
             ) as context:
-                cookie_items = _helpers.cookie_items_for_hosts(hosts, cookies)
+                cookie_items = _helpers.cookie_items_for_hosts(hosts, effective_cookies)
                 if cookie_items:
                     await context.add_cookies(cookie_items)
 
                 page = await context.new_page()
-                extra_headers = prefs.get("extra_http_headers")
-                if isinstance(extra_headers, dict) and extra_headers:
+                extra_headers = prefs.get("extra_http_headers") or {}
+                if isinstance(extra_headers, dict):
+                    extra_headers = {**extra_headers, **bpc_headers}
+                else:
+                    extra_headers = bpc_headers
+                if extra_headers:
                     await page.set_extra_http_headers(extra_headers)
                 if not is_patchright_active():
                     await page.add_init_script(stealth_init_script())
+
+                interceptor = bpc_strategies.get_bpc_playwright_interceptor(metadata)
+                if interceptor is not None:
+                    await context.route("**/*", interceptor)
 
                 # Paywall sites (NYT, WSJ, Bloomberg…) treat cold hits on
                 # article URLs as bot traffic and serve a shell/subscribe
@@ -441,14 +459,21 @@ class WebsiteCollector(BaseCollector):
         browser_session: Optional[Dict[str, Any]] = None,
         metadata: Optional[Dict[str, Any]] = None,
     ) -> Optional[Tuple[Optional[str], Optional[str], Optional[str]]]:
-        """Run Playwright article fetch when cookies or browser session exist; else None (skipped)."""
+        """Run Playwright article fetch when a session or browser-only strategy requires it."""
+        metadata = metadata if isinstance(metadata, dict) else {}
         bs = browser_session or {}
         storage_ok = bool(_helpers.storage_state_path_for_playwright(bs))
-        if not (cookies or _helpers.browser_session_auth_ready(bs) or storage_ok):
+        if not (
+            cookies
+            or _helpers.browser_session_auth_ready(bs)
+            or storage_ok
+            or bpc_strategies.requires_bpc_playwright(metadata)
+        ):
             return None
+        effective_cookies = {} if metadata.get("bpc_ephemeral_context") else cookies
         return await self._fetch_article_html_with_playwright(
             article_url,
-            cookies,
+            effective_cookies,
             source_url,
             browser_session=browser_session,
             metadata=metadata,
@@ -481,11 +506,13 @@ class WebsiteCollector(BaseCollector):
         browser_session: Optional[Dict[str, Any]] = None,
         metadata: Optional[Dict[str, Any]] = None,
     ) -> Tuple[Optional[str], Optional[str], Optional[str]]:
+        metadata = metadata if isinstance(metadata, dict) else {}
+        effective_cookies = {} if metadata.get("bpc_ephemeral_context") else cookies
         try:
             await check_before_fetch(
                 article_url,
                 source_url=source_url,
-                cookies=cookies or None,
+                cookies=effective_cookies or None,
             )
         except ValueError as exc:
             self.logger.warning("SSRF/cookie check blocked article fetch for %s: %s", article_url, exc)
@@ -494,7 +521,7 @@ class WebsiteCollector(BaseCollector):
         if _helpers.is_google_news_wrapper(article_url):
             # First try full browser flow directly on wrapper URL.
             result = await self._try_playwright_fetch(
-                article_url, cookies, source_url, browser_session=browser_session, metadata=metadata
+                article_url, effective_cookies, source_url, browser_session=browser_session, metadata=metadata
             )
             if result:
                 return result
@@ -504,7 +531,7 @@ class WebsiteCollector(BaseCollector):
             if resolved_url:
                 article_url = resolved_url
                 attempt = await self._attempt_playwright_article_html(
-                    article_url, cookies, source_url, browser_session=browser_session, metadata=metadata
+                    article_url, effective_cookies, source_url, browser_session=browser_session, metadata=metadata
                 )
                 if attempt is not None:
                     html, final_url, reason = attempt
@@ -517,6 +544,7 @@ class WebsiteCollector(BaseCollector):
                 cookies
                 or _helpers.browser_session_auth_ready(browser_session or {})
                 or _helpers.storage_state_path_for_playwright(browser_session or {})
+                or bpc_strategies.requires_bpc_playwright(metadata)
             ):
                 return None, None, "wrapper_unresolved"
 
@@ -525,20 +553,22 @@ class WebsiteCollector(BaseCollector):
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
             "Accept-Language": "en-US,en;q=0.5",
         }
+        bpc_headers = bpc_strategies.get_spoofed_headers(metadata, headers["User-Agent"])
+        headers.update(bpc_headers)
         try:
             async with aiohttp.ClientSession(**permissive_session_kwargs()) as session:
                 response = await fetch_public_http_text(
                     session,
                     article_url,
                     source_url=source_url,
-                    validation_cookies=cookies or None,
+                    validation_cookies=effective_cookies or None,
                     headers=headers,
-                    cookies=cookies if cookies else None,
+                    cookies=effective_cookies if effective_cookies else None,
                     timeout=aiohttp.ClientTimeout(total=25),
                 )
                 if response.status != 200:
                     attempt = await self._attempt_playwright_article_html(
-                        article_url, cookies, source_url, browser_session=browser_session, metadata=metadata
+                        article_url, effective_cookies, source_url, browser_session=browser_session, metadata=metadata
                     )
                     if attempt is not None:
                         html, final_url, reason = attempt
@@ -554,7 +584,7 @@ class WebsiteCollector(BaseCollector):
         except (aiohttp.ClientError, TimeoutError) as exc:
             self.logger.warning("HTTP article fetch failed for %s: %s", article_url, exc)
             attempt = await self._attempt_playwright_article_html(
-                article_url, cookies, source_url, browser_session=browser_session, metadata=metadata
+                article_url, effective_cookies, source_url, browser_session=browser_session, metadata=metadata
             )
             if attempt is not None:
                 html, final_url, reason = attempt
@@ -600,7 +630,7 @@ class WebsiteCollector(BaseCollector):
         # sleep a small random interval between hits so the server sees
         # click-like cadence instead of a gather() burst. Public sites
         # without an auth session keep the fast parallel path for throughput.
-        paced = _helpers.browser_session_auth_ready(browser_session or {})
+        paced = not meta.get("bpc_ephemeral_context") and _helpers.browser_session_auth_ready(browser_session or {})
         html_results: List[Any]
         if paced:
             html_results = []
@@ -851,12 +881,14 @@ class WebsiteCollector(BaseCollector):
 
     async def _fetch_listing_html(self, source: Source, url: str) -> Optional[str]:
         """Fetch a single listing page's raw HTML (SSRF-checked)."""
+        metadata = source.metadata_ if isinstance(source.metadata_, dict) else {}
         headers = {
             "User-Agent": random.choice(self.user_agents),
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
             "Accept-Language": "en-US,en;q=0.5",
         }
-        cookies = self.get_runtime_cookies(source)
+        headers.update(bpc_strategies.get_spoofed_headers(metadata, headers["User-Agent"]))
+        cookies = {} if metadata.get("bpc_ephemeral_context") else self.get_runtime_cookies(source)
         try:
             async with aiohttp.ClientSession(**permissive_session_kwargs()) as session:
                 response = await fetch_public_http_text(
@@ -952,12 +984,14 @@ class WebsiteCollector(BaseCollector):
 
     async def _fetch_static(self, source: Source) -> List[Dict[str, Any]]:
         """Fetch static website content using aiohttp."""
+        metadata = source.metadata_ if isinstance(source.metadata_, dict) else {}
         headers = {
             "User-Agent": random.choice(self.user_agents),
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
             "Accept-Language": "en-US,en;q=0.5",
         }
-        cookies = self.get_runtime_cookies(source)
+        headers.update(bpc_strategies.get_spoofed_headers(metadata, headers["User-Agent"]))
+        cookies = {} if metadata.get("bpc_ephemeral_context") else self.get_runtime_cookies(source)
 
         try:
             async with aiohttp.ClientSession(**permissive_session_kwargs()) as session:
@@ -1006,8 +1040,11 @@ class WebsiteCollector(BaseCollector):
             )
 
             _timeout_errs = timeout_error_types()
-            metadata = source.metadata_ or {}
+            metadata = source.metadata_ if isinstance(source.metadata_, dict) else {}
             prefs = local_playwright_fetch_prefs(metadata)
+            ephemeral_context = bool(metadata.get("bpc_ephemeral_context"))
+            bpc_headers = bpc_strategies.get_spoofed_headers(metadata, self.user_agents[0])
+            ua = bpc_headers.pop("User-Agent", self.user_agents[0])
 
             runtime_session = self.get_runtime_browser_session(source)
             user_data_dir = (
@@ -1016,23 +1053,30 @@ class WebsiteCollector(BaseCollector):
                 else None
             )
             storage_state = _helpers.storage_state_path_for_playwright(runtime_session)
+            if ephemeral_context:
+                user_data_dir = None
+                storage_state = None
 
             async with get_browser_context(
                 headless=prefs["headless"],
                 user_data_dir=user_data_dir,
-                user_agent=self.user_agents[0],
+                user_agent=ua,
                 storage_state=storage_state,
                 viewport=prefs.get("viewport"),
                 locale=prefs.get("locale"),
             ) as context:
-                cookies = self.get_runtime_cookies(source)
+                cookies = {} if ephemeral_context else self.get_runtime_cookies(source)
                 cookie_list = _helpers.build_runtime_cookie_list(source.url, cookies)
                 if cookie_list:
                     await context.add_cookies(cookie_list)
 
                 page = await context.new_page()
-                extra_headers = prefs.get("extra_http_headers")
-                if isinstance(extra_headers, dict) and extra_headers:
+                extra_headers = prefs.get("extra_http_headers") or {}
+                if isinstance(extra_headers, dict):
+                    extra_headers = {**extra_headers, **bpc_headers}
+                else:
+                    extra_headers = bpc_headers
+                if extra_headers:
                     await page.set_extra_http_headers(extra_headers)
                 # Patchright's patched Chromium already masks the WebDriver/
                 # CDP signals this script tries to override, and layering the
@@ -1041,6 +1085,9 @@ class WebsiteCollector(BaseCollector):
                 # etc.). Only inject on the vanilla-playwright path.
                 if not is_patchright_active():
                     await page.add_init_script(stealth_init_script())
+                interceptor = bpc_strategies.get_bpc_playwright_interceptor(metadata)
+                if interceptor is not None:
+                    await context.route("**/*", interceptor)
                 await self._playwright_goto_with_fallback(page, source.url, prefs)
                 await self._playwright_after_navigation(page, prefs)
 

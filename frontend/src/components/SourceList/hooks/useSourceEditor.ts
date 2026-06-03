@@ -32,6 +32,11 @@ export interface SourceFormValues extends Omit<SourceCreate, 'extra_urls'> {
   x_shared_auth_config_id?: string
   x_legacy_dedicated_auth?: boolean
   x_legacy_auth_name?: string
+  bpc_spoof_ua?: string
+  bpc_spoof_referer?: string
+  bpc_random_ip?: boolean
+  bpc_block_paywalls?: boolean
+  bpc_ephemeral_context?: boolean
 }
 
 interface UseSourceEditorOptions {
@@ -150,6 +155,11 @@ export function useSourceEditor({
       x_cookie_enabled,
       x_shared_auth_config_id,
       max_fetch_lag_minutes,
+      bpc_spoof_ua,
+      bpc_spoof_referer,
+      bpc_random_ip,
+      bpc_block_paywalls,
+      bpc_ephemeral_context,
       metadata: formMetadata,
       ...rest
     } = values
@@ -174,6 +184,12 @@ export function useSourceEditor({
     // we only emit this flag for website sources and drop it everywhere else
     // to keep metadata clean.
     if (rest.type === 'website') {
+      if (bpc_ephemeral_context && paywall_enabled) {
+        setSubmitError('强制无痕模式不能与登录凭据复用同时开启，请关闭其中一个选项。')
+        message.error('保存失败：强制无痕模式不能与登录凭据复用同时开启')
+        return
+      }
+
       if (rss_only_enabled) {
         baseMeta.rss_only = true
       } else if (editingSource && baseMeta.rss_only) {
@@ -182,8 +198,39 @@ export function useSourceEditor({
       } else {
         delete baseMeta.rss_only
       }
+
+      if (bpc_spoof_ua) {
+        baseMeta.bpc_spoof_ua = bpc_spoof_ua
+      } else {
+        delete baseMeta.bpc_spoof_ua
+      }
+      if (bpc_spoof_referer) {
+        baseMeta.bpc_spoof_referer = bpc_spoof_referer
+      } else {
+        delete baseMeta.bpc_spoof_referer
+      }
+      if (bpc_random_ip) {
+        baseMeta.bpc_random_ip = true
+      } else {
+        delete baseMeta.bpc_random_ip
+      }
+      if (bpc_block_paywalls) {
+        baseMeta.bpc_block_paywalls = true
+      } else {
+        delete baseMeta.bpc_block_paywalls
+      }
+      if (bpc_ephemeral_context) {
+        baseMeta.bpc_ephemeral_context = true
+      } else {
+        delete baseMeta.bpc_ephemeral_context
+      }
     } else {
       delete baseMeta.rss_only
+      delete baseMeta.bpc_spoof_ua
+      delete baseMeta.bpc_spoof_referer
+      delete baseMeta.bpc_random_ip
+      delete baseMeta.bpc_block_paywalls
+      delete baseMeta.bpc_ephemeral_context
     }
 
     const payload: SourceCreate = {
@@ -291,6 +338,11 @@ export function useSourceEditor({
         source.type === 'x' && linkedAuth?.is_shared ? linkedAuth.id : defaultSharedXAuthConfigId,
       x_legacy_dedicated_auth: xUsesLegacyDedicatedAuth,
       x_legacy_auth_name: xUsesLegacyDedicatedAuth ? linkedAuth?.name || undefined : undefined,
+      bpc_spoof_ua: source.metadata?.bpc_spoof_ua as string | undefined,
+      bpc_spoof_referer: source.metadata?.bpc_spoof_referer as string | undefined,
+      bpc_random_ip: Boolean(source.metadata?.bpc_random_ip),
+      bpc_block_paywalls: Boolean(source.metadata?.bpc_block_paywalls),
+      bpc_ephemeral_context: Boolean(source.metadata?.bpc_ephemeral_context),
     })
     setIsModalOpen(true)
   }
@@ -314,6 +366,11 @@ export function useSourceEditor({
       x_shared_auth_config_id: defaultSharedXAuthConfigId,
       x_legacy_dedicated_auth: false,
       x_legacy_auth_name: undefined,
+      bpc_spoof_ua: undefined,
+      bpc_spoof_referer: undefined,
+      bpc_random_ip: false,
+      bpc_block_paywalls: false,
+      bpc_ephemeral_context: false,
     })
     setIsModalOpen(true)
   }
@@ -328,6 +385,11 @@ export function useSourceEditor({
         x_legacy_dedicated_auth: false,
         x_legacy_auth_name: undefined,
         website_auth_config_id: undefined,
+        bpc_spoof_ua: undefined,
+        bpc_spoof_referer: undefined,
+        bpc_random_ip: false,
+        bpc_block_paywalls: false,
+        bpc_ephemeral_context: false,
       })
       return
     }
@@ -337,6 +399,11 @@ export function useSourceEditor({
       x_legacy_dedicated_auth: false,
       x_legacy_auth_name: undefined,
       website_auth_config_id: undefined,
+      bpc_spoof_ua: undefined,
+      bpc_spoof_referer: undefined,
+      bpc_random_ip: false,
+      bpc_block_paywalls: false,
+      bpc_ephemeral_context: false,
     })
   }
 
