@@ -17,7 +17,6 @@ from app.domains.atoms.relation_infer.candidates import (
     time_compatible,
 )
 from app.domains.atoms.relation_infer.llm_judge import parse_relation_judgment
-from app.domains.atoms.types import RelationCreate
 from app.domains.atoms.relations_repository import (
     CONFIDENCE_BOOST,
     SqlAtomRelationRepository,
@@ -42,7 +41,7 @@ def sync_session_factory(tmp_path):
 
 
 @pytest.fixture
-def second_content(sync_session_factory, seeded_content):  # noqa: ARG001 — ensures src-1 exists
+def second_content(sync_session_factory, seeded_content):  # noqa: ARG001,F811 — ensures src-1 exists
     session = sync_session_factory()
     try:
         source = session.get(Source, "src-1")
@@ -70,7 +69,7 @@ def _info_atom_sentence(content_id: str, source_sentence: str):
 
 
 @pytest.fixture
-def two_atoms(sync_session_factory, seeded_content, second_content):
+def two_atoms(sync_session_factory, seeded_content, second_content):  # noqa: F811
     atom_repo = SqlAtomRepository(sync_session_factory)
     a = atom_repo.create_atom(_info_atom(seeded_content))
     b = atom_repo.create_atom(
