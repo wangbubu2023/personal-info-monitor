@@ -62,6 +62,7 @@ def test_classify_http_status_5xx_retryable_warning():
         assert failure.retryable is True
         assert failure.severity == "warning"
         assert failure.http_status == status
+        assert failure.cooldown_seconds == 120
 
 
 def test_classify_http_status_other_4xx_is_client_error():

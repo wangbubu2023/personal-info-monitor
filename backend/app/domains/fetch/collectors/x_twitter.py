@@ -139,7 +139,7 @@ class XCollector(BaseCollector):
         if self._bearer_token:
             return self._bearer_token
         settings = self._get_settings()
-        return settings.x_bearer_token
+        return getattr(settings, "x_bearer_token", None)
 
     def x_auth_token(self) -> Optional[str]:
         settings = self._get_settings()

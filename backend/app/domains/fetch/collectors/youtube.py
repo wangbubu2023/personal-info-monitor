@@ -1,5 +1,6 @@
 """YouTube content collector using yt-dlp (no API key required)."""
 
+import asyncio
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
@@ -54,7 +55,7 @@ class YouTubeCollector(BaseCollector):
         ydl_opts = self._build_ydl_opts(video_count)
         try:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(url, download=False)
+                info = await asyncio.to_thread(ydl.extract_info, url, download=False)
 
             if not info:
                 self.logger.warning(f"yt-dlp returned no info for: {url}")

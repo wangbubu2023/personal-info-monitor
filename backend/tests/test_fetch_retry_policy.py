@@ -23,6 +23,7 @@ def _source(metadata=None):
 def test_cooldown_seconds_for_code():
     assert cooldown_seconds_for_code("http_429") == 900
     assert cooldown_seconds_for_code("http_403") == 3600
+    assert cooldown_seconds_for_code("http_5xx") == 120
     assert cooldown_seconds_for_code("timeout") is None
     assert cooldown_seconds_for_code("not_a_code") is None
 

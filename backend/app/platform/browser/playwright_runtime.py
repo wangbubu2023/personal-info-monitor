@@ -13,10 +13,13 @@ Environment overrides:
 - ``PIM_BROWSER_BACKEND=patchright|playwright``
   Force a specific backend. Defaults to ``patchright`` when importable,
   else falls back to vanilla playwright.
-- ``PIM_PLAYWRIGHT_CHANNEL=chrome|chromium|msedge|<empty>``
+- ``PIM_PLAYWRIGHT_CHANNEL=chrome|chromium|msedge|none|<empty>``
   Chromium channel used by most launch sites. Empty (``""``) means "let
-  Playwright pick its bundled Chromium". When the active backend is
-  patchright, ``chrome`` is recommended (real Google Chrome binary).
+  Playwright pick its bundled Chromium". ``chrome`` is an opt-in for servers
+  that already have Google Chrome installed.
+- ``PIM_PLAYWRIGHT_NO_SANDBOX=auto|always|never``
+  Controls Chromium sandbox flags. ``auto`` adds them for Linux containers,
+  root-run services and hosts where unprivileged user namespaces are disabled.
 
 .. _patchright: https://github.com/Kaliiiiiiiiii-Vinyzu/patchright-python
 """
@@ -24,6 +27,7 @@ Environment overrides:
 from __future__ import annotations
 
 import os
+import sys
 from typing import Any, Tuple
 
 _cached_backend: Tuple[str, Any] | None = None
@@ -99,8 +103,7 @@ def default_channel(explicit: str | None = None) -> str | None:
     Priority:
     1. Explicit caller arg (if truthy).
     2. ``PIM_PLAYWRIGHT_CHANNEL`` env var.
-    3. ``"chrome"`` when backend is patchright (real Google Chrome — best for
-       anti-bot evasion), otherwise ``None`` (use bundled Chromium).
+    3. ``None`` (use bundled Chromium installed by ``./pim setup``).
     """
     explicit = (explicit or "").strip() or None
     if explicit is not None:
@@ -110,13 +113,67 @@ def default_channel(explicit: str | None = None) -> str | None:
     if env_channel is not None:
         return None if env_channel.lower() == "none" else env_channel
 
-    if backend_name() == "patchright":
-        return "chrome"
     return None
 
 
 def is_patchright_active() -> bool:
     return backend_name() == "patchright"
+
+
+def _running_in_container() -> bool:
+    """Best-effort Linux container detection for Chromium sandbox defaults."""
+    if not sys.platform.startswith("linux"):
+        return False
+    if os.path.exists("/.dockerenv") or os.path.exists("/run/.containerenv"):
+        return True
+    try:
+        with open("/proc/1/cgroup", "r", encoding="utf-8") as fh:
+            cgroup = fh.read().lower()
+    except OSError:
+        return False
+    markers = ("docker", "kubepods", "containerd", "libpod", "podman", "lxc")
+    return any(marker in cgroup for marker in markers)
+
+
+def _user_namespaces_restricted() -> bool:
+    if not sys.platform.startswith("linux"):
+        return False
+    checks = (
+        ("/proc/sys/kernel/unprivileged_userns_clone", "0"),
+        ("/proc/sys/user/max_user_namespaces", "0"),
+    )
+    for path, restricted_value in checks:
+        try:
+            with open(path, "r", encoding="utf-8") as fh:
+                value = fh.read().strip()
+        except OSError:
+            continue
+        if value == restricted_value:
+            return True
+    return False
+
+
+def _root_or_userns_restricted() -> bool:
+    if not sys.platform.startswith("linux"):
+        return False
+    geteuid = getattr(os, "geteuid", None)
+    if callable(geteuid) and geteuid() == 0:
+        return True
+    return _user_namespaces_restricted()
+
+
+def _should_disable_sandbox() -> bool:
+    mode = (os.environ.get("PIM_PLAYWRIGHT_NO_SANDBOX") or "auto").strip().lower()
+    if mode in {"1", "true", "yes", "always", "on"}:
+        return True
+    if mode in {"0", "false", "no", "never", "off"}:
+        return False
+    return _running_in_container() or _root_or_userns_restricted()
+
+
+def _append_once(args: list[str], flag: str) -> None:
+    if flag not in args:
+        args.append(flag)
 
 
 def recommended_launch_args(base_args: list[str] | None = None) -> list[str]:
@@ -130,7 +187,13 @@ def recommended_launch_args(base_args: list[str] | None = None) -> list[str]:
     args = list(base_args or [])
     if is_patchright_active():
         args = [a for a in args if "blink-features=AutomationControlled" not in a]
+        if _should_disable_sandbox():
+            _append_once(args, "--no-sandbox")
+            _append_once(args, "--disable-setuid-sandbox")
         return args
     if not any("blink-features=AutomationControlled" in a for a in args):
         args.append("--disable-blink-features=AutomationControlled")
+    if _should_disable_sandbox():
+        _append_once(args, "--no-sandbox")
+        _append_once(args, "--disable-setuid-sandbox")
     return args

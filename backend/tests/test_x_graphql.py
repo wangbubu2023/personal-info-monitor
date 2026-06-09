@@ -135,6 +135,14 @@ def test_clean_article_text_filters_ui_noise(collector):
     assert "分享6个我觉得应该必装的Skills。" in cleaned
 
 
+def test_bearer_token_missing_setting_returns_none(collector):
+    settings = MagicMock()
+    del settings.x_bearer_token
+
+    with patch.object(collector, "_get_settings", return_value=settings):
+        assert collector.bearer_token() is None
+
+
 @pytest.mark.asyncio
 async def test_enrich_article_content_uses_metadata_urls(collector):
     source = Source(id=1, name="X", url="https://x.com/test", type="x")

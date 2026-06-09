@@ -91,6 +91,73 @@ def test_systemd_restart_skips_when_systemd_unavailable(monkeypatch, capsys):
     assert "systemd is not available" in captured.err
 
 
+def test_playwright_install_module_prefers_patchright(monkeypatch):
+    pim = _load_pim_cli()
+
+    monkeypatch.delenv("PIM_BROWSER_BACKEND", raising=False)
+    monkeypatch.setattr(pim, "_python_module_available", lambda module: module == "patchright")
+
+    assert pim._playwright_install_module() == "patchright"
+
+
+def test_playwright_install_module_respects_playwright_override(monkeypatch):
+    pim = _load_pim_cli()
+
+    monkeypatch.setenv("PIM_BROWSER_BACKEND", "playwright")
+    monkeypatch.setattr(pim, "_python_module_available", lambda _module: True)
+
+    assert pim._playwright_install_module() == "playwright"
+
+
+def test_playwright_system_deps_uses_dnf_mapping(monkeypatch):
+    pim = _load_pim_cli()
+    calls = []
+
+    monkeypatch.setattr(pim.sys, "platform", "linux")
+    monkeypatch.setattr(
+        pim.shutil,
+        "which",
+        lambda name: "/usr/bin/dnf" if name == "dnf" else None,
+    )
+    monkeypatch.setattr(pim.os, "geteuid", lambda: 0, raising=False)
+    monkeypatch.setattr(
+        pim.subprocess,
+        "check_call",
+        lambda cmd, **_kwargs: calls.append(cmd),
+    )
+
+    pim._install_playwright_system_deps("patchright", set())
+
+    assert calls
+    assert calls[0][:3] == ["/usr/bin/dnf", "install", "-y"]
+    assert "mesa-libgbm" in calls[0]
+    assert "libxshmfence" in calls[0]
+
+
+def test_playwright_system_deps_prints_manual_command_without_sudo(monkeypatch, capsys):
+    pim = _load_pim_cli()
+    calls = []
+
+    monkeypatch.setattr(pim.sys, "platform", "linux")
+    monkeypatch.setattr(
+        pim.shutil,
+        "which",
+        lambda name: "/usr/bin/dnf" if name == "dnf" else None,
+    )
+    monkeypatch.setattr(pim.os, "geteuid", lambda: 1000, raising=False)
+    monkeypatch.setattr(
+        pim.subprocess,
+        "check_call",
+        lambda cmd, **_kwargs: calls.append(cmd),
+    )
+
+    pim._install_playwright_system_deps("patchright", set())
+
+    captured = capsys.readouterr()
+    assert not calls
+    assert "sudo /usr/bin/dnf install -y" in captured.out
+
+
 def test_ensure_noops_when_livez_is_healthy(monkeypatch, capsys):
     pim = _load_pim_cli()
     launched = False

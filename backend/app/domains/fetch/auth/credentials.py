@@ -48,7 +48,7 @@ def try_parse_auth_credentials(auth_config) -> dict:
             return raw
         return {}
     except Exception as exc:  # noqa: BLE001 - decrypt/parse may raise many error classes
-        logger.debug(
+        logger.warning(
             "Failed to parse auth credentials for config %s: %s",
             getattr(auth_config, "id", "unknown"),
             exc,

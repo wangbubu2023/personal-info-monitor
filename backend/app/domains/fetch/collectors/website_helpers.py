@@ -66,6 +66,8 @@ def source_with_url(source, url: str):
 
 def is_stale_rss_content(contents: List[Dict[str, Any]], max_age_days: int = 3) -> bool:
     """Whether RSS content is stale by latest ``publish_time``."""
+    if not contents:
+        return True
     latest: Optional[datetime] = None
     for item in contents:
         pt = item.get("publish_time")
@@ -73,14 +75,18 @@ def is_stale_rss_content(contents: List[Dict[str, Any]], max_age_days: int = 3) 
             if not latest or pt > latest:
                 latest = pt
     if not latest:
-        return True
+        return False
     age = utcnow_naive() - latest
     return age.days >= max_age_days
 
 
+def _strip_www_prefix(host: str) -> str:
+    return host[4:] if host.startswith("www.") else host
+
+
 def same_site(source_url: str, candidate_url: str) -> bool:
-    source_host = (urlparse(source_url).hostname or "").lower().lstrip("www.")
-    candidate_host = (urlparse(candidate_url).hostname or "").lower().lstrip("www.")
+    source_host = _strip_www_prefix((urlparse(source_url).hostname or "").lower())
+    candidate_host = _strip_www_prefix((urlparse(candidate_url).hostname or "").lower())
     if not source_host or not candidate_host:
         return False
     return candidate_host == source_host or candidate_host.endswith("." + source_host)

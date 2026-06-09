@@ -109,6 +109,63 @@ async def test_maybe_refresh_auth_cookies_manual_mode_returns_stale_cookie_warni
     assert warning == "手动 Cookie 可能已失效，请更新后重试"
 
 
+@pytest.mark.asyncio
+async def test_maybe_refresh_auth_cookies_rolls_back_failed_persist(monkeypatch):
+    source = _SourceWithAuthStub("https://example.com/login")
+    source.auth_config.credentials = "old"
+    creds = {"username": "u", "password": "p"}
+    calls = {"rollback": False, "refresh": False}
+
+    class _DB:
+        def commit(self):
+            raise RuntimeError("commit failed")
+
+        def rollback(self):
+            calls["rollback"] = True
+
+        def refresh(self, obj):
+            calls["refresh"] = obj is source.auth_config
+            obj.credentials = "old"
+
+    async def _fake_login_and_capture_cookies(**kwargs):
+        return {"sid": "new"}
+
+    monkeypatch.setattr(
+        "app.domains.fetch.auth.refresh.login_and_capture_cookies",
+        _fake_login_and_capture_cookies,
+    )
+    monkeypatch.setattr(
+        "app.platform.security.encryption.encrypt_data",
+        lambda payload: "encrypted-new",
+    )
+
+    updated, warning = await fetch_auth_helpers.maybe_refresh_auth_cookies(
+        db=_DB(),
+        source=source,
+        creds=creds,
+    )
+
+    assert updated == creds
+    assert "持久化 cookies 失败" in warning
+    assert source.auth_config.credentials == "old"
+    assert calls == {"rollback": True, "refresh": True}
+
+
+@pytest.mark.asyncio
+async def test_cookie_precheck_timeout_is_not_treated_as_invalid(monkeypatch):
+    async def _timeout(*args, **kwargs):
+        raise TimeoutError("slow precheck")
+
+    monkeypatch.setattr(
+        "app.platform.auth.cookies.fetch_public_http_text",
+        _timeout,
+    )
+
+    from app.platform.auth.cookies import cookies_appear_valid
+
+    assert await cookies_appear_valid("https://x.com", {"auth_token": "abc"}) is True
+
+
 def test_website_collector_prefers_direct_article_links_and_wrappers():
     collector = WebsiteCollector()
     source = _SourceStub("https://www.wsj.com")

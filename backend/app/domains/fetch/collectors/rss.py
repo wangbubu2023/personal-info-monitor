@@ -394,10 +394,8 @@ class RSSCollector(BaseCollector):
             if feed_links:
                 href = feed_links[0].get("href")
                 if href:
-                    # Handle relative URLs
-                    if href.startswith("/"):
-                        href = urljoin(website_url, href)
-                    return href
+                    # Handle absolute, root-relative, and bare relative feed links.
+                    return urljoin(website_url, href)
             
             # Try common feed URLs
             common_paths = [

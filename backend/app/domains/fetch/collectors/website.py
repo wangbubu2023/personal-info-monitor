@@ -23,6 +23,12 @@ from urllib.parse import urlparse
 import aiohttp
 from bs4 import BeautifulSoup
 
+from app.domains.fetch.failures import (
+    FetchFailure,
+    FetchFailureCode,
+    FetchFailureError,
+    make_failure,
+)
 from app.domains.fetch.collectors.base import BaseCollector
 from app.domains.fetch.collectors.rss import RSSCollector
 from app.models import Source
@@ -44,6 +50,14 @@ from . import website_parser as _parser
 from . import bpc_strategies
 
 logger = get_logger(__name__)
+
+_STATIC_TO_PLAYWRIGHT_FAILURES = {
+    FetchFailureCode.HTTP_403,
+    FetchFailureCode.LOGIN_REQUIRED,
+    FetchFailureCode.BOT_WALL,
+    FetchFailureCode.CAPTCHA,
+}
+_ARTICLE_HTTP_STATUSES_TO_PLAYWRIGHT = {401, 403, 429, 500, 502, 503}
 
 
 class WebsiteCollector(BaseCollector):
@@ -567,15 +581,20 @@ class WebsiteCollector(BaseCollector):
                     timeout=aiohttp.ClientTimeout(total=25),
                 )
                 if response.status != 200:
-                    attempt = await self._attempt_playwright_article_html(
-                        article_url, effective_cookies, source_url, browser_session=browser_session, metadata=metadata
-                    )
-                    if attempt is not None:
-                        html, final_url, reason = attempt
-                        if html:
-                            return html, final_url, None
-                        if reason:
-                            return None, final_url or article_url, reason
+                    if response.status in _ARTICLE_HTTP_STATUSES_TO_PLAYWRIGHT:
+                        attempt = await self._attempt_playwright_article_html(
+                            article_url,
+                            effective_cookies,
+                            source_url,
+                            browser_session=browser_session,
+                            metadata=metadata,
+                        )
+                        if attempt is not None:
+                            html, final_url, reason = attempt
+                            if html:
+                                return html, final_url, None
+                            if reason:
+                                return None, final_url or article_url, reason
                     return None, None, f"http_status_{response.status}"
                 return response.text, response.url, None
         except ValueError as exc:
@@ -749,6 +768,54 @@ class WebsiteCollector(BaseCollector):
     def _parse_html(self, html: str, source: Source) -> List[Dict[str, Any]]:
         return _parser.parse_html_content(html=html, source=source, item_logger=self.logger)
 
+    @staticmethod
+    def _should_retry_static_with_playwright(
+        metadata: Dict[str, Any],
+        failure: FetchFailure,
+    ) -> bool:
+        if metadata.get("playwright_auto_fallback") is False:
+            return False
+        return failure.code in _STATIC_TO_PLAYWRIGHT_FAILURES
+
+    @staticmethod
+    def _mark_source_needs_js(source: Source, failure: FetchFailure) -> None:
+        metadata = dict(source.metadata_ or {})
+        metadata["needs_js"] = True
+        metadata["needs_js_reason"] = {
+            "code": failure.code.value,
+            "message": failure.message,
+            "http_status": failure.http_status,
+            "source": "static_fetch_auto_fallback",
+        }
+        source.metadata_ = metadata
+
+    @staticmethod
+    def _playwright_failure_message(exc: BaseException) -> str:
+        raw = str(exc or "").strip() or exc.__class__.__name__
+        lower = raw.lower()
+        if "chromium distribution 'chrome' is not found" in lower:
+            return (
+                "Playwright 浏览器启动失败：当前配置要求 Google Chrome，但系统未找到 "
+                "/opt/google/chrome/chrome。默认建议使用 bundled Chromium；请取消 "
+                "PIM_PLAYWRIGHT_CHANNEL=chrome，或设置 PIM_PLAYWRIGHT_CHANNEL=none "
+                "并重新运行 ./pim setup。原始错误："
+                f"{raw}"
+            )[:500]
+        if "error while loading shared libraries" in lower:
+            return (
+                "Playwright 浏览器启动失败：Chromium 缺少系统运行库。请重新运行 ./pim setup，"
+                "或按部署文档安装 Playwright/Chromium 系统依赖后重试。原始错误："
+                f"{raw}"
+            )[:500]
+        if "no usable sandbox" in lower or "running as root without --no-sandbox" in lower:
+            return (
+                "Playwright 浏览器启动失败：当前 Linux/容器环境需要禁用 Chromium sandbox。"
+                "请保持 PIM_PLAYWRIGHT_NO_SANDBOX=auto，或显式设置为 always 后重试。"
+                "原始错误："
+                f"{raw}"
+            )[:500]
+        return f"Playwright 浏览器启动失败：{raw}"[:500]
+
     # ------------------------------------------------------------------
     # Top-level orchestration.
     # ------------------------------------------------------------------
@@ -870,8 +937,27 @@ class WebsiteCollector(BaseCollector):
                 browser_session,
             )
 
-        # Fall back to static scraping.
-        contents = await self._fetch_static(source)
+        # Fall back to static scraping. For hard access-denied/login/bot-wall
+        # failures, try one dynamic render immediately and persist the
+        # diagnosis so later scheduled fetches go straight to Playwright.
+        try:
+            contents = await self._fetch_static(source)
+        except FetchFailureError as exc:
+            if not self._should_retry_static_with_playwright(metadata, exc.failure):
+                raise
+            from app.features import playwright_enabled
+
+            if not playwright_enabled():
+                raise
+            self._mark_source_needs_js(source, exc.failure)
+            self.logger.info(
+                "Static fetch for %s failed with %s; retrying once with Playwright",
+                source.url,
+                exc.failure.code.value,
+            )
+            contents = await self._fetch_with_playwright(source, raise_on_error=True)
+            if not contents:
+                raise
         return await self._maybe_hydrate_public_listing_contents(
             source,
             contents,
@@ -1020,7 +1106,12 @@ class WebsiteCollector(BaseCollector):
             self.logger.error(f"Error fetching static website: {exc}")
             return []
 
-    async def _fetch_with_playwright(self, source: Source) -> List[Dict[str, Any]]:
+    async def _fetch_with_playwright(
+        self,
+        source: Source,
+        *,
+        raise_on_error: bool = False,
+    ) -> List[Dict[str, Any]]:
         """Fetch dynamic website content using Playwright."""
         from app.features import playwright_enabled
 
@@ -1103,4 +1194,13 @@ class WebsiteCollector(BaseCollector):
 
         except Exception as exc:  # noqa: BLE001 - broad Playwright surface
             self.logger.error(f"Error fetching with Playwright: {exc}")
+            if raise_on_error:
+                raise FetchFailureError(
+                    make_failure(
+                        FetchFailureCode.UNKNOWN,
+                        message=self._playwright_failure_message(exc),
+                        retryable=False,
+                        severity="error",
+                    )
+                ) from exc
             return []

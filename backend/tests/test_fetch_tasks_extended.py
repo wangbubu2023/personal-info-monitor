@@ -18,9 +18,8 @@ async def test_fetch_source_source_not_found():
 
     with patch("app.tasks.fetch_tasks.get_fetch_semaphore", return_value=mock_sem):
         with patch("app.tasks.fetch_tasks.task_tracker", mock_tracker):
-            # 1st to_thread → _query_and_lock returns (source, skip_reason)
-            # 2nd to_thread → _cleanup
-            to_thread_mock = AsyncMock(side_effect=[(None, "Source not found"), None])
+            # to_thread → _query_and_lock returns skip_reason
+            to_thread_mock = AsyncMock(return_value="Source not found")
             with patch("app.tasks.fetch_tasks.asyncio.to_thread", to_thread_mock):
                 from app.tasks.fetch_tasks import fetch_source
                 # Should not raise
@@ -74,9 +73,9 @@ async def test_fetch_source_exception_is_caught():
     mock_tracker.start_fetch = AsyncMock()
     mock_tracker.end_fetch = AsyncMock()
 
-    # 1st call raises (query_and_lock), 2nd succeeds (persist_exception), 3rd succeeds (cleanup)
+    # 1st call raises (query_and_lock), 2nd succeeds (persist_exception).
     # Note: query_and_lock in the real code returns 2-tuple, but here we want it to raise for the test case.
-    to_thread_mock = AsyncMock(side_effect=[RuntimeError("network error"), None, None])
+    to_thread_mock = AsyncMock(side_effect=[RuntimeError("network error"), None])
 
     with patch("app.tasks.fetch_tasks.get_fetch_semaphore", return_value=mock_sem):
         with patch("app.tasks.fetch_tasks.task_tracker", mock_tracker):
@@ -87,6 +86,68 @@ async def test_fetch_source_exception_is_caught():
                     await fetch_source("src-1")  # Must not raise
 
     mock_tracker.end_fetch.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_do_fetch_uses_fresh_session_for_pipeline():
+    """The admission-check Session must not be passed into the async pipeline."""
+    sessions = []
+
+    class _FakeSource:
+        id = "src-1"
+        fetch_interval = 60
+        enabled = True
+        type = "website"
+        url = "https://example.com"
+
+    class _FakeQuery:
+        def filter(self, *args, **kwargs):
+            return self
+
+        def first(self):
+            return _FakeSource()
+
+    class _FakeSession:
+        def __init__(self, name):
+            self.name = name
+            self.closed = False
+            sessions.append(self)
+
+        def query(self, model):
+            return _FakeQuery()
+
+        def close(self):
+            self.closed = True
+
+    def _session_factory():
+        return _FakeSession(f"session-{len(sessions)}")
+
+    async def _inline_to_thread(func, *args, **kwargs):
+        return func(*args, **kwargs)
+
+    pipeline_sessions = []
+
+    async def _fake_pipeline(db, source, manual_trigger):
+        pipeline_sessions.append(db)
+        return {"saved": 0}
+
+    with patch("app.database.SessionLocal", new=_session_factory), \
+         patch("app.tasks.fetch_tasks.asyncio.to_thread", new=_inline_to_thread), \
+         patch("app.tasks.fetch_tasks.fetch_lock") as mock_lock, \
+         patch("app.tasks.fetch_tasks.domain_limiter") as mock_limiter, \
+         patch("app.tasks.fetch_tasks.run_fetch_pipeline", new=_fake_pipeline):
+        mock_lock.acquire.return_value = True
+        mock_limiter.acquire.return_value = True
+
+        from app.tasks.fetch_tasks import _do_fetch
+
+        await _do_fetch("src-1", manual_trigger=False)
+
+    assert len(sessions) == 2
+    assert sessions[0] is not pipeline_sessions[0]
+    assert sessions[0].closed is True
+    assert sessions[1].closed is True
+    mock_lock.release.assert_called_once_with("src-1")
 
 
 @pytest.mark.asyncio

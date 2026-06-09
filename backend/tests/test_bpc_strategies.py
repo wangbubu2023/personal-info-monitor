@@ -24,6 +24,11 @@ def test_playwright_interceptor_is_absent_until_paywall_blocking_enabled():
     assert bpc_strategies.get_bpc_playwright_interceptor({"bpc_block_paywalls": True}) is not None
 
 
+def test_playwright_interceptor_is_absent_when_no_patterns(monkeypatch):
+    monkeypatch.setattr(bpc_strategies, "BLOCKED_PAYWALL_DOMAINS_AND_PATTERNS", ())
+    assert bpc_strategies.get_bpc_playwright_interceptor({"bpc_block_paywalls": True}) is None
+
+
 @pytest.mark.asyncio
 async def test_bpc_browser_strategy_triggers_playwright_without_cookies(monkeypatch):
     collector = WebsiteCollector()

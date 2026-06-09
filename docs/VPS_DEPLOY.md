@@ -38,8 +38,12 @@ cd personal-info-monitor
 ./pim setup
 ```
 
+`setup` 默认会安装 browser-backed collector 所需的 bundled Chromium，尝试安装 Linux
+系统运行库，并运行一次 `about:blank` smoke test。smoke test 不通过时，安装会直接失败并给出
+可操作提示，避免第一次动态网页抓取才暴露浏览器不可启动。
+
 如果 VPS 只使用 RSS / 普通网页抓取，暂时不需要浏览器登录、X、复杂动态网页抓取，可以先跳过
-Chromium 下载，减少首次安装体积：
+浏览器 bootstrap，减少首次安装体积：
 
 ```bash
 ./pim setup --skip-playwright
@@ -48,9 +52,32 @@ Chromium 下载，减少首次安装体积：
 后续需要时再安装：
 
 ```bash
-cd backend
-./.venv/bin/python -m playwright install chromium
+./pim setup
 ```
+
+如果系统包由镜像预装或由运维平台统一管理，可只跳过 Linux 系统包安装：
+
+```bash
+./pim setup --skip-playwright-deps
+```
+
+RHEL / TencentOS / CentOS / Fedora 系发行版可手动安装以下 Chromium 运行库：
+
+```bash
+sudo dnf install -y mesa-libgbm mesa-libEGL libdrm libX11 libXcomposite libXdamage \
+  libXext libXfixes libXrandr libxcb libxkbcommon cairo pango glib2 gdk-pixbuf2 \
+  atk at-spi2-atk at-spi2-core nss nspr alsa-lib cups-libs dbus-libs fontconfig \
+  freetype libxshmfence expat
+```
+
+默认浏览器 channel 是 bundled Chromium。只有在服务器已安装 Google Chrome 且明确需要时，才设置：
+
+```bash
+PIM_PLAYWRIGHT_CHANNEL=chrome
+```
+
+Linux 容器或 root-run 服务默认使用 `PIM_PLAYWRIGHT_NO_SANDBOX=auto`，会自动注入
+`--no-sandbox --disable-setuid-sandbox`。如平台探测不准，可显式设为 `always` 或 `never`。
 
 注意：X 登录态捕获必须使用可视化浏览器，让用户手动完成 CAPTCHA/2FA。纯 headless 模式无法可靠拿到
 `auth_token` / `ct0`。VPS 容器如果没有 `DISPLAY` / `WAYLAND_DISPLAY`，请在桌面环境操作，或用

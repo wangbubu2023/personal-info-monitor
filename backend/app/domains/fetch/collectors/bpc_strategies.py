@@ -108,6 +108,8 @@ def get_bpc_playwright_interceptor(metadata: dict[str, Any]) -> Callable | None:
     patterns = list(BLOCKED_PAYWALL_DOMAINS_AND_PATTERNS) + [
         re.escape(str(block)) for block in custom_blocks if _clean_header_value(block)
     ]
+    if not patterns:
+        return None
     combined_regex = re.compile("|".join(patterns), re.IGNORECASE)
 
     async def interceptor(route):

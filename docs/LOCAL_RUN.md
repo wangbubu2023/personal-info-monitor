@@ -21,6 +21,9 @@
 ./pim setup
 ```
 
+默认会安装浏览器抓取所需的 bundled Chromium，并做一次启动 smoke test。Linux 上还会尝试安装
+Chromium 系统运行库；如果这些依赖由系统镜像预装，可使用 `--skip-playwright-deps`。
+
 不需要浏览器登录/动态网页抓取时，可以跳过 Chromium 下载：
 
 ```bash

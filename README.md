@@ -50,8 +50,8 @@ flowchart LR
 ```bash
 git clone --depth 1 https://github.com/wangbubu2023/personal-info-monitor.git
 cd personal-info-monitor
-./pim setup       # 创建 backend/venv、装依赖、Playwright Chromium、前端依赖
-# 轻量服务器可跳过 Chromium 下载：./pim setup --skip-playwright
+./pim setup       # 创建 backend/venv、装依赖、Chromium/系统库、前端依赖，并做浏览器 smoke test
+# 轻量服务器可跳过浏览器 bootstrap：./pim setup --skip-playwright
 ```
 
 `./pim setup` 同时生成 `backend/.env` 模板与 `~/.pim/data/runtime-secrets.json`
@@ -101,6 +101,9 @@ cd personal-info-monitor
 | `CORS_ORIGINS` | 内置三组 | 允许的前端来源 |
 | `TRUSTED_PROXY_IPS` | — | 反向代理 IP（VPS 必填） |
 | `API_RATE_LIMIT_PER_MINUTE` | `120` | 每分钟每 IP 限速，`0` 关闭 |
+| `PIM_BROWSER_BACKEND` | `patchright` | 浏览器后端；可设为 `playwright` 强制使用官方 Playwright |
+| `PIM_PLAYWRIGHT_CHANNEL` | `none` | 默认使用 setup 安装的 bundled Chromium；`chrome` 表示使用系统 Google Chrome |
+| `PIM_PLAYWRIGHT_NO_SANDBOX` | `auto` | `auto/always/never`；Linux 容器或 root 服务会自动加 sandbox 兼容参数 |
 
 默认 CORS 白名单已覆盖 `http://localhost:3000`、`http://127.0.0.1:3000`、
 `http://tauri.localhost`、`https://tauri.localhost`、`http://localhost:1420`。

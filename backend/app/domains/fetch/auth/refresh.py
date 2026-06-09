@@ -104,6 +104,15 @@ async def maybe_refresh_auth_cookies(db, source, creds: dict) -> tuple[dict, str
         logger.info("Auto-login refreshed cookies for source %s", source.id)
         return merged, None
     except Exception as exc:  # noqa: BLE001 - persistence may fail with various ORM/encryption errors
+        try:
+            db.rollback()
+            db.refresh(source.auth_config)
+        except Exception as rollback_exc:  # noqa: BLE001 - best-effort session cleanup
+            logger.debug(
+                "Failed to rollback refreshed cookies for source %s: %s",
+                source.id,
+                rollback_exc,
+            )
         logger.warning(
             "Failed to persist refreshed cookies for source %s: %s",
             source.id,

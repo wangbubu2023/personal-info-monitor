@@ -1,5 +1,6 @@
 """Podcast content collector."""
 
+import asyncio
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
@@ -98,7 +99,7 @@ class PodcastCollector(BaseCollector):
         import feedparser
         
         try:
-            feed = feedparser.parse(feed_url)
+            feed = await asyncio.to_thread(feedparser.parse, feed_url)
             
             if feed.bozo and not feed.feed:
                 return None

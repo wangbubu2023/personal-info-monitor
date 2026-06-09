@@ -37,58 +37,64 @@ async def fetch_source(source_id: str, manual_trigger: bool = False):
         )
         sem = get_fetch_semaphore()
         async with sem:
-            await task_tracker.start_fetch()
+            tracker_started = False
             try:
+                await task_tracker.start_fetch()
+                tracker_started = True
                 await _do_fetch(source_id, manual_trigger, job_id=job_id)
             finally:
-                await task_tracker.end_fetch()
+                if tracker_started:
+                    await task_tracker.end_fetch()
     finally:
         restore_job_id(token)
 
 
 async def _do_fetch(source_id: str, manual_trigger: bool, job_id: str | None = None):
-    """执行单源抓取：同步线程查询 + 主循环 async pipeline。"""
+    """执行单源抓取：短生命周期准入检查 + 主循环 async pipeline。"""
     from app.database import SessionLocal
     from app.models import Source
 
-    lock_ttl = 300
     lock_acquired = False
     db = None
 
     try:
-        # --- 阶段 1：在线程中执行同步 DB 查询和锁获取 ---
+        # --- 阶段 1：在线程中执行短生命周期准入检查。不要把 SQLAlchemy
+        # Session 或 ORM row 跨线程传给 pipeline；pipeline 会在自己的线程
+        # 中重新打开 Session 并重新查询 Source。
         def _query_and_lock():
-            nonlocal lock_acquired, lock_ttl, db
-            db = SessionLocal()
-            source = db.query(Source).filter(Source.id == source_id).first()
-            if not source:
-                return None, "Source not found"
+            gate_db = SessionLocal()
+            try:
+                source = gate_db.query(Source).filter(Source.id == source_id).first()
+                if not source:
+                    return "Source not found"
 
-            lock_ttl = max(300, int((source.fetch_interval or 60) * 60))
-            _lock_acquired = fetch_lock.acquire(source_id, lock_ttl)
-            if not _lock_acquired:
-                return None, "Already fetching"
+                lock_ttl = max(300, int((source.fetch_interval or 60) * 60))
+                _lock_acquired = fetch_lock.acquire(source_id, lock_ttl)
+                if not _lock_acquired:
+                    return "Already fetching"
 
-            if not source.enabled and not manual_trigger:
-                fetch_lock.release(source_id)
-                return None, "Source is disabled"
-
-            if not PODCAST_SOURCES_ENABLED:
-                source_type = source.type.value if hasattr(source.type, "value") else str(source.type)
-                if source_type == "podcast":
+                if not source.enabled and not manual_trigger:
                     fetch_lock.release(source_id)
-                    return None, "Podcast sources are disabled"
+                    return "Source is disabled"
 
-            # 域名限速检查
-            domain = normalize_host(source.url)
-            if not domain_limiter.acquire(domain):
-                logger.info(f"Rate-limited domain for source: {source_id} ({domain})")
-                fetch_lock.release(source_id)
-                return None, "Domain rate limited"
+                if not PODCAST_SOURCES_ENABLED:
+                    source_type = source.type.value if hasattr(source.type, "value") else str(source.type)
+                    if source_type == "podcast":
+                        fetch_lock.release(source_id)
+                        return "Podcast sources are disabled"
 
-            return source, None
+                # 域名限速检查
+                domain = normalize_host(source.url)
+                if not domain_limiter.acquire(domain):
+                    logger.info(f"Rate-limited domain for source: {source_id} ({domain})")
+                    fetch_lock.release(source_id)
+                    return "Domain rate limited"
 
-        source, skip_reason = await asyncio.to_thread(_query_and_lock)
+                return None
+            finally:
+                gate_db.close()
+
+        skip_reason = await asyncio.to_thread(_query_and_lock)
 
         if skip_reason:
             if skip_reason == "Source not found":
@@ -99,7 +105,13 @@ async def _do_fetch(source_id: str, manual_trigger: bool, job_id: str | None = N
 
         lock_acquired = True
 
-        # --- 阶段 2：在主事件循环中直接 await pipeline（共享连接池/信号量） ---
+        # --- 阶段 2：在 pipeline 所在线程中创建 DB Session 和 ORM row。 ---
+        db = SessionLocal()
+        source = db.query(Source).filter(Source.id == source_id).first()
+        if not source:
+            logger.error(f"Source disappeared after fetch lock acquisition: {source_id}")
+            return {"status": "error", "message": "Source not found"}
+
         result = await run_fetch_pipeline(db, source, manual_trigger)
 
         # 收集新内容 ID 用于 AI 后处理
@@ -122,13 +134,10 @@ async def _do_fetch(source_id: str, manual_trigger: bool, job_id: str | None = N
         await asyncio.to_thread(persist_fetch_task_exception, source_id, exc)
 
     finally:
-        # 确保锁释放和 DB 关闭在线程中执行（避免同步 I/O 阻塞事件循环）
-        def _cleanup():
-            if lock_acquired:
-                fetch_lock.release(source_id)
-            if db is not None:
-                db.close()
-        await asyncio.to_thread(_cleanup)
+        if lock_acquired:
+            fetch_lock.release(source_id)
+        if db is not None:
+            db.close()
 
 
 async def fetch_all_sources(manual_trigger: bool = False):

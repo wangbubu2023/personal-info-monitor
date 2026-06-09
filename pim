@@ -9,8 +9,9 @@ Usage:
     ./pim up --rebuild      Force rebuild of frontend/dist regardless of mtime.
     ./pim up --foreground   Run uvicorn in foreground (useful in containers).
 
-    ./pim setup             First-time setup (venv, deps, runtime config, frontend build)
-                            Use --skip-playwright to skip Chromium download.
+    ./pim setup             First-time setup (venv, deps, browser runtime, runtime config, frontend build)
+                            Use --skip-playwright to skip browser bootstrap.
+                            Use --skip-playwright-deps to skip Linux system package install.
     ./pim upgrade           Backup, fast-forward git pull, refresh deps/frontend, restart if local service is running
                             Use --server for backend-only VPS, --systemd <unit> for systemd, --no-pull for tag/detached deploys.
                             Use --restart-mode ensure for no-systemd containers.
@@ -58,6 +59,63 @@ ENV_FILE = BACKEND / ".env"
 ENV_EXAMPLE_FILE = BACKEND / ".env.example"
 PLIST_NAME = "com.pim.server"
 PLIST_PATH = Path.home() / "Library" / "LaunchAgents" / f"{PLIST_NAME}.plist"
+_PLAYWRIGHT_RHEL_PACKAGES = (
+    "mesa-libgbm",
+    "mesa-libEGL",
+    "libdrm",
+    "libX11",
+    "libXcomposite",
+    "libXdamage",
+    "libXext",
+    "libXfixes",
+    "libXrandr",
+    "libxcb",
+    "libxkbcommon",
+    "cairo",
+    "pango",
+    "glib2",
+    "gdk-pixbuf2",
+    "atk",
+    "at-spi2-atk",
+    "at-spi2-core",
+    "nss",
+    "nspr",
+    "alsa-lib",
+    "cups-libs",
+    "dbus-libs",
+    "fontconfig",
+    "freetype",
+    "libxshmfence",
+    "expat",
+)
+_PLAYWRIGHT_ZYPPER_PACKAGES = (
+    "libgbm1",
+    "Mesa-libEGL1",
+    "libdrm2",
+    "libX11-6",
+    "libXcomposite1",
+    "libXdamage1",
+    "libXext6",
+    "libXfixes3",
+    "libXrandr2",
+    "libxcb1",
+    "libxkbcommon0",
+    "cairo",
+    "pango",
+    "gdk-pixbuf",
+    "atk",
+    "at-spi2-atk",
+    "at-spi2-core",
+    "mozilla-nss",
+    "mozilla-nspr",
+    "alsa",
+    "cups-libs",
+    "dbus-1",
+    "fontconfig",
+    "freetype2",
+    "libxshmfence1",
+    "expat",
+)
 
 
 def _mask_secret(value: str, prefix: int = 4, suffix: int = 4) -> str:
@@ -100,16 +158,151 @@ def _install_deps():
     )
 
 
+def _python_module_available(module: str) -> bool:
+    try:
+        subprocess.check_call(
+            [_python(), "-c", f"import {module}"],
+            cwd=str(BACKEND),
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        return True
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
+def _playwright_install_module() -> str:
+    requested = (os.environ.get("PIM_BROWSER_BACKEND") or "").strip().lower()
+    if requested == "playwright":
+        return "playwright"
+    if _python_module_available("patchright"):
+        return "patchright"
+    return "playwright"
+
+
+def _privileged_command(cmd: list[str]) -> list[str] | None:
+    geteuid = getattr(os, "geteuid", None)
+    if not callable(geteuid) or geteuid() == 0:
+        return cmd
+    sudo = shutil.which("sudo")
+    if not sudo:
+        return None
+    return [sudo, *cmd]
+
+
+def _print_manual_command(cmd: list[str]) -> None:
+    print("  Run manually:")
+    print("    " + " ".join(cmd))
+
+
+def _install_playwright_browser(module: str) -> None:
+    print(f"Installing Playwright Chromium ({module}) ...")
+    subprocess.check_call(
+        [_python(), "-m", module, "install", "chromium"],
+        cwd=str(BACKEND),
+    )
+
+
+def _install_playwright_system_deps(module: str, args: set[str]) -> None:
+    if "--skip-playwright-deps" in args or _parse_env_bool(os.environ.get("PIM_SKIP_PLAYWRIGHT_DEPS")):
+        print("Skipping Playwright Linux system dependency install.")
+        return
+    if not sys.platform.startswith("linux"):
+        print("  Browser system dependencies: not Linux, skipping package install.")
+        return
+
+    apt = shutil.which("apt-get") or shutil.which("apt")
+    dnf = shutil.which("dnf")
+    yum = shutil.which("yum")
+    zypper = shutil.which("zypper")
+
+    if apt:
+        base_cmd = [_python(), "-m", module, "install-deps", "chromium"]
+    elif dnf:
+        base_cmd = [dnf, "install", "-y", *_PLAYWRIGHT_RHEL_PACKAGES]
+    elif yum:
+        base_cmd = [yum, "install", "-y", *_PLAYWRIGHT_RHEL_PACKAGES]
+    elif zypper:
+        base_cmd = [zypper, "--non-interactive", "install", *_PLAYWRIGHT_ZYPPER_PACKAGES]
+    else:
+        print("  Warning: no supported Linux package manager found for Chromium system deps.")
+        print("  Supported package managers: apt, dnf, yum, zypper.")
+        print("  The Playwright smoke test will verify whether dependencies are already present.")
+        return
+
+    cmd = _privileged_command(base_cmd)
+    if cmd is None:
+        print("  Warning: sudo is not available; cannot install Chromium system packages automatically.")
+        _print_manual_command(["sudo", *base_cmd])
+        print("  The Playwright smoke test will verify whether dependencies are already present.")
+        return
+
+    print("Installing Playwright Chromium system dependencies ...")
+    subprocess.check_call(cmd, cwd=str(BACKEND))
+
+
+def _smoke_test_playwright() -> None:
+    print("Verifying Playwright Chromium launch ...")
+    script = r"""
+import asyncio
+
+from app.platform.browser.playwright_runtime import (
+    async_playwright,
+    backend_name,
+    default_channel,
+    recommended_launch_args,
+)
+
+
+async def main():
+    channel = default_channel()
+    launch_kwargs = {"headless": True, "args": recommended_launch_args([])}
+    if channel:
+        launch_kwargs["channel"] = channel
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(**launch_kwargs)
+        try:
+            page = await browser.new_page()
+            await page.goto("about:blank")
+        finally:
+            await browser.close()
+    print(
+        "  Playwright smoke OK "
+        f"(backend={backend_name()}, channel={channel or 'bundled'}, args={launch_kwargs['args']})"
+    )
+
+
+asyncio.run(main())
+"""
+    env = os.environ.copy()
+    env.setdefault("PYTHONPATH", str(BACKEND))
+    try:
+        subprocess.check_call(
+            [_python(), "-c", script],
+            cwd=str(BACKEND),
+            env=env,
+        )
+    except subprocess.CalledProcessError as exc:
+        print("", file=sys.stderr)
+        print("Playwright Chromium smoke test failed.", file=sys.stderr)
+        print("Fix the browser runtime before starting PIM:", file=sys.stderr)
+        print("  ./pim setup", file=sys.stderr)
+        print("On RHEL-family hosts, install the Chromium system packages shown in docs/VPS_DEPLOY.md.", file=sys.stderr)
+        print("In containers/root-run services, keep PIM_PLAYWRIGHT_NO_SANDBOX=auto or set it to always.", file=sys.stderr)
+        print("If you set PIM_PLAYWRIGHT_CHANNEL=chrome, install Google Chrome or unset the variable.", file=sys.stderr)
+        sys.exit(exc.returncode or 1)
+
+
 def _install_playwright():
     args = set(sys.argv[2:])
     if "--skip-playwright" in args or _parse_env_bool(os.environ.get("PIM_SKIP_PLAYWRIGHT_INSTALL")):
-        print("Skipping Playwright Chromium install.")
-        print("  To enable browser-backed collectors later: cd backend && ./.venv/bin/python -m playwright install chromium")
+        print("Skipping Playwright browser bootstrap.")
+        print("  To enable browser-backed collectors later: rerun ./pim setup without --skip-playwright")
         return
-    print("Installing Playwright Chromium ...")
-    subprocess.check_call(
-        [_python(), "-m", "playwright", "install", "chromium"],
-    )
+    module = _playwright_install_module()
+    _install_playwright_browser(module)
+    _install_playwright_system_deps(module, args)
+    _smoke_test_playwright()
 
 
 def _parse_env_bool(value: str | None, *, default: bool = False) -> bool:

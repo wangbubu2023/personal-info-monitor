@@ -10,6 +10,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.collectors.website import WebsiteCollector
+from app.domains.fetch.failures import (
+    FetchFailureCode,
+    FetchFailureError,
+    make_failure,
+)
 from app.utils.datetime import utcnow_naive
 
 
@@ -140,6 +145,10 @@ class TestSameSite:
 
     def test_www_prefix_stripped(self):
         assert self.collector._same_site("https://www.example.com", "https://example.com/page") is True
+
+    def test_www_prefix_stripping_does_not_lstrip_domain_chars(self):
+        assert self.collector._same_site("https://www.wwe.com", "https://wwe.com/news/story-123") is True
+        assert self.collector._same_site("https://www.wwe.com", "https://e.com/news/story-123") is False
 
     def test_empty_source_url(self):
         assert self.collector._same_site("", "https://example.com/page") is False
@@ -382,7 +391,7 @@ class TestIsStaleRssContent:
 
     def test_no_publish_times(self):
         items = [{"title": "No time"}]
-        assert self.collector._is_stale_rss_content(items) is True
+        assert self.collector._is_stale_rss_content(items) is False
 
     def test_empty_list(self):
         assert self.collector._is_stale_rss_content([]) is True
@@ -571,6 +580,71 @@ class TestTryPlaywrightFetch:
 
 
 # ---------------------------------------------------------------------------
+# _fetch_article_html — HTTP status Playwright escalation
+# ---------------------------------------------------------------------------
+
+class TestFetchArticleHtmlStatusFallback:
+
+    class FakeSession:
+        def __init__(self, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+    @pytest.mark.asyncio
+    async def test_terminal_http_status_does_not_retry_with_playwright(self):
+        collector = WebsiteCollector()
+        response = MagicMock(status=410, text="", url="https://example.com/gone")
+
+        with patch("app.domains.fetch.collectors.website.check_before_fetch", new=AsyncMock()), \
+             patch("app.domains.fetch.collectors.website.aiohttp.ClientSession", new=self.FakeSession), \
+             patch(
+                 "app.domains.fetch.collectors.website.fetch_public_http_text",
+                 new=AsyncMock(return_value=response),
+             ), \
+             patch.object(collector, "_attempt_playwright_article_html", new=AsyncMock()) as attempt:
+            html, final_url, reason = await collector._fetch_article_html(
+                "https://example.com/gone",
+                {},
+                "https://example.com",
+                metadata={"bpc_block_paywalls": True},
+            )
+
+        assert (html, final_url, reason) == (None, None, "http_status_410")
+        attempt.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_access_denied_status_retries_with_playwright(self):
+        collector = WebsiteCollector()
+        response = MagicMock(status=403, text="", url="https://example.com/blocked")
+
+        with patch("app.domains.fetch.collectors.website.check_before_fetch", new=AsyncMock()), \
+             patch("app.domains.fetch.collectors.website.aiohttp.ClientSession", new=self.FakeSession), \
+             patch(
+                 "app.domains.fetch.collectors.website.fetch_public_http_text",
+                 new=AsyncMock(return_value=response),
+             ), \
+             patch.object(
+                 collector,
+                 "_attempt_playwright_article_html",
+                 new=AsyncMock(return_value=("<html>ok</html>", "https://example.com/blocked", None)),
+             ) as attempt:
+            html, final_url, reason = await collector._fetch_article_html(
+                "https://example.com/blocked",
+                {},
+                "https://example.com",
+                metadata={"bpc_block_paywalls": True},
+            )
+
+        assert (html, final_url, reason) == ("<html>ok</html>", "https://example.com/blocked", None)
+        attempt.assert_awaited_once()
+
+
+# ---------------------------------------------------------------------------
 # _parse_html
 # ---------------------------------------------------------------------------
 
@@ -614,6 +688,76 @@ class TestParseHtml:
         with patch("app.domains.fetch.collectors.website_parser.get_website_content_reject_reason", return_value=None):
             results = collector._parse_html(html, source)
             assert len(results) >= 1
+
+
+# ---------------------------------------------------------------------------
+# fetch — static-to-Playwright escalation
+# ---------------------------------------------------------------------------
+
+class TestFetchStaticPlaywrightFallback:
+
+    @pytest.mark.asyncio
+    async def test_static_403_retries_with_playwright_and_marks_source(self):
+        collector = WebsiteCollector()
+        source = _make_source(url="https://example.com", metadata_={})
+        static_failure = FetchFailureError(
+            make_failure(
+                FetchFailureCode.HTTP_403,
+                http_status=403,
+                detail="Static fetch failed: https://example.com",
+            )
+        )
+        dynamic_contents = [
+            {
+                "external_id": "https://example.com/a",
+                "title": "Article",
+                "content": "",
+                "url": "https://example.com/a",
+                "publish_time": None,
+                "metadata": {},
+            }
+        ]
+
+        with patch.object(collector, "_check_ssrf", new_callable=AsyncMock), \
+            patch.object(collector.rss_collector, "discover_feed_url", new_callable=AsyncMock, return_value=None), \
+            patch.object(collector, "_maybe_fetch_via_discovery", new_callable=AsyncMock, return_value=None), \
+            patch.object(collector, "_fetch_static", new_callable=AsyncMock, side_effect=static_failure), \
+            patch.object(collector, "_fetch_with_playwright", new_callable=AsyncMock, return_value=dynamic_contents) as dynamic_fetch, \
+            patch.object(
+                collector,
+                "_maybe_hydrate_public_listing_contents",
+                new_callable=AsyncMock,
+                side_effect=lambda _source, contents, _cookies, _browser_session: contents,
+            ):
+            result = await collector.fetch(source)
+
+        assert result == dynamic_contents
+        dynamic_fetch.assert_awaited_once_with(source, raise_on_error=True)
+        assert source.metadata_["needs_js"] is True
+        assert source.metadata_["needs_js_reason"]["code"] == "http_403"
+
+    @pytest.mark.asyncio
+    async def test_static_404_does_not_retry_with_playwright(self):
+        collector = WebsiteCollector()
+        source = _make_source(url="https://example.com", metadata_={})
+        static_failure = FetchFailureError(
+            make_failure(
+                FetchFailureCode.HTTP_CLIENT_ERROR,
+                http_status=404,
+                detail="Static fetch failed: https://example.com",
+            )
+        )
+
+        with patch.object(collector, "_check_ssrf", new_callable=AsyncMock), \
+            patch.object(collector.rss_collector, "discover_feed_url", new_callable=AsyncMock, return_value=None), \
+            patch.object(collector, "_maybe_fetch_via_discovery", new_callable=AsyncMock, return_value=None), \
+            patch.object(collector, "_fetch_static", new_callable=AsyncMock, side_effect=static_failure), \
+            patch.object(collector, "_fetch_with_playwright", new_callable=AsyncMock) as dynamic_fetch:
+            with pytest.raises(FetchFailureError):
+                await collector.fetch(source)
+
+        dynamic_fetch.assert_not_awaited()
+        assert "needs_js" not in source.metadata_
 
 
 # ---------------------------------------------------------------------------

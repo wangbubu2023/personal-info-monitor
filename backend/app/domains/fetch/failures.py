@@ -108,7 +108,7 @@ _POLICY: dict[FetchFailureCode, tuple[bool, Severity, int | None]] = {
     FetchFailureCode.CONNECTION_ERROR: (True, "warning", None),
     FetchFailureCode.HTTP_403: (False, "error", 3600),
     FetchFailureCode.HTTP_429: (True, "warning", 900),
-    FetchFailureCode.HTTP_5XX: (True, "warning", None),
+    FetchFailureCode.HTTP_5XX: (True, "warning", 120),
     FetchFailureCode.HTTP_CLIENT_ERROR: (False, "error", None),
     FetchFailureCode.REDIRECT_BLOCKED: (False, "error", None),
     FetchFailureCode.SSRF_BLOCKED: (False, "error", None),
