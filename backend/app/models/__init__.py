@@ -9,6 +9,7 @@ from app.models.hourly_digest import HourlyDigest
 from app.models.browser_session import BrowserSession
 from app.models.system_setting import SystemSetting
 from app.models.runtime_lock import RuntimeLock
+from app.models.source_fetch_log import SourceFetchLog
 from app.models.atom import Atom, AtomIdSequence, AtomOperation, AtomRelation
 from app.models.atom_event import (
     AtomEntity,
@@ -32,6 +33,7 @@ __all__ = [
     "BrowserSession",
     "SystemSetting",
     "RuntimeLock",
+    "SourceFetchLog",
     "Atom",
     "AtomRelation",
     "AtomIdSequence",

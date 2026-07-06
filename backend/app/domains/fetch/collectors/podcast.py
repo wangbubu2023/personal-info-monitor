@@ -31,6 +31,36 @@ class PodcastCollector(BaseCollector):
             enhanced_contents.append(enhanced)
         
         return enhanced_contents
+
+    @staticmethod
+    def _parse_duration_seconds(value: Any) -> Optional[int]:
+        """Parse common podcast duration formats into seconds."""
+        if value is None:
+            return None
+        if isinstance(value, (int, float)):
+            seconds = int(value)
+            return seconds if seconds >= 0 else None
+
+        text = str(value).strip()
+        if not text:
+            return None
+        if text.isdigit():
+            return int(text)
+
+        parts = text.split(":")
+        if not 2 <= len(parts) <= 3:
+            return None
+        try:
+            numbers = [int(part) for part in parts]
+        except ValueError:
+            return None
+        if any(part < 0 for part in numbers):
+            return None
+        if len(numbers) == 2:
+            minutes, seconds = numbers
+            return minutes * 60 + seconds
+        hours, minutes, seconds = numbers
+        return hours * 3600 + minutes * 60 + seconds
     
     def _enhance_podcast_content(self, content: Dict[str, Any]) -> Dict[str, Any]:
         """Enhance content with podcast-specific information."""
@@ -48,8 +78,15 @@ class PodcastCollector(BaseCollector):
                 audio_size = enc.get("length")
                 break
         
-        # Look for duration in various places
-        # itunes:duration is often in the RSS feed
+        for raw_duration in (
+            metadata.get("itunes_duration"),
+            metadata.get("duration"),
+            content.get("itunes_duration"),
+            content.get("duration"),
+        ):
+            audio_duration = self._parse_duration_seconds(raw_duration)
+            if audio_duration is not None:
+                break
         
         content["metadata"] = {
             **metadata,

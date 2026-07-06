@@ -1,6 +1,7 @@
 import api from './api'
 
 export type ScoreFeedbackDirection = 'too_high' | 'too_low' | 'ok'
+export type ScoreFeedbackEventType = 'score_calibration' | 'open' | 'star' | 'hide'
 export type ScoreSelectionStatus = 'selected' | 'candidate' | 'rejected'
 
 export interface ScoreLabContentSummary {
@@ -49,7 +50,7 @@ export interface ScoreExplainPayload {
   entity_hits: Array<{ term: string; tier: string; score: number; user_keyword?: boolean }>
   event_pattern_hits: Array<{ pattern: string; bonus: number; matched: string[] }>
   reach_level: string
-  user_keywords: { configured: string[]; matched: string[] }
+  user_keywords: { configured: string[]; matched: string[]; salience_bonus?: number }
   dimension_scores_before_cap: Record<string, number>
   dimension_scores: Record<string, number>
   weight_breakdown: WeightBreakdownRow[]
@@ -83,9 +84,11 @@ export interface ScoreExplainPayload {
 export interface ScoreFeedbackItem {
   id: string
   content_id: string
-  direction: ScoreFeedbackDirection
+  direction: ScoreFeedbackDirection | 'open' | 'star' | 'hide'
   expected_status?: string | null
   note?: string | null
+  event_type?: ScoreFeedbackEventType | null
+  event_value?: unknown
   snapshot: Record<string, unknown>
   created_at: string
   content_title?: string | null

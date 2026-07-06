@@ -11,6 +11,9 @@
 
 - `http://127.0.0.1:8000`
 
+v1.4.0 发布后的人工评测、offline eval history 与 VPS/X/付费墙实测交接，见
+[`V1_4_RELEASE_HANDOFF.md`](V1_4_RELEASE_HANDOFF.md)。
+
 ## 前置要求
 
 - Python 3.11+
@@ -25,10 +28,10 @@ git clone --depth 1 https://github.com/wangbubu2023/personal-info-monitor.git
 cd personal-info-monitor
 ```
 
-如需固定在 1.3.1 稳定版：
+如需固定在 1.4.0 稳定版：
 
 ```bash
-git clone --depth 1 --branch v1.3.1 https://github.com/wangbubu2023/personal-info-monitor.git
+git clone --depth 1 --branch v1.4.0 https://github.com/wangbubu2023/personal-info-monitor.git
 cd personal-info-monitor
 ```
 
@@ -83,6 +86,77 @@ Linux 容器或 root-run 服务默认使用 `PIM_PLAYWRIGHT_NO_SANDBOX=auto`，�
 `auth_token` / `ct0`。VPS 容器如果没有 `DISPLAY` / `WAYLAND_DISPLAY`，请在桌面环境操作，或用
 `xvfb-run` / 系统级 Xvfb 启动 PIM 服务后再打开浏览器会话登录。
 
+如果目标站点在 VPS 上无法稳定登录，优先使用本地 Auth Bundle 流程：在本地可信电脑上打开可视化浏览器登录，
+生成一个登录态包，再导入 VPS。导入后 PIM 会写入现有 `AuthConfig`，并在包内含有 Playwright
+`storage_state` 时保存到 VPS 的 browser-session 目录，后续抓取可直接复用。
+
+推荐用一条命令完成本地采集、上传 VPS、远端导入。命令会把临时 bundle 上传到 VPS 的
+`/tmp/pim-auth-bundles/`，导入结束后默认删除远端临时文件；远端 `pimctl` 会优先读取 VPS 自己的
+`~/.pim/data/runtime-secrets.json` 或已登录 profile：
+
+```bash
+./pim auth-bundle sync https://example.com \
+  --remote pim@your-vps \
+  --remote-pim ~/personal-info-monitor
+```
+
+如果远端 PIM 不在本机 `http://127.0.0.1:8000`，可显式传远端服务地址或 profile：
+
+```bash
+./pim auth-bundle sync https://example.com \
+  --remote pim@your-vps \
+  --remote-pim ~/personal-info-monitor \
+  --remote-server https://your-pim.example.com \
+  --remote-profile production
+```
+
+排障时仍可拆成两步：
+
+```bash
+./pim capture-session https://example.com --out example.pim-auth-bundle.json
+# 等价入口：./pim auth-bundle export https://example.com --out example.pim-auth-bundle.json
+
+scp example.pim-auth-bundle.json pim@your-vps:/tmp/example.pim-auth-bundle.json
+ssh pim@your-vps 'cd ~/personal-info-monitor && ./pimctl auth-bundle import /tmp/example.pim-auth-bundle.json && rm -f /tmp/example.pim-auth-bundle.json'
+```
+
+Auth Bundle 文件包含可复用登录 cookie，等同于账号登录权限。只在可信通道传输，导入完成后删除临时文件。
+
+### 2.1 X / RSSHub / 官方 API 策略
+
+X 监测源默认按 `GraphQL/Cookie -> RSSHub -> Nitter` 顺序抓取。`X_BEARER_TOKEN`
+对应官方 X API，属于付费/配额 fallback；即使在环境变量里配置了 Bearer Token，PIM 也不会自动调用。
+只有给单个信源显式设置 `metadata.strategy=api` 或 `metadata.allow_x_api_fallback=true` 时才会走官方 API。
+
+VPS 上建议使用自建 RSSHub，避免公共实例限流或不可用影响 X fallback：
+
+```ini
+Environment=RSSHUB_URL=https://rsshub.your-domain.com
+```
+
+仓库提供了一个 Redis 缓存 + browserless 的基线 Compose 文件，可直接放到 VPS 独立目录运行：
+
+```bash
+mkdir -p /opt/rsshub
+cp docs/rsshub-docker-compose.yml /opt/rsshub/docker-compose.yml
+cd /opt/rsshub
+docker compose up -d
+curl -f http://127.0.0.1:1200/healthz
+```
+
+建议只把 RSSHub 监听在本机端口，再通过 Nginx/Caddy 暴露 `https://rsshub.your-domain.com`，最后把
+PIM 的 `RSSHUB_URL` 指到该 HTTPS 地址。
+
+RSSHub 自建实例如果需要访问带登录态的路由，请按 RSSHub 官方方式配置对应 cookie。PIM 不会把本地
+Auth Bundle 中的 cookie 自动转发给 RSSHub；两边登录态需要分别管理。
+
+### 2.2 合规与账号风险边界
+
+登录态、Auth Bundle、X Cookie 与站点会话只应使用你有权访问的账号和内容。不同站点对自动化访问、
+Cookie 复用、异地 IP、付费内容抓取和第三方 API 使用有不同服务条款；启用前请自行确认。VPS/headless
+环境更容易触发验证码、风控或账号锁定，因此默认推荐复用已导入的会话，避免服务器自动跑密码登录。
+PIM 只做本地个人信息监控，不提供绕过访问控制、共享付费内容或规避平台限制的保证。
+
 初始化会生成：
 
 - `backend/.venv`
@@ -118,10 +192,16 @@ Restart=always
 RestartSec=3
 Environment=PYTHONUNBUFFERED=1
 Environment=PIM_PUBLIC_URL=https://your-domain.com
+Environment=PIM_DISABLE_PASSWORD_AUTO_LOGIN=true
 
 [Install]
 WantedBy=multi-user.target
 ```
+
+VPS/headless 服务推荐保留 `PIM_DISABLE_PASSWORD_AUTO_LOGIN=true`：抓取时只复用已导入的
+cookie / browser-session，不在服务器上自动驱动密码登录，避免在无显示环境或异地 IP 上触发验证码、风控或账号风险。
+确实需要给某个信源回退密码登录时，先取消该全局开关，再为信源显式设置
+`metadata.allow_password_login=true`。
 
 保存为：
 

@@ -15,7 +15,7 @@ from app.domains.enrich.reader.shared import (
     _title_looks_like_url,
 )
 from app.domains.ingest.summary_clean import clean_listing_summary
-from app.processors.translator import Translator
+from app.platform.llm.translator import Translator
 from app.utils.logger import get_logger
 from app.utils.text import strip_html_tags
 
@@ -23,6 +23,7 @@ logger = get_logger(__name__)
 
 _TITLE_TIMEOUT_SECONDS = 12.0
 _SUMMARY_TIMEOUT_SECONDS = 20.0
+LISTING_TRANSLATION_JOB_ID = "listing-translation"
 
 _scheduled_ids: set[str] = set()
 
@@ -79,7 +80,7 @@ def content_needs_listing_translation(
 
 
 def schedule_listing_translation_backfill(content_ids: list[str], *, max_items: int = 30) -> None:
-    """Fire-and-forget translation for rows missing ``translated_*`` (deduped)."""
+    """Queue translation for rows missing ``translated_*`` (deduped)."""
     if not listing_translation_enabled():
         return
 
@@ -89,14 +90,32 @@ def schedule_listing_translation_backfill(content_ids: list[str], *, max_items: 
             continue
         _scheduled_ids.add(cid)
         try:
-            asyncio.create_task(_run_scheduled_translation(cid))
+            asyncio.create_task(_enqueue_scheduled_translation(cid))
         except RuntimeError:
             _scheduled_ids.discard(cid)
 
 
-async def _run_scheduled_translation(content_id: str) -> None:
+async def _enqueue_scheduled_translation(content_id: str) -> None:
     try:
-        await translate_listing_fields_async(content_id)
+        queued = await enqueue_listing_translation_job(content_id)
+        if not queued:
+            _scheduled_ids.discard(content_id)
+    except Exception as exc:  # noqa: BLE001 - enqueue sidecar must not break digest responses
+        logger.debug("Listing translation enqueue failed for %s: %s", content_id, exc)
+        _scheduled_ids.discard(content_id)
+
+
+async def enqueue_listing_translation_job(content_id: str) -> bool:
+    """Enqueue listing translation through the bounded process queue."""
+    from app.tasks.task_queue import task_queue
+
+    return await task_queue.enqueue_listing_translation(content_id)
+
+
+async def run_listing_translation_job(content_id: str) -> bool:
+    """Process a queued listing translation and release backfill dedupe state."""
+    try:
+        return await translate_listing_fields_async(content_id)
     finally:
         _scheduled_ids.discard(content_id)
 
@@ -218,8 +237,11 @@ async def _translate_with_timeout(
 
 
 __all__ = [
+    "LISTING_TRANSLATION_JOB_ID",
     "content_needs_listing_translation",
+    "enqueue_listing_translation_job",
     "listing_translation_enabled",
+    "run_listing_translation_job",
     "schedule_listing_translation_backfill",
     "translate_listing_fields_async",
 ]

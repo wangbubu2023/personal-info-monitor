@@ -3,7 +3,6 @@
 > 本文档描述**当前运行时代码**的架构（蓝图 Phase 0–7 已落地）。模块边界
 > 速查见 [`MODULE_BOUNDARIES.md`](./MODULE_BOUNDARIES.md)，全量目录注解见
 > [`PROJECT_STRUCTURE.md`](./PROJECT_STRUCTURE.md)，导入约束见
-> [`ADR-005-module-boundaries.md`](./ADR-005-module-boundaries.md) 与
 > `backend/scripts/check_domain_imports.py`。重构历史实施记录已归档至
 > [`reviews/archive/MODULE_REFACTOR_PLAN.md`](./reviews/archive/MODULE_REFACTOR_PLAN.md)。
 >
@@ -31,7 +30,7 @@ flowchart LR
     MIDDLE[APIRateLimit<br/>+ Request ID + Metrics]
     SCHED[APScheduler<br/>（fetch / digest / cleanup）]
     QUEUE[platform/workers<br/>Bounded TaskQueue]
-    FETCH[domains/fetch<br/>collectors + orchestrator]
+    FETCH[domains/fetch<br/>collectors + auth / retry / discovery]
     INGEST[domains/ingest<br/>normalize / dedupe / quality / finish]
     ENRICH[domains/enrich<br/>summary / translate / reader / digest / notify]
     ATOMS[domains/atoms<br/>（可选 / 默认关闭）]
@@ -93,24 +92,31 @@ flowchart LR
 
 ## 2. 抓取与处理流水线
 
-蓝图 Phase 1–3 把原来"Pipeline Coordinator"单体拆成三个领域包：
-`domains/fetch`（拿原始数据） → `domains/ingest`（规范化、去重、质检、入库）
-→ `domains/enrich`（摘要、翻译、Reader 正文、日报/小时报、通知）。
+当前运行时抓取主链只有一条：`tasks.fetch_tasks` 调用
+`domains.fetch.coordinator`，再进入 `domains/fetch/collector_stage.py` 和
+`domains/fetch/collectors` 拿原始条目；随后交给 `domains/ingest` 规范化、
+去重、质检、入库，最后由 `domains/enrich` 负责摘要、翻译、Reader 正文、
+日报/小时报、通知。早期蓝图里的 `domains/fetch/orchestrator.py` /
+`FetchBatch` DTO 没有生产调用方，已删除，避免出现第二条未接线主链。
 
 ```mermaid
 sequenceDiagram
   participant Sched as APScheduler
   participant TQ as platform/workers<br/>TaskQueue
-  participant Fetch as domains/fetch<br/>(orchestrator + collectors)
+  participant FetchTask as tasks.fetch_tasks
+  participant Pipe as domains.fetch.coordinator
+  participant Fetch as domains/fetch<br/>(collectors + auth/retry helpers)
   participant Ingest as domains/ingest<br/>(normalize / dedupe / quality / finish)
   participant Atom as domains/atoms<br/>(optional sidecar)
   participant Enrich as domains/enrich<br/>(summary / translate / reader / digest)
   participant DB as SQLite
 
   Sched->>TQ: enqueue fetch_source(id)
-  TQ->>Fetch: fetch_source_async
-  Fetch->>Fetch: collector.fetch(source) → FetchBatch
-  Fetch->>Ingest: build_raw_content_objects + finish_content
+  TQ->>FetchTask: fetch_source(source_id)
+  FetchTask->>Pipe: run_fetch_pipeline(source)
+  Pipe->>Fetch: CollectorStage.execute(source)
+  Fetch-->>Pipe: raw content dicts + warnings
+  Pipe->>Ingest: build_raw_content_objects + finish_content
   Ingest->>Ingest: normalize + dedupe + extract + quality
   Ingest->>DB: upsert + FTS5 索引
   Ingest-->>Atom: best-effort atomize（ATOMS_ENABLED）
@@ -122,7 +128,7 @@ sequenceDiagram
 
 关键要点：
 
-- **拉取策略注册表**：`app/services/probe_strategies/registry.py` 以
+- **拉取策略注册表**：`app/domains/sources/probe/strategies/registry.py` 以
   `{source_type: Strategy}` 形式注册 RSS / website / X / YouTube / podcast，
   新增类型只需新增策略类并在注册表里登记，`ProbeService` 不再依赖
   mixin 继承。
@@ -165,14 +171,15 @@ sequenceDiagram
   `FulltextQuality`（score、reason、boilerplate_ratio、title_match_score），
   并通过 `coarse_status()` 映射回 ingest 既有的 `FULLTEXT_STATUS_*` 评分门。
 - **列表页发现**：`domains/fetch/discovery/{rules,listing}.py` 提供受控的
-  栏目页发现（非全站遍历）：`parse_discovery_rules` 解析
+  栏目页发现（非全站遍历）：`resolve_discovery_rules` 优先解析
   `metadata['discovery']`（listing_urls、allow/deny、same_domain、max_links、
-  freshness、selectors，深度硬封顶为 1），`filter_candidates` 做同域 / 模式 /
-  去重 / 时效过滤并产出可解释 diagnostics；`WebsiteCollector` 在 RSS 路径
-  耗尽后、静态抓取前接入（仅在配置 discovery 时启用）。
+  freshness、selectors，深度硬封顶为 1），未配置时使用 source URL 本页的
+  保守默认档；`filter_candidates` 做同域 / 模式 / 文章 URL 形态 / 去重 /
+  时效过滤并产出可解释 diagnostics；`WebsiteCollector` 在 RSS 路径耗尽后、
+  静态抓取前接入，默认空结果会继续 fall through 到静态抓取。
 - **RSS 健康**：`domains/fetch/rss_health.py` 评估 feed 健康
   （`ok/stale/empty/parse_error`，stale≠失败）、缓存自动发现的 feed URL、
-  多 feed 去重；`RSSCollector` 抓取后写 `metadata['rss_health']`。
+  并由 `RSSCollector` 抓取后写 `metadata['rss_health']`。
 - **浏览器会话健康**：`domains/fetch/session_health.py` 纯函数分类
   `login_required / captcha / bot_wall / expired / selector_missing` 并给出
   `relogin / switch_rss_only / disable_playwright / retry_later` 建议动作。
@@ -218,12 +225,14 @@ flowchart LR
 
 | 组件 | 所在模块 | 职责 |
 | --- | --- | --- |
-| `ProbeService` | `app/services/probe_service.py` | 通过注册表分派到具体策略，检测信源可达性与推荐抓取方式 |
-| `fetch_source_async` | `app/domains/fetch/orchestrator.py` | 单 source 的抓取入口：拿 collector、读 schedule、调度 retry |
+| `ProbeService` | `app/domains/sources/probe/service.py` | 通过注册表分派到具体策略，检测信源可达性与推荐抓取方式；`app/services/probe_service.py` 仅保留兼容 shim |
+| `fetch_source` / `run_fetch_pipeline` | `app/tasks/fetch_tasks.py` + `app/domains/fetch/coordinator.py` + `app/domains/fetch/collector_stage.py` | 单 source 的抓取入口：调 CollectorStage、入库、更新 source 状态；`app/pipeline/coordinator.py` 仅保留兼容 alias |
 | `finish_content` | `app/domains/ingest/finish.py` | ingest → enrich → atoms → notify 的唯一汇合点 |
 | `Summarizer` / `Translator` | `app/platform/llm/{summarizer,translator}.py` | 受 `ENRICH_SUMMARY_ENABLED` / `ENRICH_TRANSLATE_ENABLED` 双开关控制的 LLM 调用 |
-| `RankingService` | `app/services/ranking_service.py` | 日报排序、时间衰减、去重 |
-| `DigestService` | `app/services/digest_service.py` | 日报持久化与接口 |
+| `RankingService` | `app/domains/score/ranking.py` | 日报排序、时间衰减、去重；`app/services/ranking_service.py` 仅保留兼容 shim |
+| `DigestService` | `app/domains/enrich/digest.py` | 日报/周报生成；`app/services/digest_service.py` 仅保留兼容 shim |
+| `DoctorService` | `app/domains/system/doctor.py` | 系统体检与告警判定；`app/services/doctor_service.py` 仅保留兼容 shim |
+| `MonitorService` | `app/domains/sources/monitoring.py` | source 状态、暂停/恢复与健康统计；`app/services/monitor_service.py` 仅保留兼容 shim |
 | Hourly Digest | `app/domains/enrich/hourly/*.py` | 3 小时窗口候选选择 / LLM 合成 / 存储 |
 | Reader | `app/domains/enrich/reader/*.py` | 正文拉取 / 标题翻译 / NDJSON 流式翻译 |
 | `SystemSettings` | `app/platform/config/system_settings.py` | 运行时开关和限额（rate limits、并发、翻译等） |
@@ -345,10 +354,7 @@ CI 会在每次构建时重新运行 `uv export` 并 `diff` 生成结果与提�
 
 - 模块边界一页纸：`docs/MODULE_BOUNDARIES.md`
 - 全量目录注解：`docs/PROJECT_STRUCTURE.md`
-- 边界 ADR：`docs/ADR-005-module-boundaries.md`
-- 功能开关 ADR：`docs/ADR-004-feature-flags.md`
 - 重构实施记录（Phase 0–7，已归档）：`docs/reviews/archive/MODULE_REFACTOR_PLAN.md`
 - 历史审计（2026-05-02 快照）：`docs/reviews/archive/audit-2026-05-02/`
 - API 参考与 `rate()` 查询样例：`docs/API_GUIDE.md`
 - 部署与运维：`docs/VPS_DEPLOY.md`、`docs/LOCAL_RUN.md`
-

@@ -250,6 +250,21 @@ async def test_hourly_digest_endpoints_return_summary_and_detail(client, db_sess
         summary="Summary body",
         content_count=1,
         sources=["Hourly"],
+        items_json=[
+            {
+                "content_id": str(uuid4()),
+                "title": "Structured event",
+                "summary": "Why this matters",
+                "source_name": "Hourly",
+                "source_url": "https://example.com",
+                "url": "https://example.com/hourly",
+                "publish_time": None,
+                "fetched_at": None,
+                "score": 88,
+                "lane": "track",
+                "duplicate_group_id": "title:abc",
+            }
+        ],
     )
     content = Content(
         source=source,
@@ -272,6 +287,8 @@ async def test_hourly_digest_endpoints_return_summary_and_detail(client, db_sess
     )
     assert hourly_detail.status_code == 200
     assert hourly_detail.json()["summary"] == "Summary body"
+    assert hourly_detail.json()["event_items"][0]["title"] == "Structured event"
+    assert hourly_detail.json()["event_items"][0]["score"] == 88
     assert hourly_detail.json()["items"][0]["title"] == "Hourly item"
 
 

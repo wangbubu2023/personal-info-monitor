@@ -6,12 +6,9 @@ re-exports every public symbol plus the private hooks that existing
 tests patch (``_translate_keyword_via_public_endpoint``,
 ``_translation_cache``, ``build_equivalent_terms``).
 
-External callers kept (``api/keywords.py``,
-``processors/keyword_matcher`` shim, ``alembic`` migration,
-``tests/test_keyword_rules.py``, ``tests/test_api_keywords.py``) all
-import through this module, so the patch targets like
-``monkeypatch.setattr("app.services.keyword_rules.build_equivalent_terms", …)``
-continue to work.
+External callers that still import this module get the canonical domain
+implementation, while production code and behavior tests should import
+directly from ``app.domains.ingest.keywords.rules``.
 
 .. deprecated::
    Import directly from :mod:`app.domains.ingest.keywords.rules`. This

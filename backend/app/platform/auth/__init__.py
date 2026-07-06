@@ -4,8 +4,9 @@ This package exposes infrastructure-side helpers that any domain may call:
 
 * ``cookies`` — lightweight cookie validity probing.
 * ``api_credentials`` — FastAPI-friendly decryption of stored API
-  credentials (relocated from ``app.services.api_config_credentials`` in
-  Phase 4.6).
+  credentials.
+* ``api_config_credentials`` — runtime model-settings enrichment from
+  stored APIConfig credentials.
 * ``api_key`` — ``verify_api_key`` FastAPI dependency that validates the
   ``X-API-Key`` request header against ``settings.pim_api_key``
   (relocated from ``app.auth`` in Phase 5 step 8). The old ``app.auth``

@@ -19,7 +19,7 @@ from app.domains.enrich.reader.shared import (
     _title_looks_like_url,
 )
 from app.models import Content
-from app.processors.translator import Translator
+from app.platform.llm.translator import Translator
 from app.utils.logger import get_logger
 
 logger = get_logger(__name__)

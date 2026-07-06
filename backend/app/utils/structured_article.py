@@ -14,9 +14,11 @@ import os
 import re
 from dataclasses import dataclass, field
 from typing import Any, Iterable
+from urllib.parse import urljoin, urlparse
 
 from bs4 import BeautifulSoup
 
+from app.utils.publish_time import parse_publish_time_text
 from app.utils.text import html_to_text_preserving_blocks, normalize_article_text, strip_html_tags
 from app.utils.logger import get_logger
 
@@ -177,6 +179,111 @@ def _title_from_node(node: dict[str, Any]) -> str | None:
         value = node.get(key)
         if isinstance(value, str) and value.strip():
             return normalize_article_text(value).strip()
+    return None
+
+
+def _node_string(node: dict[str, Any], *keys: str) -> str | None:
+    for key in keys:
+        value = node.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+        if isinstance(value, dict):
+            nested = _node_string(value, "@id", "url")
+            if nested:
+                return nested
+    return None
+
+
+def _safe_absolute_url(value: str | None, page_url: str | None = None) -> str | None:
+    raw = str(value or "").strip()
+    if not raw:
+        return None
+    absolute = urljoin(page_url or "", raw)
+    parsed = urlparse(absolute)
+    if parsed.scheme.lower() not in {"http", "https"} or not parsed.netloc:
+        return None
+    return absolute
+
+
+def _canonical_url_from_soup(soup: BeautifulSoup, page_url: str | None = None) -> str | None:
+    for link in soup.find_all("link"):
+        rel_values = link.get("rel") or []
+        if isinstance(rel_values, str):
+            rel_values = [rel_values]
+        if any(str(value).lower() == "canonical" for value in rel_values):
+            canonical = _safe_absolute_url(link.get("href"), page_url)
+            if canonical:
+                return canonical
+
+    for attr, key in (("property", "og:url"), ("name", "twitter:url")):
+        tag = soup.find("meta", attrs={attr: key})
+        canonical = _safe_absolute_url(tag.get("content") if tag else None, page_url)
+        if canonical:
+            return canonical
+
+    return None
+
+
+def _publish_time_from_node(node: dict[str, Any]) -> tuple[Any, str] | None:
+    for key in ("datePublished", "dateCreated", "uploadDate", "dateModified"):
+        value = node.get(key)
+        if not isinstance(value, str):
+            continue
+        parsed = parse_publish_time_text(value)
+        if parsed:
+            return parsed, value
+    return None
+
+
+def _json_ld_metadata(soup: BeautifulSoup, page_url: str | None = None) -> dict[str, Any]:
+    metadata: dict[str, Any] = {}
+    for script in soup.select('script[type="application/ld+json"]'):
+        raw = script.string or script.get_text() or ""
+        try:
+            data = _loads_json(raw.replace("\r", "").replace("\t", ""))
+        except (TypeError, ValueError, json.JSONDecodeError):
+            continue
+        for node in _iter_json_nodes(data):
+            if not isinstance(node, dict):
+                continue
+            type_names = _node_type_names(node)
+            has_publish_field = any(key in node for key in ("datePublished", "dateCreated", "uploadDate", "dateModified"))
+            if type_names and not (type_names & ARTICLE_TYPES) and not has_publish_field:
+                continue
+            if not metadata.get("canonical_url"):
+                canonical = _safe_absolute_url(_node_string(node, "url", "mainEntityOfPage", "@id"), page_url)
+                if canonical:
+                    metadata["canonical_url"] = canonical
+            if not metadata.get("published_time"):
+                published = _publish_time_from_node(node)
+                if published:
+                    metadata["published_time"], metadata["published_time_raw"] = published
+            if metadata.get("canonical_url") and metadata.get("published_time"):
+                return metadata
+    return metadata
+
+
+def _html_metadata_publish_time(soup: BeautifulSoup) -> tuple[Any, str] | None:
+    meta_keys = [
+        ("property", "article:published_time"),
+        ("property", "og:published_time"),
+        ("name", "publishdate"),
+        ("name", "pubdate"),
+        ("name", "date"),
+        ("itemprop", "datePublished"),
+    ]
+    for attr, key in meta_keys:
+        tag = soup.find("meta", attrs={attr: key})
+        raw = str(tag.get("content") or "").strip() if tag else ""
+        parsed = parse_publish_time_text(raw)
+        if parsed:
+            return parsed, raw
+
+    for tag in soup.find_all("time"):
+        raw = str(tag.get("datetime") or tag.get_text(" ", strip=True) or "").strip()
+        parsed = parse_publish_time_text(raw)
+        if parsed:
+            return parsed, raw
     return None
 
 
@@ -430,4 +537,20 @@ def extract_structured_article(
     return None
 
 
-__all__ = ["StructuredArticleExtraction", "extract_structured_article"]
+def extract_article_page_metadata(html: str, *, page_url: str | None = None) -> dict[str, Any]:
+    """Extract canonical URL and publish time from already-fetched article HTML."""
+    if not html:
+        return {}
+    soup = BeautifulSoup(html, "lxml")
+    metadata = _json_ld_metadata(soup, page_url)
+    canonical = _canonical_url_from_soup(soup, page_url) or metadata.get("canonical_url")
+    if canonical:
+        metadata["canonical_url"] = canonical
+    if not metadata.get("published_time"):
+        published = _html_metadata_publish_time(soup)
+        if published:
+            metadata["published_time"], metadata["published_time_raw"] = published
+    return metadata
+
+
+__all__ = ["StructuredArticleExtraction", "extract_article_page_metadata", "extract_structured_article"]

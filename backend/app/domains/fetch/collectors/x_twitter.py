@@ -21,10 +21,12 @@ import random
 import re
 from datetime import datetime
 from typing import Any, Dict, List, Optional
+from urllib.parse import urlparse
 
 import aiohttp
 import feedparser
 
+from app.domains.fetch.article_body import fetch_public_article_body
 from app.domains.fetch.collectors.base import BaseCollector
 from app.domains.fetch.collectors.x_twitter_formatters import (
     format_rss_entry,
@@ -40,10 +42,12 @@ from app.domains.fetch.collectors.x_twitter_text import (
     extract_article_urls,
     extract_tweet_id,
     extract_username_from_url,
+    is_x_status_page_url,
     normalize_tweet_url,
     title_looks_like_url,
 )
 from app.models import Source
+from app.utils.datetime import utcnow_naive
 from app.utils.http import permissive_session_kwargs
 from app.platform.security.ssrf import fetch_public_http_text
 
@@ -77,19 +81,32 @@ class XCollector(BaseCollector):
         await self._check_ssrf(source.url)
         username = self._extract_username(source)
         if not username:
+            from app.domains.fetch.failures import FetchFailureCode, FetchFailureError, make_failure
+
             self.logger.error(f"Could not extract username from source: {source.url}")
-            return []
+            raise FetchFailureError(
+                make_failure(FetchFailureCode.UNKNOWN, detail=f"Could not extract X username: {source.url}")
+            )
 
         self.logger.info(f"Fetching X account: @{username}")
         metadata = source.metadata_ or {}
         strategy = metadata.get("strategy") or (metadata.get("probe") or {}).get("strategy", "graphql")
+        allow_api = self._allow_api_strategy(source)
         handlers = {
             "graphql": self._fetch_via_graphql,
             "rsshub": self._fetch_via_rsshub,
             "nitter": self._fetch_via_nitter,
-            "api": self._fetch_via_api,
         }
-        ordered = [strategy] + [name for name in ["graphql", "rsshub", "nitter", "api"] if name != strategy]
+        if allow_api:
+            handlers["api"] = self._fetch_via_api
+        elif strategy == "api":
+            self.logger.warning(
+                "X API 策略跳过：官方 API 需显式设置 metadata.strategy=api "
+                "或 metadata.allow_x_api_fallback=true"
+            )
+        fallback_order = ["graphql", "rsshub", "nitter"] + (["api"] if allow_api else [])
+        ordered = [strategy] + [name for name in fallback_order if name != strategy]
+        last_exc: Exception | None = None
 
         for strategy_name in ordered:
             handler = handlers.get(strategy_name)
@@ -106,10 +123,17 @@ class XCollector(BaseCollector):
                     return contents
                 self.logger.info(f"Strategy '{strategy_name}' returned 0 items, trying next...")
             except Exception as exc:  # noqa: BLE001 - each strategy may raise a different surface
+                last_exc = exc
                 self.logger.warning(f"Strategy '{strategy_name}' failed: {exc}")
 
+        from app.domains.fetch.failures import FetchFailureCode, FetchFailureError, classify_exception, make_failure
+
         self.logger.error(f"All strategies exhausted for @{username}")
-        return []
+        if last_exc is not None:
+            raise FetchFailureError(classify_exception(last_exc)) from last_exc
+        raise FetchFailureError(
+            make_failure(FetchFailureCode.UNKNOWN, detail=f"All X strategies exhausted for @{username}")
+        )
 
     # ------------------------------------------------------------------
     # Configuration helpers.
@@ -119,6 +143,47 @@ class XCollector(BaseCollector):
         from app.config import get_settings
 
         return get_settings()
+
+    @staticmethod
+    def _allow_api_strategy(source: Source) -> bool:
+        metadata = source.metadata_ or {}
+        return metadata.get("strategy") == "api" or metadata.get("allow_x_api_fallback") is True
+
+    @staticmethod
+    def _stamp_session_health(
+        source: Source,
+        *,
+        reason: str,
+        suggested_action: str = "relogin",
+        status: str = "error",
+        details: Dict[str, Any] | None = None,
+    ) -> None:
+        from app.domains.fetch.session_health import SessionHealth, record_session_health
+
+        payload_details = {
+            "source": "x_graphql",
+            "check_url": source.url,
+            "final_url": "https://x.com",
+        }
+        if details:
+            payload_details.update(details)
+        record_session_health(source, SessionHealth(
+            status=status,
+            reason=reason,
+            suggested_action=suggested_action,
+            validated_at=utcnow_naive().isoformat() + "Z",
+            details=payload_details,
+        ))
+
+    @classmethod
+    def _stamp_graphql_exception_health(cls, source: Source, exc: Exception) -> None:
+        text = str(exc).lower()
+        if any(marker in text for marker in ("captcha", "verify you are human", "human verification")):
+            cls._stamp_session_health(source, reason="captcha", suggested_action="relogin")
+        elif any(marker in text for marker in ("access denied", "blocked", "cloudflare", "bot")):
+            cls._stamp_session_health(source, reason="bot_wall", suggested_action="switch_rss_only")
+        elif any(marker in text for marker in ("login", "sign in", "unauthorized", "forbidden", "auth")):
+            cls._stamp_session_health(source, reason="expired", suggested_action="relogin")
 
     def rsshub_url(self) -> str:
         if self._rsshub_url:
@@ -302,6 +367,13 @@ class XCollector(BaseCollector):
         cookies = self._get_graphql_cookies(source)
         if not cookies:
             self.logger.info("GraphQL 策略跳过：未配置 X_AUTH_TOKEN / X_CT0_TOKEN")
+            self._stamp_session_health(
+                source,
+                reason="login_required",
+                suggested_action="relogin",
+                status="warning",
+                details={"cookie_count": 0},
+            )
             return []
 
         try:
@@ -309,6 +381,12 @@ class XCollector(BaseCollector):
 
             if not await cookies_appear_valid("https://x.com", cookies):
                 self.logger.warning(f"GraphQL: X Cookie 可能已失效，跳过 @{username}")
+                self._stamp_session_health(
+                    source,
+                    reason="expired",
+                    suggested_action="relogin",
+                    details={"cookie_count": len(cookies)},
+                )
                 return []
         except Exception as exc:  # noqa: BLE001 - cookie precheck is best-effort
             self.logger.debug(f"GraphQL: Cookie 预检异常（继续尝试）: {exc}")
@@ -352,6 +430,7 @@ class XCollector(BaseCollector):
             return deduped
         except Exception as exc:  # noqa: BLE001 - twikit surfaces varied errors on auth / network failures
             self.logger.warning(f"GraphQL 策略失败: {exc}")
+            self._stamp_graphql_exception_health(source, exc)
             return []
 
     async def _fetch_via_rsshub(self, username: str, source: Source) -> List[Dict[str, Any]]:
@@ -529,34 +608,31 @@ class XCollector(BaseCollector):
             return contents
 
         article_map: Dict[str, List[int]] = {}
+        external_article_map: Dict[str, List[int]] = {}
         for idx, item in enumerate(contents):
             item_meta = item.get("metadata") if isinstance(item.get("metadata"), dict) else {}
-            url_texts: List[str] = [
-                str(item.get("title") or ""),
-                str(item.get("content") or ""),
-                str(item.get("url") or ""),
-            ]
-            for u in item_meta.get("urls") or []:
-                if isinstance(u, dict):
-                    url_texts.extend(
-                        [
-                            str(u.get("expanded_url") or ""),
-                            str(u.get("display_url") or ""),
-                            str(u.get("short_url") or ""),
-                        ]
-                    )
-                elif isinstance(u, str):
-                    url_texts.append(u)
-
-            for article_url in extract_article_urls(" ".join(url_texts)):
+            url_texts = self._collect_url_texts(item, item_meta)
+            x_article_urls = extract_article_urls(" ".join(url_texts))
+            for article_url in x_article_urls:
                 article_map.setdefault(article_url, []).append(idx)
 
-        if not article_map:
+            if x_article_urls or metadata.get("fetch_x_external_articles", True) is False:
+                continue
+            external_url = self._extract_external_article_url(item, item_meta)
+            if external_url:
+                external_article_map.setdefault(external_url, []).append(idx)
+
+        if not article_map and not external_article_map:
             return contents
 
         target_urls = list(article_map.keys())[:article_limit]
         text_map = await self._fetch_article_texts_with_playwright(
             target_urls, self.get_runtime_cookies(source)
+        )
+        external_limit = int(metadata.get("x_external_article_fetch_limit", min(article_limit, 4)))
+        external_text_map = await self._fetch_external_article_texts(
+            list(external_article_map.keys())[: max(external_limit, 0)],
+            metadata,
         )
 
         for article_url, indexes in article_map.items():
@@ -576,7 +652,117 @@ class XCollector(BaseCollector):
                 title = str(item.get("title") or "")
                 if title_looks_like_url(title):
                     item["title"] = build_title_from_text(article_text)
+                item_meta["fulltext_status"] = "full"
+
+        for article_url, indexes in external_article_map.items():
+            fetched = external_text_map.get(article_url)
+            article_text = fetched[0] if fetched else ""
+            resolved_url = fetched[1] if fetched else ""
+            for idx in indexes:
+                item = contents[idx]
+                item_meta = item.get("metadata") or {}
+                tweet_url = str(item.get("url") or "")
+                tweet_text = str(item.get("content") or "")
+                item_meta["article_url"] = resolved_url or article_url
+                item_meta["external_article_url"] = article_url
+                item_meta["tweet_url"] = tweet_url
+                item_meta["article_fulltext"] = bool(article_text)
+                item["metadata"] = item_meta
+                if not article_text:
+                    continue
+
+                item_meta["article_text_chars"] = len(article_text)
+                item_meta["content_type"] = "article"
+                item_meta["x_content_type"] = "external_article"
+                item_meta["fulltext_status"] = "full"
+                if tweet_text:
+                    item_meta.setdefault("tweet_text", tweet_text)
+                item["content"] = article_text
+                item["url"] = resolved_url or article_url
+                item["title"] = build_title_from_text(article_text)
         return contents
+
+    def _collect_url_texts(self, item: Dict[str, Any], item_meta: Dict[str, Any]) -> List[str]:
+        url_texts: List[str] = [
+            str(item.get("title") or ""),
+            str(item.get("content") or ""),
+            str(item.get("url") or ""),
+        ]
+        for u in item_meta.get("urls") or []:
+            if isinstance(u, dict):
+                url_texts.extend(
+                    [
+                        str(u.get("expanded_url") or ""),
+                        str(u.get("unwound_url") or ""),
+                        str(u.get("display_url") or ""),
+                        str(u.get("short_url") or ""),
+                        str(u.get("url") or ""),
+                    ]
+                )
+            elif isinstance(u, str):
+                url_texts.append(u)
+        return url_texts
+
+    def _extract_external_article_url(self, item: Dict[str, Any], item_meta: Dict[str, Any]) -> Optional[str]:
+        candidates: List[str] = []
+        for u in item_meta.get("urls") or []:
+            if isinstance(u, dict):
+                candidates.extend(
+                    [
+                        str(u.get("expanded_url") or ""),
+                        str(u.get("unwound_url") or ""),
+                    ]
+                )
+            elif isinstance(u, str):
+                candidates.append(u)
+        candidates.extend(
+            [
+                str(item.get("title") or ""),
+                str(item.get("content") or ""),
+                str(item.get("url") or ""),
+            ]
+        )
+        for raw in candidates:
+            for candidate in re.findall(r"https?://[^\s<>()\"']+", raw):
+                url = candidate.rstrip(".,;:!?)]}")
+                if not self._is_external_article_url(url):
+                    continue
+                return url
+        return None
+
+    @staticmethod
+    def _is_external_article_url(url: str) -> bool:
+        if not url or extract_article_urls(url) or is_x_status_page_url(url):
+            return False
+        try:
+            parsed = urlparse(url)
+        except ValueError:
+            return False
+        if parsed.scheme not in {"http", "https"}:
+            return False
+        host = (parsed.hostname or "").lower().removeprefix("www.")
+        if not host:
+            return False
+        if host in {"x.com", "twitter.com"} or host.endswith(".x.com") or host.endswith(".twitter.com"):
+            return False
+        if host.endswith("twimg.com") or host in {"pic.x.com", "pbs.twimg.com"}:
+            return False
+        return True
+
+    async def _fetch_external_article_texts(
+        self,
+        article_urls: List[str],
+        source_metadata: Dict[str, Any],
+    ) -> Dict[str, tuple[str, str]]:
+        text_map: Dict[str, tuple[str, str]] = {}
+        for article_url in article_urls:
+            text, resolved_url = await fetch_public_article_body(article_url, source_metadata)
+            if not text:
+                self.logger.info("External article text unavailable for X link: %s", article_url)
+                continue
+            text_map[article_url] = (text, resolved_url or article_url)
+            self.logger.info("Fetched external article text from X link: %s (%d chars)", article_url, len(text))
+        return text_map
 
     async def _fetch_article_texts_with_playwright(
         self, article_urls: List[str], cookies: Dict[str, str]

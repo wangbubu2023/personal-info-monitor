@@ -1,0 +1,66 @@
+# Self-hosted RSSHub baseline for PIM X fallback.
+#
+# Usage:
+#   mkdir -p /opt/rsshub
+#   cp docs/rsshub-docker-compose.yml /opt/rsshub/docker-compose.yml
+#   cd /opt/rsshub
+#   docker compose up -d
+#   curl -f http://127.0.0.1:1200/healthz
+#
+# Put RSSHub behind your reverse proxy/TLS endpoint, then set PIM:
+#   RSSHUB_URL=https://rsshub.your-domain.com
+#
+# RSSHub route-specific cookies or tokens must be configured in this stack
+# following RSSHub's own docs. PIM Auth Bundle cookies are not forwarded here.
+
+services:
+  rsshub:
+    image: diygod/rsshub:latest
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:1200:1200"
+    environment:
+      NODE_ENV: production
+      CACHE_TYPE: redis
+      REDIS_URL: redis://redis:6379/
+      CACHE_EXPIRE: "1800"
+      CACHE_CONTENT_EXPIRE: "14400"
+      PLAYWRIGHT_WS_ENDPOINT: ws://browserless:3000
+    depends_on:
+      redis:
+        condition: service_healthy
+      browserless:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:1200/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  browserless:
+    image: browserless/chrome:latest
+    restart: unless-stopped
+    ulimits:
+      core:
+        hard: 0
+        soft: 0
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/pressure"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  redis-data:

@@ -41,6 +41,7 @@ _MODULE_NAMES: tuple[str, ...] = (
     ".dashboard",
     ".digest",
     ".keywords",
+    ".score_lab",
     ".sources",
     ".sources._helpers",
     ".sources.fetch_import",

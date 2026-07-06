@@ -1,5 +1,6 @@
 from datetime import timedelta
 
+import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
@@ -7,20 +8,25 @@ from app.api.contents import _build_low_signal_cleanup_report
 from app.database import Base
 from app.models import Content, Source
 from app.models.source import SourceType
-from app.pipeline.normalizer_stage import NormalizerStage
+from app.domains.ingest.normalizer import NormalizerStage
 from app.domains.ingest.quality import (
     get_non_article_format_reject_reason,
+    get_website_content_reject_reason,
     is_rss_sourced_item,
 )
-from app.pipeline.utils import get_website_content_reject_reason
 from app.utils.datetime import utcnow_naive
 
 
-def _build_db_session():
+@pytest.fixture
+def db_session():
     engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False})
     Base.metadata.create_all(engine)
     session = sessionmaker(bind=engine)()
-    return session
+    try:
+        yield session
+    finally:
+        session.close()
+        engine.dispose()
 
 
 def test_website_content_gate_rejects_known_navigation_titles():
@@ -223,8 +229,8 @@ def test_non_article_format_rejects_engadget_review_recap():
     assert get_website_content_reject_reason("https://www.engadget.com/", raw) is None
 
 
-async def test_normalizer_stage_drops_engadget_roundup_from_rss():
-    db = _build_db_session()
+async def test_normalizer_stage_drops_engadget_roundup_from_rss(db_session):
+    db = db_session
     source = Source(
         name="Engadget",
         type=SourceType.WEBSITE,
@@ -261,8 +267,8 @@ async def test_normalizer_stage_drops_engadget_roundup_from_rss():
     assert valid_contents == []
 
 
-async def test_normalizer_stage_drops_rss_sourced_slideshow_items():
-    db = _build_db_session()
+async def test_normalizer_stage_drops_rss_sourced_slideshow_items(db_session):
+    db = db_session
     source = Source(
         name="NYT CN",
         type=SourceType.WEBSITE,
@@ -313,8 +319,8 @@ def test_rss_sourced_item_detected_from_ingest_channel():
     )
 
 
-async def test_normalizer_stage_keeps_rss_sourced_short_website_items():
-    db = _build_db_session()
+async def test_normalizer_stage_keeps_rss_sourced_short_website_items(db_session):
+    db = db_session
     source = Source(
         name="NYT CN",
         type=SourceType.WEBSITE,
@@ -352,8 +358,8 @@ async def test_normalizer_stage_keeps_rss_sourced_short_website_items():
     assert valid_contents[0]["title"] == "黑客军团如何渗透美国电网"
 
 
-async def test_normalizer_stage_filters_low_signal_website_contents_before_storage():
-    db = _build_db_session()
+async def test_normalizer_stage_keeps_low_signal_website_for_finish_acceptance(db_session):
+    db = db_session
     source = Source(
         name="HBR",
         type=SourceType.WEBSITE,
@@ -389,6 +395,13 @@ async def test_normalizer_stage_filters_low_signal_website_contents_before_stora
             "url": "https://hbr.org/2026/03/how-ai-changes-team-strategy",
             "publish_time": now,
         },
+        {
+            "external_id": "https://hbr.org/slideshow/team-photos",
+            "title": "Photo gallery: team photos",
+            "content": "",
+            "url": "https://hbr.org/slideshow/team-photos",
+            "publish_time": now,
+        },
     ]
 
     valid_contents, stale_skipped = await NormalizerStage.execute(
@@ -399,11 +412,15 @@ async def test_normalizer_stage_filters_low_signal_website_contents_before_stora
     )
 
     assert stale_skipped == 0
-    assert [item["title"] for item in valid_contents] == ["How AI Changes Team Strategy"]
+    assert [item["title"] for item in valid_contents] == [
+        "Innovation",
+        "Subscribe",
+        "How AI Changes Team Strategy",
+    ]
 
 
-async def test_normalizer_stage_keeps_cross_source_external_id_matches():
-    db = _build_db_session()
+async def test_normalizer_stage_keeps_cross_source_external_id_matches(db_session):
+    db = db_session
     source_a = Source(
         name="X Account A",
         type=SourceType.X,
@@ -464,9 +481,9 @@ async def test_normalizer_stage_keeps_cross_source_external_id_matches():
     assert valid_contents[0]["metadata"]["cross_source_external_id_match"] == existing.id
 
 
-async def test_normalizer_scheduled_allows_days_old_website_rss_items_by_default():
+async def test_normalizer_scheduled_allows_days_old_website_rss_items_by_default(db_session):
     """Regression: 60m default lag dropped entire VentureBeat-style RSS-backed website feeds."""
-    db = _build_db_session()
+    db = db_session
     source = Source(
         name="VB",
         type=SourceType.WEBSITE,
@@ -501,8 +518,8 @@ async def test_normalizer_scheduled_allows_days_old_website_rss_items_by_default
     assert len(valid_contents) == 1
 
 
-async def test_normalizer_scheduled_keeps_tight_lag_for_x_by_default():
-    db = _build_db_session()
+async def test_normalizer_scheduled_keeps_tight_lag_for_x_by_default(db_session):
+    db = db_session
     source = Source(
         name="X user",
         type=SourceType.X,
@@ -535,6 +552,42 @@ async def test_normalizer_scheduled_keeps_tight_lag_for_x_by_default():
 
     assert stale_skipped == 1
     assert valid_contents == []
+
+
+async def test_normalizer_scheduled_x_lag_scales_with_fetch_interval(db_session):
+    db = db_session
+    source = Source(
+        name="X slower user",
+        type=SourceType.X,
+        url="https://x.com/example",
+        fetch_interval=120,
+        enabled=True,
+        metadata_={},
+    )
+    db.add(source)
+    db.commit()
+    db.refresh(source)
+
+    old = utcnow_naive() - timedelta(hours=3)
+    raw_contents = [
+        {
+            "external_id": "tweet-1000",
+            "title": "Still in scheduled window",
+            "content": "hello world " * 20,
+            "url": "https://x.com/example/status/1000",
+            "publish_time": old,
+        },
+    ]
+
+    valid_contents, stale_skipped = await NormalizerStage.execute(
+        db=db,
+        source=source,
+        raw_contents=raw_contents,
+        manual_trigger=False,
+    )
+
+    assert stale_skipped == 0
+    assert len(valid_contents) == 1
 
 
 def test_low_signal_cleanup_report_matches_only_junk_history():

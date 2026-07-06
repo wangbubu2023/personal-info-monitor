@@ -77,6 +77,10 @@ def _request_route_label(request: Request) -> str:
 # app.domains.* imports (Phase 5 step 13 — preserves the platform ↛ domains
 # invariant enforced by scripts/check_domain_imports.py --phase=5).
 from app.domains.ingest.finish import finish_content
+from app.domains.enrich.content.listing_translation import (
+    LISTING_TRANSLATION_JOB_ID,
+    run_listing_translation_job,
+)
 from app.tasks.fetch_tasks import fetch_source
 
 
@@ -85,13 +89,16 @@ async def _fetch_handler(source_id: str, manual_trigger: bool) -> None:
 
 
 async def _process_handler(content_id: str, job_id: str | None) -> None:
+    if job_id == LISTING_TRANSLATION_JOB_ID:
+        await run_listing_translation_job(content_id)
+        return
     await finish_content(content_id, job_id=job_id)
 
 
 app = FastAPI(
     title=settings.app_name,
     description="个人化资讯监控管理系统 API",
-    version="1.3.1",
+    version="1.4.0",
     lifespan=build_lifespan(
         fetch_handler=_fetch_handler,
         process_handler=_process_handler,
@@ -232,7 +239,7 @@ else:
             status = f"running (Frontend dev server: {DEV_FRONTEND_URL})"
         return {
             "name": settings.app_name,
-            "version": "1.3.1",
+            "version": "1.4.0",
             "status": status,
         }
 

@@ -150,6 +150,7 @@ task_tracker = TaskTracker()
 # Concurrency controls
 _fetch_semaphore: Optional[asyncio.Semaphore] = None
 _llm_semaphore: Optional[asyncio.Semaphore] = None
+_finalize_semaphore: Optional[asyncio.Semaphore] = None
 
 
 def get_fetch_semaphore() -> asyncio.Semaphore:
@@ -166,3 +167,13 @@ def get_llm_semaphore() -> asyncio.Semaphore:
     if _llm_semaphore is None:
         _llm_semaphore = asyncio.Semaphore(2)
     return _llm_semaphore
+
+
+def get_finalize_semaphore() -> asyncio.Semaphore:
+    """Limit post-fetch finalization without consuming scarce LLM slots."""
+    global _finalize_semaphore
+    if _finalize_semaphore is None:
+        from app.config import get_settings
+
+        _finalize_semaphore = asyncio.Semaphore(max(1, min(get_settings().fetch_concurrency, 8)))
+    return _finalize_semaphore

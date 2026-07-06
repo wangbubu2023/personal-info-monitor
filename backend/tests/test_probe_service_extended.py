@@ -1,13 +1,14 @@
-"""Extended tests for app.services.probe_service — complements test_probe_service_security.py."""
+"""Extended tests for app.domains.sources.probe.service — complements test_probe_service_security.py."""
 
 from __future__ import annotations
 
 from typing import List, Optional
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.services.probe_service import (
+from app.domains.sources.probe.service import (
     KNOWN_RSS_FEEDS,
     ProbeResult,
     ProbeService,
@@ -45,6 +46,15 @@ class TestProbeResult:
         assert d["rss_url"] == "http://feed.xml"
         assert d["sample_count"] == 5
         assert "probed_at" in d
+
+
+def test_sources_probe_domain_does_not_import_legacy_services():
+    probe_dir = Path(__file__).resolve().parents[1] / "app" / "domains" / "sources" / "probe"
+    offenders = []
+    for path in probe_dir.rglob("*.py"):
+        if "app.services.probe" in path.read_text():
+            offenders.append(path.relative_to(probe_dir).as_posix())
+    assert offenders == []
 
 
 # ---------------------------------------------------------------------------
@@ -509,7 +519,7 @@ class TestProbeX:
         service = ProbeService()
         rss_text = """<?xml version="1.0"?>
         <rss version="2.0"><channel><item><title>Tweet</title></item></channel></rss>"""
-        with patch("app.services.probe_service.get_settings") as mock_settings:
+        with patch("app.domains.sources.probe.service.get_settings") as mock_settings:
             settings = MagicMock()
             settings.x_auth_token = None
             settings.x_ct0_token = None
@@ -525,7 +535,7 @@ class TestProbeX:
     @pytest.mark.asyncio
     async def test_no_strategy_available(self):
         service = ProbeService()
-        with patch("app.services.probe_service.get_settings") as mock_settings:
+        with patch("app.domains.sources.probe.service.get_settings") as mock_settings:
             settings = MagicMock()
             settings.x_auth_token = None
             settings.x_ct0_token = None
@@ -660,7 +670,7 @@ class TestHttpGet:
                 return _FakeResp(302, headers={"Location": "http://public.example.com/redir"}, url=url)
 
         with patch(
-            "app.services.probe_service.aiohttp.ClientSession",
+            "app.domains.sources.probe.service.aiohttp.ClientSession",
             lambda *a, **kw: _FakeSession(),
         ):
             async def _fake_resolve(hostname, port):

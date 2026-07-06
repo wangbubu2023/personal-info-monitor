@@ -87,6 +87,15 @@ class AuthConfigUpdate(BaseModel):
     bind_all_x_sources: Optional[bool] = None
 
 
+class AuthBundleImportRequest(BaseModel):
+    """Schema for importing a local Auth Bundle into server-side credentials."""
+
+    bundle: Dict[str, Any] = Field(..., description="Auth Bundle JSON payload")
+    name: Optional[str] = Field(None, description="Override AuthConfig display name")
+    bind_matching_sources: bool = Field(default=True, description="Bind matching sources to the imported auth config")
+    create_browser_session: bool = Field(default=True, description="Persist bundled storage_state as a browser session")
+
+
 class AuthConfigResponse(AuthConfigBase):
     """Schema for Auth Config response."""
     id: UUID

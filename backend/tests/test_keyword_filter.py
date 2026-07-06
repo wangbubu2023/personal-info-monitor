@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from app.pipeline.coordinator import _apply_keyword_filter
+from app.domains.fetch.coordinator import _apply_keyword_filter
 
 
 def _make_keyword(kid: str, word: str, match_type: str = "contains", enabled: bool = True):
@@ -27,15 +27,16 @@ def _make_content(title: str, body: str = ""):
 
 class TestApplyKeywordFilter:
 
-    def test_no_keywords_passes_all(self):
+    def test_no_keywords_passes_all_with_warning(self):
         db = MagicMock()
         db.query.return_value.filter.return_value.all.return_value = []
-        source = SimpleNamespace(name="TestSource")
+        source = SimpleNamespace(name="TestSource", metadata_={})
         items = [_make_content("Hello World")]
 
         kept, filtered = _apply_keyword_filter(db, source, items)
-        assert len(kept) == 0
-        assert filtered == 1
+        assert kept == items
+        assert filtered == 0
+        assert source.metadata_["warnings"] == ["keyword_filter_misconfigured"]
 
     def test_matching_items_kept(self):
         kw = _make_keyword("k1", "AI")

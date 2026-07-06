@@ -148,16 +148,10 @@ async def build_equivalent_terms(keyword: str, *, match_type: str = "contains") 
     if not value or match_type == "regex":
         return []
 
-    # ``Translator`` is an *enrich* component (LLM-powered). A static
-    # ``from app.processors.translator import Translator`` here would
-    # trip the Phase 3 boundary check (ingest → translator forbidden),
-    # so we go through :func:`importlib.import_module` — the
-    # ``check_domain_imports.py`` docstring documents that runtime
-    # ``importlib`` calls are intentionally out of scope. The blueprint
-    # §5.6 ("keyword_rules 不应 import Translator") flags this for a
-    # proper port-based fix in Phase 4 once ``Translator`` moves to
-    # ``domains.enrich.translation``.
-    translator_module = importlib.import_module("app.processors.translator")
+    # ``Translator`` is an enrich/platform component (LLM-powered). Keep
+    # this as runtime resolution until keyword expansion gets a small port
+    # interface; static ingest -> LLM imports are intentionally avoided.
+    translator_module = importlib.import_module("app.platform.llm.translator")
     translator = translator_module.Translator()
     target_language = "en" if translator.is_chinese(value) else "zh-CN"
     cache_key = f"{keyword_identity_key(value)}::{target_language}"

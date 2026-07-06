@@ -84,20 +84,45 @@ def _strip_www_prefix(host: str) -> str:
     return host[4:] if host.startswith("www.") else host
 
 
+_MULTI_LABEL_PUBLIC_SUFFIXES = {
+    "co.uk",
+    "com.au",
+    "com.cn",
+    "com.hk",
+    "com.sg",
+    "com.tw",
+    "co.jp",
+    "co.kr",
+}
+
+
+def _registrable_domain(host: str) -> str:
+    parts = [part for part in host.lower().rstrip(".").split(".") if part]
+    if len(parts) < 2:
+        return host
+    suffix = ".".join(parts[-2:])
+    if suffix in _MULTI_LABEL_PUBLIC_SUFFIXES and len(parts) >= 3:
+        return ".".join(parts[-3:])
+    return suffix
+
+
 def same_site(source_url: str, candidate_url: str) -> bool:
     source_host = _strip_www_prefix((urlparse(source_url).hostname or "").lower())
     candidate_host = _strip_www_prefix((urlparse(candidate_url).hostname or "").lower())
     if not source_host or not candidate_host:
         return False
-    return candidate_host == source_host or candidate_host.endswith("." + source_host)
+    if candidate_host == source_host or candidate_host.endswith("." + source_host):
+        return True
+    return _registrable_domain(source_host) == _registrable_domain(candidate_host)
 
 
 # Path segments that strongly signal the following segment is an article slug,
-# e.g. ``/zhongwen/articles/<slug>/simp``. The segment after the hub must still
-# look slug-shaped; this avoids accepting section pages like ``/articles/latest``.
+# e.g. ``/zhongwen/articles/<slug>/simp``. These hubs are often followed by
+# plain-word slugs such as ``/blog/hello``.
 ARTICLE_HUB_SEGMENTS = {
     "articles",
     "article",
+    "blog",
     "story",
     "stories",
 }
@@ -162,11 +187,11 @@ def looks_like_article_url(source_url: str, candidate_url: str) -> bool:
     if len(segments) < 1:
         return False
 
-    # An article-hub segment (``articles``/``story``/...) followed by a
-    # slug-shaped segment is a strong article signal. A trailing locale variant
+    # An article-hub segment (``articles``/``story``/``blog``/...) followed by
+    # another segment is a strong article signal. A trailing locale variant
     # (``simp``/``trad``) or ``amp`` marker must not cause a reject.
     for index, segment in enumerate(segments[:-1]):
-        if segment in ARTICLE_HUB_SEGMENTS and _looks_like_slug_segment(segments[index + 1]):
+        if segment in ARTICLE_HUB_SEGMENTS and segments[index + 1]:
             return True
 
     tail = segments[-1]

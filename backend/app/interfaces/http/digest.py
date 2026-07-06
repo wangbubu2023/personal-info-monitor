@@ -433,6 +433,7 @@ async def get_hourly_digest_detail(
             summary=None,
             content_count=0,
             sources=[],
+            event_items=[],
             items=[],
             generated_at=to_iso_z(utcnow_naive()),
         )
@@ -463,6 +464,7 @@ async def get_hourly_digest_detail(
         summary=digest_row.summary,
         content_count=digest_row.content_count,
         sources=digest_row.sources or [],
+        event_items=digest_row.items_json or [],
         items=items,
         generated_at=to_iso_z(digest_row.created_at),
     )

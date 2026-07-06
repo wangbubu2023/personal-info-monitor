@@ -12,14 +12,11 @@ of ``app.processors`` / ``app.services``:
 
 Legacy paths (``app.processors.keyword_matcher``,
 ``app.services.keyword_rules``) remain as re-export shims through
-Phase 7 so existing test ``monkeypatch.setattr`` / ``patch`` targets and
-external callers (``processors/content_processor.py``,
-``api/keywords.py``, ``tasks/process_tasks.py``,
-``pipeline/coordinator.py``, ``alembic`` migration) keep working.
+Phase 7 for out-of-tree callers.
 
-Note: ``rules.build_equivalent_terms`` does ``from app.processors.translator
-import Translator`` lazily inside the function for bilingual expansion;
-that is an *enrich* dependency (LLM-powered translation) and stays
-behind a lazy import so the ingest domain at module-import time does
-not touch ``processors.translator``.
+Note: ``rules.build_equivalent_terms`` resolves
+``app.platform.llm.translator`` lazily inside the function for bilingual
+expansion; that is an enrich/platform dependency (LLM-powered
+translation) and stays behind a lazy import so the ingest domain at
+module-import time does not touch LLM runtime setup.
 """

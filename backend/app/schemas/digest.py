@@ -77,6 +77,22 @@ class HourlyDigestSummary(BaseModel):
     }
 
 
+class HourlyDigestEventItem(BaseModel):
+    """Structured event card stored with an hourly digest."""
+
+    content_id: UUID
+    title: str
+    summary: Optional[str] = None
+    source_name: str
+    source_url: Optional[str] = None
+    url: str
+    publish_time: Optional[str] = None
+    fetched_at: Optional[str] = None
+    score: Optional[float] = None
+    lane: Optional[str] = None
+    duplicate_group_id: Optional[str] = None
+
+
 class HourlyDigestDetail(BaseModel):
     """Schema for hourly digest detail with AI summary."""
     
@@ -86,5 +102,6 @@ class HourlyDigestDetail(BaseModel):
     summary: Optional[str] = None
     content_count: int = 0
     sources: List[str] = []
+    event_items: List[HourlyDigestEventItem] = []
     items: List[DigestItem] = []
     generated_at: Optional[str] = None

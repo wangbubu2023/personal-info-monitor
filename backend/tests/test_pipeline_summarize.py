@@ -26,7 +26,7 @@ async def test_apply_pipeline_summary_writes_llm_summary():
 
     with patch("app.domains.enrich.content.summarize.pipeline_summary_enabled", return_value=True):
         with patch(
-            "app.processors.summarizer.Summarizer.summarize",
+            "app.platform.llm.summarizer.Summarizer.summarize",
             new_callable=AsyncMock,
             return_value="OpenAI is reportedly preparing to file for an IPO in the near term.",
         ):

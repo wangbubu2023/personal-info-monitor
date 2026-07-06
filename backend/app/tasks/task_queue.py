@@ -23,9 +23,10 @@
 
 from app.platform.workers.queue import (  # noqa: F401 — re-export
     BoundedTaskQueue,
+    LISTING_TRANSLATION_JOB_ID,
     _dlq_logger,
     _dropped_task_logger,
     task_queue,
 )
 
-__all__ = ["BoundedTaskQueue", "task_queue"]
+__all__ = ["BoundedTaskQueue", "LISTING_TRANSLATION_JOB_ID", "task_queue"]

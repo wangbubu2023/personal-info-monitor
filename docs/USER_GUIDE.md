@@ -111,7 +111,8 @@ RSS 是最稳定的订阅方式，推荐优先使用。
 
 ### 2.4 添加 X（Twitter）源
 
-由于 X API 限制，PIM 支持多种采集策略，自动选择可用方式。
+PIM 的 X 抓取默认使用浏览器登录态 Cookie 的 GraphQL 路径，再回退到 RSSHub / Nitter。
+官方 X API 属付费/配额 fallback，不会因为配置了 API Key 就自动调用。
 
 **支持的输入格式**：
 - 用户主页：`https://x.com/username`
@@ -121,16 +122,16 @@ RSS 是最稳定的订阅方式，推荐优先使用。
 
 | 方式 | 说明 |
 |------|------|
-| RSSHub | 无需 X 账号，依赖公共 RSSHub 实例 |
-| 浏览器 Cookie | 在「认证配置」中保存 `auth_token` + `ct0` |
-| X API Key | 官方 API，需申请开发者账号 |
+| 浏览器会话 / Cookie | 在「登录与凭据」里点击「为 X 登录」，完成一次可视化登录后自动同步 Cookie |
+| RSSHub / Nitter | 作为无账号 fallback；VPS 推荐配置自建 `RSSHUB_URL`，公共实例只适合临时验证 |
+| X API Key | 官方 API，需开发者账号和配额；只在单个信源显式设置 `metadata.strategy=api` 或 `metadata.allow_x_api_fallback=true` 时使用 |
 
-**配置浏览器 Cookie**：
+**配置 X 登录态**：
 
-1. 在浏览器开发者工具中，访问 `https://x.com` 后复制：
-   - `auth_token` 的值
-   - `ct0` 的值
-2. 在 PIM「设置 → API 密钥」中填入
+1. 进入「设置 → 登录与凭据」
+2. 点击「新建站点登录」，站点 URL 填 `https://x.com`
+3. 在弹出的可视化浏览器里完成登录、验证码或 2FA
+4. 手动关闭浏览器窗口，PIM 会保存会话并自动绑定 X 监控源
 
 ### 2.5 添加 YouTube 频道源
 
@@ -152,6 +153,21 @@ RSS 是最稳定的订阅方式，推荐优先使用。
 3. 点击「打开登录页面」，在弹出的浏览器中手动登录
 4. 关闭浏览器后，登录状态自动保存
 5. 创建源时选择对应的认证配置
+
+**合规与账号风险**：只为你有权访问的账号和内容配置登录态。不同站点对自动化访问、
+Cookie 复用、异地 IP、付费内容抓取和 API 调用有不同服务条款；VPS/headless 环境也更容易触发验证码、
+风控或账号锁定。Auth Bundle 与 Cookie 文件等同于登录权限，只在可信设备和可信通道间传输。
+
+如果 PIM 部署在 VPS 上，而目标站点只能在本地桌面环境稳定登录，可在本地运行：
+
+```bash
+./pim auth-bundle sync https://example.com \
+  --remote pim@your-vps \
+  --remote-pim ~/personal-info-monitor
+```
+
+该命令会在本地打开浏览器采集登录态，随后通过 SSH/SCP 上传到 VPS 并调用远端 `pimctl auth-bundle import`。
+远端临时 bundle 默认会在导入后删除。
 
 ### 2.7 高级穿透与反爬 (BPC 策略)
 

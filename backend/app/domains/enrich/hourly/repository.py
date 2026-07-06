@@ -24,6 +24,7 @@ from app.domains.enrich.hourly.text_utils import (
     get_digest_window_hours,
     local_to_utc_naive,
 )
+from app.utils.datetime import to_iso_z
 from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -39,6 +40,8 @@ def candidate_score_expr(content_model):
     rows last.
     """
     return func.coalesce(
+        content_model.final_score,
+        content_model.article_score,
         cast(func.json_extract(content_model.metadata_, "$.final_score"), Float),
         cast(func.json_extract(content_model.metadata_, "$.article_score"), Float),
         -1.0,
@@ -102,15 +105,47 @@ def build_entries(rows: list) -> tuple[list[dict], list[str]]:
             "fetched_at": c.fetched_at,
             "metadata": content_metadata,
             "source_metadata": source_metadata,
-            "final_score": content_metadata.get("final_score"),
-            "article_score": content_metadata.get("article_score", content_metadata.get("final_score")),
-            "lane": content_metadata.get("lane"),
-            "selection_status": content_metadata.get("selection_status"),
+            "final_score": c.final_score if c.final_score is not None else content_metadata.get("final_score"),
+            "article_score": c.article_score
+            if c.article_score is not None
+            else content_metadata.get("article_score", content_metadata.get("final_score")),
+            "lane": c.lane or content_metadata.get("lane"),
+            "selection_status": c.selection_status or content_metadata.get("selection_status"),
             "fulltext_status": content_metadata.get("fulltext_status"),
             "score_confidence": content_metadata.get("score_confidence"),
             "source_stars": source_stars,
         })
     return entries, source_names
+
+
+def build_hourly_digest_event_items(entries: list[dict], *, limit: int = 8) -> list[dict]:
+    """Build a compact structured snapshot for event-card rendering."""
+    event_items: list[dict] = []
+    for entry in entries[: max(0, int(limit or 0))]:
+        metadata = entry.get("metadata") if isinstance(entry.get("metadata"), dict) else {}
+        score = entry.get("final_score")
+        if score is None:
+            score = entry.get("article_score")
+        try:
+            score = float(score) if score is not None else None
+        except (TypeError, ValueError):
+            score = None
+        event_items.append(
+            {
+                "content_id": str(entry.get("content_id") or ""),
+                "title": str(entry.get("translated_title") or entry.get("title") or "").strip(),
+                "summary": str(entry.get("translated_summary") or entry.get("summary") or "").strip()[:300] or None,
+                "source_name": str(entry.get("source_name") or "Unknown"),
+                "source_url": str(entry.get("source_url") or "") or None,
+                "url": str(entry.get("article_url") or ""),
+                "publish_time": to_iso_z(entry.get("publish_time")),
+                "fetched_at": to_iso_z(entry.get("fetched_at")),
+                "score": score,
+                "lane": entry.get("lane"),
+                "duplicate_group_id": metadata.get("duplicate_group_id"),
+            }
+        )
+    return event_items
 
 
 def compute_digest_window(now_local: datetime, *, window_hours: int = 1) -> tuple[datetime, datetime, datetime, datetime]:
@@ -166,7 +201,16 @@ def get_or_create_hourly_digest(db, digest_date, digest_hour: int, title: str):
     return digest
 
 
-def store_digest(db, digest, title: str, body: str, *, content_count: int, sources: list[str]) -> None:
+def store_digest(
+    db,
+    digest,
+    title: str,
+    body: str,
+    *,
+    content_count: int,
+    sources: list[str],
+    items_json: list[dict] | None = None,
+) -> None:
     """Upsert a digest row, racing safely with a concurrent inserter.
 
     If a sibling job won the unique-index race we rollback and update
@@ -176,6 +220,7 @@ def store_digest(db, digest, title: str, body: str, *, content_count: int, sourc
     digest.summary = body
     digest.content_count = content_count
     digest.sources = sources
+    digest.items_json = items_json or []
     try:
         db.commit()
         return
@@ -196,6 +241,7 @@ def store_digest(db, digest, title: str, body: str, *, content_count: int, sourc
     existing.summary = body
     existing.content_count = content_count
     existing.sources = sources
+    existing.items_json = items_json or []
     db.commit()
 
 
@@ -209,6 +255,7 @@ def store_empty_digest(
         f"## {title}\n\n### 重点\n{message}",
         content_count=content_count,
         sources=sources,
+        items_json=[],
     )
 
 

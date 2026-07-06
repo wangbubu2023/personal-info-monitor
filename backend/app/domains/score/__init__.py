@@ -9,8 +9,10 @@ from app.domains.score.scoring import (
     merge_baseline_scoring_metadata,
     merge_rule_scoring_metadata,
 )
+from app.domains.score.ranking import RankingService
 
 __all__ = [
+    "RankingService",
     "SCORE_VERSION",
     "merge_baseline_scoring_metadata",
     "merge_rule_scoring_metadata",

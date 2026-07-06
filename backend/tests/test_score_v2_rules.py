@@ -44,16 +44,35 @@ def test_salience_balances_geo_and_tech_headlines():
     assert tech >= 8.5
 
 
-def test_corroboration_uses_source_id():
+def test_corroboration_uses_independent_domains():
     items = [
-        {"source_id": "s1", "source_name": "A", "metadata": {"source_stars": 3}},
-        {"source_id": "s2", "source_name": "B", "metadata": {"source_stars": 2}},
-        {"source_id": "s3", "source_name": "C", "metadata": {"source_stars": 2}},
+        {"source_id": "s1", "source_url": "https://www.example.com/a", "metadata": {"source_stars": 3}},
+        {"source_id": "s2", "source_url": "https://news.example.com/b", "metadata": {"source_stars": 2}},
+        {"source_id": "s3", "source_url": "https://other.com/c", "metadata": {"source_stars": 2}},
     ]
     score, tier, count = compute_corroboration(items)
-    assert tier == "strong"
-    assert count == 3
-    assert score == 9.0
+    assert tier == "moderate"
+    assert count == 2
+    assert score == 6.5
+
+
+def test_corroboration_duplicate_group_counts_once():
+    items = [
+        {
+            "source_id": "s1",
+            "source_url": "https://a.com/1",
+            "metadata": {"duplicate_group_id": "same-story", "source_stars": 2},
+        },
+        {
+            "source_id": "s2",
+            "source_url": "https://b.com/2",
+            "metadata": {"duplicate_group_id": "same-story", "source_stars": 2},
+        },
+        {"source_id": "s3", "source_url": "https://c.com/3", "metadata": {"source_stars": 2}},
+    ]
+    _score, tier, count = compute_corroboration(items)
+    assert tier == "moderate"
+    assert count == 2
 
 
 def test_corroboration_single_high_star_source():
@@ -67,11 +86,13 @@ def test_event_score_formula():
     items = [
         {
             "source_id": "s1",
+            "source_url": "https://a.com",
             "metadata": {"final_score": 80, "source_stars": 3},
             "publish_time": None,
         },
         {
             "source_id": "s2",
+            "source_url": "https://b.com",
             "metadata": {"final_score": 70, "source_stars": 2},
             "publish_time": None,
         },
@@ -136,6 +157,31 @@ def test_vocab_recognizes_major_entities():
     assert vocab.entity_tier_score("红杉领投 A 轮") == 6.0
 
 
+def test_score_vocab_can_reload_from_yaml(tmp_path):
+    import copy
+    import yaml
+    from app.domains.score import score_explain, score_rules, score_vocab
+    from app.domains.score.score_vocab_loader import load_score_vocab
+    from app.domains.score.score_vocab_runtime import RuntimeScoringVocab
+
+    data = copy.deepcopy(load_score_vocab())
+    data.setdefault("entity_tiers", {}).setdefault("S", []).append("AcmeReload")
+    path = tmp_path / "score_vocab.yaml"
+    path.write_text(yaml.safe_dump(data, allow_unicode=True, sort_keys=False), encoding="utf-8")
+
+    try:
+        snapshot = score_vocab.reload_score_vocab_from_disk(path)
+        score_rules.refresh_score_vocab_bindings()
+        score_explain.refresh_score_vocab_bindings()
+        assert snapshot["entity_tier_counts"]["S"] >= 1
+        assert RuntimeScoringVocab.build().entity_tier_score("AcmeReload announces model") == 9.0
+        assert score_salience("AcmeReload announces model", "", "") >= 9.0
+    finally:
+        score_vocab.reload_score_vocab_from_disk()
+        score_rules.refresh_score_vocab_bindings()
+        score_explain.refresh_score_vocab_bindings()
+
+
 def test_user_keywords_merge_into_runtime_vocab():
     from app.domains.score.score_vocab_runtime import RuntimeScoringVocab
 
@@ -143,14 +189,26 @@ def test_user_keywords_merge_into_runtime_vocab():
         user_keyword_terms=("MyPrivateCo",),
         matched_user_terms=("MyPrivateCo",),
     )
-    assert "MyPrivateCo" in vocab.entity_tier_b
+    assert "MyPrivateCo" not in vocab.entity_tier_b
+    assert vocab.user_keyword_salience_bonus("MyPrivateCo raises funding") == 1.0
     salience = score_salience(
         "MyPrivateCo raises funding",
         "The company announced a new round.",
         "",
         runtime_vocab=vocab,
     )
-    assert salience >= 7.5
+    assert salience == 5.0
+
+
+def test_user_keyword_salience_bonus_is_capped():
+    from app.domains.score.score_vocab_runtime import RuntimeScoringVocab
+
+    vocab = RuntimeScoringVocab.build(
+        user_keyword_terms=("MyPrivateCo", "SecretProject", "NicheTerm"),
+        matched_user_terms=("MyPrivateCo", "SecretProject", "NicheTerm"),
+    )
+
+    assert vocab.user_keyword_salience_bonus("MyPrivateCo and SecretProject mention NicheTerm") == 2.0
 
 
 def test_merge_rule_scoring_metadata_includes_user_vocab_fields():
@@ -174,7 +232,7 @@ def test_merge_rule_scoring_metadata_includes_user_vocab_fields():
     )
     assert "AcmeCorp" in meta["score_vocab_user_terms"]
     assert "AcmeCorp" in meta["score_vocab_matched_user_terms"]
-    assert meta["dimension_scores"]["salience"] >= 7.5
+    assert meta["dimension_scores"]["salience"] == 5.0
 
 
 def test_deal_and_product_scoped_articles_score_lower():

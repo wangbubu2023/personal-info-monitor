@@ -33,6 +33,7 @@ def setup_scheduler():
     )
     from app.domains.enrich.notifications.daily_digest import send_daily_digest_emails
     from app.domains.enrich.notifications.doctor_digest import send_doctor_digest_email
+    from app.domains.system.weekly_report import send_weekly_health_report_email
 
     # Core: check sources every 5 minutes (fetch priority)
     scheduler.add_job(
@@ -73,6 +74,18 @@ def setup_scheduler():
         CronTrigger(hour=8, minute=5),
         id="send_doctor_digest_email",
         name="Daily PIM doctor digest (alerts only)",
+        replace_existing=True,
+        **_JOB_DEFAULTS,
+    )
+
+    # Weekly operator health report (Monday morning, after daily/doctor
+    # emails). Always sends when SMTP is configured — trend metrics that
+    # never reach a push channel do not get looked at.
+    scheduler.add_job(
+        send_weekly_health_report_email,
+        CronTrigger(day_of_week="mon", hour=8, minute=10),
+        id="send_weekly_health_report_email",
+        name="Weekly PIM health report email",
         replace_existing=True,
         **_JOB_DEFAULTS,
     )

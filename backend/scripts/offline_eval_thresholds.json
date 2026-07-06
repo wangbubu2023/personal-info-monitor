@@ -1,0 +1,11 @@
+{
+  "min": {
+    "precision@20": 0.5,
+    "fulltext_complete_rate": 0.5,
+    "source_coverage@20": 1.0
+  },
+  "max": {
+    "duplicate_rate": 0.25,
+    "title_only_rate": 0.25
+  }
+}

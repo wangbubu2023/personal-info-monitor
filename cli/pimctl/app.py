@@ -3,8 +3,13 @@
 from __future__ import annotations
 
 import argparse
+import asyncio
+import json
 import os
+import shlex
+import subprocess
 import sys
+from pathlib import Path
 from typing import Any
 
 from cli.pimctl import __version__
@@ -42,6 +47,7 @@ def build_parser() -> argparse.ArgumentParser:
     _build_settings_parser(subparsers)
     _build_digest_parser(subparsers)
     _build_atoms_parser(subparsers)
+    _build_auth_bundle_parser(subparsers)
 
     return parser
 
@@ -55,6 +61,48 @@ def _build_auth_parser(subparsers) -> None:
 
     sub.add_parser("whoami", help="Show the resolved CLI profile")
     sub.add_parser("logout", help="Remove the stored API key from the selected profile")
+
+
+def _build_auth_bundle_parser(subparsers) -> None:
+    parser = subparsers.add_parser("auth-bundle", help="Export/import reusable website login bundles")
+    sub = parser.add_subparsers(dest="command")
+
+    export = sub.add_parser("export", help="Open a local browser and write an Auth Bundle file")
+    export.add_argument("site_url", help="Target site URL, e.g. https://www.wsj.com")
+    export.add_argument("--out", help="Output .pim-auth-bundle.json path")
+    export.add_argument("--name", help="Display name stored in the bundle")
+    export.add_argument("--profile-dir", help="Persistent browser profile dir for the local login session")
+    export.add_argument("--headless", action="store_true", help="Run without a visible browser window")
+    export.add_argument("--dwell-seconds", type=int, default=300, help="Max wait time for manual login")
+
+    import_parser = sub.add_parser("import", help="Import an Auth Bundle into a running PIM server")
+    import_parser.add_argument("bundle_path", help="Path to .pim-auth-bundle.json")
+    import_parser.add_argument("--name", help="Override the AuthConfig display name on the server")
+    import_parser.add_argument("--no-bind", dest="bind_matching_sources", action="store_false")
+    import_parser.add_argument("--no-browser-session", dest="create_browser_session", action="store_false")
+    import_parser.set_defaults(bind_matching_sources=True, create_browser_session=True)
+
+    sync = sub.add_parser("sync", help="Capture locally, upload to a VPS, and import the Auth Bundle there")
+    sync.add_argument("site_url", help="Target site URL, e.g. https://www.wsj.com")
+    sync.add_argument("--remote", required=True, help="SSH target, e.g. pim@your-vps")
+    sync.add_argument("--remote-pim", default="~/personal-info-monitor", help="PIM checkout path on the VPS")
+    sync.add_argument("--remote-dir", default="/tmp/pim-auth-bundles", help="Temporary upload directory on the VPS")
+    sync.add_argument("--remote-server", help="Server URL used by remote pimctl; default is remote local server")
+    sync.add_argument("--remote-api-key", help="API key used by remote pimctl; default reads remote runtime secret/profile")
+    sync.add_argument("--remote-profile", help="Remote pimctl profile name")
+    sync.add_argument("--out", help="Local output .pim-auth-bundle.json path")
+    sync.add_argument("--name", help="Display/import name stored in the bundle")
+    sync.add_argument("--profile-dir", help="Persistent browser profile dir for the local login session")
+    sync.add_argument("--headless", action="store_true", help="Run without a visible browser window")
+    sync.add_argument("--dwell-seconds", type=int, default=300, help="Max wait time for manual login")
+    sync.add_argument("--identity-file", help="SSH identity file")
+    sync.add_argument("--ssh-option", action="append", default=[], help="Extra ssh/scp -o option; may repeat")
+    sync.add_argument("--ssh-bin", default="ssh", help=argparse.SUPPRESS)
+    sync.add_argument("--scp-bin", default="scp", help=argparse.SUPPRESS)
+    sync.add_argument("--no-bind", dest="bind_matching_sources", action="store_false")
+    sync.add_argument("--no-browser-session", dest="create_browser_session", action="store_false")
+    sync.add_argument("--keep-remote", action="store_true", help="Do not delete the uploaded bundle after import")
+    sync.set_defaults(bind_matching_sources=True, create_browser_session=True)
 
 
 def _build_system_parser(subparsers) -> None:
@@ -102,6 +150,10 @@ def _build_sources_parser(subparsers) -> None:
     probe_url_parser = sub.add_parser("probe-url", help="Probe a URL without creating a source")
     probe_url_parser.add_argument("url")
     probe_url_parser.add_argument("--type", default="website")
+
+    dry_run_parser = sub.add_parser("dry-run", help="Run collect/normalize/build diagnostics without writing")
+    dry_run_parser.add_argument("id")
+    dry_run_parser.add_argument("--sample-limit", type=int, default=5)
 
     fetch_parser = sub.add_parser("fetch", help="Trigger a fetch for one source")
     fetch_parser.add_argument("id")
@@ -337,6 +389,10 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def dispatch(args, *, as_json: bool) -> int:
+    if args.resource == "auth-bundle" and args.command == "export":
+        return handle_auth_bundle_export(args, as_json=as_json)
+    if args.resource == "auth-bundle" and args.command == "sync":
+        return handle_auth_bundle_sync(args, as_json=as_json)
     if args.resource == "auth":
         return handle_auth(args, as_json=as_json)
 
@@ -361,8 +417,225 @@ def dispatch(args, *, as_json: bool) -> int:
         return handle_digest(args, client, as_json=as_json)
     if args.resource == "atoms":
         return handle_atoms(args, client, as_json=as_json)
+    if args.resource == "auth-bundle":
+        return handle_auth_bundle(args, client, as_json=as_json)
 
     raise CLIError("unsupported_command", "Unsupported command", 2)
+
+
+def handle_auth_bundle_export(args, *, as_json: bool) -> int:
+    _ensure_backend_import_path()
+    try:
+        from app.platform.auth.bundle import default_bundle_output, export_auth_bundle
+    except ImportError as exc:
+        raise CLIError(
+            "backend_unavailable",
+            "Cannot import PIM backend modules. Run this command from the PIM repository checkout.",
+            2,
+        ) from exc
+
+    output_path = Path(args.out).expanduser() if args.out else default_bundle_output(args.site_url)
+    try:
+        bundle = asyncio.run(
+            export_auth_bundle(
+                site_url=args.site_url,
+                output_path=output_path,
+                profile_dir=args.profile_dir,
+                headless=bool(args.headless),
+                dwell_seconds=int(args.dwell_seconds or 0),
+                name=args.name,
+            )
+        )
+    except ValueError as exc:
+        raise CLIError("auth_bundle_export_failed", str(exc), 1) from exc
+    except RuntimeError as exc:
+        raise CLIError("auth_bundle_export_failed", str(exc), 1) from exc
+
+    data = {
+        "bundle_path": str(output_path),
+        "site_host": bundle.get("site_host"),
+        "cookie_count": len(bundle.get("cookies") or []),
+        "has_storage_state": bool(bundle.get("storage_state")),
+    }
+    emit_success(
+        data,
+        as_json=as_json,
+        meta=_build_meta(args),
+        renderer=lambda d: print_key_values([
+            ("Bundle", d.get("bundle_path")),
+            ("Site Host", d.get("site_host")),
+            ("Cookies", d.get("cookie_count")),
+            ("Storage State", d.get("has_storage_state")),
+        ]),
+    )
+    return 0
+
+
+def handle_auth_bundle_sync(args, *, as_json: bool) -> int:
+    output_path, export_data = _export_auth_bundle_for_args(args)
+    remote_filename = output_path.name
+    remote_dir = str(args.remote_dir or "/tmp/pim-auth-bundles").rstrip("/") or "/tmp/pim-auth-bundles"
+    remote_path = f"{remote_dir}/{remote_filename}"
+
+    try:
+        _run_remote_auth_bundle_sync(args, output_path=output_path, remote_dir=remote_dir, remote_path=remote_path)
+    except subprocess.CalledProcessError as exc:
+        raise CLIError(
+            "auth_bundle_sync_failed",
+            f"Auth Bundle sync command failed with exit code {exc.returncode}",
+            int(exc.returncode or 1),
+        ) from exc
+    except OSError as exc:
+        raise CLIError("auth_bundle_sync_failed", str(exc), 1) from exc
+
+    data = {
+        **export_data,
+        "remote": args.remote,
+        "remote_path": remote_path,
+        "remote_deleted": not bool(args.keep_remote),
+    }
+    emit_success(
+        data,
+        as_json=as_json,
+        meta=_build_meta(args),
+        renderer=lambda d: print_key_values([
+            ("Bundle", d.get("bundle_path")),
+            ("Site Host", d.get("site_host")),
+            ("Cookies", d.get("cookie_count")),
+            ("Storage State", d.get("has_storage_state")),
+            ("Remote", d.get("remote")),
+            ("Remote Path", d.get("remote_path")),
+            ("Remote Deleted", d.get("remote_deleted")),
+        ]),
+    )
+    return 0
+
+
+def _export_auth_bundle_for_args(args) -> tuple[Path, dict[str, Any]]:
+    _ensure_backend_import_path()
+    try:
+        from app.platform.auth.bundle import default_bundle_output, export_auth_bundle
+    except ImportError as exc:
+        raise CLIError(
+            "backend_unavailable",
+            "Cannot import PIM backend modules. Run this command from the PIM repository checkout.",
+            2,
+        ) from exc
+
+    output_path = Path(args.out).expanduser() if args.out else default_bundle_output(args.site_url)
+    try:
+        bundle = asyncio.run(
+            export_auth_bundle(
+                site_url=args.site_url,
+                output_path=output_path,
+                profile_dir=args.profile_dir,
+                headless=bool(args.headless),
+                dwell_seconds=int(args.dwell_seconds or 0),
+                name=args.name,
+            )
+        )
+    except ValueError as exc:
+        raise CLIError("auth_bundle_export_failed", str(exc), 1) from exc
+    except RuntimeError as exc:
+        raise CLIError("auth_bundle_export_failed", str(exc), 1) from exc
+    return output_path, {
+        "bundle_path": str(output_path),
+        "site_host": bundle.get("site_host"),
+        "cookie_count": len(bundle.get("cookies") or []),
+        "has_storage_state": bool(bundle.get("storage_state")),
+    }
+
+
+def _ssh_base_args(args) -> list[str]:
+    parts: list[str] = []
+    identity_file = getattr(args, "identity_file", None)
+    if identity_file:
+        parts.extend(["-i", str(Path(identity_file).expanduser())])
+    for option in getattr(args, "ssh_option", None) or []:
+        parts.extend(["-o", str(option)])
+    return parts
+
+
+def _remote_import_command(args, remote_path: str) -> str:
+    command = [
+        "./pimctl",
+        "auth-bundle",
+        "import",
+        remote_path,
+    ]
+    if args.name:
+        command.extend(["--name", args.name])
+    if not bool(args.bind_matching_sources):
+        command.append("--no-bind")
+    if not bool(args.create_browser_session):
+        command.append("--no-browser-session")
+    if args.remote_server:
+        command.extend(["--server", args.remote_server])
+    if args.remote_api_key:
+        command.extend(["--api-key", args.remote_api_key])
+    if args.remote_profile:
+        command.extend(["--profile", args.remote_profile])
+
+    cd = f"cd {_quote_remote_path(str(args.remote_pim))}"
+    import_cmd = " ".join(shlex.quote(str(part)) for part in command)
+    if args.keep_remote:
+        return f"{cd} && {import_cmd}"
+    cleanup = f"rm -f -- {shlex.quote(remote_path)}"
+    return f"{cd} && trap {shlex.quote(cleanup)} EXIT && {import_cmd}"
+
+
+def _quote_remote_path(path: str) -> str:
+    text = str(path or "").strip()
+    if text == "~":
+        return "$HOME"
+    if text.startswith("~/"):
+        return "$HOME/" + shlex.quote(text[2:])
+    return shlex.quote(text)
+
+
+def _run_remote_auth_bundle_sync(args, *, output_path: Path, remote_dir: str, remote_path: str) -> None:
+    ssh_args = _ssh_base_args(args)
+    mkdir_cmd = f"mkdir -p -- {shlex.quote(remote_dir)}"
+    subprocess.run([args.ssh_bin, *ssh_args, args.remote, mkdir_cmd], check=True)
+    subprocess.run(
+        [args.scp_bin, *ssh_args, str(output_path), f"{args.remote}:{remote_path}"],
+        check=True,
+    )
+    subprocess.run([args.ssh_bin, *ssh_args, args.remote, _remote_import_command(args, remote_path)], check=True)
+
+
+def handle_auth_bundle(args, client: APIClient, *, as_json: bool) -> int:
+    if args.command == "import":
+        bundle_path = Path(args.bundle_path).expanduser()
+        try:
+            bundle = json.loads(bundle_path.read_text(encoding="utf-8"))
+        except FileNotFoundError as exc:
+            raise CLIError("auth_bundle_not_found", f"Auth Bundle not found: {bundle_path}", 4) from exc
+        except json.JSONDecodeError as exc:
+            raise CLIError("auth_bundle_invalid", f"Auth Bundle is not valid JSON: {exc}", 2) from exc
+        payload = {
+            "bundle": bundle,
+            "name": args.name,
+            "bind_matching_sources": bool(args.bind_matching_sources),
+            "create_browser_session": bool(args.create_browser_session),
+        }
+        data = client.request("POST", "/api/configs/auth-bundles/import", json_body=payload)
+        emit_success(
+            data,
+            as_json=as_json,
+            meta=_build_meta(args, server=client.server),
+            renderer=lambda d: print_key_values([
+                ("Site Host", d.get("site_host")),
+                ("Cookies", d.get("cookie_count")),
+                ("Storage State", d.get("storage_state_imported")),
+                ("Bound Sources", d.get("bound_sources")),
+                ("Auth Config", (d.get("auth_config") or {}).get("id")),
+                ("Browser Session", (d.get("browser_session") or {}).get("id")),
+            ]),
+        )
+        return 0
+
+    raise CLIError("missing_command", "Missing auth-bundle subcommand", 2)
 
 
 def handle_auth(args, *, as_json: bool) -> int:
@@ -448,6 +721,15 @@ def handle_auth(args, *, as_json: bool) -> int:
         return 0
 
     raise CLIError("missing_command", "Missing auth subcommand", 2)
+
+
+def _ensure_backend_import_path() -> None:
+    repo_root = Path(__file__).resolve().parents[2]
+    backend_path = repo_root / "backend"
+    if backend_path.exists():
+        backend_text = str(backend_path)
+        if backend_text not in sys.path:
+            sys.path.insert(0, backend_text)
 
 
 def handle_system(args, client: APIClient, *, as_json: bool) -> int:
@@ -616,6 +898,20 @@ def handle_sources(args, client: APIClient, *, as_json: bool) -> int:
             json_body={"url": args.url, "type": args.type},
         )
         emit_success(data, as_json=as_json, meta=_build_meta(args, server=client.server))
+        return 0
+
+    if args.command == "dry-run":
+        data = client.request(
+            "POST",
+            f"/api/sources/{args.id}/dry-run",
+            params={"sample_limit": args.sample_limit},
+        )
+        emit_success(
+            data,
+            as_json=as_json,
+            meta=_build_meta(args, server=client.server),
+            renderer=_render_source_dry_run,
+        )
         return 0
 
     if args.command == "fetch":
@@ -1296,6 +1592,41 @@ def _render_cleanup_report(data: dict[str, Any]) -> None:
                 ("SOURCE", "source_name"),
                 ("TITLE", "title"),
                 ("URL", "url"),
+            ],
+        )
+
+
+def _render_source_dry_run(data: dict[str, Any]) -> None:
+    stages = data.get("stages") or {}
+    collector = stages.get("collector") or {}
+    normalizer = stages.get("normalizer") or {}
+    builder = stages.get("builder") or {}
+    warnings = data.get("warnings") or {}
+    print_key_values(
+        [
+            ("Source", data.get("source_name")),
+            ("Type", data.get("source_type")),
+            ("Dry Run", data.get("dry_run")),
+            ("Would Write", data.get("would_write")),
+            ("Collected", collector.get("count")),
+            ("Valid", normalizer.get("valid_count")),
+            ("Stale Skipped", normalizer.get("stale_skipped")),
+            ("Other Skipped", normalizer.get("other_skipped")),
+            ("Would Store", builder.get("would_store_count")),
+            ("Build Failed", builder.get("build_failed")),
+            ("Warning", warnings.get("merged")),
+        ]
+    )
+    samples = (data.get("samples") or {}).get("would_store") or []
+    if samples:
+        print()
+        print_table(
+            samples,
+            [
+                ("TITLE", "title"),
+                ("URL", "url"),
+                ("EXT_ID", "external_id"),
+                ("CHARS", "full_content_chars"),
             ],
         )
 

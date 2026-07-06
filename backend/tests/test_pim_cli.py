@@ -109,6 +109,52 @@ def test_playwright_install_module_respects_playwright_override(monkeypatch):
     assert pim._playwright_install_module() == "playwright"
 
 
+def test_auth_bundle_dispatches_to_pimctl(monkeypatch, tmp_path):
+    pim = _load_pim_cli()
+    calls = []
+    venv = tmp_path / "venv"
+    (venv / "bin").mkdir(parents=True)
+
+    monkeypatch.setattr(pim, "VENV", venv)
+    monkeypatch.setattr(pim.sys, "argv", ["pim", "auth-bundle", "export", "https://example.com"])
+    monkeypatch.setattr(pim.subprocess, "call", lambda cmd, **kwargs: calls.append((cmd, kwargs)) or 0)
+
+    with pytest.raises(SystemExit) as exc:
+        pim.cmd_auth_bundle()
+
+    assert exc.value.code == 0
+    assert calls
+    cmd, kwargs = calls[0]
+    assert cmd[:3] == [str(venv / "bin" / "python"), str(pim.ROOT / "pimctl"), "auth-bundle"]
+    assert cmd[3:] == ["export", "https://example.com"]
+    assert kwargs["cwd"] == str(pim.ROOT)
+
+
+def test_capture_session_dispatches_to_auth_bundle_export(monkeypatch, tmp_path):
+    pim = _load_pim_cli()
+    calls = []
+    venv = tmp_path / "venv"
+    (venv / "bin").mkdir(parents=True)
+
+    monkeypatch.setattr(pim, "VENV", venv)
+    monkeypatch.setattr(
+        pim.sys,
+        "argv",
+        ["pim", "capture-session", "https://x.com", "--out", "x.pim-auth-bundle.json"],
+    )
+    monkeypatch.setattr(pim.subprocess, "call", lambda cmd, **kwargs: calls.append((cmd, kwargs)) or 0)
+
+    with pytest.raises(SystemExit) as exc:
+        pim.cmd_capture_session()
+
+    assert exc.value.code == 0
+    assert calls
+    cmd, kwargs = calls[0]
+    assert cmd[:4] == [str(venv / "bin" / "python"), str(pim.ROOT / "pimctl"), "auth-bundle", "export"]
+    assert cmd[4:] == ["https://x.com", "--out", "x.pim-auth-bundle.json"]
+    assert kwargs["cwd"] == str(pim.ROOT)
+
+
 def test_playwright_system_deps_uses_dnf_mapping(monkeypatch):
     pim = _load_pim_cli()
     calls = []

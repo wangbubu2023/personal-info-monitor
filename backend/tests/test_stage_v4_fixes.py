@@ -1,11 +1,12 @@
 import sys
 import types
 from uuid import uuid4
+from unittest.mock import AsyncMock
 
 import pytest
 
 from app.collectors.website import WebsiteCollector
-from app.processors.content_processor import ContentProcessor
+from app.domains.ingest.content_processor import ContentProcessor
 from app.tasks import fetch_auth_helpers
 from app.utils.model_catalog import load_model_providers
 
@@ -110,6 +111,35 @@ async def test_maybe_refresh_auth_cookies_manual_mode_returns_stale_cookie_warni
 
 
 @pytest.mark.asyncio
+async def test_maybe_refresh_auth_cookies_respects_global_auto_login_disable(monkeypatch):
+    from app.config import get_settings
+
+    source = _SourceWithAuthStub("https://example.com/login")
+    creds = {"username": "u", "password": "p"}
+    monkeypatch.setenv("PIM_DISABLE_PASSWORD_AUTO_LOGIN", "true")
+    get_settings.cache_clear()
+
+    login_mock = AsyncMock(return_value={"sid": "new"})
+    monkeypatch.setattr(
+        "app.domains.fetch.auth.refresh.login_and_capture_cookies",
+        login_mock,
+    )
+
+    try:
+        updated, warning = await fetch_auth_helpers.maybe_refresh_auth_cookies(
+            db=object(),
+            source=source,
+            creds=creds,
+        )
+    finally:
+        get_settings.cache_clear()
+
+    assert updated == creds
+    assert warning == "密码自动登录已被 PIM_DISABLE_PASSWORD_AUTO_LOGIN 禁用"
+    login_mock.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_maybe_refresh_auth_cookies_rolls_back_failed_persist(monkeypatch):
     source = _SourceWithAuthStub("https://example.com/login")
     source.auth_config.credentials = "old"
@@ -184,6 +214,77 @@ def test_website_collector_prefers_direct_article_links_and_wrappers():
     assert "https://news.google.com/rss/articles/abc123" in urls
     assert "https://www.wsj.com/topics/business" not in urls
     assert "https://example.org/other" not in urls
+
+
+@pytest.mark.asyncio
+async def test_website_hydration_skips_known_latest_external_id(monkeypatch):
+    collector = WebsiteCollector()
+    source = _SourceStub("https://example.com")
+    source.last_content_id = "https://example.com/article:123456"
+    contents = [
+        {
+            "external_id": "https://example.com/articles/123456/story",
+            "url": "https://example.com/articles/123456/story",
+            "title": "Already saved",
+            "content": "teaser",
+        }
+    ]
+    fetch_mock = AsyncMock(return_value=("<html>body</html>", contents[0]["url"], None))
+    monkeypatch.setattr(collector, "_fetch_article_html", fetch_mock)
+
+    hydrated, diag = await collector._hydrate_direct_articles(source, contents, {})
+
+    assert hydrated == contents
+    assert diag == {"attempted": 0, "hydrated": 0, "failures": {}}
+    fetch_mock.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_website_hydration_stamps_session_health(monkeypatch):
+    collector = WebsiteCollector()
+    source = _SourceStub("https://example.com")
+    contents = [
+        {
+            "external_id": "https://example.com/articles/123456/story",
+            "url": "https://example.com/articles/123456/story",
+            "title": "Needs login",
+            "content": "teaser",
+        }
+    ]
+    monkeypatch.setattr(
+        collector,
+        "_fetch_article_html",
+        AsyncMock(return_value=(None, contents[0]["url"], "login_required")),
+    )
+
+    _hydrated, diag = await collector._hydrate_direct_articles(source, contents, {})
+
+    assert diag["failures"] == {"login_required": 1}
+    assert source.metadata_["session_health"]["reason"] == "login_required"
+    assert source.metadata_["session_health"]["suggested_action"] == "relogin"
+
+
+@pytest.mark.asyncio
+async def test_website_discovered_feed_is_persisted(monkeypatch):
+    collector = WebsiteCollector()
+    source = _SourceStub("https://example.com")
+    feed_items = [
+        {
+            "external_id": "https://example.com/news/123456/story",
+            "url": "https://example.com/news/123456/story",
+            "title": "Feed item",
+            "content": "teaser",
+        }
+    ]
+    monkeypatch.setattr(collector, "_fetch_authenticated_direct_articles", AsyncMock(return_value=None))
+    monkeypatch.setattr(collector.rss_collector, "discover_feed_url", AsyncMock(return_value="https://example.com/feed.xml"))
+    monkeypatch.setattr(collector.rss_collector, "fetch", AsyncMock(return_value=feed_items))
+    monkeypatch.setattr(collector, "_maybe_hydrate_rss_contents", AsyncMock(return_value=feed_items))
+
+    result = await collector.fetch(source)
+
+    assert result == feed_items
+    assert source.metadata_["rss_url"] == "https://example.com/feed.xml"
 
 
 @pytest.mark.asyncio

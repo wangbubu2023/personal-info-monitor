@@ -29,7 +29,7 @@ def test_looks_like_x_interstitial_text_detects_noscript_page():
 
 @pytest.mark.asyncio
 async def test_fetch_full_text_with_cookies_rejects_x_status_urls():
-    from app.processors.content_processor import ContentProcessor
+    from app.domains.ingest.content_processor import ContentProcessor
 
     processor = ContentProcessor()
     result = await processor._fetch_full_text_with_cookies(
@@ -92,4 +92,3 @@ async def test_interstitial_repair_does_not_downgrade_to_shorter_title():
 
     assert body == interstitial
     assert content.full_content == interstitial
-

@@ -39,8 +39,8 @@ def _parse_bool(value: str | None, *, default: bool) -> bool:
 #
 #   PIM_FEATURE_X_PLAYWRIGHT
 #     Narrower switch for X (Twitter) cookie-based auto-login flows which
-#     touch X Terms of Service grey area (see ADR-003). **Default OFF** per
-#     the 2026-04-20 audit S5 recommendation; operators must opt in.
+#     touch X Terms of Service grey area. **Default OFF** per the 2026-04-20
+#     audit S5 recommendation; operators must opt in.
 #
 #   ATOMS_ENABLED
 #     Opt-in for the normalized news atom library (``atoms`` /

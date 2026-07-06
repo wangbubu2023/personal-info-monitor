@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import asyncio
 
-from app.background import get_llm_semaphore, task_tracker
+from app.background import get_finalize_semaphore, get_llm_semaphore, task_tracker  # noqa: F401
 from app.features import KEYWORD_MONITORING_ENABLED
 from app.utils.logger import bind_job_id, get_logger, restore_job_id
 
@@ -19,7 +19,7 @@ async def finish_content(content_id: str, job_id: str | None = None) -> None:
     """Run the post-storage pipeline for a freshly saved Content row."""
     token = bind_job_id(job_id) if job_id else None
     try:
-        sem = get_llm_semaphore()
+        sem = get_finalize_semaphore()
         async with sem:
             await task_tracker.start_process()
             try:
@@ -42,12 +42,13 @@ async def _finish_content_async(content_id: str) -> None:
         stamp_fetch_acceptance_metadata,
     )
     from app.domains.fetch.finalize import hydrate_fetched_content
+    from app.domains.ingest.quality_metadata import merge_content_quality_metadata
     from app.domains.ingest.summary_clean import apply_summary_cleaning
+    from app.domains.score.content_columns import sync_content_score_columns
+    from app.domains.score.scoring import merge_baseline_scoring_metadata
     from app.models import Content, Keyword
-    from app.processors.content_processor import ContentProcessor
-    from app.processors.keyword_matcher import KeywordMatcher
-    from app.services.content_quality_service import merge_content_quality_metadata
-    from app.services.scoring_service import merge_baseline_scoring_metadata
+    from app.domains.ingest.content_processor import ContentProcessor
+    from app.domains.ingest.keywords.matcher import KeywordMatcher
 
     db = SessionLocal()
     try:
@@ -95,7 +96,11 @@ async def _finish_content_async(content_id: str) -> None:
         )
 
         source_stars = (source.metadata_ or {}).get("source_stars", 1) if source else 1
-        accepted, accept_reason = assess_fetch_acceptance(content, meta)
+        accepted, accept_reason = assess_fetch_acceptance(
+            content,
+            meta,
+            source_metadata=source.metadata_ if source else {},
+        )
         if accepted:
             meta = stamp_fetch_acceptance_metadata(meta, accepted=True, reason=accept_reason)
 
@@ -150,6 +155,7 @@ async def _finish_content_async(content_id: str) -> None:
                 (content.title or "")[:60],
             )
         content.metadata_ = meta
+        sync_content_score_columns(content, meta)
 
         db.commit()
         logger.info(f"Post-processed content: {content.title[:50]}")
@@ -165,9 +171,9 @@ async def _finish_content_async(content_id: str) -> None:
             logger.debug("atomize_content sidecar failed for %s: %s", content_id, exc)
 
         try:
-            from app.domains.enrich.content.listing_translation import translate_listing_fields_async
+            from app.domains.enrich.content.listing_translation import enqueue_listing_translation_job
 
-            asyncio.create_task(translate_listing_fields_async(str(content.id)))
+            await enqueue_listing_translation_job(str(content.id))
         except Exception as exc:  # noqa: BLE001
             logger.debug("listing translation schedule failed for %s: %s", content_id, exc)
 

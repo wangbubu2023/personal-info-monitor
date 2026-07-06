@@ -26,7 +26,9 @@ FetchHandler = Callable[[str, bool], Awaitable[None]]
 """``(source_id, manual_trigger) -> awaitable`` — runs a single fetch job."""
 
 ProcessHandler = Callable[[str, Optional[str]], Awaitable[None]]
-"""``(content_id, job_id) -> awaitable`` — runs a single post-fetch finish job."""
+"""``(content_id, job_id) -> awaitable`` — runs a single bounded process job."""
+
+LISTING_TRANSLATION_JOB_ID = "listing-translation"
 
 logger = get_logger(__name__)
 
@@ -110,6 +112,10 @@ class BoundedTaskQueue:
             self._record_dropped_task("PROCESS", content_id, f"job_id={job_id}")
             task_queue_metrics.record_dropped("process")
             return False
+
+    async def enqueue_listing_translation(self, content_id: str) -> bool:
+        """Enqueue a bounded listing translation sidecar job."""
+        return await self.enqueue_ingest_finish(content_id, job_id=LISTING_TRANSLATION_JOB_ID)
 
     async def start_workers(
         self,

@@ -39,7 +39,7 @@ async def apply_pipeline_summary(content: Any) -> bool:
     if len(body) < _MIN_BODY_CHARS:
         return False
 
-    from app.processors.summarizer import Summarizer
+    from app.platform.llm.summarizer import Summarizer
 
     summarizer = Summarizer()
     try:

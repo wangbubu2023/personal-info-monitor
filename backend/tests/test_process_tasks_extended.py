@@ -80,7 +80,7 @@ async def test_finish_content_keyword_matching():
         with patch("app.domains.ingest.finish.task_tracker", mock_tracker):
             with patch("app.domains.ingest.finish.KEYWORD_MONITORING_ENABLED", True):
                 with patch("app.database.SessionLocal", return_value=mock_db):
-                    with patch("app.processors.keyword_matcher.KeywordMatcher") as MockMatcher:
+                    with patch("app.domains.ingest.keywords.matcher.KeywordMatcher") as MockMatcher:
                         MockMatcher.return_value.match.return_value = [{"id": "kw-1", "keyword": "test"}]
                         with patch("app.domains.fetch.finalize.hydrate_fetched_content", new_callable=AsyncMock):
                             with patch("app.domains.ingest.finish._dispatch_keyword_alerts"):
@@ -119,7 +119,7 @@ async def test_finish_content_no_keywords_when_disabled():
         with patch("app.domains.ingest.finish.task_tracker", mock_tracker):
             with patch("app.domains.ingest.finish.KEYWORD_MONITORING_ENABLED", False):
                 with patch("app.database.SessionLocal", return_value=mock_db):
-                    with patch("app.processors.keyword_matcher.KeywordMatcher") as MockMatcher:
+                    with patch("app.domains.ingest.keywords.matcher.KeywordMatcher") as MockMatcher:
                         from app.domains.ingest.finish import finish_content
                         await finish_content("content-1")
                         # When disabled, KeywordMatcher class should never be instantiated
@@ -167,6 +167,10 @@ async def test_finish_content_stamps_baseline_score():
     assert mock_content.metadata_["score_version"] == "pim-score-v2"
     assert mock_content.metadata_["lane"] == "tech_product"
     assert "final_score" in mock_content.metadata_
+    assert mock_content.article_score == mock_content.metadata_["article_score"]
+    assert mock_content.final_score == mock_content.metadata_["final_score"]
+    assert mock_content.selection_status == mock_content.metadata_["selection_status"]
+    assert mock_content.lane == "tech_product"
 
 
 @pytest.mark.asyncio
@@ -333,7 +337,7 @@ def test_update_keyword_matches_sync_uses_cursor_pagination():
 
     with patch("app.tasks.process_tasks.KEYWORD_MONITORING_ENABLED", True):
         with patch("app.database.SessionLocal", return_value=fake_db):
-            with patch("app.processors.keyword_matcher.KeywordMatcher") as MockMatcher:
+            with patch("app.domains.ingest.keywords.matcher.KeywordMatcher") as MockMatcher:
                 MockMatcher.return_value.match.return_value = [{"id": "kw-1", "keyword": "test"}]
                 from app.tasks.process_tasks import _update_keyword_matches_sync
 

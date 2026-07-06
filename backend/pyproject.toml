@@ -1,6 +1,6 @@
 [project]
 name = "personal-info-monitor-backend"
-version = "1.3.1"
+version = "1.4.0"
 description = "Personal Information Monitor — FastAPI backend, collectors, AI pipeline."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -99,9 +99,9 @@ select = ["BLE001", "B904", "B023", "F821", "F811"]
 # and monkey-patching; don't gate them on BLE001.
 "tests/**" = ["BLE001", "B", "I"]
 
-# Baseline: existing modules still contain the 154 blind-except sites the audit
-# called out. Rather than block the whole repo we freeze them here and plan to
-# burn the list down incrementally (see docs/AGENT_GUIDE.md, §Q1 lint debt).
+# Baseline: existing modules still contain broad-except sites the audit called
+# out. Rather than block the whole repo we freeze selected files here and enforce
+# the total production BLE001 budget in scripts/check_ble001_budget.py.
 #
 # Rules for adding/removing entries:
 #   - Brand-new files MUST NOT be added to this list — they inherit the strict

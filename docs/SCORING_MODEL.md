@@ -11,7 +11,7 @@
 | 主观分接口（LLM 预留） | `backend/app/domains/score/score_subjective.py` |
 | 单篇合分 | `backend/app/domains/score/scoring.py` |
 | 事件层（热点 + 多源） | `backend/app/domains/score/score_event.py` |
-| 简报聚类排序 | `backend/app/services/ranking_service.py` |
+| 简报聚类排序 | `backend/app/domains/score/ranking.py` |
 | 抓取验收（打分前置） | `backend/app/domains/fetch/acceptance.py` |
 | 摘要 boilerplate 清洗 | `backend/app/domains/ingest/summary_clean.py` |
 | 设计规格 | `docs/superpowers/specs/2026-05-21-pim-score-v2-design.md` |
@@ -151,7 +151,7 @@ event_score = 0.50 × max(article_score)
 
 ### 事件簇（digest 内存结构，不写回 DB）
 
-`RankingService.cluster_and_rank` 返回：`event_score`, `momentum`, `corroboration`, `corroboration_tier`, `independent_source_count`。
+`app.domains.score.ranking.RankingService.cluster_and_rank` 返回：`event_score`, `momentum`, `corroboration`, `corroboration_tier`, `independent_source_count`。
 
 ---
 

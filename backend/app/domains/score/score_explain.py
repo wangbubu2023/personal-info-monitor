@@ -32,6 +32,25 @@ from app.domains.score.score_vocab_runtime import RuntimeScoringVocab, extract_k
 from app.domains.score.scoring import ScoringConfig, calculate_article_score
 
 
+def refresh_score_vocab_bindings() -> None:
+    """Refresh module globals after score_vocab.yaml is reloaded."""
+    from app.domains.score import score_vocab as vocab
+
+    globals().update(
+        {
+            "COMMERCE_SIGNALS": vocab.COMMERCE_SIGNALS,
+            "DIMENSION_LABELS": vocab.DIMENSION_LABELS,
+            "EVENT_PATTERNS": vocab.EVENT_PATTERNS,
+            "IMPACT_CAPS": vocab.IMPACT_CAPS,
+            "LANE_KEYWORDS": vocab.LANE_KEYWORDS,
+            "LANE_LABELS": vocab.LANE_LABELS,
+            "MARKET_OFFERING_EXEMPT": vocab.MARKET_OFFERING_EXEMPT,
+            "NARROW_SCOPE_SIGNALS": vocab.NARROW_SCOPE_SIGNALS,
+            "REACH_KEYWORDS": vocab.REACH_KEYWORDS,
+        }
+    )
+
+
 def _match_terms(corpus: str, terms: Sequence[str], *, limit: int = 12) -> list[str]:
     corpus_l = (corpus or "").lower()
     hits: list[str] = []
@@ -156,6 +175,9 @@ def explain_content_score(
 
     runtime_vocab = RuntimeScoringVocab.build(user_keyword_terms, matched_user_terms)
     subjective = resolve_subjective_score(content, lane="other")
+    user_keyword_bonus = runtime_vocab.user_keyword_salience_bonus(
+        _corpus(resolved_title, summary, full_content, limit=2000)
+    )
 
     dimensions_before_cap = {
         "salience": score_salience(resolved_title, summary, full_content, runtime_vocab=runtime_vocab),
@@ -226,6 +248,7 @@ def explain_content_score(
         "user_keywords": {
             "configured": list(runtime_vocab.user_keyword_terms),
             "matched": list(runtime_vocab.matched_user_terms),
+            "salience_bonus": user_keyword_bonus,
         },
         "dimension_scores_before_cap": dimensions_before_cap,
         "dimension_scores": dimensions_after_cap,

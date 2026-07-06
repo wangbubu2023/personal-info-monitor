@@ -7,14 +7,29 @@ from types import SimpleNamespace
 
 from app.domains.fetch.rss_health import (
     assess_feed_health,
-    dedupe_feed_entries,
+    feed_health_metadata,
     persist_discovered_feed,
     record_feed_health,
 )
+from app.interfaces.http.sources._helpers import serialize_source
+from app.models.source import Source, SourceType
 
 
 def _source(metadata=None):
     return SimpleNamespace(metadata_=dict(metadata or {}))
+
+
+def _orm_source(metadata=None):
+    return Source(
+        name="Example",
+        type=SourceType.RSS,
+        url="https://example.com/feed",
+        fetch_interval=60,
+        enabled=True,
+        auth_required=False,
+        error_count=0,
+        metadata_=dict(metadata or {}),
+    )
 
 
 def test_parse_error_is_unhealthy():
@@ -61,6 +76,43 @@ def test_record_feed_health_writes_metadata():
     assert src.metadata_["rss_health"]["feed_url"] == "https://x/feed"
 
 
+def test_record_feed_health_mirrors_structured_source_columns():
+    src = _orm_source()
+    now = datetime(2026, 6, 1, 12, 0, 0)
+    h = assess_feed_health(parse_ok=True, item_count=3, latest_published=now, now=now)
+
+    record_feed_health(src, h, feed_url="https://x/feed")
+
+    assert src.rss_health_status == "ok"
+    assert src.rss_health_healthy is True
+    assert src.rss_health_item_count == 3
+    assert src.rss_health_last_update == now
+    assert src.rss_health_stale_days == 0
+    assert src.rss_health_reason == "fresh"
+    assert src.rss_health_checked_at is not None
+    assert src.rss_health_feed_url == "https://x/feed"
+
+
+def test_structured_rss_health_is_authoritative_for_source_serialization():
+    src = _orm_source({"rss_health": {"status": "parse_error", "feed_url": "https://old/feed"}})
+    src.rss_health_status = "stale"
+    src.rss_health_healthy = True
+    src.rss_health_item_count = 5
+    src.rss_health_last_update = datetime(2026, 5, 1, 12, 0, 0)
+    src.rss_health_stale_days = 31
+    src.rss_health_reason = "no_recent_items"
+    src.rss_health_checked_at = datetime(2026, 6, 1, 12, 0, 0)
+    src.rss_health_feed_url = "https://new/feed"
+
+    health = feed_health_metadata(src)
+    serialized = serialize_source(src)
+
+    assert health["status"] == "stale"
+    assert health["feed_url"] == "https://new/feed"
+    assert serialized["metadata"]["rss_health"]["status"] == "stale"
+    assert serialized["metadata"]["rss_health"]["feed_url"] == "https://new/feed"
+
+
 def test_persist_discovered_feed():
     src = _source()
     assert persist_discovered_feed(src, "https://x/feed") is True
@@ -74,16 +126,3 @@ def test_persist_discovered_feed_appends_multiple():
     src = _source({"rss_url": "https://x/feed1", "rss_urls": ["https://x/feed1"]})
     persist_discovered_feed(src, "https://x/feed2")
     assert "https://x/feed2" in src.metadata_["rss_urls"]
-
-
-def test_dedupe_feed_entries_by_external_id():
-    entries = [
-        {"external_id": "a", "title": "A"},
-        {"external_id": "a", "title": "A dup"},
-        {"url": "https://x/b", "title": "B"},
-        {"url": "https://x/b", "title": "B dup"},
-    ]
-    out = dedupe_feed_entries(entries)
-    assert len(out) == 2
-    assert out[0]["title"] == "A"
-    assert out[1]["title"] == "B"

@@ -36,7 +36,7 @@ class Keyword(Base):
 
     id = Column(UUIDString, primary_key=True, default=lambda: str(uuid.uuid4()))
     keyword = Column(String(255), nullable=False)
-    # NFKC + casefold，与 app.services.keyword_rules.keyword_identity_key 一致；唯一约束防止 Google/google 重复入库
+    # NFKC + casefold，与 app.domains.ingest.keywords.rules.keyword_identity_key 一致；唯一约束防止 Google/google 重复入库
     keyword_identity = Column(String(512), nullable=False, unique=True, index=True)
     description = Column(Text, nullable=True)
 

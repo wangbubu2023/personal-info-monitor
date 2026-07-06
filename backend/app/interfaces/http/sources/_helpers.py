@@ -340,7 +340,7 @@ async def _probe_urls(
     cookies: Optional[Dict[str, str]] = None,
 ):
     import asyncio
-    from app.domains.sources.probe import ProbeService
+    from app.domains.sources.probe.service import ProbeService
     _probe_service = ProbeService()
     tasks = [_probe_service.probe(url, source_type, cookies=cookies) for url in urls]
     probe_results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -353,9 +353,11 @@ async def _probe_urls(
 
 def _compute_fetch_status(s: Source) -> tuple[str, str, str]:
     """Reflect real fetch history only — not URL probe results."""
+    from app.domains.sources.status import last_fetch_outcome_metadata
+
     metadata = s.metadata_ if isinstance(s.metadata_, dict) else {}
     configured_strategy = str(metadata.get("strategy") or metadata.get("probe", {}).get("strategy") or "unknown")
-    outcome = metadata.get("last_fetch_outcome") if isinstance(metadata.get("last_fetch_outcome"), dict) else {}
+    outcome = last_fetch_outcome_metadata(s)
     outcome_severity = str(outcome.get("severity") or "").strip().lower()
     outcome_message = str(outcome.get("message") or "").strip()
     has_content = bool(s.last_content_id)
@@ -404,8 +406,8 @@ def _compute_probe_display(probe: dict) -> tuple[str, str, str]:
 def _fetch_health_fields(s: Source, meta: dict) -> dict:
     """Surface the structured fetch-failure code + rolling profile for the UI.
 
-    Reads the JSON written by ``domains.fetch.retry_policy`` /
-    ``domains.fetch.profile``; degrades silently to an empty dict so a missing
+    Reads structured ``sources.fetch_failure_*`` columns first, with the legacy
+    metadata blob as fallback; degrades silently to an empty dict so a missing
     or malformed blob never breaks source listing.
     """
     fields: dict = {}
@@ -413,8 +415,13 @@ def _fetch_health_fields(s: Source, meta: dict) -> dict:
         from app.domains.fetch.profile import summarize_profile
 
         failure = meta.get("fetch_failure") if isinstance(meta.get("fetch_failure"), dict) else {}
-        fields["last_failure_code"] = failure.get("last_code")
-        fields["cooldown_until"] = failure.get("cooldown_until")
+        cooldown_until = getattr(s, "fetch_cooldown_until", None)
+        fields["last_failure_code"] = getattr(s, "fetch_failure_code", None) or failure.get("last_code")
+        fields["cooldown_until"] = (
+            cooldown_until.isoformat() + "Z"
+            if cooldown_until is not None
+            else failure.get("cooldown_until")
+        )
         fields["fetch_profile_summary"] = summarize_profile(s)
     except Exception as exc:  # noqa: BLE001 — serialization must stay resilient
         logger.debug("Fetch health serialization failed for %s: %s", getattr(s, "id", "?"), exc)
@@ -423,6 +430,46 @@ def _fetch_health_fields(s: Source, meta: dict) -> dict:
 
 def serialize_source(s: Source, *, content_count: int | None = None) -> dict:
     meta = s.metadata_ if isinstance(s.metadata_, dict) else {}
+    try:
+        from app.domains.fetch.rss_health import feed_health_metadata
+
+        rss_health = feed_health_metadata(s)
+        if rss_health:
+            meta = dict(meta)
+            meta["rss_health"] = rss_health
+    except (AttributeError, TypeError, ValueError) as exc:
+        logger.debug("RSS health serialization failed for %s: %s", getattr(s, "id", "?"), exc)
+    try:
+        from app.domains.fetch.discovery import discovery_diagnostics_metadata
+
+        discovery_diagnostics = discovery_diagnostics_metadata(s)
+        if discovery_diagnostics:
+            meta = dict(meta)
+            meta["discovery_diagnostics"] = discovery_diagnostics
+    except (AttributeError, TypeError, ValueError) as exc:
+        logger.debug("Discovery diagnostics serialization failed for %s: %s", getattr(s, "id", "?"), exc)
+    try:
+        from app.domains.sources.status import last_fetch_outcome_metadata
+
+        fetch_outcome = last_fetch_outcome_metadata(s)
+        if fetch_outcome:
+            meta = dict(meta)
+            meta["last_fetch_outcome"] = fetch_outcome
+    except (AttributeError, TypeError, ValueError) as exc:
+        logger.debug("Fetch outcome serialization failed for %s: %s", getattr(s, "id", "?"), exc)
+    try:
+        from app.domains.fetch.session_health import session_health_alert_metadata, session_health_metadata
+
+        session_health = session_health_metadata(s)
+        session_alert = session_health_alert_metadata(s)
+        if session_health or session_alert:
+            meta = dict(meta)
+        if session_health:
+            meta["session_health"] = session_health
+        if session_alert:
+            meta["session_health_alert"] = session_alert
+    except (AttributeError, TypeError, ValueError) as exc:
+        logger.debug("Session health serialization failed for %s: %s", getattr(s, "id", "?"), exc)
     probe = meta.get("probe", {}) if isinstance(meta.get("probe"), dict) else {}
     fetch_status, fetch_strategy, fetch_message = _compute_fetch_status(s)
     probe_status, probe_strategy, probe_message = _compute_probe_display(probe)
@@ -442,6 +489,7 @@ def serialize_source(s: Source, *, content_count: int | None = None) -> dict:
         "error_count": s.error_count,
         "content_count": int(content_count or 0),
         "metadata": meta,
+        "session_health": meta.get("session_health") if isinstance(meta.get("session_health"), dict) else None,
         "fetch_status": fetch_status,
         "fetch_strategy": fetch_strategy,
         "fetch_status_message": fetch_message,

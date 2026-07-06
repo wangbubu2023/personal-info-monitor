@@ -41,7 +41,7 @@ def summarize(*, min_count: int = 1) -> None:
                 .join(Content, Content.id == ScoreFeedback.content_id)
                 .order_by(ScoreFeedback.created_at.desc())
             ).all()
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 - CLI should print DB setup hints instead of crashing
         if "no such table" in str(exc).lower():
             print("score_feedback table not found — run: alembic upgrade head")
         else:

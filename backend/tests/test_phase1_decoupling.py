@@ -2,7 +2,7 @@ from uuid import uuid4
 
 import pytest
 
-from app.processors.content_processor import ContentProcessor
+from app.domains.ingest.content_processor import ContentProcessor
 
 
 class _SourceStub:

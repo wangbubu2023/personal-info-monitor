@@ -15,23 +15,23 @@ from bs4 import BeautifulSoup
 from app.domains.fetch.collectors.base import BaseCollector
 from app.models import Source
 from app.utils.logger import get_logger
-from app.platform.security.ssrf import check_before_fetch, fetch_public_http_text
-from app.utils.http import permissive_session_kwargs
+from app.platform.security.ssrf import fetch_public_http_text
 from app.utils.text import strip_html_tags, text_looks_like_embedded_binary
 
 logger = get_logger(__name__)
 
 
-MIN_RSS_PLAIN_TEXT_CHARS = 100
-
-
 class RSSCollector(BaseCollector):
-    """Collector for RSS/Atom feeds."""
-    
+    """Collector for RSS/Atom feeds.
+
+    The collector is a cheap listing pass only: it never fetches article
+    pages. Body hydration happens after dedupe in ingest finalization
+    (``article_body``), keeping "each new article's full text is fetched
+    exactly once" true system-wide.
+    """
+
     def __init__(self):
         super().__init__()
-        # Cap parallel per-entry page fetches (summary hydration) per feed
-        self._entry_hydrate_sem = asyncio.Semaphore(6)
         self.user_agents = [
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
             "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -70,10 +70,11 @@ class RSSCollector(BaseCollector):
                 )
             
             contents = []
-            # 并行获取所有条目的摘要
+            # Keep RSS collection as a cheap listing pass. Article body
+            # hydration happens after dedupe in ingest finalization.
             tasks = []
             for entry in feed.entries[:20]:  # 限制为最多20条
-                tasks.append(self._parse_entry_with_summary(entry, source))
+                tasks.append(asyncio.to_thread(self._parse_entry, entry))
             
             parsed_entries = await asyncio.gather(*tasks, return_exceptions=True)
             
@@ -88,12 +89,12 @@ class RSSCollector(BaseCollector):
             return contents
             
         except Exception as e:
-            from app.domains.fetch.failures import FetchFailureError
+            from app.domains.fetch.failures import FetchFailureError, classify_exception
 
             if isinstance(e, FetchFailureError):
                 raise
             self.logger.error(f"Error fetching RSS feed: {e}")
-            return []
+            raise FetchFailureError(classify_exception(e)) from e
 
     def _record_feed_health(self, source: Source, feed: Any) -> None:
         """Stamp feed health into source metadata (best-effort, never fatal)."""
@@ -106,49 +107,19 @@ class RSSCollector(BaseCollector):
             self.logger.debug("Failed to record RSS feed health for %s: %s", source.url, exc)
 
     def validate_content(self, content: Dict[str, Any]) -> bool:
-        """Require title/url plus meaningful text from RSS body or hydrated HTML."""
+        """Require title/url and reject binary-looking bodies.
+
+        RSS feeds often contain title-only or short-summary entries. The
+        downstream acceptance stage owns that quality decision; the collector
+        should not silently drop a valid feed item before it can be explained.
+        """
         if not super().validate_content(content):
             return False
         blob = str(content.get("content") or "")
         if text_looks_like_embedded_binary(blob):
             self.logger.debug("Skipping RSS entry with embedded binary in body: %s", (content.get("title") or "")[:60])
             return False
-        plain = strip_html_tags(blob).strip()
-        if len(plain) < MIN_RSS_PLAIN_TEXT_CHARS:
-            html_blob = str(content.get("html") or "")
-            if html_blob:
-                plain = strip_html_tags(html_blob).strip()
-        if len(plain) < MIN_RSS_PLAIN_TEXT_CHARS:
-            self.logger.debug(
-                "Skipping RSS entry with insufficient plain text (%s chars): %s",
-                len(plain),
-                (content.get("title") or "")[:80],
-            )
-            return False
         return True
-
-    async def _parse_entry_with_summary(self, entry, source: Source) -> Dict[str, Any]:
-        """Parse a feed entry and best-effort load article HTML for local storage."""
-        content = self._parse_entry(entry)
-        url = content.get("url", "")
-
-        if url and not self._is_google_news_article_link(url):
-            self.logger.info("Fetching article HTML for RSS entry: %s", url)
-            async with self._entry_hydrate_sem:
-                page_html = await self._fetch_page_html(url, source)
-            if page_html:
-                content["html"] = page_html
-                content["content"] = ""
-            else:
-                summary = content.get("content", "")
-                if not summary or len(strip_html_tags(summary)) < 50:
-                    self.logger.info("Article HTML unavailable; fetching page summary: %s", url)
-                    async with self._entry_hydrate_sem:
-                        page_summary = await self._fetch_page_summary(url, source)
-                    if page_summary:
-                        content["content"] = page_summary
-
-        return content
 
     @staticmethod
     def _is_google_news_article_link(url: str) -> bool:
@@ -173,125 +144,7 @@ class RSSCollector(BaseCollector):
         raw = f"{title}|{publish_key}|{source_title}"
         digest = hashlib.sha1(raw.encode("utf-8")).hexdigest()
         return f"gnews:{digest}"
-    
-    async def _fetch_page_html(self, url: str, source: Source) -> Optional[str]:
-        """Fetch article page HTML (for full-text extraction downstream)."""
-        import random
 
-        try:
-            cookies = self.get_runtime_cookies(source)
-            await check_before_fetch(url, source_url=source.url, cookies=cookies or None)
-        except ValueError as exc:
-            self.logger.warning("SSRF/cookie check blocked page fetch for %s: %s", url, exc)
-            return None
-
-        try:
-            headers = {
-                "User-Agent": random.choice(self.user_agents),
-                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-                "Accept-Language": "en-US,en;q=0.5",
-            }
-
-            async with aiohttp.ClientSession(**permissive_session_kwargs()) as session:
-                response = await fetch_public_http_text(
-                    session,
-                    url,
-                    source_url=source.url,
-                    validation_cookies=cookies or None,
-                    headers=headers,
-                    cookies=cookies if cookies else None,
-                    timeout=aiohttp.ClientTimeout(total=25),
-                )
-                if response.status != 200:
-                    self.logger.warning("Failed to fetch article page: %s", response.status)
-                    return None
-                return response.text
-        except asyncio.TimeoutError:
-            self.logger.warning("Timeout fetching article page: %s", url)
-            return None
-        except Exception as exc:  # noqa: BLE001 - network/HTML fetch may raise anything
-            self.logger.error("Error fetching article page %s: %s", url, exc)
-            return None
-
-    async def _fetch_page_summary(self, url: str, source: Source) -> Optional[str]:
-        """Fetch summary/description from the original page."""
-        html = await self._fetch_page_html(url, source)
-        if not html:
-            return None
-        try:
-            return self._extract_summary_from_html(html)
-        except Exception as exc:  # noqa: BLE001 - BeautifulSoup parse may fail
-            self.logger.error("Error extracting page summary from %s: %s", url, exc)
-            return None
-    
-    def _extract_summary_from_html(self, html: str) -> Optional[str]:
-        """Extract summary from HTML page (meta description, og:description, or first paragraph)."""
-        try:
-            soup = BeautifulSoup(html, "lxml")
-            
-            # 1. 尝试获取 meta description
-            meta_desc = soup.find("meta", attrs={"name": "description"})
-            if meta_desc and meta_desc.get("content"):
-                desc = strip_html_tags(meta_desc["content"])
-                if len(desc) >= 50:
-                    return desc
-            
-            # 2. 尝试获取 og:description
-            og_desc = soup.find("meta", attrs={"property": "og:description"})
-            if og_desc and og_desc.get("content"):
-                desc = strip_html_tags(og_desc["content"])
-                if len(desc) >= 50:
-                    return desc
-            
-            # 3. 尝试获取 twitter:description
-            twitter_desc = soup.find("meta", attrs={"name": "twitter:description"})
-            if twitter_desc and twitter_desc.get("content"):
-                desc = strip_html_tags(twitter_desc["content"])
-                if len(desc) >= 50:
-                    return desc
-            
-            # 4. 尝试从文章内容中提取
-            # 查找常见的文章内容容器
-            article_selectors = [
-                "article p",
-                ".article-content p",
-                ".post-content p",
-                ".entry-content p",
-                ".content p",
-                "main p",
-                "#content p"
-            ]
-            
-            for selector in article_selectors:
-                paragraphs = soup.select(selector)
-                if paragraphs:
-                    # 获取前几个段落
-                    text_parts = []
-                    for p in paragraphs[:3]:
-                        text = strip_html_tags(p.get_text())
-                        if text and len(text) > 30:
-                            text_parts.append(text)
-                    
-                    if text_parts:
-                        combined = " ".join(text_parts)
-                        # 限制长度
-                        if len(combined) > 500:
-                            combined = combined[:500] + "..."
-                        return combined
-            
-            # 5. 最后尝试获取任何段落
-            all_paragraphs = soup.find_all("p")
-            for p in all_paragraphs:
-                text = strip_html_tags(p.get_text())
-                if text and len(text) >= 100:
-                    return text[:500] + "..." if len(text) > 500 else text
-            
-            return None
-            
-        except Exception as e:
-            self.logger.error(f"Error extracting summary from HTML: {e}")
-            return None
-    
     def _parse_entry(self, entry) -> Dict[str, Any]:
         """Parse a single feed entry."""
         # Get publish time
@@ -360,6 +213,7 @@ class RSSCollector(BaseCollector):
                 "tags": [tag.term for tag in entry.get("tags", [])],
                 "media": media,
                 "enclosures": enclosures,
+                "itunes_duration": entry.get("itunes_duration"),
                 "ingest_channel": "rss",
             },
         }

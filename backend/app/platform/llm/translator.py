@@ -35,7 +35,7 @@ def _reject_translation(src: str, translated: str) -> Optional[str]:
 def get_translation_settings():
     """Get translation model settings from system config."""
     try:
-        from app.services.api_config_credentials import enrich_model_settings_from_api_config
+        from app.platform.auth.api_config_credentials import enrich_model_settings_from_api_config
         from app.platform.config.system_settings import get_system_settings_sync
 
         settings = get_system_settings_sync()
@@ -73,7 +73,7 @@ def is_translation_fallback_enabled() -> bool:
 def get_translation_fallback_model_settings() -> dict:
     """Enriched provider/model dict for translation fallback from 模型接入."""
     try:
-        from app.services.api_config_credentials import enrich_model_settings_from_api_config
+        from app.platform.auth.api_config_credentials import enrich_model_settings_from_api_config
         from app.platform.config.system_settings import get_system_settings_sync
 
         s = get_system_settings_sync() or {}
@@ -140,7 +140,7 @@ def _strip_translation_reasoning(text: str) -> str:
 def get_translation_cloud_fallback_openai_settings() -> dict:
     """Resolve OpenAI-compatible cloud fallback settings."""
     try:
-        from app.services.api_config_credentials import enrich_model_settings_from_api_config
+        from app.platform.auth.api_config_credentials import enrich_model_settings_from_api_config
         from app.platform.config.system_settings import get_system_settings_sync
 
         settings = get_system_settings_sync()

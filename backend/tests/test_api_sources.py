@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+from datetime import datetime
 from types import SimpleNamespace
 
 import pytest
+from sqlalchemy import select
 
 from app.api import sources as sources_api
 from app.api.sources import _helpers as sources_helpers
+from app.domains.fetch.session_health import SessionHealth, record_session_health
+from app.domains.sources.status import set_last_fetch_outcome
 from app.features import PODCAST_DISABLED_DETAIL
 from app.models import Content, Source
 from app.models.source import SourceType
@@ -28,6 +32,90 @@ class _ProbeResult:
             "sample_count": self.sample_count,
             "probed_at": "2026-03-31T00:00:00Z",
         }
+
+
+def test_serialize_source_exposes_session_health_top_level():
+    source = Source(
+        name="X",
+        type=SourceType.X,
+        url="https://x.com/example",
+        metadata_={
+            "session_health": {
+                "status": "error",
+                "reason": "expired",
+                "suggested_action": "relogin",
+            }
+        },
+    )
+    source.error_count = 0
+
+    payload = sources_helpers.serialize_source(source)
+
+    assert payload["session_health"]["reason"] == "expired"
+    assert payload["metadata"]["session_health"]["suggested_action"] == "relogin"
+
+
+def test_serialize_source_prefers_structured_session_health():
+    source = Source(
+        name="X",
+        type=SourceType.X,
+        url="https://x.com/example",
+        error_count=0,
+        metadata_={
+            "session_health": {
+                "status": "ok",
+                "reason": "ok",
+                "suggested_action": "none",
+            }
+        },
+    )
+
+    record_session_health(
+        source,
+        SessionHealth(
+            status="error",
+            reason="expired",
+            suggested_action="relogin",
+            validated_at="2026-07-03T10:00:00Z",
+            details={"source": "x_graphql"},
+        ),
+    )
+    source.metadata_["session_health"] = {
+        "status": "ok",
+        "reason": "ok",
+        "suggested_action": "none",
+    }
+    payload = sources_helpers.serialize_source(source)
+
+    assert source.session_health_status == "error"
+    assert source.session_health_reason == "expired"
+    assert payload["session_health"]["reason"] == "expired"
+    assert payload["metadata"]["session_health"]["details"]["source"] == "x_graphql"
+
+
+def test_serialize_source_prefers_structured_last_fetch_outcome():
+    source = Source(
+        name="Feed",
+        type=SourceType.RSS,
+        url="https://example.com/feed.xml",
+        fetch_interval=60,
+        enabled=True,
+        auth_required=False,
+        last_fetched_at=datetime(2026, 6, 1, 12, 0, 0),
+        error_count=0,
+        metadata_={"last_fetch_outcome": {"code": "stale", "severity": "warning", "message": "old"}},
+    )
+
+    set_last_fetch_outcome(source, "http_429", "error", "rate limited")
+    source.metadata_["last_fetch_outcome"] = {"code": "stale", "severity": "warning", "message": "old"}
+    payload = sources_helpers.serialize_source(source)
+
+    assert source.last_fetch_outcome_code == "http_429"
+    assert source.last_fetch_outcome_severity == "error"
+    assert source.last_fetch_outcome_message == "rate limited"
+    assert payload["metadata"]["last_fetch_outcome"]["code"] == "http_429"
+    assert payload["fetch_status"] == "error"
+    assert payload["fetch_status_message"] == "rate limited"
 
 
 @pytest.mark.asyncio
@@ -87,6 +175,48 @@ async def test_sources_crud_and_list_cache_invalidation(client, db_session, monk
     final_list = await client.get("/api/sources")
     assert final_list.status_code == 200
     assert final_list.json()["total"] == 0
+
+
+@pytest.mark.asyncio
+async def test_source_dry_run_endpoint_returns_diagnostics_without_writing(client, db_session, monkeypatch):
+    source = Source(name="Dry Run Feed", type=SourceType.RSS, url="https://example.com/feed.xml")
+    db_session.add(source)
+    await db_session.commit()
+    await db_session.refresh(source)
+
+    async def _fake_dry_run(source_id, *, sample_limit=5):
+        assert str(source_id) == str(source.id)
+        assert sample_limit == 2
+        return {
+            "source_id": str(source_id),
+            "source_name": "Dry Run Feed",
+            "source_type": "rss",
+            "dry_run": True,
+            "would_write": False,
+            "warnings": {"merged": None, "primary": None},
+            "stages": {
+                "collector": {"count": 1},
+                "normalizer": {"input_count": 1, "valid_count": 1, "stale_skipped": 0, "other_skipped": 0},
+                "builder": {"would_store_count": 1, "build_failed": 0},
+            },
+            "samples": {"raw": [], "would_store": []},
+            "runtime": {"fetch_diag": None, "metadata_preview": {}},
+        }
+
+    from app.interfaces.http.sources import dry_run as dry_run_api
+
+    monkeypatch.setattr(dry_run_api, "run_source_dry_run", _fake_dry_run)
+
+    response = await client.post(f"/api/sources/{source.id}/dry-run", params={"sample_limit": 2})
+
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload["dry_run"] is True
+    assert payload["would_write"] is False
+    assert payload["stages"]["builder"]["would_store_count"] == 1
+
+    contents = (await db_session.execute(select(Content))).scalars().all()
+    assert contents == []
 
 
 @pytest.mark.asyncio

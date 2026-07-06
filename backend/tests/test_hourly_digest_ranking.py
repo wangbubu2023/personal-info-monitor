@@ -1,4 +1,6 @@
-from app.services.ranking_service import RankingService
+from pathlib import Path
+
+from app.domains.score.ranking import RankingService
 
 
 def test_ranking_prefers_multi_source_clusters():
@@ -98,8 +100,59 @@ def test_ranking_prefers_scored_high_quality_entries_over_long_low_quality_items
     assert clusters[0]["topic"] == "OpenAI releases major model safety report"
 
 
+def test_ranking_clusters_high_score_entries_first_for_stable_topic():
+    service = RankingService(similarity_threshold=0.2)
+    entries = [
+        {
+            "title": "Brief AI policy note",
+            "summary": "AI policy update from a wire.",
+            "source_name": "Wire",
+            "source_url": "https://wire.example.com",
+            "metadata": {"article_score": 35},
+        },
+        {
+            "title": "White House announces major AI chip export policy",
+            "summary": "AI chip export policy update with semiconductor supply chain impact.",
+            "source_name": "Primary",
+            "source_url": "https://primary.example.com",
+            "metadata": {"article_score": 92},
+        },
+    ]
+
+    clusters = service.cluster_and_rank(entries)
+
+    assert clusters[0]["topic"] == "White House announces major AI chip export policy"
+    assert clusters[0]["items"][0]["source_name"] == "Primary"
+
+
+def test_ranking_forces_duplicate_group_into_same_cluster():
+    service = RankingService(similarity_threshold=0.9)
+    entries = [
+        {
+            "title": "Central bank publishes policy framework",
+            "summary": "Monetary policy and market impact.",
+            "source_name": "A",
+            "source_url": "https://a.example.com",
+            "metadata": {"article_score": 80, "duplicate_group_id": "policy-framework"},
+        },
+        {
+            "title": "Unrelated wire headline text",
+            "summary": "A syndicated rewrite with sparse overlapping tokens.",
+            "source_name": "B",
+            "source_url": "https://b.example.com",
+            "metadata": {"article_score": 50, "duplicate_group_id": "policy-framework"},
+        },
+    ]
+
+    clusters = service.cluster_and_rank(entries)
+
+    assert len(clusters) == 1
+    assert len(clusters[0]["items"]) == 2
+
+
 def test_tokenize_includes_chinese_trigrams():
-    from app.services.ranking_service import _tokenize
+    from app.domains.score.ranking import _tokenize
+
     tokens = _tokenize("中国人民银行宣布降息")
     # bigrams
     assert "人民" in tokens
@@ -110,8 +163,37 @@ def test_tokenize_includes_chinese_trigrams():
 
 
 def test_tokenize_trigram_improves_similarity():
-    from app.services.ranking_service import _tokenize, _jaccard
+    from app.domains.score.ranking import _jaccard, _tokenize
+
     a = _tokenize("中国人民银行宣布利率决定")
     b = _tokenize("人民银行维持基准利率不变")
     score = _jaccard(a, b)
     assert score > 0.15  # trigrams give overlap on "人民银" and "民银行"
+
+
+def test_hourly_enrich_uses_score_domain_ranking_module():
+    hourly_dir = Path(__file__).resolve().parents[1] / "app" / "domains" / "enrich" / "hourly"
+    offenders = []
+    for path in hourly_dir.glob("*.py"):
+        if "app.services.ranking_service" in path.read_text():
+            offenders.append(path.name)
+    assert offenders == []
+
+
+def test_domain_notifications_do_not_import_service_layer():
+    app_dir = Path(__file__).resolve().parents[1] / "app"
+    checked = [
+        app_dir / "domains" / "enrich" / "notifications" / "daily_digest.py",
+        app_dir / "domains" / "enrich" / "notifications" / "doctor_digest.py",
+        app_dir / "interfaces" / "http" / "system.py",
+    ]
+    offenders = []
+    for path in checked:
+        text = path.read_text()
+        if (
+            "app.services.digest_service" in text
+            or "app.services.doctor_service" in text
+            or "app.services.monitor_service" in text
+        ):
+            offenders.append(path.relative_to(app_dir).as_posix())
+    assert offenders == []

@@ -44,8 +44,23 @@ export interface HourlyDigestDetail {
   summary?: string
   content_count: number
   sources: string[]
+  event_items?: HourlyDigestEventItem[]
   items: DigestItem[]
   generated_at?: string
+}
+
+export interface HourlyDigestEventItem {
+  content_id: string
+  title: string
+  summary?: string | null
+  source_name: string
+  source_url?: string | null
+  url: string
+  publish_time?: string | null
+  fetched_at?: string | null
+  score?: number | null
+  lane?: string | null
+  duplicate_group_id?: string | null
 }
 
 export const digestApi = {

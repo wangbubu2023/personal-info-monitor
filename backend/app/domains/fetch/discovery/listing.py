@@ -19,8 +19,28 @@ from datetime import datetime, timedelta
 from typing import Any, Mapping, Sequence
 from urllib.parse import urljoin, urlparse
 
-from app.domains.fetch.discovery.rules import DiscoveryRules
+from app.domains.fetch.collectors import website_helpers
+from app.domains.fetch.discovery.rules import DiscoveryRules, candidate_satisfies_article_shape
 from app.utils.datetime import utcnow_naive
+
+_DISCOVERY_DIAGNOSTIC_FIELDS = (
+    "total",
+    "kept",
+    "dropped_no_url",
+    "dropped_off_domain",
+    "dropped_deny",
+    "dropped_allow_miss",
+    "dropped_non_article_url",
+    "dropped_short_title",
+    "dropped_duplicate",
+    "dropped_stale",
+    "truncated",
+    "listing_urls_configured",
+    "listing_pages_total",
+    "listing_pages_fetched",
+    "listing_pages_failed",
+    "pagination_max_pages",
+)
 
 
 @dataclass(frozen=True)
@@ -31,15 +51,11 @@ class DiscoveredArticle:
 
 
 def _host(url: str) -> str:
-    return (urlparse(url).hostname or "").lower().lstrip("www.").rstrip(".")
+    return (urlparse(url).hostname or "").lower().removeprefix("www.").rstrip(".")
 
 
 def _same_domain(base_url: str, url: str) -> bool:
-    base = _host(base_url)
-    other = _host(url)
-    if not base or not other:
-        return False
-    return base == other or other.endswith("." + base) or base.endswith("." + other)
+    return website_helpers.same_site(base_url, url)
 
 
 def _matches_any(path_and_url: str, patterns: Sequence[str]) -> bool:
@@ -73,6 +89,7 @@ def filter_candidates(
         "dropped_off_domain": 0,
         "dropped_deny": 0,
         "dropped_allow_miss": 0,
+        "dropped_non_article_url": 0,
         "dropped_short_title": 0,
         "dropped_duplicate": 0,
         "dropped_stale": 0,
@@ -102,6 +119,9 @@ def filter_candidates(
         if rules.url_allow_patterns and not _matches_any(match_blob, rules.url_allow_patterns):
             diagnostics["dropped_allow_miss"] += 1
             continue
+        if not candidate_satisfies_article_shape(base_url, url, rules):
+            diagnostics["dropped_non_article_url"] += 1
+            continue
         if len(title) < rules.min_title_chars:
             diagnostics["dropped_short_title"] += 1
             continue
@@ -125,7 +145,74 @@ def filter_candidates(
     return kept, diagnostics
 
 
+def _as_int_or_none(value: Any) -> int | None:
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _write_structured_discovery_diagnostics(
+    source,
+    diagnostics: Mapping[str, Any],
+    *,
+    checked_at: datetime,
+) -> None:
+    if not hasattr(source, "discovery_checked_at"):
+        return
+    source.discovery_checked_at = checked_at
+    for field in _DISCOVERY_DIAGNOSTIC_FIELDS:
+        setattr(source, f"discovery_{field}", _as_int_or_none(diagnostics.get(field)))
+
+
+def _structured_discovery_diagnostics(source) -> dict[str, Any]:
+    checked_at = getattr(source, "discovery_checked_at", None)
+    has_structured = isinstance(checked_at, datetime) or any(
+        getattr(source, f"discovery_{field}", None) is not None
+        for field in _DISCOVERY_DIAGNOSTIC_FIELDS
+    )
+    if not has_structured:
+        return {}
+    payload: dict[str, Any] = {}
+    if isinstance(checked_at, datetime):
+        payload["checked_at"] = checked_at.isoformat() + "Z"
+    for field in _DISCOVERY_DIAGNOSTIC_FIELDS:
+        value = getattr(source, f"discovery_{field}", None)
+        if value is not None:
+            payload[field] = value
+    return payload
+
+
+def discovery_diagnostics_metadata(source) -> dict[str, Any]:
+    """Return latest discovery diagnostics, preferring structured columns."""
+    structured = _structured_discovery_diagnostics(source)
+    if structured:
+        return structured
+    metadata = getattr(source, "metadata_", None)
+    if not isinstance(metadata, Mapping):
+        return {}
+    value = metadata.get("discovery_diagnostics")
+    return dict(value) if isinstance(value, Mapping) else {}
+
+
+def record_discovery_diagnostics(source, diagnostics: Mapping[str, Any]) -> dict[str, Any]:
+    """Persist latest listing-discovery diagnostics to columns and metadata."""
+    checked_at = utcnow_naive()
+    payload = {field: _as_int_or_none(diagnostics.get(field)) for field in _DISCOVERY_DIAGNOSTIC_FIELDS}
+    payload = {key: value for key, value in payload.items() if value is not None}
+    payload["checked_at"] = checked_at.isoformat() + "Z"
+    _write_structured_discovery_diagnostics(source, payload, checked_at=checked_at)
+    metadata = dict(getattr(source, "metadata_", None) or {})
+    metadata["discovery_diagnostics"] = payload
+    source.metadata_ = metadata
+    return payload
+
+
 __all__ = [
     "DiscoveredArticle",
+    "discovery_diagnostics_metadata",
     "filter_candidates",
+    "record_discovery_diagnostics",
 ]

@@ -45,7 +45,7 @@ async def send_doctor_digest_email() -> bool:
     def _build_report() -> tuple[dict, list[str]]:
         from app.database import SessionLocal
         from app.models import EmailSchedule
-        from app.services.doctor_service import DoctorService
+        from app.domains.system.doctor import DoctorService
 
         db = SessionLocal()
         try:

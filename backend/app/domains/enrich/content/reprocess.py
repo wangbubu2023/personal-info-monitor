@@ -1,10 +1,9 @@
 """Manual reprocess — regenerate summary / re-translate an existing Content row.
 
 Extracted from ``ContentProcessor.reprocess_content`` as part of Phase
-4 step 4 of the module-refactor blueprint. The legacy method on
-:class:`app.processors.content_processor.ContentProcessor` is kept as
-a thin wrapper delegating here so existing callers (and any
-not-yet-rewritten code) keep working.
+4 step 4 of the module-refactor blueprint. The canonical method on
+:class:`app.domains.ingest.content_processor.ContentProcessor` is kept
+as a thin wrapper delegating here so existing callers keep working.
 
 Why a standalone function instead of a method?
 
@@ -12,20 +11,18 @@ The "reprocess on user click" path doesn't need the rest of
 ``ContentProcessor`` state (extractor, keyword matcher); it only needs
 the Summariser and Translator. Pulling it out makes the dependency
 explicit and lets the enrich domain own this operation without
-reaching into ``app.processors``.
+reaching into the legacy processors package.
 
-The summariser/translator are still imported from ``app.processors``
-in this cut; Phase 4 step 3 will move them under ``platform.llm`` and
-this module will switch to the new location without changing its
-public surface.
+The summariser/translator live under ``platform.llm``; legacy
+``app.processors.*`` paths remain only as compatibility shims.
 """
 
 from __future__ import annotations
 
 from app.domains.ingest.quality_metadata import merge_content_quality_metadata
 from app.models import Content
-from app.processors.summarizer import Summarizer
-from app.processors.translator import Translator
+from app.platform.llm.summarizer import Summarizer
+from app.platform.llm.translator import Translator
 from app.utils.datetime import utcnow_naive
 
 

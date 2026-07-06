@@ -10,7 +10,7 @@ from sqlalchemy.orm.attributes import flag_modified
 
 from app.database import get_async_db
 from app.models import Keyword
-from app.services.keyword_rules import (
+from app.domains.ingest.keywords.rules import (
     compute_stored_equivalent_terms,
     dedupe_keywords_case_insensitive,
     keyword_identity_key,

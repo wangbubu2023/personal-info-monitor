@@ -212,7 +212,7 @@ class TestFetchXArticleFulltext:
 
     @pytest.mark.asyncio
     async def test_exception_returns_empty(self):
-        with patch("app.collectors.x_twitter.XCollector", side_effect=ImportError("no module")):
+        with patch("app.domains.fetch.collectors.x_twitter.XCollector", side_effect=ImportError("no module")):
             assert await _fetch_x_article_fulltext("https://x.com/i/article/123", {}) == ""
 
     @pytest.mark.asyncio
@@ -221,7 +221,7 @@ class TestFetchXArticleFulltext:
         mock_collector._fetch_article_texts_with_playwright = AsyncMock(
             return_value={"https://x.com/i/article/123": "short text"}
         )
-        with patch.dict("sys.modules", {"app.collectors.x_twitter": MagicMock(XCollector=lambda: mock_collector)}):
+        with patch.dict("sys.modules", {"app.domains.fetch.collectors.x_twitter": MagicMock(XCollector=lambda: mock_collector)}):
             result = await _fetch_x_article_fulltext("https://x.com/i/article/123", {})
             assert result == ""
 
@@ -232,7 +232,7 @@ class TestFetchXArticleFulltext:
         mock_collector._fetch_article_texts_with_playwright = AsyncMock(
             return_value={"https://x.com/i/article/123": long_text}
         )
-        with patch.dict("sys.modules", {"app.collectors.x_twitter": MagicMock(XCollector=lambda: mock_collector)}):
+        with patch.dict("sys.modules", {"app.domains.fetch.collectors.x_twitter": MagicMock(XCollector=lambda: mock_collector)}):
             result = await _fetch_x_article_fulltext("https://x.com/i/article/123", {})
             assert result == long_text
 

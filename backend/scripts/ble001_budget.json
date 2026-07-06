@@ -1,0 +1,11 @@
+{
+  "max_total": 189,
+  "scope": "app",
+  "ruff_args": [
+    "--select",
+    "BLE001",
+    "--ignore-noqa",
+    "--isolated"
+  ],
+  "note": "Lower max_total whenever production BLE001 findings are removed. This budget is enforced in CI so the debt cannot grow."
+}

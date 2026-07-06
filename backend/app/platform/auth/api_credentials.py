@@ -7,11 +7,9 @@ as "no credentials present", which is the desired failure mode for UI
 masking and scheduler enrichment paths.
 
 Phase 4 step 3 of the refactor lifted this helper out of
-``app.api.configs_common_auth`` so that
-``app.services.api_config_credentials`` no longer needs to reach into
-the HTTP layer (the only remaining Phase 4 violation before this
-step). The legacy ``app.api.configs_common_auth.decrypt_api_credentials``
-re-exports this implementation; both paths return the same object.
+``app.api.configs_common_auth``. The legacy
+``app.api.configs_common_auth.decrypt_api_credentials`` re-exports this
+implementation; both paths return the same object.
 """
 
 from __future__ import annotations

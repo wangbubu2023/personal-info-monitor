@@ -1,5 +1,6 @@
 """Tests for feed/listing title+summary translation."""
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -7,7 +8,10 @@ import pytest
 from app.domains.enrich.content.listing_translation import (
     content_needs_listing_translation,
     listing_translation_enabled,
+    run_listing_translation_job,
+    schedule_listing_translation_backfill,
     translate_listing_fields_async,
+    _scheduled_ids,
 )
 
 
@@ -112,3 +116,35 @@ async def test_translate_listing_fields_async_persists_title_and_summary():
     assert content.translated_title == "突发新闻"
     assert content.translated_summary == "简短摘要"
     db.commit.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_schedule_listing_translation_backfill_enqueues_bounded_job():
+    _scheduled_ids.clear()
+    with patch(
+        "app.domains.enrich.content.listing_translation.listing_translation_enabled",
+        return_value=True,
+    ), patch(
+        "app.tasks.task_queue.task_queue.enqueue_listing_translation",
+        new=AsyncMock(return_value=True),
+    ) as enqueue:
+        schedule_listing_translation_backfill(["cid-1", "cid-1"])
+        await asyncio.sleep(0)
+
+    enqueue.assert_awaited_once_with("cid-1")
+    assert "cid-1" in _scheduled_ids
+
+
+@pytest.mark.asyncio
+async def test_run_listing_translation_job_clears_scheduled_dedupe():
+    _scheduled_ids.clear()
+    _scheduled_ids.add("cid-1")
+    with patch(
+        "app.domains.enrich.content.listing_translation.translate_listing_fields_async",
+        new=AsyncMock(return_value=True),
+    ) as translate:
+        ok = await run_listing_translation_job("cid-1")
+
+    assert ok is True
+    translate.assert_awaited_once_with("cid-1")
+    assert "cid-1" not in _scheduled_ids

@@ -6,11 +6,12 @@ from typing import Any, Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import func, select, text
+from sqlalchemy import Float, cast, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.database import get_async_db
+from app.domains.score.feedback import SCORE_CALIBRATION_EVENT, record_score_feedback_event
 from app.domains.score.score_explain import explain_content_row
 from app.features import KEYWORD_MONITORING_ENABLED
 from app.models import Content, Keyword, ScoreFeedback
@@ -43,7 +44,11 @@ def _meta_get(meta: dict[str, Any] | None, key: str) -> Any:
 def _serialize_lab_item(content: Content) -> ScoreLabContentSummary:
     meta = content.metadata_ if isinstance(content.metadata_, dict) else {}
     source = content.source
-    score_raw = _meta_get(meta, "article_score",) or _meta_get(meta, "final_score")
+    score_raw = content.article_score
+    if score_raw is None:
+        score_raw = content.final_score
+    if score_raw is None:
+        score_raw = _meta_get(meta, "article_score",) or _meta_get(meta, "final_score")
     try:
         article_score = float(score_raw) if score_raw is not None else None
     except (TypeError, ValueError):
@@ -57,10 +62,27 @@ def _serialize_lab_item(content: Content) -> ScoreLabContentSummary:
         publish_time=content.publish_time,
         fetched_at=content.fetched_at,
         article_score=article_score,
-        selection_status=_meta_get(meta, "selection_status"),
-        lane=_meta_get(meta, "lane"),
+        selection_status=content.selection_status or _meta_get(meta, "selection_status"),
+        lane=content.lane or _meta_get(meta, "lane"),
         fetch_acceptance=_meta_get(meta, "fetch_acceptance"),
     )
+
+
+def _score_expr():
+    return func.coalesce(
+        Content.article_score,
+        Content.final_score,
+        cast(func.json_extract(Content.metadata_, "$.article_score"), Float),
+        cast(func.json_extract(Content.metadata_, "$.final_score"), Float),
+    )
+
+
+def _selection_status_expr():
+    return func.coalesce(Content.selection_status, func.json_extract(Content.metadata_, "$.selection_status"))
+
+
+def _lane_expr():
+    return func.coalesce(Content.lane, func.json_extract(Content.metadata_, "$.lane"))
 
 
 @router.get("/contents", response_model=ScoreLabContentListResponse)
@@ -77,17 +99,13 @@ async def list_scored_contents(
     query = select(Content).options(selectinload(Content.source))
 
     if selection_status:
-        clause = text("json_extract(contents.metadata, '$.selection_status') = :selection_status")
-        query = query.where(clause.bindparams(selection_status=selection_status))
+        query = query.where(_selection_status_expr() == selection_status)
     if lane:
-        clause = text("json_extract(contents.metadata, '$.lane') = :lane")
-        query = query.where(clause.bindparams(lane=lane))
+        query = query.where(_lane_expr() == lane)
     if min_score is not None:
-        clause = text("CAST(json_extract(contents.metadata, '$.article_score') AS REAL) >= :min_score")
-        query = query.where(clause.bindparams(min_score=min_score))
+        query = query.where(_score_expr() >= min_score)
     if max_score is not None:
-        clause = text("CAST(json_extract(contents.metadata, '$.article_score') AS REAL) <= :max_score")
-        query = query.where(clause.bindparams(max_score=max_score))
+        query = query.where(_score_expr() <= max_score)
     if search and search.strip():
         safe = search.strip()[:120].replace("%", "").replace("_", "")
         pat = f"%{safe}%"
@@ -101,7 +119,11 @@ async def list_scored_contents(
 
     def _article_score(content: Content) -> float:
         meta = content.metadata_ if isinstance(content.metadata_, dict) else {}
-        raw = meta.get("article_score", meta.get("final_score"))
+        raw = content.article_score
+        if raw is None:
+            raw = content.final_score
+        if raw is None:
+            raw = meta.get("article_score", meta.get("final_score"))
         try:
             return float(raw)
         except (TypeError, ValueError):
@@ -172,14 +194,16 @@ async def create_score_feedback(
         "score_delta": explain.get("score_delta"),
     }
 
-    row = ScoreFeedback(
-        content_id=str(body.content_id),
+    row = await record_score_feedback_event(
+        db,
+        content,
+        event_type=SCORE_CALIBRATION_EVENT,
+        event_value=body.direction,
         direction=body.direction,
         expected_status=body.expected_status,
         note=(body.note or "").strip() or None,
         snapshot=snapshot,
     )
-    db.add(row)
     await db.commit()
     await db.refresh(row)
 
@@ -190,6 +214,8 @@ async def create_score_feedback(
         direction=row.direction,
         expected_status=row.expected_status,
         note=row.note,
+        event_type=row.event_type,
+        event_value=row.event_value,
         snapshot=row.snapshot or {},
         created_at=row.created_at,
         content_title=content.title,
@@ -217,6 +243,8 @@ async def list_score_feedback(
             direction=feedback.direction,
             expected_status=feedback.expected_status,
             note=feedback.note,
+            event_type=feedback.event_type,
+            event_value=feedback.event_value,
             snapshot=feedback.snapshot or {},
             created_at=feedback.created_at,
             content_title=title,

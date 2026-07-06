@@ -23,6 +23,7 @@ import asyncio
 
 from app.ai.provider import ModelProviderClient, get_runtime_from_system_settings
 from app.domains.enrich.hourly.repository import (
+    build_hourly_digest_event_items,
     build_digest_generation_context,
     clear_hourly_digests,
     store_digest,
@@ -49,7 +50,7 @@ from app.domains.enrich.hourly.text_utils import (
     is_valid_digest_format,
     strip_llm_reasoning,
 )
-from app.services.ranking_service import RankingService
+from app.domains.score.ranking import RankingService
 from app.platform.config.system_settings import effective_hourly_digest_prompt
 from app.utils.llm_guardrail import is_rejected_selection
 from app.utils.logger import get_logger
@@ -94,6 +95,7 @@ async def generate_previous_hour_digest() -> None:
     max_pick = min(8, limits["max_candidates"])
     try:
         entries = ctx["entries"]
+        event_items = build_hourly_digest_event_items(entries)
 
         def _ranked_clusters(n: int):
             # Keep content the selection stage already rejected/deferred out of
@@ -121,6 +123,7 @@ async def generate_previous_hour_digest() -> None:
                     fallback_body,
                     content_count=len(ctx["rows"]),
                     sources=ctx["source_names"],
+                    items_json=event_items,
                 )
 
             await asyncio.to_thread(_save_fallback_without_runtime)
@@ -216,6 +219,7 @@ async def generate_previous_hour_digest() -> None:
                 body,
                 content_count=len(ctx["rows"]),
                 sources=ctx["source_names"],
+                items_json=event_items,
             )
 
         await asyncio.to_thread(_save)
@@ -270,6 +274,7 @@ _generate_digest_items_with_ai = _synthesis.generate_digest_items_with_ai
 
 _build_digest_text_seed = _repository.build_digest_text_seed
 _build_entries = _repository.build_entries
+_build_hourly_digest_event_items = _repository.build_hourly_digest_event_items
 _compute_digest_window = _repository.compute_digest_window
 _load_digest_rows = _repository.load_digest_rows
 _get_or_create_hourly_digest = _repository.get_or_create_hourly_digest

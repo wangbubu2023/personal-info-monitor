@@ -18,6 +18,7 @@ from app.models.source import Source
 from app.schemas.config import (
     APIConfigCreate,
     APIConfigUpdate,
+    AuthBundleImportRequest,
     AuthConfigCreate,
     AuthConfigUpdate,
 )
@@ -34,6 +35,8 @@ from app.interfaces.http.configs_common_cookies import (
     normalize_cookies_input,
 )
 from app.utils.model_catalog import is_ollama_api_base, sanitize_provider_api_base
+from app.platform.auth.bundle import AuthBundleError
+from app.domains.fetch.auth.bundle_import import import_auth_bundle
 
 router = APIRouter()
 
@@ -421,4 +424,49 @@ async def delete_auth_config(
         "message": "Auth config deleted successfully",
         "sources_unlinked": sources_unlinked,
         "browser_sessions_unlinked": sessions_unlinked,
+    }
+
+
+@router.post("/auth-bundles/import")
+async def import_auth_bundle_endpoint(
+    request: AuthBundleImportRequest,
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Import a locally generated Auth Bundle into server-side credentials."""
+
+    try:
+        result = await import_auth_bundle(
+            db,
+            request.bundle,
+            name=request.name,
+            bind_matching_sources=request.bind_matching_sources,
+            create_browser_session=request.create_browser_session,
+        )
+    except AuthBundleError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    auth_result = await db.execute(
+        select(AuthConfig)
+        .options(selectinload(AuthConfig.sources))
+        .filter(AuthConfig.id == result["auth_config"].id)
+    )
+    auth_config = auth_result.scalar_one()
+
+    return {
+        "site_host": result["site_host"],
+        "cookie_count": result["cookie_count"],
+        "storage_state_imported": result["storage_state_imported"],
+        "bound_sources": result["bound_sources"],
+        "auth_config": serialize_auth_config(auth_config),
+        "browser_session": (
+            {
+                "id": str(result["browser_session"].id),
+                "site_host": result["browser_session"].site_host,
+                "status": result["browser_session"].status.value
+                if hasattr(result["browser_session"].status, "value")
+                else str(result["browser_session"].status),
+                "storage_state_path": result["browser_session"].storage_state_path,
+            }
+            if result.get("browser_session")
+            else None
+        ),
     }

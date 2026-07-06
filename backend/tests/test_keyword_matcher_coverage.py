@@ -1,4 +1,4 @@
-"""Extra coverage for :mod:`app.processors.keyword_matcher`."""
+"""Extra coverage for :mod:`app.domains.ingest.keywords.matcher`."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.processors.keyword_matcher import KeywordMatcher
+from app.domains.ingest.keywords.matcher import KeywordMatcher
 
 
 def _make_keyword(**overrides) -> SimpleNamespace:

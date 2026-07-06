@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.services.keyword_rules import (
+from app.domains.ingest.keywords.rules import (
     build_equivalent_terms,
     compute_stored_equivalent_terms,
     dedupe_keywords_case_insensitive,
@@ -31,7 +31,7 @@ async def test_build_equivalent_terms_uses_public_fallback_for_short_keywords(mo
         return None
 
     monkeypatch.setattr("app.domains.ingest.keywords.rules._translation_cache._entries", {})
-    monkeypatch.setattr("app.processors.translator.Translator.translate", _fake_model_translate)
+    monkeypatch.setattr("app.platform.llm.translator.Translator.translate", _fake_model_translate)
     monkeypatch.setattr(
         "app.domains.ingest.keywords.rules._translate_keyword_via_public_endpoint",
         _fake_public_translate,
@@ -57,7 +57,7 @@ async def test_build_equivalent_terms_includes_static_aliases(monkeypatch):
     async def _fake_public_translate(*_args, **_kwargs):
         return None
 
-    monkeypatch.setattr("app.processors.translator.Translator.translate", _fake_model_translate)
+    monkeypatch.setattr("app.platform.llm.translator.Translator.translate", _fake_model_translate)
     monkeypatch.setattr(
         "app.domains.ingest.keywords.rules._translate_keyword_via_public_endpoint",
         _fake_public_translate,

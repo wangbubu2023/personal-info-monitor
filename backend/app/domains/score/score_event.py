@@ -5,6 +5,7 @@ from __future__ import annotations
 import math
 from datetime import datetime, timedelta
 from typing import Any, Mapping, Sequence
+from urllib.parse import urlparse
 
 from app.domains.score.score_utils import normalize_authority_type, normalize_source_stars
 
@@ -33,6 +34,52 @@ def _source_id(item: Mapping[str, Any]) -> str:
         return str(source_meta["source_id"]).strip()
     name = (item.get("source_name") or meta.get("source_name") or "").strip()
     return name or "unknown"
+
+
+_COMMON_SECOND_LEVEL_SUFFIXES = {
+    "co.uk",
+    "com.au",
+    "com.cn",
+    "com.hk",
+    "co.jp",
+    "co.kr",
+    "com.sg",
+    "com.tw",
+}
+
+
+def _registrable_domain(host: str) -> str:
+    labels = [part for part in host.lower().strip(".").split(".") if part]
+    if len(labels) <= 2:
+        return ".".join(labels)
+    suffix = ".".join(labels[-2:])
+    if suffix in _COMMON_SECOND_LEVEL_SUFFIXES and len(labels) >= 3:
+        return ".".join(labels[-3:])
+    return suffix
+
+
+def _source_domain(item: Mapping[str, Any]) -> str:
+    meta = _metadata(item)
+    source_meta = item.get("source_metadata") if isinstance(item.get("source_metadata"), dict) else {}
+    for raw in (
+        item.get("source_url"),
+        item.get("original_url"),
+        item.get("url"),
+        meta.get("source_url"),
+        meta.get("original_url"),
+        source_meta.get("url"),
+        source_meta.get("source_url"),
+    ):
+        if not raw:
+            continue
+        text = str(raw)
+        parsed = urlparse(text if "://" in text else f"https://{text}")
+        host = parsed.hostname or ""
+        if host:
+            if host.startswith("www."):
+                host = host[4:]
+            return _registrable_domain(host)
+    return ""
 
 
 def _max_source_stars(items: Sequence[Mapping[str, Any]]) -> int:
@@ -73,8 +120,19 @@ def compute_momentum(items: Sequence[Mapping[str, Any]], *, now: datetime | None
 
 
 def compute_corroboration(items: Sequence[Mapping[str, Any]]) -> tuple[float, str, int]:
-    source_ids = {_source_id(item) for item in items if _source_id(item) != "unknown"}
-    count = len(source_ids) if source_ids else len(items)
+    independent_keys: set[str] = set()
+    seen_duplicate_groups: set[str] = set()
+    for item in items:
+        meta = _metadata(item)
+        duplicate_group = str(item.get("duplicate_group_id") or meta.get("duplicate_group_id") or "").strip()
+        if duplicate_group:
+            if duplicate_group in seen_duplicate_groups:
+                continue
+            seen_duplicate_groups.add(duplicate_group)
+        domain = _source_domain(item)
+        independent_keys.add(domain or _source_id(item))
+    independent_keys.discard("unknown")
+    count = len(independent_keys) if independent_keys else len(items)
     max_stars = _max_source_stars(items)
     has_official = any(_is_official_source(item) for item in items)
 

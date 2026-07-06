@@ -3,7 +3,7 @@
 Two public entry points:
 
 * :func:`render_digest_email` – pure HTML rendering, given a digest
-  dict from :class:`DigestService`.
+  dict from :class:`app.domains.enrich.digest.DigestService`.
 * :func:`send_daily_digest_emails` – scheduler-driven orchestrator:
   loads every enabled :class:`EmailSchedule`, generates the day's
   digest, renders it, and dispatches via the platform SMTP transport.
@@ -132,7 +132,7 @@ async def send_daily_digest_emails():
     def _build_and_send():
         from app.database import SessionLocal
         from app.models import EmailSchedule
-        from app.services.digest_service import DigestService
+        from app.domains.enrich.digest import DigestService
 
         db = SessionLocal()
         try:

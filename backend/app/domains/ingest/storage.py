@@ -9,8 +9,8 @@ from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 
 from app.models import Content
-from app.pipeline.utils import normalize_external_id
 from app.utils.logger import get_logger
+from app.utils.url import normalize_external_id
 
 logger = get_logger(__name__)
 

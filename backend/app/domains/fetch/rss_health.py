@@ -9,10 +9,10 @@ a first-class, diagnosable resource:
   "source failed".
 * :func:`persist_discovered_feed` — cache an auto-discovered feed URL back into
   ``Source.metadata_`` so we don't re-probe common paths every cycle.
-* :func:`dedupe_feed_entries` — collapse the union of multiple feeds (per-section
-  feeds for one source) down to one row per article.
 
-All pure / metadata-only; no new tables.
+The latest feed-health verdict is persisted to structured ``sources.rss_health_*``
+columns first, while still mirrored to ``Source.metadata_['rss_health']`` for
+older callers and the current frontend metadata contract.
 """
 
 from __future__ import annotations
@@ -20,7 +20,7 @@ from __future__ import annotations
 from calendar import timegm
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any, Iterable, Mapping
+from typing import Any, Mapping
 
 from app.utils.datetime import utcnow_naive
 
@@ -38,7 +38,8 @@ class FeedHealth:
     stale_days: int | None
     reason: str
 
-    def to_metadata(self) -> dict[str, Any]:
+    def to_metadata(self, *, checked_at: datetime | None = None) -> dict[str, Any]:
+        checked_at = checked_at or utcnow_naive()
         return {
             "status": self.status,
             "healthy": self.healthy,
@@ -46,7 +47,7 @@ class FeedHealth:
             "last_update": (self.last_update.isoformat() + "Z") if self.last_update else None,
             "stale_days": self.stale_days,
             "reason": self.reason,
-            "checked_at": utcnow_naive().isoformat() + "Z",
+            "checked_at": checked_at.isoformat() + "Z",
         }
 
 
@@ -105,12 +106,57 @@ def assess_parsed_feed_health(parsed: Any, *, now: datetime | None = None) -> Fe
     return assess_feed_health(parse_ok=parse_ok, item_count=item_count, latest_published=latest, now=now)
 
 
+def _structured_feed_health_metadata(source) -> dict[str, Any]:
+    status = getattr(source, "rss_health_status", None)
+    if not status:
+        return {}
+    last_update = getattr(source, "rss_health_last_update", None)
+    checked_at = getattr(source, "rss_health_checked_at", None)
+    return {
+        "status": status,
+        "healthy": getattr(source, "rss_health_healthy", None),
+        "item_count": getattr(source, "rss_health_item_count", None),
+        "last_update": (last_update.isoformat() + "Z") if isinstance(last_update, datetime) else None,
+        "stale_days": getattr(source, "rss_health_stale_days", None),
+        "reason": getattr(source, "rss_health_reason", None),
+        "checked_at": (checked_at.isoformat() + "Z") if isinstance(checked_at, datetime) else None,
+        "feed_url": getattr(source, "rss_health_feed_url", None),
+    }
+
+
+def feed_health_metadata(source) -> dict[str, Any]:
+    """Return latest feed health, preferring structured columns over metadata."""
+    structured = _structured_feed_health_metadata(source)
+    if structured:
+        return structured
+    metadata = getattr(source, "metadata_", None)
+    if not isinstance(metadata, Mapping):
+        return {}
+    value = metadata.get("rss_health")
+    return dict(value) if isinstance(value, Mapping) else {}
+
+
+def _write_structured_feed_health(source, health: FeedHealth, *, feed_url: str | None, checked_at: datetime) -> None:
+    if not hasattr(source, "rss_health_status"):
+        return
+    source.rss_health_status = health.status
+    source.rss_health_healthy = health.healthy
+    source.rss_health_item_count = health.item_count
+    source.rss_health_last_update = health.last_update
+    source.rss_health_stale_days = health.stale_days
+    source.rss_health_reason = health.reason
+    source.rss_health_checked_at = checked_at
+    source.rss_health_feed_url = feed_url
+
+
 def record_feed_health(source, health: FeedHealth, *, feed_url: str | None = None) -> None:
-    """Persist the latest feed-health verdict under ``metadata['rss_health']``."""
+    """Persist the latest feed-health verdict to columns and metadata."""
     metadata = dict(source.metadata_ or {})
-    payload = health.to_metadata()
+    checked_at = utcnow_naive()
+    payload = health.to_metadata(checked_at=checked_at)
     if feed_url:
         payload["feed_url"] = feed_url
+    _write_structured_feed_health(source, health, feed_url=feed_url, checked_at=checked_at)
     metadata["rss_health"] = payload
     source.metadata_ = metadata
 
@@ -139,32 +185,12 @@ def persist_discovered_feed(source, feed_url: str) -> bool:
     return changed
 
 
-def dedupe_feed_entries(entries: Iterable[Mapping[str, Any]]) -> list[dict[str, Any]]:
-    """Collapse entries from one or more feeds to one row per article.
-
-    Keyed on ``external_id`` then ``url``; the first occurrence wins so feed
-    ordering (usually newest-first) is preserved.
-    """
-    seen: set[str] = set()
-    out: list[dict[str, Any]] = []
-    for entry in entries:
-        key = str(entry.get("external_id") or entry.get("url") or "").strip()
-        if not key:
-            out.append(dict(entry))
-            continue
-        if key in seen:
-            continue
-        seen.add(key)
-        out.append(dict(entry))
-    return out
-
-
 __all__ = [
     "FeedHealth",
     "extract_feed_signals",
     "assess_feed_health",
     "assess_parsed_feed_health",
+    "feed_health_metadata",
     "record_feed_health",
     "persist_discovered_feed",
-    "dedupe_feed_entries",
 ]

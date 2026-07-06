@@ -10,7 +10,10 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from app.domains.fetch.acceptance import ensure_listing_summary
-from app.domains.fetch.article_body import ensure_content_bodies_during_finish
+from app.domains.fetch.article_body import (
+    ensure_content_bodies_during_finish,
+    fetch_cookie_article_body,
+)
 from app.utils.logger import get_logger
 from app.utils.text import truncate_content
 
@@ -32,16 +35,15 @@ async def hydrate_fetched_content(
 
     content_type = (content.content_type or "").strip().lower()
     if source and source.auth_config_id and content_type != "x":
-        if processor is None:
-            from app.processors.content_processor import ContentProcessor
-
-            processor = ContentProcessor()
+        _ = processor
         try:
             creds = try_parse_auth_credentials(source.auth_config)
             cookies = normalize_cookie_dict(creds.get("cookies"))
             if cookies and (not content.full_content or len(content.full_content) < 600):
-                fetched = await processor._fetch_full_text_with_cookies(
-                    content.original_url, cookies
+                fetched = await fetch_cookie_article_body(
+                    content.original_url,
+                    cookies,
+                    source_url=source.url,
                 )
                 if fetched and len(fetched) > len(content.full_content or ""):
                     content.full_content = truncate_content(

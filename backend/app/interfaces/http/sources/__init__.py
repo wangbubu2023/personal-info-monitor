@@ -17,6 +17,7 @@ from .query import router as query_router, list_sources, export_sources, get_sou
 from .mutation import router as mutation_router, create_source, update_source, delete_source
 from .probe import router as probe_router
 from .fetch_import import router as fetch_import_router
+from .dry_run import router as dry_run_router
 
 router = APIRouter()
 
@@ -25,6 +26,7 @@ router = APIRouter()
 # the FastAPI restriction that forbids empty prefix + empty path in include_router.
 router.include_router(probe_router)          # /probe, /probe-all, /{id}/probe
 router.include_router(fetch_import_router)   # /bulk-import, /fetch-all, /{id}/fetch
+router.include_router(dry_run_router)        # /{id}/dry-run
 
 # query sub-router: register "" routes directly, delegate the rest via include_router
 router.add_api_route("", list_sources, methods=["GET"])

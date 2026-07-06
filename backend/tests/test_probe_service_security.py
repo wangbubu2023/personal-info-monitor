@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock
 import pytest
 from yarl import URL as YarlURL
 
-from app.services.probe_service import ProbeService
+from app.domains.sources.probe.service import ProbeService
 
 
 @pytest.mark.asyncio
@@ -63,7 +63,7 @@ async def test_probe_service_blocks_redirects_to_private_hosts(monkeypatch):
 
     monkeypatch.setattr("app.platform.security.ssrf._resolve_host_addresses", _fake_resolve)
     monkeypatch.setattr(
-        "app.services.probe_service.aiohttp.ClientSession",
+        "app.domains.sources.probe.service.aiohttp.ClientSession",
         lambda *args, **kwargs: _FakeSession(),
     )
 
@@ -81,8 +81,8 @@ async def test_probe_service_blocks_redirects_to_private_hosts(monkeypatch):
 )
 async def test_probe_disable_ssl_verify_only_applies_in_debug(monkeypatch, debug, expected_ssl):
     service = ProbeService()
-    monkeypatch.setattr("app.services.probe_service.settings.probe_disable_ssl_verify", True)
-    monkeypatch.setattr("app.services.probe_service.settings.debug", debug)
+    monkeypatch.setattr("app.domains.sources.probe.service.settings.probe_disable_ssl_verify", True)
+    monkeypatch.setattr("app.domains.sources.probe.service.settings.debug", debug)
     monkeypatch.setattr(service, "_assert_public_http_target", AsyncMock(return_value=None))
 
     class _FakeResponse:
@@ -112,7 +112,7 @@ async def test_probe_disable_ssl_verify_only_applies_in_debug(monkeypatch, debug
             return _FakeResponse()
 
     monkeypatch.setattr(
-        "app.services.probe_service.aiohttp.ClientSession",
+        "app.domains.sources.probe.service.aiohttp.ClientSession",
         lambda *args, **kwargs: _FakeSession(),
     )
 
@@ -157,7 +157,7 @@ async def test_probe_attaches_cookies_when_provided(monkeypatch):
             return _FakeResponse()
 
     monkeypatch.setattr(
-        "app.services.probe_service.aiohttp.ClientSession",
+        "app.domains.sources.probe.service.aiohttp.ClientSession",
         lambda **kw: _FakeSession(**kw),
     )
 
@@ -223,7 +223,7 @@ async def test_probe_without_cookies_keeps_default_session(monkeypatch):
             return _FakeResponse()
 
     monkeypatch.setattr(
-        "app.services.probe_service.aiohttp.ClientSession",
+        "app.domains.sources.probe.service.aiohttp.ClientSession",
         lambda **kw: _FakeSession(**kw),
     )
 

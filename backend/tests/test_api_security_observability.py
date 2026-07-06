@@ -258,6 +258,16 @@ async def test_metrics_endpoint_exposes_request_counters(client):
     assert "scheduler" in payload
 
 
+@pytest.mark.asyncio
+async def test_score_vocab_reload_endpoint(client):
+    response = await client.post("/api/system/score-vocab/reload")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "ok"
+    assert payload["vocab"]["lane_count"] >= 1
+
+
 def test_normalize_request_id_accepts_safe_value():
     assert _normalize_request_id("abc-123-XYZ") == "abc-123-XYZ"
 

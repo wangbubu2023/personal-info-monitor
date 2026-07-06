@@ -17,7 +17,7 @@ from app.domains.enrich.hourly.text_utils import (
     preferred_item_title,
     strip_ranking_internal,
 )
-from app.services.ranking_service import RankingService
+from app.domains.score.ranking import RankingService
 
 _MAX_CATALOG_ENTRIES = 80
 

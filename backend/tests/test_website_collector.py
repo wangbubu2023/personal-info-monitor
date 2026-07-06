@@ -8,13 +8,19 @@ from typing import Any, Dict, List, Optional
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
 
 from app.collectors.website import WebsiteCollector
+from app.database import Base
 from app.domains.fetch.failures import (
     FetchFailureCode,
     FetchFailureError,
     make_failure,
 )
+from app.models.content import Content
+from app.models.source import Source, SourceType
 from app.utils.datetime import utcnow_naive
 
 
@@ -140,6 +146,12 @@ class TestSameSite:
     def test_subdomain_match(self):
         assert self.collector._same_site("https://example.com", "https://blog.example.com/post") is True
 
+    def test_sibling_subdomain_match(self):
+        assert self.collector._same_site(
+            "https://edition.cnn.com/business",
+            "https://www.cnn.com/2026/07/04/business/story-slug",
+        ) is True
+
     def test_different_domain(self):
         assert self.collector._same_site("https://example.com", "https://other.com/page") is False
 
@@ -217,6 +229,11 @@ class TestLooksLikeArticleUrl:
             "https://example.com", "https://example.com/blog/my-great-post"
         ) is True
 
+    def test_article_hub_plain_word_slug_accepted(self):
+        assert self.collector._looks_like_article_url(
+            "https://example.com", "https://example.com/blog/hello"
+        ) is True
+
     def test_topics_path_rejected(self):
         assert self.collector._looks_like_article_url(
             "https://example.com", "https://example.com/topics/tech"
@@ -239,10 +256,10 @@ class TestLooksLikeArticleUrl:
             "https://example.com", "https://example.com/articles/story-123"
         ) is True
 
-    def test_article_hub_section_page_rejected(self):
+    def test_article_hub_plain_word_tail_accepted(self):
         assert self.collector._looks_like_article_url(
             "https://example.com", "https://example.com/articles/latest"
-        ) is False
+        ) is True
 
 
 # ---------------------------------------------------------------------------
@@ -663,7 +680,7 @@ class TestParseHtml:
             <p>Summary text for article two</p>
         </article>
         </body></html>"""
-        with patch("app.domains.fetch.collectors.website_parser.get_website_content_reject_reason", return_value=None):
+        with patch("app.domains.fetch.collectors.website_parser.get_non_article_format_reject_reason", return_value=None):
             results = collector._parse_html(html, source)
             assert len(results) >= 1
 
@@ -685,7 +702,7 @@ class TestParseHtml:
             <p>Custom content</p>
         </div>
         </body></html>"""
-        with patch("app.domains.fetch.collectors.website_parser.get_website_content_reject_reason", return_value=None):
+        with patch("app.domains.fetch.collectors.website_parser.get_non_article_format_reject_reason", return_value=None):
             results = collector._parse_html(html, source)
             assert len(results) >= 1
 
@@ -774,7 +791,7 @@ class TestParseArticleCandidate:
         source = _make_source(url="https://example.com")
         html = '<div><h2><a href="/news/slug">Title</a></h2><p>Content</p></div>'
         article = BeautifulSoup(html, "html.parser").div
-        with patch("app.domains.fetch.collectors.website_parser.get_website_content_reject_reason", return_value=None):
+        with patch("app.domains.fetch.collectors.website_parser.get_non_article_format_reject_reason", return_value=None):
             result = self.collector._parse_article_candidate(
                 article, source=source,
                 title_selector="h2", link_selector="a",
@@ -813,7 +830,7 @@ class TestParseArticleCandidate:
         source = _make_source(url="https://example.com")
         html = '<div><h2><a href="/post/my-article">Title</a></h2></div>'
         article = BeautifulSoup(html, "html.parser").div
-        with patch("app.domains.fetch.collectors.website_parser.get_website_content_reject_reason", return_value=None):
+        with patch("app.domains.fetch.collectors.website_parser.get_non_article_format_reject_reason", return_value=None):
             result = self.collector._parse_article_candidate(
                 article, source=source,
                 title_selector="h2", link_selector="a",
@@ -821,12 +838,15 @@ class TestParseArticleCandidate:
             )
             assert result["url"].startswith("https://example.com")
 
-    def test_rejected_content_returns_none(self):
+    def test_non_article_format_returns_none(self):
         from bs4 import BeautifulSoup
         source = _make_source(url="https://example.com")
         html = '<div><h2><a href="/news/slug">Title</a></h2><p>Content</p></div>'
         article = BeautifulSoup(html, "html.parser").div
-        with patch("app.domains.fetch.collectors.website_parser.get_website_content_reject_reason", return_value="too_short"):
+        with patch(
+            "app.domains.fetch.collectors.website_parser.get_non_article_format_reject_reason",
+            return_value="blocked_non_article_format",
+        ):
             result = self.collector._parse_article_candidate(
                 article, source=source,
                 title_selector="h2", link_selector="a",
@@ -839,7 +859,7 @@ class TestParseArticleCandidate:
         source = _make_source(url="https://example.com")
         html = '<div><h2><a href="/news/slug">Title</a></h2><time datetime="2025-01-15T10:00:00Z">Jan 15</time></div>'
         article = BeautifulSoup(html, "html.parser").div
-        with patch("app.domains.fetch.collectors.website_parser.get_website_content_reject_reason", return_value=None):
+        with patch("app.domains.fetch.collectors.website_parser.get_non_article_format_reject_reason", return_value=None):
             result = self.collector._parse_article_candidate(
                 article, source=source,
                 title_selector="h2", link_selector="a",
@@ -923,6 +943,105 @@ class TestHydrateDirectArticlesPacing:
             {"url": f"https://example.com/article-{i}", "title": f"A{i}"}
             for i in range(n)
         ]
+
+    @pytest.mark.asyncio
+    async def test_known_latest_external_id_is_not_hydrated_again(self):
+        collector = WebsiteCollector()
+        source = _make_source(
+            metadata_={"direct_article_hydrate_limit": 5},
+        )
+        source.last_content_id = "https://example.com/article-0"
+        contents = [
+            {
+                "external_id": "https://example.com/article-0",
+                "url": "https://example.com/article-0",
+                "title": "Existing",
+            }
+        ]
+
+        with patch.object(collector, "_fetch_article_html", new=AsyncMock()) as fetch_mock, \
+             patch(
+                 "app.domains.fetch.collectors.website._helpers.looks_like_article_url",
+                 return_value=True,
+             ):
+            hydrated, diag = await collector._hydrate_direct_articles(source, contents, cookies={})
+
+        assert hydrated == contents
+        assert diag == {"attempted": 0, "hydrated": 0, "failures": {}}
+        fetch_mock.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_existing_same_source_items_are_not_hydrated_again(self):
+        engine = create_engine(
+            "sqlite://",
+            connect_args={"check_same_thread": False},
+            poolclass=StaticPool,
+        )
+        TestingSessionLocal = sessionmaker(bind=engine, expire_on_commit=False)
+        Base.metadata.create_all(engine)
+        db = TestingSessionLocal()
+        try:
+            source = Source(
+                id="source-existing-hydration",
+                name="Existing Hydration",
+                type=SourceType.WEBSITE,
+                url="https://example.com",
+                metadata_={"direct_article_hydrate_limit": 5},
+            )
+            db.add(source)
+            db.add(
+                Content(
+                    source_id=source.id,
+                    external_id="https://example.com/article-0",
+                    title="Old",
+                    original_url="https://example.com/article-0",
+                    content_type="website",
+                    metadata_={"canonical_external_id": "https://example.com/article-0"},
+                )
+            )
+            db.commit()
+        finally:
+            db.close()
+
+        collector = WebsiteCollector()
+        contents = [
+            {
+                "external_id": "https://example.com/article-0",
+                "url": "https://example.com/article-0",
+                "title": "Existing",
+            },
+            {
+                "external_id": "https://example.com/article-1",
+                "url": "https://example.com/article-1",
+                "title": "New",
+            },
+        ]
+
+        async def fake_fetch(url, *args, **kwargs):
+            return ("<html><article><p>full body</p></article></html>", url, None)
+
+        try:
+            with patch(
+                "app.domains.fetch.collectors.website.SessionLocal",
+                TestingSessionLocal,
+            ), patch.object(
+                collector,
+                "_fetch_article_html",
+                side_effect=fake_fetch,
+            ) as fetch_mock, patch(
+                "app.domains.fetch.collectors.website._helpers.looks_like_article_url",
+                return_value=True,
+            ):
+                hydrated, diag = await collector._hydrate_direct_articles(source, contents, cookies={})
+        finally:
+            engine.dispose()
+
+        assert hydrated[0] == contents[0]
+        assert hydrated[1]["html"] == "<html><article><p>full body</p></article></html>"
+        assert diag["attempted"] == 1
+        assert diag["hydrated"] == 1
+        fetch_mock.assert_awaited_once()
+        assert fetch_mock.await_args.args[0] == "https://example.com/article-1"
 
     @pytest.mark.asyncio
     async def test_browser_session_paces_articles_sequentially(self):
@@ -1134,6 +1253,67 @@ class TestRssOnlyMode:
         ]
 
     @pytest.mark.asyncio
+    async def test_discovered_rss_failure_falls_back_to_sitemap(self):
+        """A broken auto-discovered RSS feed should not short-circuit website fallback strategies."""
+        collector = WebsiteCollector()
+        source = _make_source(url="https://example.com/business")
+        rss_failure = FetchFailureError(
+            make_failure(FetchFailureCode.RSS_PARSE_ERROR, detail="invalid token")
+        )
+        sitemap_items = [{"url": "https://example.com/story", "title": "Story", "content": ""}]
+
+        with patch.object(collector, "_check_ssrf", new_callable=AsyncMock), \
+             patch.object(collector, "get_runtime_auth", return_value=None), \
+             patch.object(collector, "get_runtime_cookies", return_value={}), \
+             patch.object(collector, "get_runtime_browser_session", return_value=None), \
+             patch.object(
+                 collector.rss_collector,
+                 "discover_feed_url",
+                 new=AsyncMock(return_value="https://example.com/feed.xml"),
+             ), \
+             patch.object(collector.rss_collector, "fetch", new=AsyncMock(side_effect=rss_failure)), \
+             patch.object(collector, "_maybe_fetch_via_sitemap", new=AsyncMock(return_value=sitemap_items)), \
+             patch.object(collector, "_fetch_static", new=AsyncMock(return_value=[])) as static_mock:
+            result = await collector.fetch(source)
+
+        assert result == sitemap_items
+        static_mock.assert_not_awaited()
+
+    def test_default_sitemap_urls_include_common_news_sitemap(self):
+        collector = WebsiteCollector()
+        source = _make_source(url="https://edition.cnn.com/business")
+
+        assert collector._default_sitemap_urls(source) == [
+            "https://edition.cnn.com/sitemap.xml",
+            "https://edition.cnn.com/sitemap/news.xml",
+            "https://edition.cnn.com/news-sitemap.xml",
+        ]
+
+    def test_parse_news_sitemap_accepts_sibling_subdomain_urls(self):
+        collector = WebsiteCollector()
+        source = _make_source(url="https://edition.cnn.com/business")
+        xml = """<?xml version="1.0" encoding="UTF-8"?>
+        <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+                xmlns:news="http://www.google.com/schemas/sitemap-news/0.9">
+          <url>
+            <loc>https://www.cnn.com/2026/07/04/business/markets-big-story</loc>
+            <lastmod>2026-07-04T14:52:56.276000+00:00</lastmod>
+            <news:news>
+              <news:title>Markets big story</news:title>
+            </news:news>
+          </url>
+        </urlset>
+        """
+
+        entries, nested = collector._parse_sitemap_entries(xml, source)
+
+        assert nested == []
+        assert len(entries) == 1
+        assert entries[0]["url"] == "https://www.cnn.com/2026/07/04/business/markets-big-story"
+        assert entries[0]["title"] == "Markets big story"
+        assert entries[0]["publish_time"].isoformat() == "2026-07-04T14:52:56.276000"
+
+    @pytest.mark.asyncio
     async def test_rss_only_skips_direct_article_hydration(self):
         """Even with cookies + a browser session on the source, rss_only must
         short-circuit the authenticated direct-article path and take the RSS
@@ -1319,6 +1499,162 @@ class TestRssOnlyMode:
             {},
             browser_session=None,
         )
+
+    @pytest.mark.asyncio
+    async def test_default_listing_discovery_runs_without_metadata_config(self):
+        collector = WebsiteCollector()
+        source = _make_source(url="https://open.example.com/news")
+        html = """
+        <html><body>
+          <article>
+            <h2><a href="/articles/default-discovery-story">Default discovery story title</a></h2>
+            <p>Short teaser</p>
+          </article>
+          <a href="/topics/ai">Artificial intelligence topic</a>
+        </body></html>
+        """
+        hydrated_items = [
+            {
+                "url": "https://open.example.com/articles/default-discovery-story",
+                "title": "Default discovery story title",
+                "content": "Full article body",
+            },
+        ]
+        hydrate_mock = AsyncMock(return_value=hydrated_items)
+
+        with patch.object(collector, "_fetch_listing_html", new=AsyncMock(return_value=html)) as fetch_listing, \
+             patch.object(collector, "_maybe_hydrate_public_listing_contents", new=hydrate_mock):
+            result = await collector._maybe_fetch_via_discovery(source, cookies={}, browser_session=None)
+
+        assert result == hydrated_items
+        fetch_listing.assert_awaited_once_with(source, "https://open.example.com/news")
+        hydrate_arg = hydrate_mock.await_args.args[1][0]
+        assert hydrate_arg["metadata"]["discovered_via"] == "listing"
+        assert source.metadata_["discovery_diagnostics"]["kept"] == 1
+        assert source.metadata_["discovery_diagnostics"]["total"] == 1
+
+    @pytest.mark.asyncio
+    async def test_listing_discovery_fetches_configured_pagination_pages(self):
+        collector = WebsiteCollector()
+        source = _make_source(
+            url="https://open.example.com",
+            metadata_={
+                "discovery": {
+                    "mode": "listing",
+                    "listing_urls": ["https://open.example.com/news"],
+                    "pagination_max_pages": 2,
+                    "max_links": 10,
+                    "require_article_url": True,
+                }
+            },
+        )
+        page_html = {
+            "https://open.example.com/news": """
+            <html><body>
+              <article><h2><a href="/articles/story-one">Story one headline long enough</a></h2></article>
+            </body></html>
+            """,
+            "https://open.example.com/news?page=2": """
+            <html><body>
+              <article><h2><a href="/articles/story-two">Story two headline long enough</a></h2></article>
+            </body></html>
+            """,
+        }
+        fetched_urls = []
+
+        async def fetch_listing(_source, listing_url):
+            fetched_urls.append(listing_url)
+            return page_html[listing_url]
+
+        hydrate_mock = AsyncMock(side_effect=lambda _source, contents, _cookies, browser_session=None: contents)
+
+        with patch.object(collector, "_fetch_listing_html", new=fetch_listing), \
+             patch.object(collector, "_maybe_hydrate_public_listing_contents", new=hydrate_mock):
+            result = await collector._maybe_fetch_via_discovery(source, cookies={}, browser_session=None)
+
+        assert fetched_urls == [
+            "https://open.example.com/news",
+            "https://open.example.com/news?page=2",
+        ]
+        assert result is not None
+        assert [item["url"] for item in result] == [
+            "https://open.example.com/articles/story-one",
+            "https://open.example.com/articles/story-two",
+        ]
+        diag = source.metadata_["discovery_diagnostics"]
+        assert diag["listing_pages_total"] == 2
+        assert diag["listing_pages_fetched"] == 2
+        assert diag["kept"] == 2
+
+    @pytest.mark.asyncio
+    async def test_sitemap_discovery_runs_before_static_html_fallback(self):
+        collector = WebsiteCollector()
+        source = _make_source(url="https://open.example.com")
+        sitemap_xml = """<?xml version="1.0" encoding="UTF-8"?>
+        <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+          <url>
+            <loc>https://open.example.com/articles/story-123</loc>
+            <lastmod>2026-07-02T01:02:03Z</lastmod>
+          </url>
+        </urlset>
+        """
+        hydrated_items = [
+            {
+                "url": "https://open.example.com/articles/story-123",
+                "title": "story 123",
+                "content": "Full article body",
+            },
+        ]
+
+        hydrate_mock = AsyncMock(return_value=hydrated_items)
+        static_mock = AsyncMock(return_value=[{"url": "static-result"}])
+
+        with patch.object(collector, "_check_ssrf", new_callable=AsyncMock), \
+             patch.object(collector, "get_runtime_auth", return_value=None), \
+             patch.object(collector, "get_runtime_cookies", return_value={}), \
+             patch.object(collector, "get_runtime_browser_session", return_value=None), \
+             patch.object(collector.rss_collector, "discover_feed_url", new=AsyncMock(return_value=None)), \
+             patch.object(
+                 collector,
+                 "_fetch_sitemap_xml",
+                 new=AsyncMock(side_effect=[sitemap_xml, None, None]),
+             ) as sitemap_fetch, \
+             patch.object(collector, "_maybe_hydrate_public_listing_contents", new=hydrate_mock), \
+             patch.object(collector, "_fetch_static", new=static_mock):
+            result = await collector.fetch(source)
+
+        assert result == hydrated_items
+        assert sitemap_fetch.await_args_list[0].args == (source, "https://open.example.com/sitemap.xml")
+        assert sitemap_fetch.await_count == 3
+        static_mock.assert_not_awaited()
+        hydrate_arg = hydrate_mock.await_args.args[1][0]
+        assert hydrate_arg["metadata"]["discovered_via"] == "sitemap"
+        assert hydrate_arg["publish_time"].year == 2026
+        assert source.metadata_["sitemap_diagnostics"]["kept"] == 1
+
+    @pytest.mark.asyncio
+    async def test_sitemap_discovery_can_be_disabled(self):
+        collector = WebsiteCollector()
+        source = _make_source(
+            url="https://open.example.com",
+            metadata_={"sitemap_discovery": False},
+        )
+        static_items = [{"url": "https://open.example.com/articles/story-123", "title": "Story", "content": "Body"}]
+
+        sitemap_fetch = AsyncMock(return_value="")
+        static_mock = AsyncMock(return_value=static_items)
+
+        with patch.object(collector, "_check_ssrf", new_callable=AsyncMock), \
+             patch.object(collector, "get_runtime_auth", return_value=None), \
+             patch.object(collector, "get_runtime_cookies", return_value={}), \
+             patch.object(collector, "get_runtime_browser_session", return_value=None), \
+             patch.object(collector.rss_collector, "discover_feed_url", new=AsyncMock(return_value=None)), \
+             patch.object(collector, "_fetch_sitemap_xml", new=sitemap_fetch), \
+             patch.object(collector, "_fetch_static", new=static_mock):
+            result = await collector.fetch(source)
+
+        assert result == static_items
+        sitemap_fetch.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_public_static_listing_skips_hydration_when_body_is_already_long(self):

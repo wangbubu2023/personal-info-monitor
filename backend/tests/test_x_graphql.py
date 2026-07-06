@@ -3,6 +3,7 @@ from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch, PropertyMock
 
 from app.collectors.x_twitter import XCollector
+from app.domains.fetch.failures import FetchFailureError
 from app.models.source import Source
 
 
@@ -174,6 +175,55 @@ async def test_enrich_article_content_uses_metadata_urls(collector):
 
 
 @pytest.mark.asyncio
+async def test_enrich_article_content_fetches_external_article_links(collector):
+    source = Source(id=1, name="X", url="https://x.com/test", type="x")
+    source.metadata_ = {
+        "fetch_x_articles": True,
+        "x_article_fetch_limit": 8,
+        "x_external_article_fetch_limit": 2,
+    }
+    article_body = "External article headline\n" + ("This is the linked article body. " * 30)
+    items = [
+        {
+            "external_id": "2",
+            "title": "Worth reading",
+            "content": "Worth reading https://t.co/demo",
+            "url": "https://x.com/test/status/2",
+            "metadata": {
+                "urls": [
+                    {
+                        "short_url": "https://t.co/demo",
+                        "expanded_url": "https://example.com/articles/analysis",
+                    },
+                ],
+                "content_type": "tweet",
+            },
+        }
+    ]
+
+    with patch(
+        "app.domains.fetch.collectors.x_twitter.fetch_public_article_body",
+        new=AsyncMock(return_value=(article_body, "https://example.com/articles/analysis")),
+    ) as mock_fetch:
+        enriched = await collector._enrich_article_content(items, source)
+
+    mock_fetch.assert_awaited_once_with("https://example.com/articles/analysis", source.metadata_)
+    item = enriched[0]
+    metadata = item["metadata"]
+    assert item["url"] == "https://example.com/articles/analysis"
+    assert item["content"] == article_body
+    assert item["title"] == "External article headline"
+    assert metadata["content_type"] == "article"
+    assert metadata["x_content_type"] == "external_article"
+    assert metadata["fulltext_status"] == "full"
+    assert metadata["article_fulltext"] is True
+    assert metadata["article_url"] == "https://example.com/articles/analysis"
+    assert metadata["external_article_url"] == "https://example.com/articles/analysis"
+    assert metadata["tweet_url"] == "https://x.com/test/status/2"
+    assert metadata["tweet_text"] == "Worth reading https://t.co/demo"
+
+
+@pytest.mark.asyncio
 async def test_fetch_via_graphql_success(collector, source_w_cookies):
     # Mock TwikitClient
     mock_client = AsyncMock()
@@ -198,7 +248,6 @@ async def test_fetch_via_graphql_success(collector, source_w_cookies):
 
 @pytest.mark.asyncio
 async def test_fetch_via_graphql_no_cookies(collector):
-    # No cookies -> should skip silently
     source = Source(id=1, name="Test", url="https://x.com/test", type="x")
     source.metadata_ = {"strategy": "graphql"}
     
@@ -206,15 +255,82 @@ async def test_fetch_via_graphql_no_cookies(collector):
          patch.object(collector, "x_ct0_token", return_value=None):
         res = await collector._fetch_via_graphql("hello", source)
         assert res == []
+    assert source.metadata_["session_health"]["status"] == "warning"
+    assert source.metadata_["session_health"]["reason"] == "login_required"
+    assert source.metadata_["session_health"]["suggested_action"] == "relogin"
+
+
+@pytest.mark.asyncio
+async def test_fetch_via_graphql_stamps_expired_session_health(collector, source_w_cookies):
+    async def _cookies_invalid(*args, **kwargs):
+        return False
+
+    with patch("app.platform.auth.cookies.cookies_appear_valid", _cookies_invalid):
+        res = await collector._fetch_via_graphql("hello", source_w_cookies)
+
+    assert res == []
+    assert source_w_cookies.metadata_["session_health"]["status"] == "error"
+    assert source_w_cookies.metadata_["session_health"]["reason"] == "expired"
+    assert source_w_cookies.metadata_["session_health"]["details"]["cookie_count"] == 2
+
+
+@pytest.mark.asyncio
+async def test_fetch_all_x_strategies_empty_raises_failure(collector):
+    source = Source(id=1, name="Test", url="https://x.com/hello", type="x")
+    source.metadata_ = {"strategy": "graphql"}
+
+    with patch.object(collector, "_check_ssrf", new=AsyncMock()), \
+         patch.object(collector, "_fetch_via_graphql", new=AsyncMock(return_value=[])), \
+         patch.object(collector, "_fetch_via_rsshub", new=AsyncMock(return_value=[])), \
+         patch.object(collector, "_fetch_via_nitter", new=AsyncMock(return_value=[])), \
+         patch.object(collector, "_fetch_via_api", new=AsyncMock(return_value=[])):
+        with pytest.raises(FetchFailureError) as err:
+            await collector.fetch(source)
+
+    assert err.value.failure.code.value == "unknown"
+
+
+@pytest.mark.asyncio
+async def test_fetch_skips_paid_api_fallback_by_default(collector):
+    source = Source(id=1, name="Test", url="https://x.com/hello", type="x")
+    source.metadata_ = {"strategy": "graphql", "probe": {"strategy": "api"}}
+    api = AsyncMock(return_value=[])
+
+    with patch.object(collector, "_check_ssrf", new=AsyncMock()), \
+         patch.object(collector, "_fetch_via_graphql", new=AsyncMock(return_value=[])), \
+         patch.object(collector, "_fetch_via_rsshub", new=AsyncMock(return_value=[])), \
+         patch.object(collector, "_fetch_via_nitter", new=AsyncMock(return_value=[])), \
+         patch.object(collector, "_fetch_via_api", new=api):
+        with pytest.raises(FetchFailureError):
+            await collector.fetch(source)
+
+    api.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_fetch_allows_paid_api_fallback_when_explicitly_enabled(collector):
+    source = Source(id=1, name="Test", url="https://x.com/hello", type="x")
+    source.metadata_ = {"strategy": "graphql", "allow_x_api_fallback": True}
+    api = AsyncMock(return_value=[])
+
+    with patch.object(collector, "_check_ssrf", new=AsyncMock()), \
+         patch.object(collector, "_fetch_via_graphql", new=AsyncMock(return_value=[])), \
+         patch.object(collector, "_fetch_via_rsshub", new=AsyncMock(return_value=[])), \
+         patch.object(collector, "_fetch_via_nitter", new=AsyncMock(return_value=[])), \
+         patch.object(collector, "_fetch_via_api", new=api):
+        with pytest.raises(FetchFailureError):
+            await collector.fetch(source)
+
+    api.assert_awaited_once_with("hello", source)
 
 
 @pytest.mark.asyncio
 async def test_probe_x_graphql_success():
-    from app.services.probe_service import ProbeService
+    from app.domains.sources.probe.service import ProbeService
     probe = ProbeService()
     
     # Mock config
-    with patch("app.config.get_settings") as mock_settings:
+    with patch("app.domains.sources.probe.service.get_settings") as mock_settings:
         settings = mock_settings.return_value
         settings.x_auth_token = "auth"
         settings.x_ct0_token = "ct0"

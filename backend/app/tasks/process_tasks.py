@@ -40,7 +40,7 @@ async def _process_content_async(content_id: str, regenerate_summary: bool, retr
     from app.config import get_settings
     from app.database import SessionLocal
     from app.models import Content
-    from app.processors.content_processor import ContentProcessor
+    from app.domains.ingest.content_processor import ContentProcessor
 
     if (regenerate_summary or retranslate) and not get_settings().ai_processing_enabled:
         logger.info("AI processing disabled; skip manual reprocess for %s", content_id)
@@ -103,7 +103,7 @@ def _update_keyword_matches_sync():
 
     from app.database import SessionLocal
     from app.models import Content, Keyword
-    from app.processors.keyword_matcher import KeywordMatcher
+    from app.domains.ingest.keywords.matcher import KeywordMatcher
 
     db = SessionLocal()
     try:

@@ -43,6 +43,8 @@ class ScoreFeedbackItem(BaseModel):
     direction: str
     expected_status: Optional[str] = None
     note: Optional[str] = None
+    event_type: Optional[str] = None
+    event_value: Any = None
     snapshot: dict[str, Any] = Field(default_factory=dict)
     created_at: datetime
     content_title: Optional[str] = None

@@ -14,7 +14,7 @@ from urllib.parse import urljoin
 from bs4 import BeautifulSoup
 
 from app.models import Source
-from app.domains.ingest.quality import get_website_content_reject_reason
+from app.domains.ingest.quality import get_non_article_format_reject_reason
 from app.utils.logger import get_logger
 from app.utils.publish_time import parse_publish_time_text
 
@@ -63,9 +63,9 @@ def parse_article_candidate(
             publish_time = parse_publish_time_text(date_text)
 
     candidate = {"title": title, "content": content, "url": url}
-    reject_reason = get_website_content_reject_reason(source.url, candidate)
+    reject_reason = get_non_article_format_reject_reason(source.url, candidate)
     if reject_reason:
-        logger.info("Skipping low-signal website item during parse (%s): %s", reject_reason, title)
+        logger.info("Skipping non-article website item during parse (%s): %s", reject_reason, title)
         return None
     return {
         "external_id": url,
@@ -110,7 +110,7 @@ def append_fallback_links(
             continue
 
         candidate_check = {"title": title, "url": url, "content": ""}
-        if get_website_content_reject_reason(source.url, candidate_check):
+        if get_non_article_format_reject_reason(source.url, candidate_check):
             continue
 
         seen.add(url)

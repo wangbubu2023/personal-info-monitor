@@ -8,10 +8,10 @@ from fastapi.responses import PlainTextResponse
 
 from app.background import task_tracker
 from app.config import get_settings
+from app.domains.sources.monitoring import MonitorService
 from app.domains.sources.source_types import source_type_catalog
 from app.database import SessionLocal
 from app.scheduler import scheduler
-from app.services.monitor_service import MonitorService
 from app.utils.logger import get_logger
 from app.utils.metrics import request_metrics, source_metrics, task_queue_metrics
 
@@ -52,7 +52,7 @@ def get_queue_status() -> Dict[str, Any]:
 
 @router.get("/features")
 def get_runtime_features() -> Dict[str, Any]:
-    """Expose static + env-driven feature flags for clients (ADR-004 stepping stone)."""
+    """Expose static + env-driven feature flags for clients."""
     from app import features as feat
 
     return {
@@ -90,11 +90,22 @@ def get_metrics() -> Dict[str, Any]:
     return payload
 
 
+@router.post("/score-vocab/reload")
+def reload_score_vocab_runtime() -> Dict[str, Any]:
+    """Reload YAML-backed score vocabulary without restarting PIM."""
+    from app.domains.score import score_explain, score_rules, score_vocab
+
+    snapshot = score_vocab.reload_score_vocab_from_disk()
+    score_rules.refresh_score_vocab_bindings()
+    score_explain.refresh_score_vocab_bindings()
+    return {"status": "ok", "vocab": snapshot}
+
+
 @router.get("/doctor")
 async def get_system_doctor() -> Dict[str, Any]:
     """Perform a full system diagnostic audit."""
     from app.database import SessionLocal
-    from app.services.doctor_service import DoctorService
+    from app.domains.system.doctor import DoctorService
 
     def _run_audit() -> Dict[str, Any]:
         db = SessionLocal()

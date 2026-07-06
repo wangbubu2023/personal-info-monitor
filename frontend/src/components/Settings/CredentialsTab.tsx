@@ -627,7 +627,7 @@ const CredentialsTab: React.FC = () => {
 
       <SettingsSection
         title="平台 API Key"
-        description="官方平台接口凭据。YouTube Data API 主要用于部分探测与元数据场景；X API 为付费 Key，按需配置。日常 YouTube 频道抓取仍以 yt-dlp 为主，可不填。"
+        description="官方平台接口凭据。YouTube Data API 主要用于部分探测与元数据场景；X API 属付费/配额 fallback，日常 X 抓取优先使用浏览器登录态 Cookie，不会因配置了 Key 就自动调用。"
       >
         <div className="grid gap-4 xl:grid-cols-2">
           <div className="rounded-xl border border-[rgba(88,100,118,0.1)] bg-[#f8fbfc]">
@@ -663,7 +663,9 @@ const CredentialsTab: React.FC = () => {
                 <Text strong className="text-[13px] text-[#2c3a50]">
                   X API
                 </Text>
-                <p className="mb-0 mt-0.5 text-[12px] text-[#7a8799]">X / Twitter 官方 API Key</p>
+                <p className="mb-0 mt-0.5 text-[12px] text-[#7a8799]">
+                  付费 fallback，仅显式启用的信源使用
+                </p>
               </div>
               <Button size="small" icon={<PlusOutlined />} onClick={() => openApiKeyModal('x_twitter')}>
                 添加

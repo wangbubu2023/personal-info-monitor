@@ -1,11 +1,11 @@
-from app.services.content_quality_service import (
+from app.domains.ingest.quality_metadata import (
     FULLTEXT_STATUS_BLOCKED,
     FULLTEXT_STATUS_FULL,
     FULLTEXT_STATUS_SUMMARY_ONLY,
     assess_content_quality,
     merge_content_quality_metadata,
 )
-from app.services.scoring_service import (
+from app.domains.score.scoring import (
     SCORE_VERSION,
     calculate_final_score,
     compute_domain_match,

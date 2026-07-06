@@ -1,6 +1,7 @@
 """Base collector class for all data collectors."""
 
 from abc import ABC, abstractmethod
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from app.utils.datetime import utcnow_naive
@@ -33,7 +34,19 @@ class BaseCollector(ABC):
         """Persistent browser session payload injected by fetch task."""
         auth = self.get_runtime_auth(source)
         browser_session = auth.get("browser_session") if isinstance(auth, dict) else None
-        return browser_session if isinstance(browser_session, dict) else {}
+        if isinstance(browser_session, dict):
+            return browser_session
+        credentials = auth.get("credentials", {}) if isinstance(auth, dict) else {}
+        storage_state_path = str(credentials.get("storage_state_path") or "").strip()
+        if storage_state_path:
+            path_exists = Path(storage_state_path).is_file()
+            return {
+                "storage_state_path": storage_state_path,
+                "storage_state_exists": path_exists,
+                "auth_ready": path_exists,
+                "auth_warning": None if path_exists else "导入的 storage_state.json 不存在",
+            }
+        return {}
     
     async def _check_ssrf(self, url: str) -> None:
         """Check URL against SSRF before fetching."""

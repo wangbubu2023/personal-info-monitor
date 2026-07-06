@@ -24,6 +24,28 @@ from app.domains.score.score_vocab_runtime import RuntimeScoringVocab
 from app.domains.score.score_utils import normalize_authority_type, normalize_source_stars
 
 
+def refresh_score_vocab_bindings() -> None:
+    """Refresh module globals after score_vocab.yaml is reloaded."""
+    from app.domains.score import score_vocab as vocab
+
+    globals().update(
+        {
+            "AUTHORITY_TYPE_BONUS": vocab.AUTHORITY_TYPE_BONUS,
+            "CASUALTY_TERMS": vocab.CASUALTY_TERMS,
+            "COMMERCE_SIGNALS": vocab.COMMERCE_SIGNALS,
+            "DISASTER_TERMS": vocab.DISASTER_TERMS,
+            "EVENT_PATTERNS": vocab.EVENT_PATTERNS,
+            "IMPACT_CAPS": vocab.IMPACT_CAPS,
+            "LANE_KEYWORDS": vocab.LANE_KEYWORDS,
+            "MARKET_OFFERING_EXEMPT": vocab.MARKET_OFFERING_EXEMPT,
+            "NARROW_SCOPE_SIGNALS": vocab.NARROW_SCOPE_SIGNALS,
+            "REACH_KEYWORDS": vocab.REACH_KEYWORDS,
+            "REACH_SCORES": vocab.REACH_SCORES,
+            "SOURCE_STARS_AUTHORITY": vocab.SOURCE_STARS_AUTHORITY,
+        }
+    )
+
+
 def _corpus(title: str, summary: str | None, full_content: str | None, *, limit: int = 800) -> str:
     body = (full_content or "")[:limit]
     return f"{title or ''} {summary or ''} {body}".lower()
@@ -124,7 +146,7 @@ def score_salience(
         if any(kw.lower() in headline for kw in keywords):
             bonus = max(bonus, add)
     raw = base + bonus
-    raw = runtime_vocab.salience_with_user_match_floor(raw, _corpus(title, summary, full_content, limit=2000))
+    raw += runtime_vocab.user_keyword_salience_bonus(_corpus(title, summary, full_content, limit=2000))
     raw = apply_disaster_salience_floor(title, summary, raw)
     return round(min(10.0, raw), 1)
 

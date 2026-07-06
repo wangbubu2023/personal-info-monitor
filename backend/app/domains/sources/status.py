@@ -1,8 +1,9 @@
 """Source status helpers: outcome bookkeeping + warning merging.
 
 These three helpers cluster around "what does the next call to the status
-API need to know about this source": ``set_last_fetch_outcome`` writes a
-structured outcome into ``Source.metadata_['last_fetch_outcome']``;
+API need to know about this source": ``set_last_fetch_outcome`` writes the
+latest outcome into structured ``sources.last_fetch_outcome_*`` columns and
+mirrors it into ``Source.metadata_['last_fetch_outcome']`` for compatibility;
 ``merge_warning_messages`` collapses several non-fatal collector
 warnings into a single line; ``persist_fetch_task_exception`` is the
 last-ditch error sink when even the fetch task setup fails.
@@ -14,8 +15,10 @@ for one cycle so legacy patch targets keep working.
 
 from __future__ import annotations
 
-from typing import List
+from datetime import datetime
+from typing import Any, List, Mapping
 
+from app.utils.datetime import utcnow_naive
 from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -43,18 +46,46 @@ def merge_warning_messages(*messages: str | None) -> str | None:
 
 
 def set_last_fetch_outcome(source, code: str, severity: str, message: str) -> None:
-    """Stamp ``source.metadata_['last_fetch_outcome']`` with a structured outcome.
+    """Stamp the latest fetch outcome onto structured columns and metadata.
 
     Mutates ``source.metadata_`` **in place** (re-assigning a dict copy)
     so SQLAlchemy's JSON change tracking picks the update up.
     """
-    metadata = dict(source.metadata_ or {})
-    metadata["last_fetch_outcome"] = {
+    updated_at = utcnow_naive()
+    payload = {
         "code": str(code or "unknown"),
         "severity": str(severity or "ok"),
         "message": str(message or ""),
+        "updated_at": updated_at.isoformat() + "Z",
     }
+    if hasattr(source, "last_fetch_outcome_code"):
+        source.last_fetch_outcome_code = payload["code"]
+        source.last_fetch_outcome_severity = payload["severity"]
+        source.last_fetch_outcome_message = payload["message"]
+        source.last_fetch_outcome_updated_at = updated_at
+    metadata = dict(source.metadata_ or {})
+    metadata["last_fetch_outcome"] = payload
     source.metadata_ = metadata
+
+
+def last_fetch_outcome_metadata(source) -> dict[str, Any]:
+    """Return latest fetch outcome, preferring structured columns."""
+    code = getattr(source, "last_fetch_outcome_code", None)
+    if code:
+        updated_at = getattr(source, "last_fetch_outcome_updated_at", None)
+        payload: dict[str, Any] = {
+            "code": code,
+            "severity": getattr(source, "last_fetch_outcome_severity", None),
+            "message": getattr(source, "last_fetch_outcome_message", None),
+        }
+        if isinstance(updated_at, datetime):
+            payload["updated_at"] = updated_at.isoformat() + "Z"
+        return payload
+    metadata = getattr(source, "metadata_", None)
+    if not isinstance(metadata, Mapping):
+        return {}
+    value = metadata.get("last_fetch_outcome")
+    return dict(value) if isinstance(value, Mapping) else {}
 
 
 def persist_fetch_task_exception(source_id: str, exc: Exception) -> None:
@@ -84,6 +115,7 @@ def persist_fetch_task_exception(source_id: str, exc: Exception) -> None:
 
 
 __all__ = [
+    "last_fetch_outcome_metadata",
     "merge_warning_messages",
     "set_last_fetch_outcome",
     "persist_fetch_task_exception",

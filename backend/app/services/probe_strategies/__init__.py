@@ -1,1 +1,1 @@
-"""Probe strategy mixins — each file handles one source type."""
+"""Compatibility shims for canonical source-probe strategies."""

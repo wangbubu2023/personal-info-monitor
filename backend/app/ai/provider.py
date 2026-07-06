@@ -3,16 +3,15 @@
 from __future__ import annotations
 
 import json
-import threading
 from dataclasses import dataclass
-from datetime import date
 from typing import Any, Optional
 
 import httpx
 
 from app.platform.config.settings import get_settings
-from app.services.api_config_credentials import enrich_model_settings_from_api_config
+from app.platform.auth.api_config_credentials import enrich_model_settings_from_api_config
 from app.platform.config.system_settings import get_system_settings_sync
+from app.utils.ai_budget import reserve_ai_token_budget
 from app.utils.model_catalog import sanitize_provider_api_base
 from app.utils.logger import get_logger
 
@@ -35,40 +34,20 @@ OLLAMA_NUM_CTX_OPTIONS = (
     262144,
 )
 
-_token_meter_day: date | None = None
-_token_meter_total: int = 0
-_token_meter_lock = threading.Lock()
-
-
-def _reset_token_meter_if_needed() -> None:
-    global _token_meter_day, _token_meter_total
-
-    today = date.today()
-    if _token_meter_day != today:
-        _token_meter_day = today
-        _token_meter_total = 0
-
-
 def _reserve_ai_token_budget(estimated_tokens: int) -> bool:
-    """Return False when the rough daily budget would be exceeded."""
-    settings = get_settings()
-    cap = int(settings.ai_daily_token_budget or 0)
-    if cap <= 0:
-        return True
-    est = max(1, min(estimated_tokens, cap))
-    global _token_meter_total
-    with _token_meter_lock:
-        _reset_token_meter_if_needed()
-        if _token_meter_total + est > cap:
-            logger.warning(
-                "AI daily token budget exceeded (used≈%s + est=%s > cap=%s)",
-                _token_meter_total,
-                est,
-                cap,
-            )
-            return False
-        _token_meter_total += est
-        return True
+    """Return False when a persistent daily/monthly budget would be exceeded."""
+    reservation = reserve_ai_token_budget(estimated_tokens)
+    if not reservation.allowed:
+        logger.warning(
+            "AI token budget exceeded (%s): daily=%s/%s monthly=%s/%s est=%s",
+            reservation.reason,
+            reservation.daily_used,
+            reservation.daily_cap,
+            reservation.monthly_used,
+            reservation.monthly_cap,
+            reservation.estimated_tokens,
+        )
+    return reservation.allowed
 
 
 @dataclass

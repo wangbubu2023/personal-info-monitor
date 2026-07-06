@@ -1,8 +1,8 @@
 """Runtime scoring vocabulary — static score_vocab + user keywords.
 
-User-configured :class:`~app.models.keyword.Keyword` rows are merged into the
-rule-based entity tiers so keywords are always a subset of the effective
-scoring vocabulary, not a parallel list.
+User-configured :class:`~app.models.keyword.Keyword` rows are tracked alongside
+the static rule vocabulary and contribute only a capped salience bonus when
+they actually matched the current article.
 """
 
 from __future__ import annotations
@@ -12,16 +12,8 @@ from dataclasses import dataclass
 from typing import Any, Mapping, Sequence
 
 from app.domains.ingest.keywords.rules import normalize_keyword_value
-from app.domains.score.score_vocab import (
-    ENTITY_TIER_A,
-    ENTITY_TIER_B,
-    ENTITY_TIER_S,
-    ENTITY_TIER_SCORES,
-    _merge,
-)
-
-# User keyword hit on this article — salience floor (between A and B).
-USER_KEYWORD_MATCHED_SALIENCE = ENTITY_TIER_SCORES["A"]
+USER_KEYWORD_SALIENCE_BONUS_PER_TERM = 1.0
+USER_KEYWORD_SALIENCE_BONUS_MAX = 2.0
 
 
 @dataclass(frozen=True)
@@ -42,37 +34,38 @@ class RuntimeScoringVocab:
     ) -> RuntimeScoringVocab:
         user_all = _dedupe_terms(user_keyword_terms or ())
         user_matched = _dedupe_terms(matched_user_terms or ())
-        # User keywords are part of tier B in the combined vocabulary.
-        tier_b = _merge(ENTITY_TIER_B, user_all)
+        from app.domains.score import score_vocab
+
         return cls(
-            entity_tier_s=ENTITY_TIER_S,
-            entity_tier_a=ENTITY_TIER_A,
-            entity_tier_b=tier_b,
+            entity_tier_s=score_vocab.ENTITY_TIER_S,
+            entity_tier_a=score_vocab.ENTITY_TIER_A,
+            entity_tier_b=score_vocab.ENTITY_TIER_B,
             user_keyword_terms=user_all,
             matched_user_terms=user_matched,
         )
 
     def entity_tier_score(self, corpus: str) -> float:
+        from app.domains.score import score_vocab
+
         corpus_l = (corpus or "").lower()
         for term in self.entity_tier_s:
             if _term_in_corpus(term, corpus_l):
-                return ENTITY_TIER_SCORES["S"]
+                return score_vocab.ENTITY_TIER_SCORES["S"]
         for term in self.entity_tier_a:
             if _term_in_corpus(term, corpus_l):
-                return ENTITY_TIER_SCORES["A"]
+                return score_vocab.ENTITY_TIER_SCORES["A"]
         for term in self.entity_tier_b:
             if _term_in_corpus(term, corpus_l):
-                return ENTITY_TIER_SCORES["B"]
-        return ENTITY_TIER_SCORES["C"]
+                return score_vocab.ENTITY_TIER_SCORES["B"]
+        return score_vocab.ENTITY_TIER_SCORES["C"]
 
-    def salience_with_user_match_floor(self, base_salience: float, corpus: str) -> float:
-        """Raise salience when the user explicitly monitors a term that appears."""
+    def user_keyword_salience_bonus(self, corpus: str) -> float:
+        """Capped additive salience bonus for user keywords matched on this article."""
         if not self.matched_user_terms:
-            return base_salience
+            return 0.0
         corpus_l = (corpus or "").lower()
-        if any(_term_in_corpus(term, corpus_l) for term in self.matched_user_terms):
-            return max(base_salience, USER_KEYWORD_MATCHED_SALIENCE)
-        return base_salience
+        matched_count = sum(1 for term in self.matched_user_terms if _term_in_corpus(term, corpus_l))
+        return min(USER_KEYWORD_SALIENCE_BONUS_MAX, matched_count * USER_KEYWORD_SALIENCE_BONUS_PER_TERM)
 
 
 def _is_ascii_term(term: str) -> bool:

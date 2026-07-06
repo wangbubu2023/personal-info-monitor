@@ -29,6 +29,7 @@ from __future__ import annotations
 import asyncio
 import os
 from contextlib import asynccontextmanager
+from datetime import timedelta
 from typing import Awaitable, Callable
 
 from fastapi import FastAPI
@@ -42,6 +43,44 @@ logger = get_logger(__name__)
 
 FetchHandler = Callable[[str, bool], Awaitable[None]]
 ProcessHandler = Callable[[str, "str | None"], Awaitable[None]]
+
+
+async def enqueue_unfinished_content_on_startup(*, limit: int = 200, lookback_hours: int = 24) -> int:
+    """Requeue recent content that was stored before finish_content completed."""
+    from app.database import SessionLocal
+    from app.models import Content
+    from app.tasks.task_queue import task_queue
+    from app.utils.datetime import utcnow_naive
+
+    cutoff = utcnow_naive() - timedelta(hours=lookback_hours)
+
+    def _query_ids() -> list[str]:
+        db = SessionLocal()
+        try:
+            rows = (
+                db.query(Content)
+                .filter(Content.fetched_at >= cutoff)
+                .order_by(Content.fetched_at.desc())
+                .limit(limit)
+                .all()
+            )
+            ids: list[str] = []
+            for content in rows:
+                metadata = content.metadata_ if isinstance(content.metadata_, dict) else {}
+                if metadata.get("fetch_acceptance") is None:
+                    ids.append(str(content.id))
+            return ids
+        finally:
+            db.close()
+
+    ids = await asyncio.to_thread(_query_ids)
+    enqueued = 0
+    for content_id in ids:
+        if await task_queue.enqueue_ingest_finish(content_id, job_id="startup-refinish"):
+            enqueued += 1
+    if enqueued:
+        logger.info("Requeued %d unfinished content items on startup", enqueued)
+    return enqueued
 
 
 def _mask_secret(value: str, prefix: int = 4, suffix: int = 4) -> str:
@@ -93,9 +132,11 @@ def build_lifespan(
         from app.tasks.task_queue import task_queue
 
         await task_queue.start_workers(
+            fetch_workers=settings.fetch_concurrency,
             fetch_handler=fetch_handler,
             process_handler=process_handler,
         )
+        await enqueue_unfinished_content_on_startup()
 
         print(f"\n  PIM API Key: {_mask_secret(settings.pim_api_key)}")
         print(f"  Data dir:    {settings.data_dir}")
@@ -141,7 +182,7 @@ def build_lifespan(
         if x_playwright_enabled():
             logger.warning(
                 "PIM_FEATURE_X_PLAYWRIGHT=true — X (Twitter) logged-in Chromium hydration is active. "
-                "This feature touches X Terms of Service grey area (ADR-003); keep it off unless "
+                "This feature touches X Terms of Service grey area; keep it off unless "
                 "you fully understand the risk."
             )
 

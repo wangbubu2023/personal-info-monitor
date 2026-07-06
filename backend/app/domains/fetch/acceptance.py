@@ -85,7 +85,18 @@ def ensure_listing_summary(content: Any) -> bool:
     return True
 
 
-def assess_fetch_acceptance(content: Any, metadata: Mapping[str, Any]) -> tuple[bool, str]:
+def _title_only_relaxed_authority(source_metadata: Mapping[str, Any] | None) -> str | None:
+    source_metadata = source_metadata if isinstance(source_metadata, Mapping) else {}
+    authority = str(source_metadata.get("authority_type") or "").strip().lower()
+    return authority if authority in {"official", "regulator"} else None
+
+
+def assess_fetch_acceptance(
+    content: Any,
+    metadata: Mapping[str, Any],
+    *,
+    source_metadata: Mapping[str, Any] | None = None,
+) -> tuple[bool, str]:
     """Return ``(accepted, reason_code)`` after ingest-time body hydration."""
     metadata = metadata if isinstance(metadata, Mapping) else {}
     content_type = (getattr(content, "content_type", None) or "").strip().lower()
@@ -97,6 +108,9 @@ def assess_fetch_acceptance(content: Any, metadata: Mapping[str, Any]) -> tuple[
     if content_type in {"website", "rss"}:
         if not title:
             return False, "missing_title"
+        relaxed_authority = _title_only_relaxed_authority(source_metadata)
+        if relaxed_authority and status == "title_only":
+            return True, f"ok_relaxed_title_only_{relaxed_authority}"
         if len(summary) < _MIN_SUMMARY_CHARS:
             return False, "missing_summary"
         if status == FULLTEXT_STATUS_BLOCKED:
@@ -144,6 +158,10 @@ def stamp_fetch_acceptance_metadata(
     if accepted:
         merged["fetch_acceptance"] = "accepted"
         merged.pop("fetch_incomplete_reason", None)
+        if reason.startswith("ok_relaxed_title_only_"):
+            merged["acceptance_relaxed"] = reason.removeprefix("ok_relaxed_title_only_")
+        else:
+            merged.pop("acceptance_relaxed", None)
         return merged
 
     stars = _normalize_source_stars(source_stars)

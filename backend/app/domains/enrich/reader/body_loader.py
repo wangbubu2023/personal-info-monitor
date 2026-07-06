@@ -26,8 +26,8 @@ from app.domains.enrich.reader.shared import (
 )
 from app.platform.config.settings import get_settings
 from app.models import Content, Source
-from app.processors.extractor import ContentExtractor
-from app.processors.translator import Translator
+from app.domains.ingest.extractor import ContentExtractor
+from app.platform.llm.translator import Translator
 from app.domains.fetch.auth import try_parse_auth_credentials
 from app.utils.structured_article import extract_structured_article
 from app.utils.cookies import normalize_cookie_dict
@@ -167,7 +167,7 @@ async def fetch_x_article_fulltext(article_url: str, cookies: dict[str, str]) ->
     try:
         import importlib
 
-        x_collector_module = importlib.import_module("app.collectors.x_twitter")
+        x_collector_module = importlib.import_module("app.domains.fetch.collectors.x_twitter")
         collector = x_collector_module.XCollector()
         text_map = await collector._fetch_article_texts_with_playwright(
             [article_url], cookies=cookies or {}

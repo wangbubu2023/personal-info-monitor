@@ -70,9 +70,9 @@ Phase progress:
   layer; legacy ``app.processors.*`` paths remain as ``from new import *``
   re-export shims. ``app.platform.auth.api_credentials.decrypt_api_credentials``
   was also extracted from ``app.api.configs_common_auth`` in the same
-  step so that ``app.services.api_config_credentials`` no longer has to
-  reach into the HTTP layer — this eliminates the last residual Phase 4
-  violation. Test patches against wrapper-internal symbols
+  step, and model-settings enrichment now lives in
+  ``app.platform.auth.api_config_credentials``. Test patches against
+  wrapper-internal symbols
   (``get_settings`` / ``ModelProviderClient`` / ``get_translation_*``)
   were migrated to ``app.platform.llm.{summarizer,translator}.*`` in
   ``tests/test_processors.py``, and ``translator_module`` references

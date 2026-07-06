@@ -97,7 +97,8 @@ cd personal-info-monitor
 | `ENRICH_TRANSLATE_ENABLED` | `false` | 允许 Translator 调 LLM 做翻译 |
 | `ATOMS_ENABLED` | `false` | 可选 atoms 结构化原子事件层（Phase 6） |
 | `OPENAI_API_KEY` | — | 云端模型凭据（可选） |
-| `RSSHUB_URL` | `https://rsshub.app` | RSSHub 实例 |
+| `RSSHUB_URL` | `https://rsshub.app` | RSSHub 实例；VPS 推荐改为自建实例，示例见 `docs/rsshub-docker-compose.yml` |
+| `X_BEARER_TOKEN` | — | X 官方 API Bearer Token；付费/配额 fallback，仅显式启用的信源使用 |
 | `CORS_ORIGINS` | 内置三组 | 允许的前端来源 |
 | `TRUSTED_PROXY_IPS` | — | 反向代理 IP（VPS 必填） |
 | `API_RATE_LIMIT_PER_MINUTE` | `120` | 每分钟每 IP 限速，`0` 关闭 |
@@ -107,6 +108,10 @@ cd personal-info-monitor
 
 默认 CORS 白名单已覆盖 `http://localhost:3000`、`http://127.0.0.1:3000`、
 `http://tauri.localhost`、`https://tauri.localhost`、`http://localhost:1420`。
+
+X 抓取默认使用浏览器登录态 Cookie 的 GraphQL 路径，随后才尝试 RSSHub / Nitter。官方 X API
+不会因为配置了 `X_BEARER_TOKEN` 自动启用；只有给单个信源设置
+`metadata.strategy=api` 或 `metadata.allow_x_api_fallback=true` 时才会作为付费/配额 fallback 调用。
 
 ## pimctl — 给 Agent / 脚本调用
 
@@ -156,6 +161,14 @@ VPS 首次登录 Web UI 时可生成公网引导链接：
 ./pim bootstrap-url --origin https://your-domain.com
 ```
 
+VPS 上需要复用本地桌面登录态时，可从本地一条命令采集、上传并导入：
+
+```bash
+./pim auth-bundle sync https://example.com --remote pim@your-vps --remote-pim ~/personal-info-monitor
+```
+
+详见 [`docs/VPS_DEPLOY.md`](docs/VPS_DEPLOY.md)。
+
 ## 测试与质量门
 
 ```bash
@@ -183,12 +196,12 @@ CI 在 [`.github/workflows/ci.yml`](.github/workflows/ci.yml) 中串行执行
 | **架构总览** | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) |
 | **每个文件/文件夹做什么** | [`docs/PROJECT_STRUCTURE.md`](docs/PROJECT_STRUCTURE.md) |
 | **模块边界（一页纸）** | [`docs/MODULE_BOUNDARIES.md`](docs/MODULE_BOUNDARIES.md) |
-| **架构决策记录** | `docs/ADR-001-local-monolith.md` … `docs/ADR-005-module-boundaries.md` |
 | **用户使用指南** | [`docs/USER_GUIDE.md`](docs/USER_GUIDE.md) |
 | **Agent 集成** | [`docs/AGENT_GUIDE.md`](docs/AGENT_GUIDE.md) |
 | **pimctl 命令参考** | [`docs/PIMCTL_REFERENCE.md`](docs/PIMCTL_REFERENCE.md) |
 | **本地运行细节** | [`docs/LOCAL_RUN.md`](docs/LOCAL_RUN.md) |
 | **VPS 部署** | [`docs/VPS_DEPLOY.md`](docs/VPS_DEPLOY.md) |
+| **v1.4 发布/验收交接** | [`docs/V1_4_RELEASE_HANDOFF.md`](docs/V1_4_RELEASE_HANDOFF.md) |
 | **API 指南 + Prometheus** | [`docs/API_GUIDE.md`](docs/API_GUIDE.md) |
 | **故障排查** | [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md) |
 | **贡献规则** | [`docs/CONTRIBUTING.md`](docs/CONTRIBUTING.md) |

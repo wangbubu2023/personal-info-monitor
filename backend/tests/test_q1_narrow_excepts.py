@@ -1,7 +1,7 @@
 """Regression tests for Phase 2 Q1 bare-except refactors.
 
 Covers the narrower `except ValueError:` paths that replaced the old
-`except Exception: pass` samples in `app.pipeline.utils` and
+`except Exception: pass` samples in `app.domains.ingest.publish_time` and
 `app.utils.publish_time`. If somebody re-broadens these handlers, the
 dedicated tests below should fail fast.
 """
@@ -13,7 +13,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from app.pipeline.utils import (
+from app.domains.ingest.publish_time import (
     _parse_iso_publish_time,
     normalize_publish_time,
     resolve_website_publish_time,
@@ -91,6 +91,10 @@ class TestResolveWebsitePublishTime:
 
 
 class TestParsePublishTimeText:
+    def test_accepts_jsonld_iso_datetime(self):
+        dt = parse_publish_time_text("2026-07-02T01:02:03Z")
+        assert dt == datetime(2026, 7, 2, 1, 2, 3)
+
     def test_strptime_mismatch_keeps_trying_other_formats(self):
         """The tighter `except ValueError:` must still walk the format list.
 

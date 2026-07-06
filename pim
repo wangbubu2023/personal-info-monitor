@@ -31,6 +31,9 @@ Usage:
     ./pim bootstrap-url     Print a one-shot URL containing the bootstrap token
                             Use --origin https://example.com for VPS/public access.
                             for auto-provisioning a fresh web browser session
+    ./pim auth-bundle       Export/import local browser login bundles
+                            Example: ./pim auth-bundle export https://example.com --out example.pim-auth-bundle.json
+    ./pim capture-session   Alias for: ./pim auth-bundle export <site_url> [...]
 """
 
 import json
@@ -1580,6 +1583,24 @@ def cmd_bootstrap_url():
     print("API Key is cached locally and the token is stripped from history.", file=sys.stderr)
 
 
+def cmd_auth_bundle():
+    """Run the embedded Auth Bundle utility through the backend venv."""
+    if not VENV.exists():
+        print("venv not found. Run: ./pim setup", file=sys.stderr)
+        sys.exit(1)
+    cmd = [_python(), str(ROOT / "pimctl"), "auth-bundle", *sys.argv[2:]]
+    raise SystemExit(subprocess.call(cmd, cwd=str(ROOT)))
+
+
+def cmd_capture_session():
+    """Capture a browser login session as an Auth Bundle."""
+    if not VENV.exists():
+        print("venv not found. Run: ./pim setup", file=sys.stderr)
+        sys.exit(1)
+    cmd = [_python(), str(ROOT / "pimctl"), "auth-bundle", "export", *sys.argv[2:]]
+    raise SystemExit(subprocess.call(cmd, cwd=str(ROOT)))
+
+
 COMMANDS = {
     "up": cmd_up,
     "setup": cmd_setup,
@@ -1598,6 +1619,8 @@ COMMANDS = {
     "uninstall-service": cmd_uninstall_service,
     "service-run": cmd_service_run,
     "bootstrap-url": cmd_bootstrap_url,
+    "auth-bundle": cmd_auth_bundle,
+    "capture-session": cmd_capture_session,
 }
 
 

@@ -395,3 +395,156 @@ DIMENSION_LABELS = {
     "depth": "信息深度",
     "subjective": "主观判断",
 }
+
+
+def _tuple_from_yaml(value, fallback: tuple[str, ...]) -> tuple[str, ...]:
+    if not isinstance(value, list):
+        return fallback
+    return _merge(tuple(str(item) for item in value))
+
+
+def _dict_tuple_from_yaml(value, fallback: dict[str, tuple[str, ...]]) -> dict[str, tuple[str, ...]]:
+    if not isinstance(value, dict):
+        return fallback
+    merged: dict[str, tuple[str, ...]] = {}
+    for key, default_terms in fallback.items():
+        merged[key] = _tuple_from_yaml(value.get(key), default_terms)
+    for key, terms in value.items():
+        if key not in merged:
+            merged[str(key)] = _tuple_from_yaml(terms, ())
+    return merged
+
+
+def _float_dict_from_yaml(value, fallback: dict) -> dict:
+    if not isinstance(value, dict):
+        return fallback
+    out = dict(fallback)
+    for key, raw in value.items():
+        try:
+            out[key] = float(raw)
+        except (TypeError, ValueError):
+            continue
+    return out
+
+
+def _event_patterns_from_yaml(value, fallback: dict[str, tuple[float, tuple[str, ...]]]) -> dict[str, tuple[float, tuple[str, ...]]]:
+    if not isinstance(value, dict):
+        return fallback
+    out = dict(fallback)
+    for key, raw in value.items():
+        if not isinstance(raw, dict):
+            continue
+        try:
+            bonus = float(raw.get("bonus", 0.0))
+        except (TypeError, ValueError):
+            continue
+        keywords = _tuple_from_yaml(raw.get("keywords"), ())
+        if keywords:
+            out[str(key)] = (bonus, keywords)
+    return out
+
+
+def _nested_float_dict_from_yaml(value, fallback: dict[str, dict[str, float]]) -> dict[str, dict[str, float]]:
+    if not isinstance(value, dict):
+        return fallback
+    out = {key: dict(val) for key, val in fallback.items()}
+    for key, raw in value.items():
+        if not isinstance(raw, dict):
+            continue
+        bucket = out.setdefault(str(key), {})
+        for dim, limit in raw.items():
+            try:
+                bucket[str(dim)] = float(limit)
+            except (TypeError, ValueError):
+                continue
+    return out
+
+
+def _labels_from_yaml(value, fallback: dict[str, str]) -> dict[str, str]:
+    if not isinstance(value, dict):
+        return fallback
+    out = dict(fallback)
+    for key, raw in value.items():
+        label = str(raw or "").strip()
+        if label:
+            out[str(key)] = label
+    return out
+
+
+def _source_stars_from_yaml(value, fallback: dict[int, float]) -> dict[int, float]:
+    if not isinstance(value, dict):
+        return fallback
+    out = dict(fallback)
+    for key, raw in value.items():
+        try:
+            out[int(key)] = float(raw)
+        except (TypeError, ValueError):
+            continue
+    return out
+
+
+def _apply_score_vocab_data(data: dict) -> None:
+    global LANE_KEYWORDS, ENTITY_TIER_S, ENTITY_TIER_A, ENTITY_TIER_B
+    global ENTITY_TIER_SCORES, EVENT_PATTERNS, COMMERCE_SIGNALS, DEAL_SIGNALS
+    global MARKET_OFFERING_EXEMPT, DISASTER_TERMS, CASUALTY_TERMS, NARROW_SCOPE_SIGNALS
+    global IMPACT_CAPS, REACH_KEYWORDS, REACH_SCORES, AUTHORITY_TYPE_BONUS
+    global SOURCE_STARS_AUTHORITY, LANE_LABELS, DIMENSION_LABELS
+
+    if not data:
+        return
+
+    LANE_KEYWORDS = _dict_tuple_from_yaml(data.get("lane_keywords"), LANE_KEYWORDS)
+    tiers = data.get("entity_tiers") if isinstance(data.get("entity_tiers"), dict) else {}
+    ENTITY_TIER_S = _tuple_from_yaml(tiers.get("S"), ENTITY_TIER_S)
+    ENTITY_TIER_A = _tuple_from_yaml(tiers.get("A"), ENTITY_TIER_A)
+    ENTITY_TIER_B = _tuple_from_yaml(tiers.get("B"), ENTITY_TIER_B)
+    ENTITY_TIER_SCORES = _float_dict_from_yaml(data.get("entity_tier_scores"), ENTITY_TIER_SCORES)
+    EVENT_PATTERNS = _event_patterns_from_yaml(data.get("event_patterns"), EVENT_PATTERNS)
+
+    signals = data.get("signals") if isinstance(data.get("signals"), dict) else {}
+    COMMERCE_SIGNALS = _tuple_from_yaml(signals.get("commerce"), COMMERCE_SIGNALS)
+    DEAL_SIGNALS = COMMERCE_SIGNALS
+    MARKET_OFFERING_EXEMPT = _tuple_from_yaml(signals.get("market_offering_exempt"), MARKET_OFFERING_EXEMPT)
+    DISASTER_TERMS = _tuple_from_yaml(signals.get("disaster"), DISASTER_TERMS)
+    CASUALTY_TERMS = _tuple_from_yaml(signals.get("casualty"), CASUALTY_TERMS)
+    NARROW_SCOPE_SIGNALS = _tuple_from_yaml(signals.get("narrow_scope"), NARROW_SCOPE_SIGNALS)
+
+    IMPACT_CAPS = _nested_float_dict_from_yaml(data.get("impact_caps"), IMPACT_CAPS)
+    REACH_KEYWORDS = _dict_tuple_from_yaml(data.get("reach_keywords"), REACH_KEYWORDS)
+    REACH_SCORES = _float_dict_from_yaml(data.get("reach_scores"), REACH_SCORES)
+    AUTHORITY_TYPE_BONUS = _float_dict_from_yaml(data.get("authority_type_bonus"), AUTHORITY_TYPE_BONUS)
+    SOURCE_STARS_AUTHORITY = _source_stars_from_yaml(data.get("source_stars_authority"), SOURCE_STARS_AUTHORITY)
+    LANE_LABELS = _labels_from_yaml(data.get("lane_labels"), LANE_LABELS)
+    DIMENSION_LABELS = _labels_from_yaml(data.get("dimension_labels"), DIMENSION_LABELS)
+
+
+def score_vocab_snapshot() -> dict:
+    """Return lightweight metadata about the active scoring vocabulary."""
+    return {
+        "lane_count": len(LANE_KEYWORDS),
+        "entity_tier_counts": {
+            "S": len(ENTITY_TIER_S),
+            "A": len(ENTITY_TIER_A),
+            "B": len(ENTITY_TIER_B),
+        },
+        "event_pattern_count": len(EVENT_PATTERNS),
+        "reach_level_count": len(REACH_KEYWORDS),
+    }
+
+
+def reload_score_vocab_from_disk(path=None) -> dict:
+    """Reload YAML-backed score vocab and update exported constants."""
+    from app.domains.score.score_vocab_loader import reload_score_vocab
+
+    data = reload_score_vocab(path)
+    _apply_score_vocab_data(data)
+    return score_vocab_snapshot()
+
+
+try:
+    from app.domains.score.score_vocab_loader import load_score_vocab
+
+    _apply_score_vocab_data(load_score_vocab())
+except (OSError, TypeError, ValueError):
+    # Keep import-time scoring available even when a local YAML edit is invalid.
+    pass

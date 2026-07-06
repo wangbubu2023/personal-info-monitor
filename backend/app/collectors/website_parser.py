@@ -8,7 +8,7 @@
 from app.domains.fetch.collectors.website_parser import *  # noqa: F401,F403 — re-export
 from app.domains.fetch.collectors.website_parser import (  # noqa: F401 — explicit patch targets
     append_fallback_links,
-    get_website_content_reject_reason,
+    get_non_article_format_reject_reason,
     logger,
     parse_article_candidate,
     parse_html_content,

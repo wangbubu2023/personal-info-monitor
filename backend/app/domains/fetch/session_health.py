@@ -14,7 +14,8 @@ validate API; this is the part worth unit-testing exhaustively.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Sequence
+from datetime import datetime
+from typing import Any, Mapping, Sequence
 from urllib.parse import urlparse
 
 SessionStatus = str  # "ok" | "warning" | "error"
@@ -56,6 +57,97 @@ class SessionHealth:
         if self.details:
             payload["details"] = dict(self.details)
         return payload
+
+
+def _parse_iso_datetime(value: Any) -> datetime | None:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    try:
+        return datetime.fromisoformat(text.replace("Z", "+00:00")).replace(tzinfo=None)
+    except (TypeError, ValueError):
+        return None
+
+
+def _metadata_mapping(source) -> Mapping[str, Any]:
+    metadata = getattr(source, "metadata_", None)
+    return metadata if isinstance(metadata, Mapping) else {}
+
+
+def _datetime_to_iso(value: Any) -> str | None:
+    if isinstance(value, datetime):
+        return value.isoformat() + "Z"
+    return None
+
+
+def record_session_health(source, health: SessionHealth | Mapping[str, Any]) -> dict[str, Any]:
+    """Stamp latest session health onto structured columns and metadata."""
+    payload = health.to_dict() if isinstance(health, SessionHealth) else dict(health)
+    details = payload.get("details") if isinstance(payload.get("details"), Mapping) else {}
+    validated_at = _parse_iso_datetime(payload.get("validated_at"))
+
+    if hasattr(source, "session_health_status"):
+        source.session_health_status = str(payload.get("status") or "")
+        source.session_health_reason = str(payload.get("reason") or "")
+        source.session_health_suggested_action = str(payload.get("suggested_action") or "")
+        source.session_health_validated_at = validated_at
+        source.session_health_details = dict(details)
+
+    metadata = dict(getattr(source, "metadata_", None) or {})
+    metadata["session_health"] = payload
+    source.metadata_ = metadata
+    return payload
+
+
+def session_health_metadata(source) -> dict[str, Any]:
+    """Return latest session health, preferring structured columns."""
+    status = getattr(source, "session_health_status", None)
+    if status:
+        payload: dict[str, Any] = {
+            "status": status,
+            "reason": getattr(source, "session_health_reason", None),
+            "suggested_action": getattr(source, "session_health_suggested_action", None),
+        }
+        validated_at = _datetime_to_iso(getattr(source, "session_health_validated_at", None))
+        if validated_at:
+            payload["validated_at"] = validated_at
+        details = getattr(source, "session_health_details", None)
+        if isinstance(details, Mapping) and details:
+            payload["details"] = dict(details)
+        return payload
+
+    value = _metadata_mapping(source).get("session_health")
+    return dict(value) if isinstance(value, Mapping) else {}
+
+
+def record_session_health_alert(source, *, reason: str, sent_at: datetime) -> dict[str, Any]:
+    """Stamp latest session-health alert dedupe state onto columns and metadata."""
+    payload = {
+        "reason": str(reason or "unknown"),
+        "sent_at": sent_at.isoformat() + "Z",
+    }
+    if hasattr(source, "session_health_alert_reason"):
+        source.session_health_alert_reason = payload["reason"]
+        source.session_health_alert_sent_at = sent_at
+
+    metadata = dict(getattr(source, "metadata_", None) or {})
+    metadata["session_health_alert"] = payload
+    source.metadata_ = metadata
+    return payload
+
+
+def session_health_alert_metadata(source) -> dict[str, Any]:
+    """Return latest session-health alert stamp, preferring structured columns."""
+    reason = getattr(source, "session_health_alert_reason", None)
+    if reason:
+        payload: dict[str, Any] = {"reason": reason}
+        sent_at = _datetime_to_iso(getattr(source, "session_health_alert_sent_at", None))
+        if sent_at:
+            payload["sent_at"] = sent_at
+        return payload
+
+    value = _metadata_mapping(source).get("session_health_alert")
+    return dict(value) if isinstance(value, Mapping) else {}
 
 
 def _path_q(url: str) -> str:
@@ -121,4 +213,8 @@ def classify_session_health(
 __all__ = [
     "SessionHealth",
     "classify_session_health",
+    "record_session_health",
+    "record_session_health_alert",
+    "session_health_alert_metadata",
+    "session_health_metadata",
 ]

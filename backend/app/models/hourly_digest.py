@@ -25,6 +25,7 @@ class HourlyDigest(Base):
     summary = Column(Text, nullable=True)
     content_count = Column(Integer, default=0, nullable=False)
     sources = Column(JSON, default=list)
+    items_json = Column(JSON, default=list)
 
     created_at = Column(DateTime, default=utcnow_naive)
     updated_at = Column(DateTime, default=utcnow_naive, onupdate=utcnow_naive)

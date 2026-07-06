@@ -38,3 +38,20 @@ def test_explain_geo_headline_scores_high():
     assert payload["lane"] == "geopolitics"
     assert payload["recomputed"]["article_score"] >= 60
     assert payload["dimension_scores"]["salience"] >= 8.0
+
+
+def test_explain_includes_user_keyword_bonus():
+    meta = {"fulltext_status": "full", "content_quality": 0.9, "fetch_acceptance": "accepted"}
+    payload = explain_content_score(
+        title="MyPrivateCo posts weekly note",
+        summary="An update mentioning SecretProject.",
+        full_content="MyPrivateCo and SecretProject are both monitored terms.",
+        content_metadata=meta,
+        source_metadata={"source_stars": 2},
+        content_type="website",
+        user_keyword_terms=("MyPrivateCo", "SecretProject"),
+        matched_user_terms=("MyPrivateCo", "SecretProject"),
+    )
+
+    assert payload["user_keywords"]["salience_bonus"] == 2.0
+    assert payload["dimension_scores_before_cap"]["salience"] == 6.0

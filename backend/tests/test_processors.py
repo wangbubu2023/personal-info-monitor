@@ -15,7 +15,7 @@ class TestContentExtractor:
 
     @pytest.mark.asyncio
     async def test_extract_empty_html_returns_empty(self):
-        from app.processors.extractor import ContentExtractor
+        from app.domains.ingest.extractor import ContentExtractor
 
         extractor = ContentExtractor()
         assert await extractor.extract("") == ""
@@ -23,7 +23,7 @@ class TestContentExtractor:
 
     @pytest.mark.asyncio
     async def test_extract_prefers_trafilatura_when_readability_grabs_partial_chunk(self):
-        from app.processors.extractor import ContentExtractor
+        from app.domains.ingest.extractor import ContentExtractor
         from app.utils.text import normalize_article_text
 
         extractor = ContentExtractor()
@@ -37,7 +37,7 @@ class TestContentExtractor:
 
     @pytest.mark.asyncio
     async def test_extract_keeps_readability_for_long_articles(self):
-        from app.processors.extractor import ContentExtractor
+        from app.domains.ingest.extractor import ContentExtractor
         from app.utils.text import normalize_article_text
 
         extractor = ContentExtractor()
@@ -51,7 +51,7 @@ class TestContentExtractor:
 
     @pytest.mark.asyncio
     async def test_extract_uses_trafilatura_when_readability_sparse(self):
-        from app.processors.extractor import ContentExtractor
+        from app.domains.ingest.extractor import ContentExtractor
 
         extractor = ContentExtractor()
         long_text = "A" * 200
@@ -62,7 +62,7 @@ class TestContentExtractor:
 
     @pytest.mark.asyncio
     async def test_extract_falls_back_to_beautifulsoup(self):
-        from app.processors.extractor import ContentExtractor
+        from app.domains.ingest.extractor import ContentExtractor
 
         extractor = ContentExtractor()
         html = "<html><body><article>" + ("word " * 50) + "</article></body></html>"
@@ -72,7 +72,7 @@ class TestContentExtractor:
 
     @pytest.mark.asyncio
     async def test_extract_beautifulsoup_preserves_article_paragraphs(self):
-        from app.processors.extractor import ContentExtractor
+        from app.domains.ingest.extractor import ContentExtractor
 
         extractor = ContentExtractor()
         html = "<html><body><article>" + "".join(
@@ -91,7 +91,7 @@ class TestContentExtractor:
 
     @pytest.mark.asyncio
     async def test_extract_prefers_36kr_newsflash_state_over_related_cards(self):
-        from app.processors.extractor import ContentExtractor
+        from app.domains.ingest.extractor import ContentExtractor
 
         extractor = ContentExtractor()
         html = """
@@ -134,7 +134,7 @@ class TestContentExtractor:
 
     @pytest.mark.asyncio
     async def test_extract_trafilatura_short_falls_back(self):
-        from app.processors.extractor import ContentExtractor
+        from app.domains.ingest.extractor import ContentExtractor
 
         extractor = ContentExtractor()
         html = "<html><body><article>" + ("content " * 30) + "</article></body></html>"
@@ -144,7 +144,7 @@ class TestContentExtractor:
 
     @pytest.mark.asyncio
     async def test_extract_trafilatura_exception(self):
-        from app.processors.extractor import ContentExtractor
+        from app.domains.ingest.extractor import ContentExtractor
 
         extractor = ContentExtractor()
         html = "<html><body><article>" + ("text " * 30) + "</article></body></html>"
@@ -154,7 +154,7 @@ class TestContentExtractor:
 
     @pytest.mark.asyncio
     async def test_extract_beautifulsoup_no_body(self):
-        from app.processors.extractor import ContentExtractor
+        from app.domains.ingest.extractor import ContentExtractor
 
         extractor = ContentExtractor()
         with patch("trafilatura.extract", return_value=None):
@@ -162,7 +162,7 @@ class TestContentExtractor:
         assert result == "" or isinstance(result, str)
 
     def test_extract_metadata_title(self):
-        from app.processors.extractor import ContentExtractor
+        from app.domains.ingest.extractor import ContentExtractor
 
         extractor = ContentExtractor()
         html = '<html><head><title>Test Title</title></head><body></body></html>'
@@ -170,7 +170,7 @@ class TestContentExtractor:
         assert meta.get("title") == "Test Title"
 
     def test_extract_metadata_description(self):
-        from app.processors.extractor import ContentExtractor
+        from app.domains.ingest.extractor import ContentExtractor
 
         extractor = ContentExtractor()
         html = (
@@ -182,7 +182,7 @@ class TestContentExtractor:
         assert meta["description"] == "A test description"
 
     def test_extract_metadata_og_image(self):
-        from app.processors.extractor import ContentExtractor
+        from app.domains.ingest.extractor import ContentExtractor
 
         extractor = ContentExtractor()
         html = (
@@ -194,7 +194,7 @@ class TestContentExtractor:
         assert meta["image"] == "https://example.com/img.png"
 
     def test_extract_metadata_keywords(self):
-        from app.processors.extractor import ContentExtractor
+        from app.domains.ingest.extractor import ContentExtractor
 
         extractor = ContentExtractor()
         html = (
@@ -206,7 +206,7 @@ class TestContentExtractor:
         assert meta["keywords"] == ["python", "testing", "ci"]
 
     def test_extract_metadata_published_time(self):
-        from app.processors.extractor import ContentExtractor
+        from app.domains.ingest.extractor import ContentExtractor
 
         extractor = ContentExtractor()
         html = (
@@ -218,7 +218,7 @@ class TestContentExtractor:
         assert meta["published_time"] == "2025-01-15T10:00:00Z"
 
     def test_extract_metadata_author(self):
-        from app.processors.extractor import ContentExtractor
+        from app.domains.ingest.extractor import ContentExtractor
 
         extractor = ContentExtractor()
         html = '<html><head><meta name="author" content="John"></head><body></body></html>'
@@ -226,7 +226,7 @@ class TestContentExtractor:
         assert meta["author"] == "John"
 
     def test_extract_metadata_exception_returns_empty(self):
-        from app.processors.extractor import ContentExtractor
+        from app.domains.ingest.extractor import ContentExtractor
 
         extractor = ContentExtractor()
         with patch("bs4.BeautifulSoup", side_effect=Exception("parse error")):
@@ -238,7 +238,7 @@ class TestExtractorHelpers:
 
     def test_remove_noise_elements(self):
         from bs4 import BeautifulSoup
-        from app.processors.extractor import _remove_noise_elements
+        from app.domains.ingest.extractor import _remove_noise_elements
 
         html = '<html><body><nav>nav</nav><script>x</script><p>keep</p></body></html>'
         soup = BeautifulSoup(html, "lxml")
@@ -249,7 +249,7 @@ class TestExtractorHelpers:
 
     def test_remove_noise_by_class(self):
         from bs4 import BeautifulSoup
-        from app.processors.extractor import _remove_noise_elements
+        from app.domains.ingest.extractor import _remove_noise_elements
 
         html = '<html><body><div class="sidebar-left">ads</div><p>keep</p></body></html>'
         soup = BeautifulSoup(html, "lxml")
@@ -259,7 +259,7 @@ class TestExtractorHelpers:
 
     def test_find_main_content_article(self):
         from bs4 import BeautifulSoup
-        from app.processors.extractor import _find_main_content
+        from app.domains.ingest.extractor import _find_main_content
 
         html = '<html><body><article>main</article><div>other</div></body></html>'
         soup = BeautifulSoup(html, "lxml")
@@ -268,7 +268,7 @@ class TestExtractorHelpers:
 
     def test_find_main_content_main_tag(self):
         from bs4 import BeautifulSoup
-        from app.processors.extractor import _find_main_content
+        from app.domains.ingest.extractor import _find_main_content
 
         html = '<html><body><main>main content</main></body></html>'
         soup = BeautifulSoup(html, "lxml")
@@ -277,7 +277,7 @@ class TestExtractorHelpers:
 
     def test_find_main_content_by_class(self):
         from bs4 import BeautifulSoup
-        from app.processors.extractor import _find_main_content
+        from app.domains.ingest.extractor import _find_main_content
 
         html = '<html><body><div class="content-area">text</div></body></html>'
         soup = BeautifulSoup(html, "lxml")
@@ -286,7 +286,7 @@ class TestExtractorHelpers:
 
     def test_find_main_content_by_id(self):
         from bs4 import BeautifulSoup
-        from app.processors.extractor import _find_main_content
+        from app.domains.ingest.extractor import _find_main_content
 
         html = '<html><body><div id="main-content">text</div></body></html>'
         soup = BeautifulSoup(html, "lxml")
@@ -295,7 +295,7 @@ class TestExtractorHelpers:
 
     def test_find_main_content_falls_back_to_body(self):
         from bs4 import BeautifulSoup
-        from app.processors.extractor import _find_main_content
+        from app.domains.ingest.extractor import _find_main_content
 
         html = '<html><body><div>plain</div></body></html>'
         soup = BeautifulSoup(html, "lxml")
@@ -304,7 +304,7 @@ class TestExtractorHelpers:
 
     def test_extract_metadata_from_meta_tags_empty(self):
         from bs4 import BeautifulSoup
-        from app.processors.extractor import _extract_metadata_from_meta_tags
+        from app.domains.ingest.extractor import _extract_metadata_from_meta_tags
 
         soup = BeautifulSoup("<html><head></head></html>", "lxml")
         assert _extract_metadata_from_meta_tags(soup) == {}
@@ -319,7 +319,7 @@ class TestSummarizer:
     def _make_summarizer(self):
         with patch("app.platform.llm.summarizer.get_settings") as mock_settings:
             mock_settings.return_value = MagicMock(openai_api_key="test-key")
-            from app.processors.summarizer import Summarizer
+            from app.platform.llm.summarizer import Summarizer
             return Summarizer(api_key="test-key")
 
     @pytest.mark.asyncio
@@ -561,7 +561,7 @@ class TestSummarizer:
     def test_get_client_no_key_raises(self):
         with patch("app.platform.llm.summarizer.get_settings") as mock_settings:
             mock_settings.return_value = MagicMock(openai_api_key=None)
-            from app.processors.summarizer import Summarizer
+            from app.platform.llm.summarizer import Summarizer
             s = Summarizer(api_key=None)
         with pytest.raises(ValueError, match="API key"):
             s._get_client()
@@ -578,7 +578,7 @@ class TestSummarizer:
     def test_get_async_client_no_key_raises(self):
         with patch("app.platform.llm.summarizer.get_settings") as mock_settings:
             mock_settings.return_value = MagicMock(openai_api_key=None)
-            from app.processors.summarizer import Summarizer
+            from app.platform.llm.summarizer import Summarizer
             s = Summarizer(api_key=None)
         with pytest.raises(ValueError, match="API key"):
             s._get_async_client()
@@ -610,7 +610,7 @@ class TestTranslator:
         with patch("app.platform.llm.translator.get_settings") as mock_settings, \
              patch("app.platform.llm.translator.ModelProviderClient") as mock_mpc:
             mock_settings.return_value = MagicMock(openai_api_key="sk-test")
-            from app.processors.translator import Translator
+            from app.platform.llm.translator import Translator
             return Translator()
 
     def test_is_chinese_true(self):
@@ -791,7 +791,7 @@ class TestTranslatorStandalone:
             "app.platform.config.system_settings.get_system_settings_sync",
             return_value={"translation_model": {"provider": "ollama"}},
         ):
-            from app.processors.translator import get_translation_settings
+            from app.platform.llm.translator import get_translation_settings
             result = get_translation_settings()
         assert result["provider"] == "ollama"
         assert "api_base" in result
@@ -801,7 +801,7 @@ class TestTranslatorStandalone:
             "app.platform.config.system_settings.get_system_settings_sync",
             side_effect=Exception("no db"),
         ):
-            from app.processors.translator import get_translation_settings
+            from app.platform.llm.translator import get_translation_settings
             result = get_translation_settings()
         assert result == {}
 
@@ -810,7 +810,7 @@ class TestTranslatorStandalone:
             "app.platform.config.system_settings.get_system_settings_sync",
             return_value={"translation_model": "invalid"},
         ):
-            from app.processors.translator import get_translation_settings
+            from app.platform.llm.translator import get_translation_settings
             result = get_translation_settings()
         assert result == {}
 
@@ -819,7 +819,7 @@ class TestTranslatorStandalone:
             "app.platform.config.system_settings.get_system_settings_sync",
             return_value={"translation_cloud_fallback_enabled": True},
         ):
-            from app.processors.translator import is_translation_cloud_fallback_enabled
+            from app.platform.llm.translator import is_translation_cloud_fallback_enabled
             assert is_translation_cloud_fallback_enabled() is True
 
     def test_is_translation_cloud_fallback_enabled_false(self):
@@ -827,7 +827,7 @@ class TestTranslatorStandalone:
             "app.platform.config.system_settings.get_system_settings_sync",
             return_value={},
         ):
-            from app.processors.translator import is_translation_cloud_fallback_enabled
+            from app.platform.llm.translator import is_translation_cloud_fallback_enabled
             assert is_translation_cloud_fallback_enabled() is False
 
     def test_is_translation_fallback_new_key_overrides_legacy(self):
@@ -838,7 +838,7 @@ class TestTranslatorStandalone:
                 "translation_cloud_fallback_enabled": True,
             },
         ):
-            from app.processors.translator import is_translation_cloud_fallback_enabled
+            from app.platform.llm.translator import is_translation_cloud_fallback_enabled
             assert is_translation_cloud_fallback_enabled() is False
 
     def test_is_translation_cloud_fallback_exception(self):
@@ -846,7 +846,7 @@ class TestTranslatorStandalone:
             "app.platform.config.system_settings.get_system_settings_sync",
             side_effect=Exception("err"),
         ):
-            from app.processors.translator import is_translation_cloud_fallback_enabled
+            from app.platform.llm.translator import is_translation_cloud_fallback_enabled
             assert is_translation_cloud_fallback_enabled() is False
 
     def test_get_translation_cloud_fallback_openai_settings(self):
@@ -858,7 +858,7 @@ class TestTranslatorStandalone:
             "app.platform.config.system_settings.get_system_settings_sync",
             return_value=sys_settings,
         ):
-            from app.processors.translator import get_translation_cloud_fallback_openai_settings
+            from app.platform.llm.translator import get_translation_cloud_fallback_openai_settings
             result = get_translation_cloud_fallback_openai_settings()
         assert result["model"] == "gpt-4"
         assert result["api_key"] == "k1"
@@ -869,7 +869,7 @@ class TestTranslatorStandalone:
             "app.platform.config.system_settings.get_system_settings_sync",
             return_value=sys_settings,
         ):
-            from app.processors.translator import get_translation_cloud_fallback_openai_settings
+            from app.platform.llm.translator import get_translation_cloud_fallback_openai_settings
             result = get_translation_cloud_fallback_openai_settings()
         assert result["model"] == "gpt-4o-mini"
         assert result["provider"] == "openai"
@@ -879,6 +879,6 @@ class TestTranslatorStandalone:
             "app.platform.config.system_settings.get_system_settings_sync",
             side_effect=Exception("err"),
         ):
-            from app.processors.translator import get_translation_cloud_fallback_openai_settings
+            from app.platform.llm.translator import get_translation_cloud_fallback_openai_settings
             result = get_translation_cloud_fallback_openai_settings()
         assert result["model"] == "gpt-4o-mini"

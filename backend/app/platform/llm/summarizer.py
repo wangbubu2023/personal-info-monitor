@@ -24,7 +24,7 @@ def get_summarization_fallback_model_settings(runtime: Optional[dict[str, Any]] 
     and callers see the same flags as the summarize path without relying on sync cache.
     """
     try:
-        from app.services.api_config_credentials import enrich_model_settings_from_api_config
+        from app.platform.auth.api_config_credentials import enrich_model_settings_from_api_config
         from app.platform.config.system_settings import get_system_settings_sync
 
         s = (runtime if runtime is not None else (get_system_settings_sync() or {})) or {}
@@ -75,7 +75,7 @@ class Summarizer:
     def _get_ai_model_config(self) -> dict:
         """ai_model with api_configs (模型接入) merged in."""
         try:
-            from app.services.api_config_credentials import enrich_model_settings_from_api_config
+            from app.platform.auth.api_config_credentials import enrich_model_settings_from_api_config
 
             raw = self._get_runtime_settings().get("ai_model") or {}
             if not isinstance(raw, dict):

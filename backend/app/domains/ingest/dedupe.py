@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from sqlalchemy import or_
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from app.models import Content, Source
-from app.pipeline.utils import normalize_external_id
 from app.utils.datetime import utcnow_naive
+from app.utils.url import canonical_article_external_id, normalize_external_id
 from app.utils.text import truncate_content
 from app.utils.logger import get_logger
 
@@ -31,12 +31,29 @@ def handle_external_id_duplicate(
     store stages run, so a duplicate batch no longer triggers N independent
     write-ahead-log fsyncs.
     """
+    raw_meta = raw_content.get("metadata") if isinstance(raw_content.get("metadata"), dict) else {}
     normalized_eid = normalize_external_id(external_id) or external_id
     identity_keys = {external_id, normalized_eid}
     article_url = str(raw_content.get("url") or "").strip()
+    canonical_url = str(raw_meta.get("canonical_url") or "").strip()
+    canonical_external_id = str(raw_meta.get("canonical_external_id") or "").strip()
+    if canonical_url:
+        identity_keys.add(canonical_article_external_id(canonical_url))
+    if canonical_external_id:
+        identity_keys.add(canonical_external_id)
+        normalized_canonical = normalize_external_id(canonical_external_id)
+        if normalized_canonical:
+            identity_keys.add(normalized_canonical)
+    identity_keys = {key for key in identity_keys if key}
+    url_identities = {url for url in (article_url, canonical_url) if url}
+
     identity_filters = [Content.external_id.in_(list(identity_keys))]
-    if article_url:
-        identity_filters.append(Content.original_url == article_url)
+    if url_identities:
+        identity_filters.append(Content.original_url.in_(list(url_identities)))
+    if identity_keys:
+        identity_filters.append(func.json_extract(Content.metadata_, "$.canonical_external_id").in_(list(identity_keys)))
+    if canonical_url:
+        identity_filters.append(func.json_extract(Content.metadata_, "$.canonical_url") == canonical_url)
 
     existing = db.query(Content).filter(
         Content.source_id == source.id,
@@ -48,13 +65,12 @@ def handle_external_id_duplicate(
         .join(Source)
         .filter(
             Source.type == source.type,
-            Content.external_id.in_(list(identity_keys)),
+            or_(*identity_filters),
             Content.source_id != source.id,
         )
         .first()
     )
     if cross_source_match:
-        raw_meta = raw_content.get("metadata") if isinstance(raw_content.get("metadata"), dict) else {}
         merged = dict(raw_meta)
         merged["cross_source_external_id_match"] = str(cross_source_match[0])
         raw_content["metadata"] = merged

@@ -40,6 +40,11 @@ async def maybe_refresh_auth_cookies(db, source, creds: dict) -> tuple[dict, str
     if auth_type != "password":
         return creds, None
 
+    from app.config import get_settings
+
+    if get_settings().pim_disable_password_auto_login:
+        return creds, "密码自动登录已被 PIM_DISABLE_PASSWORD_AUTO_LOGIN 禁用"
+
     cookie_mode = str(creds.get("cookie_mode") or "").strip().lower()
     cookies = creds.get("cookies") if isinstance(creds.get("cookies"), dict) else {}
     if cookies:

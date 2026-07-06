@@ -17,11 +17,15 @@ over the module-level helpers.
 import asyncio
 import random
 from collections import Counter
+from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import urlparse
+from xml.etree import ElementTree
 
 import aiohttp
 from bs4 import BeautifulSoup
+from sqlalchemy import func, or_
+from sqlalchemy.exc import SQLAlchemyError
 
 from app.domains.fetch.failures import (
     FetchFailure,
@@ -31,7 +35,8 @@ from app.domains.fetch.failures import (
 )
 from app.domains.fetch.collectors.base import BaseCollector
 from app.domains.fetch.collectors.rss import RSSCollector
-from app.models import Source
+from app.models import Content, Source
+from app.platform.persistence.database import SessionLocal
 from app.utils.browser import get_browser_context, local_playwright_fetch_prefs
 from app.utils.http import permissive_session_kwargs
 from app.utils.human_timing import (
@@ -42,7 +47,9 @@ from app.utils.human_timing import (
 from app.utils.logger import get_logger
 from app.utils.playwright_stealth import stealth_init_script
 from app.utils.text import strip_html_tags
+from app.utils.datetime import utcnow_naive
 from app.platform.security.ssrf import check_before_fetch, fetch_public_http_text
+from app.utils.url import normalize_external_id
 
 from .fetch_profile import diagnose_article_html, get_fetch_profile
 from . import website_helpers as _helpers
@@ -159,6 +166,152 @@ class WebsiteCollector(BaseCollector):
         if not direct and contents:
             self.logger.info(f"No direct article links detected for {source.url}; fallback to RSS/static flow")
         return direct
+
+    @staticmethod
+    def _known_duplicate_external_id(source: Source, item: Dict[str, Any]) -> bool:
+        """Whether this raw item matches the source's latest saved marker.
+
+        Website RSS/listing paths hydrate before the generic pipeline dedupe
+        runs. Skipping the already-known latest item avoids a repeated second
+        hop on steady-state feeds while still allowing genuinely new entries
+        to hydrate.
+        """
+        marker = normalize_external_id(getattr(source, "last_content_id", None))
+        if not marker:
+            return False
+        candidates = [
+            normalize_external_id(item.get("external_id")),
+            normalize_external_id(item.get("url")),
+        ]
+        return marker in {candidate for candidate in candidates if candidate}
+
+    @staticmethod
+    def _identity_keys_for_item(item: Dict[str, Any]) -> tuple[set[str], set[str]]:
+        metadata = item.get("metadata") if isinstance(item.get("metadata"), dict) else {}
+        raw_ids = {
+            str(item.get("external_id") or "").strip(),
+            str(item.get("url") or "").strip(),
+            str(item.get("original_url") or "").strip(),
+            str(metadata.get("canonical_url") or "").strip(),
+            str(metadata.get("canonical_external_id") or "").strip(),
+        }
+        identity_keys: set[str] = set()
+        url_identities: set[str] = set()
+        for raw in raw_ids:
+            if not raw:
+                continue
+            identity_keys.add(raw)
+            normalized = normalize_external_id(raw)
+            if normalized:
+                identity_keys.add(normalized)
+            if raw.startswith(("http://", "https://")):
+                url_identities.add(raw)
+        return identity_keys, url_identities
+
+    def _known_existing_content_indexes(
+        self,
+        source: Source,
+        contents: List[Dict[str, Any]],
+    ) -> set[int]:
+        """Return indexes already present for this source before hydration.
+
+        ``source.last_content_id`` only catches the latest saved item. Steady
+        RSS/listing pages often include many older entries, and hydrating those
+        before ingest dedupe wastes a second hop per old item. This batched
+        lookup mirrors ingest-side identity matching closely enough to skip
+        same-source duplicates before article HTML fetches.
+        """
+        source_id = getattr(source, "id", None)
+        if not isinstance(source_id, str) or not source_id or not contents:
+            return set()
+
+        item_identities: list[tuple[set[str], set[str]]] = []
+        all_identity_keys: set[str] = set()
+        all_url_identities: set[str] = set()
+        for item in contents:
+            identity_keys, url_identities = self._identity_keys_for_item(item)
+            item_identities.append((identity_keys, url_identities))
+            all_identity_keys.update(identity_keys)
+            all_url_identities.update(url_identities)
+
+        identity_filters = []
+        if all_identity_keys:
+            identity_list = list(all_identity_keys)
+            identity_filters.append(Content.external_id.in_(identity_list))
+            identity_filters.append(func.json_extract(Content.metadata_, "$.canonical_external_id").in_(identity_list))
+        if all_url_identities:
+            url_list = list(all_url_identities)
+            identity_filters.append(Content.original_url.in_(url_list))
+            identity_filters.append(func.json_extract(Content.metadata_, "$.canonical_url").in_(url_list))
+        if not identity_filters:
+            return set()
+
+        try:
+            with SessionLocal() as db:
+                rows = (
+                    db.query(Content.external_id, Content.original_url, Content.metadata_)
+                    .filter(Content.source_id == source_id, or_(*identity_filters))
+                    .all()
+                )
+        except SQLAlchemyError as exc:
+            self.logger.debug("Existing content pre-hydration lookup failed for %s: %s", source.url, exc)
+            return set()
+
+        existing_identity_keys: set[str] = set()
+        existing_url_identities: set[str] = set()
+        for external_id, original_url, metadata in rows:
+            row_metadata = metadata if isinstance(metadata, dict) else {}
+            row_raw_values = {
+                str(external_id or "").strip(),
+                str(original_url or "").strip(),
+                str(row_metadata.get("canonical_url") or "").strip(),
+                str(row_metadata.get("canonical_external_id") or "").strip(),
+            }
+            for raw in row_raw_values:
+                if not raw:
+                    continue
+                existing_identity_keys.add(raw)
+                normalized = normalize_external_id(raw)
+                if normalized:
+                    existing_identity_keys.add(normalized)
+                if raw.startswith(("http://", "https://")):
+                    existing_url_identities.add(raw)
+
+        existing_indexes: set[int] = set()
+        for idx, (identity_keys, url_identities) in enumerate(item_identities):
+            if identity_keys & existing_identity_keys or url_identities & existing_url_identities:
+                existing_indexes.add(idx)
+        return existing_indexes
+
+    @staticmethod
+    def _stamp_session_health(source: Source, *, reason: str, final_url: str | None = None) -> None:
+        from app.domains.fetch.session_health import SessionHealth, record_session_health
+
+        action = "none"
+        status = "warning"
+        if reason in {"login_required", "expired", "http_status_401", "http_status_403"}:
+            reason = "login_required" if reason.startswith("http_status") else reason
+            action = "relogin"
+            status = "error"
+        elif reason in {"bot_wall", "wrapper_unresolved"}:
+            reason = "bot_wall" if reason == "bot_wall" else reason
+            action = "switch_rss_only"
+            status = "error"
+        elif reason == "captcha":
+            action = "relogin"
+            status = "error"
+        elif reason in {"http_status_429", "playwright_fetch_failed", "http_fetch_failed", "shell_page"}:
+            action = "retry_later"
+
+        if action == "none":
+            return
+        record_session_health(source, SessionHealth(
+            status=status,
+            reason=reason,
+            suggested_action=action,
+            validated_at=utcnow_naive().isoformat() + "Z",
+            details={"final_url": final_url or source.url, "source": "website_hydration"},
+        ))
 
     # ------------------------------------------------------------------
     # Playwright navigation helpers (need ``self.logger`` — keep on class).
@@ -633,9 +786,12 @@ class WebsiteCollector(BaseCollector):
         if hydrate_limit <= 0:
             return contents, {"attempted": 0, "hydrated": 0, "failures": {}}
 
+        existing_indexes = self._known_existing_content_indexes(source, contents)
         direct_indexes = [
             i for i, item in enumerate(contents)
             if _helpers.looks_like_article_url(source.url, str(item.get("url") or ""))
+            and not self._known_duplicate_external_id(source, item)
+            and i not in existing_indexes
         ][:hydrate_limit]
         if not direct_indexes:
             return contents, {"attempted": 0, "hydrated": 0, "failures": {}}
@@ -693,6 +849,11 @@ class WebsiteCollector(BaseCollector):
             if not html:
                 if reason:
                     failure_reasons[reason] += 1
+                    self._stamp_session_health(
+                        source,
+                        reason=reason,
+                        final_url=resolved_url or str(contents[idx].get("url") or ""),
+                    )
                 continue
             hydrated_count += 1
             if resolved_url and resolved_url != str(contents[idx].get("url") or ""):
@@ -873,8 +1034,12 @@ class WebsiteCollector(BaseCollector):
             self.logger.info(f"Using configured RSS feed: {rss_url}")
             original_url = source.url
             rss_source = _helpers.source_with_url(source, rss_url)
-            contents = await self.rss_collector.fetch(rss_source)
-            contents = self._filter_unwanted_wsj_items(original_url, contents)
+            try:
+                contents = await self.rss_collector.fetch(rss_source)
+                contents = self._filter_unwanted_wsj_items(original_url, contents)
+            except FetchFailureError as exc:
+                self.logger.warning("Configured RSS fetch failed for %s: %s", rss_url, exc)
+                contents = []
             if contents and not _helpers.is_stale_rss_content(contents):
                 if hydrate_rss:
                     return await self._maybe_hydrate_rss_contents(
@@ -886,8 +1051,12 @@ class WebsiteCollector(BaseCollector):
             if fallback_url:
                 self.logger.warning(f"Configured RSS appears stale for {original_url}; trying WSJ fallback feed")
                 fallback_source = _helpers.source_with_url(source, fallback_url)
-                fallback_contents = await self.rss_collector.fetch(fallback_source)
-                fallback_contents = self._filter_unwanted_wsj_items(original_url, fallback_contents)
+                try:
+                    fallback_contents = await self.rss_collector.fetch(fallback_source)
+                    fallback_contents = self._filter_unwanted_wsj_items(original_url, fallback_contents)
+                except FetchFailureError as exc:
+                    self.logger.warning("WSJ fallback RSS fetch failed for %s: %s", fallback_url, exc)
+                    fallback_contents = []
                 if fallback_contents:
                     if hydrate_rss:
                         return await self._maybe_hydrate_rss_contents(
@@ -899,10 +1068,17 @@ class WebsiteCollector(BaseCollector):
         feed_url = await self.rss_collector.discover_feed_url(source.url)
         if feed_url:
             self.logger.info(f"Discovered RSS feed: {feed_url}")
+            from app.domains.fetch.rss_health import persist_discovered_feed
+
+            persist_discovered_feed(source, feed_url)
             original_url = source.url
             feed_source = _helpers.source_with_url(source, feed_url)
-            contents = await self.rss_collector.fetch(feed_source)
-            contents = self._filter_unwanted_wsj_items(original_url, contents)
+            try:
+                contents = await self.rss_collector.fetch(feed_source)
+                contents = self._filter_unwanted_wsj_items(original_url, contents)
+            except FetchFailureError as exc:
+                self.logger.warning("Discovered RSS fetch failed for %s: %s", feed_url, exc)
+                contents = []
             if contents:
                 if hydrate_rss:
                     return await self._maybe_hydrate_rss_contents(
@@ -921,7 +1097,12 @@ class WebsiteCollector(BaseCollector):
             )
             return []
 
-        # Controlled listing-page discovery (opt-in via metadata['discovery']).
+        sitemap_contents = await self._maybe_fetch_via_sitemap(source, cookies, browser_session)
+        if sitemap_contents is not None:
+            return sitemap_contents
+
+        # Controlled listing-page discovery. Explicit metadata can tune or
+        # disable it; otherwise a conservative default probes the source URL.
         # Runs after RSS paths are exhausted, before generic static scraping.
         discovered = await self._maybe_fetch_via_discovery(source, cookies, browser_session)
         if discovered is not None:
@@ -999,23 +1180,210 @@ class WebsiteCollector(BaseCollector):
             self.logger.warning("Discovery listing fetch failed for %s: %s", url, exc)
             return None
 
+    def _default_sitemap_urls(self, source: Source) -> list[str]:
+        metadata = source.metadata_ if isinstance(source.metadata_, dict) else {}
+        configured = metadata.get("sitemap_urls")
+        if isinstance(configured, str):
+            urls = [configured]
+        elif isinstance(configured, list):
+            urls = [str(url).strip() for url in configured]
+        else:
+            urls = []
+        urls = [url for url in urls if url]
+        if urls:
+            return urls
+
+        parsed = urlparse(source.url)
+        if not parsed.scheme or not parsed.netloc:
+            return []
+        root = f"{parsed.scheme}://{parsed.netloc}"
+        return [
+            f"{root}/sitemap.xml",
+            f"{root}/sitemap/news.xml",
+            f"{root}/news-sitemap.xml",
+        ]
+
+    async def _fetch_sitemap_xml(self, source: Source, url: str) -> Optional[str]:
+        metadata = source.metadata_ if isinstance(source.metadata_, dict) else {}
+        headers = {
+            "User-Agent": random.choice(self.user_agents),
+            "Accept": "application/xml,text/xml;q=0.9,*/*;q=0.8",
+        }
+        headers.update(bpc_strategies.get_spoofed_headers(metadata, headers["User-Agent"]))
+        try:
+            async with aiohttp.ClientSession(**permissive_session_kwargs()) as session:
+                response = await fetch_public_http_text(
+                    session,
+                    url,
+                    source_url=source.url,
+                    headers=headers,
+                    timeout=aiohttp.ClientTimeout(total=20),
+                )
+                if response.status != 200:
+                    self.logger.debug("Sitemap fetch non-200 (%s) for %s", response.status, url)
+                    return None
+                return response.text
+        except (aiohttp.ClientError, TimeoutError, ValueError) as exc:
+            self.logger.debug("Sitemap fetch failed for %s: %s", url, exc)
+            return None
+
+    @staticmethod
+    def _parse_sitemap_time(value: str | None) -> datetime | None:
+        text = str(value or "").strip()
+        if not text:
+            return None
+        try:
+            return datetime.fromisoformat(text.replace("Z", "+00:00")).replace(tzinfo=None)
+        except ValueError:
+            return None
+
+    @staticmethod
+    def _url_title(url: str) -> str:
+        path = urlparse(url).path.strip("/")
+        slug = (path.rsplit("/", 1)[-1] if path else "").strip()
+        title = slug.replace("-", " ").replace("_", " ").strip()
+        return title[:180] or url
+
+    def _parse_sitemap_entries(self, xml_text: str, source: Source) -> tuple[list[Dict[str, Any]], list[str]]:
+        try:
+            root = ElementTree.fromstring(xml_text.encode("utf-8"))
+        except ElementTree.ParseError:
+            return [], []
+
+        def _local(tag: str) -> str:
+            return tag.rsplit("}", 1)[-1].lower()
+
+        def _first_descendant_text(node, name: str) -> str | None:
+            for child in node.iter():
+                if _local(child.tag) == name and child.text:
+                    return str(child.text).strip()
+            return None
+
+        entries: list[Dict[str, Any]] = []
+        nested_sitemaps: list[str] = []
+        if _local(root.tag) == "sitemapindex":
+            for sitemap in root:
+                if _local(sitemap.tag) != "sitemap":
+                    continue
+                loc = next((child.text for child in sitemap if _local(child.tag) == "loc"), None)
+                if loc and _helpers.same_site(source.url, loc):
+                    nested_sitemaps.append(str(loc).strip())
+            return [], nested_sitemaps
+
+        if _local(root.tag) != "urlset":
+            return [], []
+
+        for url_node in root:
+            if _local(url_node.tag) != "url":
+                continue
+            loc = next((child.text for child in url_node if _local(child.tag) == "loc"), None)
+            url = str(loc or "").strip()
+            if not url or not _helpers.same_site(source.url, url):
+                continue
+            if not _helpers.looks_like_article_url(source.url, url):
+                continue
+            lastmod = next((child.text for child in url_node if _local(child.tag) == "lastmod"), None)
+            publication_date = _first_descendant_text(url_node, "publication_date")
+            title = _first_descendant_text(url_node, "title") or self._url_title(url)
+            entries.append(
+                {
+                    "external_id": url,
+                    "title": title,
+                    "content": "",
+                    "url": url,
+                    "publish_time": self._parse_sitemap_time(publication_date or lastmod),
+                    "metadata": {
+                        "discovered_via": "sitemap",
+                        "publish_time_estimated": not (publication_date or lastmod),
+                        "publish_time_raw": publication_date or lastmod or "",
+                    },
+                }
+            )
+        return entries, []
+
+    async def _maybe_fetch_via_sitemap(
+        self, source: Source, cookies, browser_session
+    ) -> Optional[List[Dict[str, Any]]]:
+        metadata = source.metadata_ if isinstance(source.metadata_, dict) else {}
+        if metadata.get("sitemap_discovery") is False:
+            return None
+
+        sitemap_urls = self._default_sitemap_urls(source)
+        if not sitemap_urls:
+            return None
+
+        max_sitemaps = int(metadata.get("sitemap_max_sitemaps", 3) or 3)
+        max_links = int(metadata.get("sitemap_max_links", 30) or 30)
+        pending = list(sitemap_urls[:max_sitemaps])
+        seen_sitemaps: set[str] = set()
+        contents: list[Dict[str, Any]] = []
+        diagnostics = {
+            "sitemaps_checked": 0,
+            "nested_sitemaps": 0,
+            "kept": 0,
+            "truncated": 0,
+        }
+
+        while pending and len(seen_sitemaps) < max_sitemaps and len(contents) < max_links:
+            sitemap_url = pending.pop(0)
+            if sitemap_url in seen_sitemaps:
+                continue
+            seen_sitemaps.add(sitemap_url)
+            xml_text = await self._fetch_sitemap_xml(source, sitemap_url)
+            diagnostics["sitemaps_checked"] += 1
+            if not xml_text:
+                continue
+            parsed_entries, nested = self._parse_sitemap_entries(xml_text, source)
+            diagnostics["nested_sitemaps"] += len(nested)
+            for nested_url in nested:
+                if nested_url not in seen_sitemaps and len(pending) + len(seen_sitemaps) < max_sitemaps:
+                    pending.append(nested_url)
+            for item in parsed_entries:
+                if len(contents) >= max_links:
+                    diagnostics["truncated"] += 1
+                    break
+                contents.append(item)
+
+        diagnostics["kept"] = len(contents)
+        if not contents and not metadata.get("sitemap_urls"):
+            return None
+
+        diag_meta = dict(metadata)
+        diag_meta["sitemap_diagnostics"] = diagnostics
+        source.metadata_ = diag_meta
+        if not contents:
+            return []
+        return await self._maybe_hydrate_public_listing_contents(
+            source, contents, cookies, browser_session
+        )
+
     async def _maybe_fetch_via_discovery(
         self, source: Source, cookies, browser_session
     ) -> Optional[List[Dict[str, Any]]]:
-        """Run controlled listing-page discovery when the source opts in.
+        """Run controlled listing-page discovery before generic static fetch.
 
-        Returns ``None`` when discovery is not configured (so the caller falls
-        back to its normal static/Playwright path); otherwise returns the
-        hydrated content list (possibly empty) and stamps explainable
-        diagnostics into ``source.metadata_['discovery_diagnostics']``.
+        Explicit per-source discovery treats an empty result as final. The
+        conservative default discovery records diagnostics but falls through
+        to static fetch when it finds nothing.
         """
-        from app.domains.fetch.discovery import filter_candidates, parse_discovery_rules
+        from app.domains.fetch.discovery import (
+            expand_listing_urls,
+            filter_candidates,
+            record_discovery_diagnostics,
+            resolve_discovery_rules,
+        )
 
-        rules = parse_discovery_rules(source.metadata_ or {})
+        rules = resolve_discovery_rules(source.url, source.metadata_ or {})
         if rules is None or not rules.enabled:
             return None
 
-        self.logger.info("Listing discovery enabled for %s (%d listing urls)", source.url, len(rules.listing_urls))
+        listing_page_urls = expand_listing_urls(rules)
+        self.logger.info(
+            "Listing discovery enabled for %s (%d listing urls, %d pages)",
+            source.url,
+            len(rules.listing_urls),
+            len(listing_page_urls),
+        )
 
         # Build a per-source selector override so the HTML parser honours the
         # discovery-specific selectors without mutating the real source.
@@ -1032,19 +1400,24 @@ class WebsiteCollector(BaseCollector):
         }
 
         raw_candidates: List[Dict[str, Any]] = []
-        for listing_url in rules.listing_urls:
+        listing_pages_fetched = 0
+        for listing_url in listing_page_urls:
             html = await self._fetch_listing_html(source, listing_url)
             if not html:
                 continue
+            listing_pages_fetched += 1
             listing_source = _helpers.source_with_url(source, listing_url)
             if selector_overrides:
                 listing_source.metadata_ = {**(source.metadata_ or {}), **selector_overrides}
             raw_candidates.extend(self._parse_html(html, listing_source))
 
         kept, diagnostics = filter_candidates(raw_candidates, rules, source.url)
-        diag_meta = dict(source.metadata_ or {})
-        diag_meta["discovery_diagnostics"] = diagnostics
-        source.metadata_ = diag_meta
+        diagnostics["listing_urls_configured"] = len(rules.listing_urls)
+        diagnostics["listing_pages_total"] = len(listing_page_urls)
+        diagnostics["listing_pages_fetched"] = listing_pages_fetched
+        diagnostics["listing_pages_failed"] = len(listing_page_urls) - listing_pages_fetched
+        diagnostics["pagination_max_pages"] = rules.pagination_max_pages
+        diagnostics = record_discovery_diagnostics(source, diagnostics)
         self.logger.info("Listing discovery for %s: %s", source.url, diagnostics)
 
         contents: List[Dict[str, Any]] = [
@@ -1063,6 +1436,8 @@ class WebsiteCollector(BaseCollector):
             for article in kept
         ]
         if not contents:
+            if rules.fallback_to_static_on_empty:
+                return None
             return []
         return await self._maybe_hydrate_public_listing_contents(
             source, contents, cookies, browser_session
@@ -1103,8 +1478,10 @@ class WebsiteCollector(BaseCollector):
             return self._parse_html(html, source)
 
         except (aiohttp.ClientError, TimeoutError, ValueError) as exc:
+            from app.domains.fetch.failures import FetchFailureError, classify_exception
+
             self.logger.error(f"Error fetching static website: {exc}")
-            return []
+            raise FetchFailureError(classify_exception(exc)) from exc
 
     async def _fetch_with_playwright(
         self,

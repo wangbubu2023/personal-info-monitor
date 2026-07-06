@@ -219,11 +219,8 @@ interfaces/
 ```
 domains/contracts/
 ├── __init__.py
-├── atoms.py        AtomBundle / AtomReader Protocol
-├── enrich.py       EnrichRequest / Result
-├── fetch.py        FetchBatch（抓取产物 schema）
-├── ingest.py       IngestResult / NormalizedContent
-└── sources.py      SourceSnapshot / SourceScheduleHint
+├── atoms.py                 AtomReader Protocol
+└── content_quality.py       fetch/ingest 共用的 fulltext status 常量
 ```
 
 **1. `domains/sources/` 信源**
@@ -234,9 +231,12 @@ sources/
 ├── source_types.py         信源类型枚举与展示名（旧 app/data/source_types.py 已删）
 ├── scheduling.py           effective_due_interval_minutes 等调度规则；
 │                           取代旧 monitor_service / fetch_tasks 内联逻辑
+├── monitoring.py           Source status / pause / resume
 ├── status.py               信源状态机（healthy / degraded / inactive）
-└── probe/                  probe 策略目前仍住在 services/probe_strategies/
-    └── __init__.py         （此目录是未来 probe 整包迁入的占位）
+└── probe/                  信源探测服务 + 策略注册表
+    ├── __init__.py
+    ├── service.py          ProbeService（HTTP /probe 调用）
+    └── strategies/         rss / website / x / youtube / podcast 探测策略
 ```
 
 **2. `domains/fetch/` 抓取**
@@ -244,8 +244,6 @@ sources/
 ```
 fetch/
 ├── __init__.py
-├── orchestrator.py         fetch_source_async 入口：拿 collector、读 schedule、
-│                           调 retry、回写状态。tasks/fetch_tasks 调它
 ├── collectors/             所有 collector 的 canonical home
 │   ├── __init__.py         get_collector(source_type) 工厂
 │   ├── base.py             BaseCollector 抽象 + 共享 helpers
@@ -258,6 +256,8 @@ fetch/
 │   ├── x_twitter.py        XCollector：graphql → rsshub → nitter → api 多策略回退
 │   ├── x_twitter_text.py   纯文本/URL 工具
 │   └── x_twitter_formatters.py  X 数据格式化
+├── collector_stage.py      CollectorStage：auth runtime + collector fan-out + warning 汇总
+├── coordinator.py          run_fetch_pipeline：串接 CollectorStage → ingest build/storage/finish
 └── auth/                   抓取所需的 cookies / 凭据 / 浏览器登录
     ├── __init__.py
     ├── browser.py          Playwright 登录捕获、storage_state 保存
@@ -271,8 +271,9 @@ fetch/
 ```
 ingest/
 ├── __init__.py
-├── build_content.py        FetchBatch → 原始 Content ORM 对象数组
+├── build_content.py        collector raw dict → 原始 Content ORM 对象数组
 ├── normalizer.py           URL / 标题 / 时区 / 时间字段规范化
+├── publish_time.py         publish_time 解析 / website 估算发布时间回填
 ├── dedupe.py               按 URL+title+content_hash 去重
 ├── extractor.py            正文抽取 wrapper（trafilatura / readability）
 ├── quality.py              质量过滤：垃圾内容 / 重复 / 过短
@@ -294,6 +295,7 @@ ingest/
 ```
 enrich/
 ├── __init__.py             领域 docstring（Phase 4 全部子模块说明）
+├── digest.py               日报 / 周报生成（services/digest_service.py 仅 shim）
 ├── content/                摘要 / 翻译触发与人工再处理
 │   ├── __init__.py
 │   └── reprocess.py        ContentProcessor.reprocess_content 的实际实现
@@ -441,21 +443,22 @@ collectors/                      shim → domains.fetch.collectors（7 个文件
   website_parser.py, x_twitter.  Phase 7 audit 已删 podcast/website_helpers/
   py, x_twitter_text.py,         x_twitter_formatters 三个无 caller 的）
   youtube.py
-processors/                      shim → platform.llm + domains.ingest.extractor
-  content_processor.py           仍是 enrich 入口（reprocess / summarize / translate
-                                 的 orchestrator），其余 4 个是 shim
+processors/                      兼容入口；生产代码应直连 platform.llm/domains.ingest
+  content_processor.py           shim → domains.ingest.content_processor
+                                 （轻量 raw → Content、关键词、cookie full-text）
+                                 其余 4 个也是 shim
   extractor.py / keyword_matcher.py / summarizer.py / translator.py
 services/                        历史"服务层"，已重组但保留下列活模块：
-  api_config_credentials.py      凭据保护服务（HTTP 层调用）
+  api_config_credentials.py      兼容 shim；canonical 在 platform/auth/api_config_credentials.py
   content_quality_service.py     调用 domains.ingest.quality
-  digest_service.py              日报 CRUD 服务（routes 调用）
-  doctor_service.py              系统自检 + 告警判定
+  digest_service.py              兼容 shim；canonical 在 domains/enrich/digest.py
+  doctor_service.py              兼容 shim；canonical 在 domains/system/doctor.py
   keyword_rules.py               关键词规则缓存（routes 调用）
-  monitor_service.py             调用 domains.sources.scheduling
-  probe_service.py               + probe_strategies/  探测服务（HTTP /probe）
-  ranking_service.py             排序服务（dashboard 调用）
+  monitor_service.py             兼容 shim；canonical 在 domains/sources/monitoring.py
+  probe_service.py               兼容 shim；canonical 在 domains/sources/probe/service.py
+  ranking_service.py             兼容 shim；canonical 排序逻辑在 domains/score/ranking.py
   scoring_service.py             打分服务（dashboard 调用）
-  probe_strategies/
+  probe_strategies/              兼容 shim；canonical 在 domains/sources/probe/strategies/
     base.py                      ProbeStrategy Protocol（契约）
     registry.py                  策略注册表 {source_type → Strategy}
     result.py                    ProbeResult dataclass
@@ -468,14 +471,13 @@ tasks/                           调度入口 + 几个仍直接被 scheduler 调
   task_queue.py                  shim → platform.workers.queue
   maintenance.py                 维护 job（清理、归档）
   maintenance_tasks.py           markdown 导出、备份、清理等定时
-pipeline/                        历史"流水线协调器"，coordinator 仍是 fetch 主链
-  coordinator.py                 run_fetch_pipeline：从 source 到 finish_content
-  collector_stage.py             collector 阶段封装
-  normalizer_stage.py            normalize 阶段封装
-  storage_stage.py               storage 阶段封装
-  dedupe.py / utils.py           工具
-                                 ↑ 这一层会在未来 Phase 8+ 进一步拆并；
-                                 当前用作 fetch + ingest 之间的胶水
+pipeline/                        历史兼容层；生产代码应直连 domains/platform/utils
+  coordinator.py                 shim → domains.fetch.coordinator
+  collector_stage.py             shim → domains.fetch.collector_stage
+  normalizer_stage.py            shim → domains.ingest.normalizer
+  storage_stage.py               shim → domains.ingest.storage
+  dedupe.py                      shim → domains.ingest.dedupe
+  utils.py                       兼容 facade；生产代码应直连 domains/utils
 utils/                           保留下列活的小工具：
   browser.py                     shim → platform.browser.pool
   cookies.py                     cookies 解码工具（独立于 platform）
@@ -698,13 +700,9 @@ docs/
 ├── API_GUIDE.md                API 端点 + 限速 + Prometheus rate() 样例
 ├── LOCAL_RUN.md                本地运行的全部细节（含 LaunchAgent / launchctl）
 ├── VPS_DEPLOY.md               VPS 部署（systemd / Nginx / 反向代理 / TLS）
+├── V1_4_RELEASE_HANDOFF.md     v1.4 发布、人工评测、VPS 实测交接
 ├── CONTRIBUTING.md             贡献指南（branch / commit / PR / 测试要求）
 ├── TROUBLESHOOTING.md          故障排查手册
-├── ADR-001-local-monolith.md         为什么选本地单体（vs 微服务）
-├── ADR-002-digest-time-field.md      日报时间字段语义
-├── ADR-003-auth-credentials.md       凭据加密与生命周期
-├── ADR-004-feature-flags.md          Feature flags 单一事实源策略
-├── ADR-005-module-boundaries.md      五领域 + 三层边界（已落地）
 └── reviews/                          历史审计 / 设计文档归档
     ├── README.md                     归档说明 + 最新事实在哪儿看
     └── archive/

@@ -96,7 +96,7 @@ async def refetch_x_tweet_from_source(
     if source is not None:
         from importlib import import_module
 
-        XCollector = import_module("app.collectors.x_twitter").XCollector
+        XCollector = import_module("app.domains.fetch.collectors.x_twitter").XCollector
         collector = XCollector()
         items = await collector._fetch_via_graphql(username, source)
         for item in items:

@@ -15,12 +15,11 @@ here:
   from ``app/pipeline`` in Phase 3 step 2 (legacy ``app.pipeline.*`` paths
   remain as re-export shims so existing test ``patch`` targets keep
   resolving through Phase 7).
-* ``domains/ingest/build_content.py`` — moved from
-  the legacy ``app.pipeline.coordinator._build_raw_content_objects`` in Phase 3 step 3
-  (the LLM-free portion of the raw → ORM Content build). The legacy private
-  name still resolves through ``app.pipeline.coordinator`` as a re-export
-  shim; wrapper-internal helpers (``strip_html_tags`` etc.) live next to the
-  implementation and must be patched at
+* ``domains/ingest/build_content.py`` — owns ``build_raw_content_objects``
+  (the LLM-free portion of the raw → ORM Content build). The fetch
+  coordinator imports this canonical helper directly; wrapper-internal
+  helpers (``strip_html_tags`` etc.) live next to the implementation and
+  must be patched at
   ``app.domains.ingest.build_content.<name>``.
 * ``domains/ingest/extractor.py`` — moved from
   ``app.processors.extractor`` in Phase 3 step 4 (HTML → main-content
@@ -35,9 +34,14 @@ here:
   ``app.services.keyword_rules`` in Phase 3 step 4
   (normalize/dedupe/identity-key + bilingual ``build_equivalent_terms``).
   Legacy path is a re-export shim. The bilingual expansion calls
-  ``processors.translator.Translator`` lazily inside the function — at
+  ``app.platform.llm.translator.Translator`` lazily inside the function — at
   module-import time the ingest domain stays free of any LLM dependency,
   keeping the Phase 3 boundary check clean.
+* ``domains/ingest/content_processor.py`` — moved from the legacy
+  processors package in Phase 7 (raw item → ORM Content conversion,
+  keyword matching, cookie full-text fallback). The legacy processors
+  path is now a re-export shim; manual reprocess compatibility still
+  resolves summariser/translator handles lazily.
 * ``domains/ingest/search.py`` — moved from
   ``app.utils.fts_query`` in Phase 3 step 6 (SQLite FTS5 MATCH
   expression builder; sanitizes user input before hitting the

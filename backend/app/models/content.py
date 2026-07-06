@@ -3,7 +3,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Index, JSON, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Index, JSON, String, Text, UniqueConstraint
 from sqlalchemy.orm import relationship
 
 from app.utils.datetime import utcnow_naive
@@ -23,6 +23,9 @@ class Content(Base):
         Index('ix_content_fetched_at', 'fetched_at'),
         Index('ix_content_updated_at', 'updated_at'),
         Index('ix_content_original_url', 'original_url'),
+        Index('ix_content_article_score', 'article_score'),
+        Index('ix_content_selection_status', 'selection_status'),
+        Index('ix_content_lane', 'lane'),
     )
 
     id = Column(UUIDString, primary_key=True, default=lambda: str(uuid.uuid4()))
@@ -58,6 +61,12 @@ class Content(Base):
 
     # Keyword matching results
     keyword_matches = Column(JSON, default=list)
+
+    # Score/search projection columns (metadata keeps full scoring payload)
+    article_score = Column(Float, nullable=True)
+    final_score = Column(Float, nullable=True)
+    selection_status = Column(String(32), nullable=True)
+    lane = Column(String(64), nullable=True)
 
     # Additional metadata
     metadata_ = Column("metadata", JSON, default=dict)

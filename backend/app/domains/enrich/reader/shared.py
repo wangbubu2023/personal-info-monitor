@@ -29,7 +29,7 @@ import html
 import re
 from typing import Optional
 
-from app.processors.translator import Translator
+from app.platform.llm.translator import Translator
 from app.utils.text import normalize_article_text
 from app.utils.x_twitter_text import is_x_status_page_url as _is_x_status_page_url
 from app.utils.x_twitter_text import looks_like_x_interstitial_text as _looks_like_x_interstitial_text

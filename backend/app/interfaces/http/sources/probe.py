@@ -59,7 +59,7 @@ class ProbeResponse(BaseModel):
 @router.post("/probe", response_model=ProbeResponse)
 async def probe_url(req: ProbeRequest):
     _ensure_supported_source_type(req.type)
-    from app.domains.sources.probe import ProbeService
+    from app.domains.sources.probe.service import ProbeService
     result = await ProbeService().probe(req.url, req.type)
     return ProbeResponse(status=result.status, strategy=result.strategy,
                           rss_url=result.rss_url, message=result.message,

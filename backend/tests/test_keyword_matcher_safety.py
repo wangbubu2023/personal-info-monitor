@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.processors.keyword_matcher import KeywordMatcher
+from app.domains.ingest.keywords.matcher import KeywordMatcher
 
 
 @pytest.mark.parametrize(

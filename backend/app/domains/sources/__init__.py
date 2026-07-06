@@ -4,6 +4,7 @@ Phase 1 of the refactor migrates the following into this package:
 
 * ``domains/sources/scheduling.py`` — owns the formerly-private ``_effective_due_interval_minutes``
   (currently private in ``app.tasks.fetch_tasks``) and ``list_due_source_ids``
+* ``domains/sources/monitoring.py`` — read-side source monitoring status
 * ``domains/sources/policy.py``, ``serialization.py``, ``probe.py``,
   ``status.py`` — split from ``app/api/sources/_helpers.py`` (404 lines)
 * ``domains/sources/probe/`` — ``ProbeService`` + already-extracted strategies

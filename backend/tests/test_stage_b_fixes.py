@@ -1,8 +1,8 @@
 import pytest
 
-from app.processors.summarizer import Summarizer
-from app.processors.translator import Translator
-from app.services.probe_service import ProbeService
+from app.platform.llm.summarizer import Summarizer
+from app.platform.llm.translator import Translator
+from app.domains.sources.probe.service import ProbeService
 from app.utils.cookies import cookie_domains_for_host
 
 

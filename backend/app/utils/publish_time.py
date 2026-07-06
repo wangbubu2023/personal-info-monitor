@@ -35,6 +35,13 @@ def parse_publish_time_text(text: str) -> Optional[datetime]:
     cleaned = re.sub(r"\s+", " ", text).strip()
     now_utc = utcnow_naive()
 
+    # ISO datetimes from JSON-LD/meta tags, e.g. 2026-07-02T01:02:03Z.
+    if "T" in cleaned:
+        try:
+            return _to_utc_naive(datetime.fromisoformat(cleaned.replace("Z", "+00:00")))
+        except ValueError:
+            pass
+
     # Relative Chinese time, e.g. "2小时前", "30分钟前", "1天前"
     relative_patterns = [
         (r"(\d+)\s*分钟前", "minutes"),

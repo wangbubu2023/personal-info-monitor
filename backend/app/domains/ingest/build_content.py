@@ -1,15 +1,15 @@
 """Build lightweight Content ORM objects from raw collector dicts.
 
-This is the LLM-free portion of the fetch → ingest path: turn the
-``RawItem``-shaped dicts returned by collectors into persisted-ready
+This is the LLM-free portion of the fetch -> ingest path: turn the
+raw dicts returned by collectors into persisted-ready
 :class:`Content` rows by doing local text cleanup, summary truncation,
 publish-time normalisation, quality-metadata stamping, and the
-``get_website_content_reject_reason`` low-signal filter.
+``get_non_article_format_reject_reason`` hard non-article format filter.
 
 This module is the new home for :func:`build_raw_content_objects` (Phase 3
-step 3 of the module-refactor blueprint). Phase 7 retired the legacy
-``app.pipeline.coordinator._build_raw_content_objects`` re-export — callers
-and tests must address the canonical name here.
+step 3 of the module-refactor blueprint). The fetch coordinator imports this
+canonical helper directly; callers and tests should address the canonical
+name here.
 
 Internal symbols (``strip_html_tags``, ``truncate_content``,
 ``utcnow_naive``, ``merge_content_quality_metadata``, ``logger``) are
@@ -23,13 +23,14 @@ from typing import List
 from app.models import Content, Source
 from app.utils.datetime import utcnow_naive
 from app.utils.logger import get_logger
+from app.utils.structured_article import extract_article_page_metadata
 from app.utils.text import strip_html_tags, truncate_content, normalize_article_text
+from app.utils.url import canonical_article_external_id
 from app.domains.ingest.quality import (
     get_non_article_format_reject_reason,
-    get_website_content_reject_reason,
-    is_rss_sourced_item,
 )
 from app.domains.ingest.quality_metadata import merge_content_quality_metadata
+from app.domains.ingest.title_identity import merge_title_identity_metadata
 
 logger = get_logger(__name__)
 
@@ -46,7 +47,7 @@ async def build_raw_content_objects(
     """
     # Local import keeps lxml / readability off the import graph until the
     # first real fetch hits a Content build.
-    from app.processors.extractor import ContentExtractor
+    from app.domains.ingest.extractor import ContentExtractor
 
     extractor = ContentExtractor()
     source_type = source.type.value if hasattr(source.type, "value") else str(source.type)
@@ -69,24 +70,26 @@ async def build_raw_content_objects(
             if main_text_clean:
                 summary = main_text_clean[:500] + ("…" if len(main_text_clean) > 500 else "")
 
-            publish_time = raw.get("publish_time")
+            metadata = raw.get("metadata")
+            if not isinstance(metadata, dict):
+                metadata = {}
+            metadata, publish_time = _merge_article_page_metadata(raw, metadata)
             if isinstance(publish_time, str):
                 try:
                     publish_time = datetime.fromisoformat(publish_time.replace("Z", "+00:00"))
                 except Exception:
                     publish_time = None
-
-            metadata = raw.get("metadata")
-            if not isinstance(metadata, dict):
-                metadata = {}
             metadata = merge_content_quality_metadata(
                 metadata,
                 title=title,
                 full_content=main_text_clean,
                 summary=summary,
             )
+            metadata = merge_title_identity_metadata(metadata, title=title)
 
-            # Slideshows/galleries: always drop. Thin RSS teasers: keep (separate gate).
+            # Slideshows/galleries/roundups are format-level non-articles and
+            # can be dropped before storage. Low-signal business gating belongs
+            # to finish-time fetch acceptance so incomplete rows are observable.
             reject_reason = get_non_article_format_reject_reason(
                 source.url,
                 {
@@ -96,19 +99,9 @@ async def build_raw_content_objects(
                     "html": html or "",
                 },
             )
-            if not reject_reason and not is_rss_sourced_item(raw):
-                reject_reason = get_website_content_reject_reason(
-                    source.url,
-                    {
-                        "title": title,
-                        "content": main_text_clean,
-                        "url": raw.get("url", ""),
-                        "html": html or "",
-                    },
-                )
             if reject_reason:
                 logger.info(
-                    f"Pipeline: Dropping low-signal content from {source.url} ({reject_reason}): {title}"
+                    f"Pipeline: Dropping non-article content from {source.url} ({reject_reason}): {title}"
                 )
                 continue
 
@@ -133,6 +126,33 @@ async def build_raw_content_objects(
     return results, build_failed
 
 
+def _merge_article_page_metadata(raw: dict, metadata: dict) -> tuple[dict, object]:
+    """Merge canonical/publish metadata extracted from already-fetched HTML."""
+    html = raw.get("html")
+    publish_time = raw.get("publish_time")
+    if not html:
+        return metadata, publish_time
+
+    extracted = extract_article_page_metadata(str(html), page_url=str(raw.get("url") or ""))
+    if not extracted:
+        return metadata, publish_time
+
+    merged = dict(metadata)
+    canonical_url = extracted.get("canonical_url")
+    if canonical_url:
+        merged["canonical_url"] = canonical_url
+        merged["canonical_external_id"] = canonical_article_external_id(str(canonical_url))
+
+    published_time = extracted.get("published_time")
+    if published_time and (not publish_time or merged.get("publish_time_estimated")):
+        publish_time = published_time
+        merged["publish_time_estimated"] = False
+        merged["publish_time_source"] = "html_metadata"
+        if extracted.get("published_time_raw"):
+            merged["publish_time_raw"] = str(extracted["published_time_raw"])
+    return merged, publish_time
+
+
 __all__ = [
     "build_raw_content_objects",
     "logger",
@@ -140,5 +160,5 @@ __all__ = [
     "truncate_content",
     "utcnow_naive",
     "merge_content_quality_metadata",
-    "get_website_content_reject_reason",
+    "get_non_article_format_reject_reason",
 ]

@@ -194,7 +194,9 @@ const SourceEditorModal: React.FC<SourceEditorModalProps> = ({
                           <>
                             <SectionNote style={{ marginBottom: 12 }}>
                               X 登录态建议统一在「登录与凭据 → 为 X 登录」里用浏览器会话创建；
-                              登录一次后所有 X 监测源自动复用，无需手填 Cookie。
+                              登录一次后所有 X 监测源自动复用，无需手填 Cookie。抓取顺序默认是
+                              GraphQL/Cookie → RSSHub → Nitter；X 官方 API 属付费/配额 fallback，
+                              只有在信源 metadata 显式开启时才会使用。
                             </SectionNote>
                             {usesLegacyDedicated ? (
                               <SectionNote tone="caution" style={{ marginBottom: 12 }}>

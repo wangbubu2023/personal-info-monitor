@@ -13,6 +13,7 @@ from sqlalchemy.orm import selectinload
 
 from app.interfaces.http.content_shared import _serialize_content
 from app.database import get_async_db
+from app.domains.score.feedback import content_feedback_snapshot, record_score_feedback_event
 from app.models import Content, Source
 from app.schemas.content import ContentListResponse, ContentResponse, ContentUpdate, FavoriteBody
 from app.utils.logger import get_logger
@@ -163,6 +164,7 @@ async def update_content(
 
     payload = content_data.model_dump(exclude_unset=True)
     explicit_user_edited = "is_user_edited" in payload
+    interaction_events: list[tuple[str, bool]] = []
     text_fields = ("title", "summary", "full_content")
     content_text_changed = False
 
@@ -173,11 +175,26 @@ async def update_content(
         setattr(content, field, value)
         if field in text_fields and value != old:
             content_text_changed = True
+        if field == "read_status":
+            interaction_events.append(("open", bool(value)))
+        elif field == "favorited":
+            interaction_events.append(("star", bool(value)))
+        elif field == "archived":
+            interaction_events.append(("hide", bool(value)))
 
     if explicit_user_edited:
         content.is_user_edited = bool(payload["is_user_edited"])
     elif content_text_changed:
         content.is_user_edited = True
+
+    for event_type, event_value in interaction_events:
+        await record_score_feedback_event(
+            db,
+            content,
+            event_type=event_type,
+            event_value=event_value,
+            snapshot=content_feedback_snapshot(content, {"source": "contents.patch"}),
+        )
 
     await db.commit()
     await db.refresh(content)
@@ -223,6 +240,13 @@ async def mark_as_read(
         raise HTTPException(status_code=404, detail="Content not found")
 
     content.read_status = True
+    await record_score_feedback_event(
+        db,
+        content,
+        event_type="open",
+        event_value=True,
+        snapshot=content_feedback_snapshot(content, {"source": "contents.read"}),
+    )
     await db.commit()
     return {"message": "Content marked as read"}
 
@@ -239,6 +263,13 @@ async def set_favorite(
         raise HTTPException(status_code=404, detail="Content not found")
 
     content.favorited = body.favorited
+    await record_score_feedback_event(
+        db,
+        content,
+        event_type="star",
+        event_value=body.favorited,
+        snapshot=content_feedback_snapshot(content, {"source": "contents.favorite"}),
+    )
     await db.commit()
     return {"message": "Favorite updated", "favorited": content.favorited}
 

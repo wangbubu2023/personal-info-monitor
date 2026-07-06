@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from importlib import import_module
 from urllib.parse import urlparse
 
 import aiohttp
@@ -11,12 +12,12 @@ from app.domains.fetch.collectors.x_twitter_text import (
     build_title_from_text,
     extract_article_urls,
     is_x_status_page_url,
+    looks_like_x_interstitial_text,
     title_looks_like_url,
 )
 from app.models import Content, Source
-from app.processors.extractor import ContentExtractor
 from app.utils.structured_article import extract_structured_article
-from app.platform.security.ssrf import fetch_public_http_text
+from app.platform.security.ssrf import check_before_fetch, fetch_public_http_text
 from app.utils.http import permissive_session_kwargs
 from app.utils.datetime import utcnow_naive
 from app.utils.logger import get_logger
@@ -26,6 +27,17 @@ from app.domains.fetch.collectors.bpc_strategies import get_spoofed_headers
 logger = get_logger(__name__)
 
 _MIN_ARTICLE_BODY_CHARS = 280
+ContentExtractor = None
+
+
+async def _extract_article_text(html_text: str, final_url: str) -> str:
+    structured = extract_structured_article(html_text, min_chars=120)
+    if structured:
+        return structured.text
+    extractor_cls = ContentExtractor
+    if extractor_cls is None:
+        extractor_cls = import_module("app.domains.ingest.extractor").ContentExtractor
+    return await extractor_cls().extract(html_text, final_url)
 
 
 async def fetch_public_article_body(original_url: str, metadata: dict | None = None) -> tuple[str, str]:
@@ -71,12 +83,75 @@ async def fetch_public_article_body(original_url: str, metadata: dict | None = N
     if len(html_text) < 500:
         return "", ""
 
-    structured = extract_structured_article(html_text, min_chars=120)
-    extracted = structured.text if structured else await ContentExtractor().extract(html_text, final_url)
+    extracted = await _extract_article_text(html_text, final_url)
     clean_text = normalize_article_text(extracted or "").strip()
     if len(clean_text) < 120:
         return "", ""
     return clean_text, final_url
+
+
+async def fetch_cookie_article_body(
+    original_url: str,
+    cookies: dict[str, str],
+    *,
+    source_url: str = "",
+) -> str:
+    """Best-effort first-party article fetch with source auth cookies."""
+    url = (original_url or "").strip()
+    if not url or not cookies or is_x_status_page_url(url):
+        return ""
+
+    parsed = urlparse(url)
+    if parsed.scheme not in {"http", "https"}:
+        return ""
+    if (parsed.hostname or "").lower() == "news.google.com" and "/rss/articles/" in (parsed.path or ""):
+        return ""
+
+    try:
+        await check_before_fetch(url, source_url=source_url, cookies=cookies)
+    except ValueError as exc:
+        logger.debug("Cookie article fetch blocked for %s: %s", url, exc)
+        return ""
+
+    headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        ),
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.5",
+    }
+    try:
+        cookie_jar = aiohttp.CookieJar()
+        url_obj = aiohttp.client_reqrep.URL(url)
+        for key, value in cookies.items():
+            if not key or value is None:
+                continue
+            cookie_jar.update_cookies({str(key): str(value)}, response_url=url_obj)
+
+        async with aiohttp.ClientSession(
+            **permissive_session_kwargs(cookie_jar=cookie_jar)
+        ) as session:
+            response = await fetch_public_http_text(
+                session,
+                url,
+                source_url=source_url,
+                validation_cookies=cookies,
+                headers=headers,
+                timeout=aiohttp.ClientTimeout(total=20),
+            )
+            if response.status != 200:
+                return ""
+            html_text = response.text
+
+        extracted = await _extract_article_text(html_text, url)
+        clean_text = normalize_article_text(extracted or "").strip()
+        if looks_like_x_interstitial_text(clean_text):
+            return ""
+        return clean_text if len(clean_text) >= 120 else ""
+    except (aiohttp.ClientError, TimeoutError, UnicodeDecodeError, ValueError, OSError) as exc:
+        logger.debug("Cookie article fetch failed for %s: %s", url, exc)
+        return ""
 
 
 def website_body_needs_public_fetch(content: Content, metadata: dict) -> bool:
@@ -166,7 +241,7 @@ async def fetch_x_article_fulltext(article_url: str, cookies: dict[str, str]) ->
     try:
         import importlib
 
-        x_collector_module = importlib.import_module("app.collectors.x_twitter")
+        x_collector_module = importlib.import_module("app.domains.fetch.collectors.x_twitter")
         collector = x_collector_module.XCollector()
         text_map = await collector._fetch_article_texts_with_playwright(
             [article_url], cookies=cookies or {}

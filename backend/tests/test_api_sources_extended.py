@@ -226,7 +226,7 @@ async def test_probe_url_endpoint(client: AsyncClient):
     mock_result.message = ""
     mock_result.sample_count = 5
 
-    with patch("app.services.probe_service.ProbeService") as MockPS:
+    with patch("app.domains.sources.probe.service.ProbeService") as MockPS:
         instance = MockPS.return_value
         instance.probe = AsyncMock(return_value=mock_result)
         resp = await client.post("/api/sources/probe",

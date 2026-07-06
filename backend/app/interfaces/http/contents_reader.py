@@ -28,6 +28,7 @@ from app.interfaces.http.content_shared import (
     _split_for_reader,
 )
 from app.database import get_async_db
+from app.domains.score.feedback import content_feedback_snapshot, record_score_feedback_event
 from app.models import Content
 from app.domains.enrich.reader import body_loader as _body_loader
 from app.domains.enrich.reader import streaming as _streaming
@@ -68,8 +69,8 @@ _emit_reader_translation = _streaming.emit_reader_translation
 # ``patch("app.api.contents_reader.aiohttp.ClientSession", ...)``).
 # Keeping these imports at module scope preserves patch targets even
 # though the routes themselves no longer reference them directly.
-from app.processors.extractor import ContentExtractor  # noqa: E402,F401 - patch target
-from app.processors.translator import Translator  # noqa: E402,F401 - patch target
+from app.domains.ingest.extractor import ContentExtractor  # noqa: E402,F401 - patch target
+from app.platform.llm.translator import Translator  # noqa: E402,F401 - patch target
 from app.tasks.fetch_auth_helpers import try_parse_auth_credentials  # noqa: E402,F401 - patch target
 from app.utils.cookies import normalize_cookie_dict  # noqa: E402,F401 - patch target
 from app.platform.security.ssrf import assert_public_http_target  # noqa: E402,F401 - patch target
@@ -130,6 +131,17 @@ async def get_reader_payload(
         publish_time=content.publish_time,
         body_zh=display_body,
     )
+    await record_score_feedback_event(
+        db,
+        content,
+        event_type="open",
+        event_value=True,
+        snapshot=content_feedback_snapshot(
+            content,
+            {"source": "contents.reader", "translate": translate},
+        ),
+    )
+    await db.commit()
 
     return {
         "id": str(content.id),

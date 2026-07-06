@@ -13,6 +13,7 @@ import {
   ExternalLink,
   Gauge,
   Star,
+  Layers3,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import dayjs from 'dayjs';
@@ -335,6 +336,59 @@ const DigestView: React.FC = () => {
                       );
                     })}
                   </div>
+
+                  {digestDetail.event_items?.length ? (
+                    <section className="mt-10 border-t border-[rgba(88,100,118,0.12)] pt-7">
+                      <div className="mb-4 flex items-center justify-between gap-3">
+                        <h3 className="inline-flex items-center gap-2 text-[15px] font-semibold tracking-tight text-[#293859]">
+                          <Layers3 size={15} className="shrink-0 text-[#8C866A]" strokeWidth={1.75} />
+                          事件卡片
+                        </h3>
+                        <span className="text-[12px] font-medium text-[#5f6f82]">{digestDetail.event_items.length} 条</span>
+                      </div>
+                      <div className="grid gap-3 md:grid-cols-2">
+                        {digestDetail.event_items.map((eventItem) => (
+                          <article
+                            key={eventItem.content_id}
+                            className="border border-[rgba(88,100,118,0.12)] bg-[#fbfdff] p-4"
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <Link
+                                to={buildReaderPath(eventItem.content_id)}
+                                className="min-w-0 text-[14px] font-semibold leading-snug text-[#293859] transition-colors hover:text-[#49A8C9]"
+                              >
+                                {eventItem.title}
+                              </Link>
+                              {typeof eventItem.score === 'number' ? (
+                                <span className="shrink-0 rounded-full border border-[#49A8C9]/18 bg-[#49A8C9]/8 px-2 py-0.5 text-[11px] font-semibold text-[#3a8da9]">
+                                  {Math.round(eventItem.score)}分
+                                </span>
+                              ) : null}
+                            </div>
+                            <div className="mt-2 flex flex-wrap items-center gap-2 text-[12px] text-[#5f6f82]">
+                              <span className="font-medium text-[#7a7358]">{eventItem.source_name}</span>
+                              {eventItem.lane ? <span>{eventItem.lane}</span> : null}
+                              {eventItem.duplicate_group_id ? <span>同组</span> : null}
+                            </div>
+                            {eventItem.summary ? (
+                              <p className="mt-2 line-clamp-3 text-[12px] leading-relaxed text-[#5f6f82]">
+                                {eventItem.summary}
+                              </p>
+                            ) : null}
+                            <a
+                              href={eventItem.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="mt-3 inline-flex items-center gap-1 text-[12px] font-medium text-[#8a96a5] hover:text-[#49A8C9]"
+                            >
+                              原文
+                              <ExternalLink size={11} className="shrink-0" strokeWidth={1.75} />
+                            </a>
+                          </article>
+                        ))}
+                      </div>
+                    </section>
+                  ) : null}
 
                   {digestDetail.items?.length ? (
                     <section className="mt-10 border-t border-[rgba(88,100,118,0.12)] pt-7">

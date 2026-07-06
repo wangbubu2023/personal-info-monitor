@@ -63,7 +63,7 @@ async def probe_source_task(session, semaphore, source_info, cutoff_date, thresh
                                     probe_last_publish = datetime(*dt_tuple[:6])
                                     if effective_last_publish is None or probe_last_publish > effective_last_publish:
                                         effective_last_publish = probe_last_publish
-                except Exception:
+                except Exception:  # noqa: BLE001 - probe RSS date lookup is best-effort
                     pass
 
             c["effective_last_publish"] = effective_last_publish
@@ -117,7 +117,7 @@ async def probe_source_task(session, semaphore, source_info, cutoff_date, thresh
             c["reason"] = reason
             return c
 
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 - one failed probe should not abort analysis
             c["suggestion"] = "KEEP (Probe Exception)"
             c["reason"] = f"程序探测异常: {str(e)[:50]}"
             return c

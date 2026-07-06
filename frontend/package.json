@@ -1,6 +1,6 @@
 {
   "name": "personal-info-monitor-frontend",
-  "version": "1.3.1",
+  "version": "1.4.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -8,6 +8,8 @@
     "build": "tsc && vite build",
     "test": "vitest run",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
+    "generate:api-types": "openapi-typescript src/types/openapi.json -o src/types/api.ts",
+    "check:api-types": "npm run generate:api-types && git diff --exit-code -- src/types/api.ts",
     "preview": "vite preview",
     "e2e": "playwright test",
     "e2e:ui": "playwright test --ui",
@@ -48,6 +50,7 @@
     "eslint-plugin-react-hooks": "^4.6.0",
     "eslint-plugin-react-refresh": "^0.4.5",
     "jsdom": "^29.0.1",
+    "openapi-typescript": "^7.13.0",
     "postcss": "^8.5.6",
     "tailwindcss": "^4.1.18",
     "typescript": "^5.3.3",

@@ -14,10 +14,16 @@ from app.domains.fetch.retry_policy import (
     record_fetch_failure,
     record_fetch_failure_from,
 )
+from app.interfaces.http.sources._helpers import _fetch_health_fields
+from app.models.source import Source, SourceType
 
 
 def _source(metadata=None):
     return SimpleNamespace(metadata_=dict(metadata or {}))
+
+
+def _orm_source(metadata=None):
+    return Source(name="Example", type=SourceType.RSS, url="https://example.com/feed", metadata_=dict(metadata or {}))
 
 
 def test_cooldown_seconds_for_code():
@@ -95,3 +101,66 @@ def test_record_preserves_other_metadata():
     src = _source({"rss_url": "https://x/feed"})
     record_fetch_failure(src, code="http_429")
     assert src.metadata_["rss_url"] == "https://x/feed"
+
+
+def test_record_failure_mirrors_structured_source_columns():
+    src = _orm_source()
+    now = datetime(2026, 6, 1, 12, 0, 0)
+
+    record = record_fetch_failure(
+        src,
+        code="http_429",
+        severity="warning",
+        http_status=429,
+        retryable=True,
+        now=now,
+    )
+
+    cooldown_until = now + timedelta(seconds=900)
+    assert record["cooldown_until"] == cooldown_until.isoformat() + "Z"
+    assert src.fetch_failure_code == "http_429"
+    assert src.fetch_failure_status == 429
+    assert src.fetch_failure_severity == "warning"
+    assert src.fetch_failure_retryable is True
+    assert src.fetch_failure_consecutive == 1
+    assert src.fetch_failure_updated_at == now
+    assert src.fetch_cooldown_until == cooldown_until
+    assert get_cooldown_until(src) == cooldown_until
+
+    clear_fetch_failure(src)
+
+    assert src.fetch_failure_code is None
+    assert src.fetch_failure_status is None
+    assert src.fetch_failure_severity is None
+    assert src.fetch_failure_retryable is None
+    assert src.fetch_failure_consecutive == 0
+    assert src.fetch_failure_updated_at is None
+    assert src.fetch_cooldown_until is None
+    assert "fetch_failure" not in src.metadata_
+
+
+def test_structured_failure_state_is_authoritative_over_stale_metadata():
+    structured_deadline = datetime(2026, 6, 1, 13, 0, 0)
+    stale_deadline = datetime(2026, 6, 1, 15, 0, 0)
+    src = _orm_source(
+        {
+            "fetch_failure": {
+                "last_code": "http_403",
+                "cooldown_until": stale_deadline.isoformat() + "Z",
+            }
+        }
+    )
+    src.fetch_failure_code = "http_429"
+    src.fetch_failure_status = 429
+    src.fetch_failure_severity = "warning"
+    src.fetch_failure_retryable = True
+    src.fetch_failure_consecutive = 2
+    src.fetch_failure_updated_at = datetime(2026, 6, 1, 12, 30, 0)
+    src.fetch_cooldown_until = structured_deadline
+
+    assert get_cooldown_until(src) == structured_deadline
+    assert is_in_cooldown(src, now=datetime(2026, 6, 1, 12, 45, 0)) is True
+
+    fields = _fetch_health_fields(src, src.metadata_)
+    assert fields["last_failure_code"] == "http_429"
+    assert fields["cooldown_until"] == structured_deadline.isoformat() + "Z"

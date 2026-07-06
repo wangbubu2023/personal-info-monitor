@@ -72,6 +72,25 @@ class TestBaseCollectorAuth:
         result = collector.get_runtime_browser_session(source)
         assert result == {}
 
+    def test_get_runtime_browser_session_from_imported_storage_state(self, tmp_path):
+        storage_state = tmp_path / "storage_state.json"
+        storage_state.write_text("{}", encoding="utf-8")
+        collector = ConcreteCollector()
+        source = MagicMock()
+        source._runtime_auth = {"credentials": {"storage_state_path": str(storage_state)}}
+        result = collector.get_runtime_browser_session(source)
+        assert result["storage_state_path"] == str(storage_state)
+        assert result["storage_state_exists"] is True
+        assert result["auth_ready"] is True
+
+    def test_get_runtime_browser_session_from_missing_imported_storage_state(self, tmp_path):
+        collector = ConcreteCollector()
+        source = MagicMock()
+        source._runtime_auth = {"credentials": {"storage_state_path": str(tmp_path / "missing.json")}}
+        result = collector.get_runtime_browser_session(source)
+        assert result["auth_ready"] is False
+        assert "storage_state" in result["auth_warning"]
+
 
 class TestShouldFetch:
 

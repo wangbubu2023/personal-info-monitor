@@ -32,8 +32,25 @@ jobs:
       - name: Lint (ruff — BLE001/B904/B023/F821/F811 gate)
         run: cd backend && uv run ruff check app
 
+      - name: Verify BLE001 debt budget
+        run: cd backend && uv run python scripts/check_ble001_budget.py
+
+      - name: Verify dead-code budget (vulture)
+        # --with keeps vulture out of uv.lock: it's a gate-only tool and the
+        # budget model (only-decrease) tolerates minor version drift.
+        run: cd backend && uv run --with 'vulture>=2.11' python scripts/check_dead_code.py
+
+      - name: Verify OpenAPI schema is current
+        run: |
+          cd backend
+          uv run python scripts/export_openapi.py ../frontend/src/types/openapi.json
+          git diff --exit-code -- ../frontend/src/types/openapi.json
+
       - name: Verify domain import boundaries
         run: cd backend && uv run python scripts/check_domain_imports.py --phase=7
+
+      - name: Verify offline eval regression gate
+        run: cd backend && uv run python scripts/check_offline_eval_regression.py
 
       - name: Verify requirements.txt matches pyproject.toml
         run: |
@@ -63,6 +80,9 @@ jobs:
 
       - name: Lint
         run: cd frontend && npm run lint
+
+      - name: Verify generated API types
+        run: cd frontend && npm run check:api-types
 
       - name: Test
         run: cd frontend && npm test

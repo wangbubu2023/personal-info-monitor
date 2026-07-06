@@ -104,6 +104,8 @@ class Settings(BaseSettings):
     ai_processing_enabled: bool = False
     #: Rough daily cap on *estimated* LLM tokens (prompt + max output). ``0`` = unlimited.
     ai_daily_token_budget: int = 0
+    #: Rough monthly cap on *estimated* LLM tokens (prompt + max output). ``0`` = unlimited.
+    ai_monthly_token_budget: int = 0
     cloud_fallback_enabled: bool = True
 
     # Phase 4 step 8 introduces the ``ENRICH_*`` family — per-feature toggles for the
@@ -122,6 +124,9 @@ class Settings(BaseSettings):
 
     #: After this many consecutive fetch *errors*, auto-disable the source (``0`` = never).
     fetch_error_disable_threshold: int = 12
+    #: Hard-disable password-based browser auto-login. Recommended for VPS/headless deployments
+    #: that should only consume imported cookies/browser sessions.
+    pim_disable_password_auto_login: bool = False
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)

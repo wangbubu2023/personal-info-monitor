@@ -73,6 +73,46 @@ def test_assess_fetch_acceptance_accepts_summary_only_website():
     assert reason == "ok"
 
 
+def test_assess_fetch_acceptance_accepts_regulator_title_only_notice():
+    content = _content(
+        content_type="rss",
+        title="SEC Charges Public Company With Misleading AI Disclosures",
+        summary="",
+        full_content="",
+    )
+    metadata = {"fulltext_status": "title_only"}
+
+    accepted, reason = assess_fetch_acceptance(
+        content,
+        metadata,
+        source_metadata={"authority_type": "regulator"},
+    )
+
+    assert accepted is True
+    assert reason == "ok_relaxed_title_only_regulator"
+
+
+def test_assess_fetch_acceptance_rejects_non_authority_title_only_notice():
+    content = _content(content_type="rss", title="Brief item", summary="", full_content="")
+    metadata = {"fulltext_status": "title_only"}
+
+    accepted, reason = assess_fetch_acceptance(content, metadata)
+
+    assert accepted is False
+    assert reason == "missing_summary"
+
+
+def test_stamp_fetch_acceptance_marks_title_only_relaxation():
+    meta = stamp_fetch_acceptance_metadata(
+        {"fulltext_status": "title_only"},
+        accepted=True,
+        reason="ok_relaxed_title_only_regulator",
+    )
+
+    assert meta["fetch_acceptance"] == "accepted"
+    assert meta["acceptance_relaxed"] == "regulator"
+
+
 def test_assess_fetch_acceptance_uses_longer_original_summary():
     content = _content(
         summary="OpenAI is reportedly preparing to file for an IPO with major banks involved.",

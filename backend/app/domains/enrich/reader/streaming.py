@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.domains.enrich.reader.shared import _is_valid_translation_text, _split_for_reader
 from app.models import Content
 from app.config import get_settings
-from app.processors.translator import Translator
+from app.platform.llm.translator import Translator
 from app.domains.enrich.reader.translation import (
     persist_reader_translation_cache,
     translate_reader_paragraph,

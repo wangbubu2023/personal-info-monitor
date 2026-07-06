@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import pytest
+from sqlalchemy import select
 
 from app.models import Content, Source
+from app.models.score_feedback import ScoreFeedback
 from app.models.source import SourceType
 from app.utils.datetime import utcnow_naive
 
@@ -59,6 +61,15 @@ async def test_contents_crud_endpoints(client, db_session):
 
     mark_read = await client.post(f"/api/contents/{content.id}/read")
     assert mark_read.status_code == 200
+
+    feedback_rows = (
+        await db_session.execute(
+            select(ScoreFeedback).where(ScoreFeedback.content_id == str(content.id))
+        )
+    ).scalars().all()
+    event_types = [row.event_type for row in feedback_rows]
+    assert "star" in event_types
+    assert "open" in event_types
 
     delete_response = await client.delete(f"/api/contents/{content.id}")
     assert delete_response.status_code == 200

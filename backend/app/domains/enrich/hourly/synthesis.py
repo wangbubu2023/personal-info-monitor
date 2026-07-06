@@ -18,7 +18,7 @@ import re
 from typing import List, Optional
 
 from app.ai.provider import ModelProviderClient
-from app.processors.translator import Translator
+from app.platform.llm.translator import Translator
 from app.domains.enrich.hourly.text_utils import (
     ORDERED_DIGEST_CATEGORIES,
     classify_digest_category,
