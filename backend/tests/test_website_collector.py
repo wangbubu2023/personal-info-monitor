@@ -290,6 +290,44 @@ class TestCookieItemsForHosts:
         items = WebsiteCollector._cookie_items_for_hosts({"example.com"}, {"": "val", "b": "val"})
         assert all(item["name"] != "" for item in items)
 
+    def test_secure_prefixed_cookie_sets_secure_flag(self):
+        items = WebsiteCollector._cookie_items_for_hosts({"economist.com"}, {"__Secure-has-sid": "abc"})
+        assert items
+        assert all(item["name"] == "__Secure-has-sid" for item in items)
+        assert all(item["secure"] is True for item in items)
+        assert all("domain" in item for item in items)
+
+    def test_host_prefixed_cookie_uses_url_without_domain(self):
+        items = WebsiteCollector._cookie_items_for_hosts({"example.com"}, {"__Host-session": "abc"})
+        assert items == [
+            {
+                "name": "__Host-session",
+                "value": "abc",
+                "url": "https://example.com/",
+                "path": "/",
+                "secure": True,
+            }
+        ]
+
+    def test_full_cookie_attrs_are_preserved(self):
+        items = WebsiteCollector._cookie_items_for_hosts(
+            {"example.com"},
+            {
+                "session": {
+                    "value": "abc",
+                    "secure": True,
+                    "httpOnly": True,
+                    "sameSite": "Lax",
+                    "expires": 4102444800,
+                }
+            },
+        )
+        assert items
+        assert all(item["secure"] is True for item in items)
+        assert all(item["httpOnly"] is True for item in items)
+        assert all(item["sameSite"] == "Lax" for item in items)
+        assert all(item["expires"] == 4102444800 for item in items)
+
 
 # ---------------------------------------------------------------------------
 # _build_runtime_cookie_list

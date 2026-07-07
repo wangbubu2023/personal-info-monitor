@@ -17,7 +17,7 @@ imported at module top so they can be monkeypatched by tests through
 ``app.domains.ingest.build_content.<name>`` if needed.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List
 
 from app.models import Content, Source
@@ -77,6 +77,8 @@ async def build_raw_content_objects(
             if isinstance(publish_time, str):
                 try:
                     publish_time = datetime.fromisoformat(publish_time.replace("Z", "+00:00"))
+                    if publish_time.tzinfo is not None:
+                        publish_time = publish_time.astimezone(timezone.utc).replace(tzinfo=None)
                 except Exception:
                     publish_time = None
             metadata = merge_content_quality_metadata(

@@ -7,7 +7,7 @@ can be exercised directly via fixtures.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 from urllib.parse import urljoin
 
@@ -21,6 +21,13 @@ from app.utils.publish_time import parse_publish_time_text
 from .website_helpers import looks_like_article_url
 
 logger = get_logger(__name__)
+
+
+def _parse_datetime_attr(value: str) -> datetime:
+    parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    if parsed.tzinfo is not None:
+        return parsed.astimezone(timezone.utc).replace(tzinfo=None)
+    return parsed
 
 
 def parse_article_candidate(
@@ -53,7 +60,7 @@ def parse_article_candidate(
         datetime_attr = date_elem.get("datetime")
         if datetime_attr:
             try:
-                publish_time = datetime.fromisoformat(datetime_attr.replace("Z", "+00:00")).replace(tzinfo=None)
+                publish_time = _parse_datetime_attr(str(datetime_attr))
             except ValueError as exc:
                 publish_time = parse_publish_time_text(str(datetime_attr))
                 if not publish_time:

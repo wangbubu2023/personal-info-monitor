@@ -28,7 +28,7 @@ from __future__ import annotations
 
 import asyncio
 import os
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from datetime import timedelta
 from typing import Awaitable, Callable
 
@@ -43,6 +43,46 @@ logger = get_logger(__name__)
 
 FetchHandler = Callable[[str, bool], Awaitable[None]]
 ProcessHandler = Callable[[str, "str | None"], Awaitable[None]]
+
+
+async def _watch_event_loop_lag(threshold_seconds: float, interval_seconds: float) -> None:
+    """Log when the running event loop is stalled longer than the threshold."""
+    loop = asyncio.get_running_loop()
+    interval = max(0.1, interval_seconds)
+    expected = loop.time() + interval
+    while True:
+        await asyncio.sleep(interval)
+        now = loop.time()
+        lag = now - expected
+        if lag >= threshold_seconds:
+            logger.warning(
+                "Event loop lag %.3fs exceeded %.3fs threshold; check sync work in async paths",
+                lag,
+                threshold_seconds,
+            )
+        expected = now + interval
+
+
+def _configure_event_loop_observability(settings) -> asyncio.Task | None:
+    threshold = float(getattr(settings, "event_loop_slow_callback_seconds", 0) or 0)
+    if threshold <= 0:
+        return None
+
+    loop = asyncio.get_running_loop()
+    loop.slow_callback_duration = threshold
+    if not loop.get_debug():
+        loop.set_debug(True)
+
+    interval = float(getattr(settings, "event_loop_lag_probe_interval_seconds", 1.0) or 1.0)
+    logger.info(
+        "Event loop slow-callback monitoring enabled (threshold=%.3fs, lag_probe_interval=%.3fs)",
+        threshold,
+        max(0.1, interval),
+    )
+    return loop.create_task(
+        _watch_event_loop_lag(threshold, interval),
+        name="pim-event-loop-lag-watch",
+    )
 
 
 async def enqueue_unfinished_content_on_startup(
@@ -116,6 +156,7 @@ def build_lifespan(
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         settings = get_settings()
+        event_loop_lag_task = None
 
         if os.environ.get("PIM_SKIP_MIGRATIONS", "").strip().lower() in {"1", "true", "yes", "on"}:
             logger.warning(
@@ -195,26 +236,33 @@ def build_lifespan(
                 "you fully understand the risk."
             )
 
-        yield
-
-        scheduler.shutdown(wait=False)
-        await task_queue.stop_workers()
-
-        # Release the shared Playwright/Chromium process before dropping the DB
-        # engine so we never leak a Chromium child on graceful reload.
         try:
-            from app.platform.browser.pool import shutdown_browser_pool
+            event_loop_lag_task = _configure_event_loop_observability(settings)
+            yield
+        finally:
+            if event_loop_lag_task is not None:
+                event_loop_lag_task.cancel()
+                with suppress(asyncio.CancelledError):
+                    await event_loop_lag_task
 
-            await shutdown_browser_pool()
-        except Exception as exc:  # noqa: BLE001 - shutdown best-effort
-            logger.warning("Browser pool shutdown raised: %s", exc)
+            scheduler.shutdown(wait=False)
+            await task_queue.stop_workers()
 
-        try:
-            if persist_metrics() is not None:
-                logger.info("Persisted metrics counters to data_dir checkpoint")
-        except Exception as exc:  # noqa: BLE001 - observability best-effort
-            logger.warning("Failed to persist metrics checkpoint: %s", exc)
+            # Release the shared Playwright/Chromium process before dropping the DB
+            # engine so we never leak a Chromium child on graceful reload.
+            try:
+                from app.platform.browser.pool import shutdown_browser_pool
 
-        await async_engine.dispose()
+                await shutdown_browser_pool()
+            except Exception as exc:  # noqa: BLE001 - shutdown best-effort
+                logger.warning("Browser pool shutdown raised: %s", exc)
+
+            try:
+                if persist_metrics() is not None:
+                    logger.info("Persisted metrics counters to data_dir checkpoint")
+            except Exception as exc:  # noqa: BLE001 - observability best-effort
+                logger.warning("Failed to persist metrics checkpoint: %s", exc)
+
+            await async_engine.dispose()
 
     return lifespan

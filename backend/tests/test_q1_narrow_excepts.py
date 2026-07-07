@@ -28,6 +28,11 @@ class TestParseIsoPublishTime:
         assert dt.tzinfo is None
         assert dt.year == 2026 and dt.hour == 10
 
+    def test_offset_suffix_normalises_to_naive_utc(self):
+        dt = _parse_iso_publish_time("2026-07-07T11:39:44+08:00")
+        assert dt == datetime(2026, 7, 7, 3, 39, 44)
+        assert dt.tzinfo is None
+
     def test_malformed_returns_none_without_swallowing_other_errors(self):
         assert _parse_iso_publish_time("not-a-date") is None
 

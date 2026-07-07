@@ -6,9 +6,11 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 
+from app.platform.config.settings import get_settings
 from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
+settings = get_settings()
 
 # Cron/interval jobs: avoid APScheduler defaults (misfire_grace_time=1s, coalesce=False)
 # which silently skip runs after a >1s stall; keep overlapping runs from piling up.
@@ -18,7 +20,7 @@ _JOB_DEFAULTS = {
     "max_instances": 1,
 }
 
-scheduler = AsyncIOScheduler(timezone="Asia/Shanghai")
+scheduler = AsyncIOScheduler(timezone=settings.scheduler_timezone)
 
 # Hold strong references to fire-and-forget startup tasks. asyncio only keeps a
 # weak reference to tasks created via ``loop.create_task``; without this the GC

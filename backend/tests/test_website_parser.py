@@ -72,6 +72,20 @@ class TestParseArticleCandidate:
         assert result["publish_time"] == datetime(2026, 4, 20, 10, 0)
         assert result["metadata"]["publish_time_estimated"] is False
 
+    def test_datetime_attr_with_offset_normalises_to_utc_naive(self):
+        html = """
+        <article>
+            <h2>Breaking news about timezone handling</h2>
+            <a href='/world/timezone-2026-07-07'>timezone story</a>
+            <p>Some body sentence that reads naturally and is long enough.</p>
+            <time datetime='2026-07-07T11:39:44+08:00'>Jul 7</time>
+        </article>
+        """
+        result = self._parse(html, _make_source("https://example.com/news"))
+        assert result is not None
+        assert result["publish_time"] == datetime(2026, 7, 7, 3, 39, 44)
+        assert result["publish_time"].tzinfo is None
+
     def test_date_text_captured_in_metadata(self):
         html = """
         <article>

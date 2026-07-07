@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 from app.utils.logger import get_logger
 
@@ -12,7 +12,10 @@ logger = get_logger(__name__)
 def _parse_iso_publish_time(value: str) -> datetime | None:
     """Parse an ISO-8601 publish time string, tolerating the ``Z`` UTC suffix."""
     try:
-        return datetime.fromisoformat(value.replace("Z", "+00:00")).replace(tzinfo=None)
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        if parsed.tzinfo is not None:
+            return parsed.astimezone(timezone.utc).replace(tzinfo=None)
+        return parsed
     except ValueError as exc:
         logger.debug("Discarding malformed ISO publish_time %r: %s", value, exc)
         return None

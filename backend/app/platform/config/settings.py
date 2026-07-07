@@ -55,6 +55,9 @@ class Settings(BaseSettings):
 
     # Fetch concurrency
     fetch_concurrency: int = 20  # Max parallel fetches
+    scheduler_timezone: str = "Asia/Shanghai"
+    event_loop_slow_callback_seconds: float = 0.1
+    event_loop_lag_probe_interval_seconds: float = 1.0
 
     # OpenAI
     openai_api_key: Optional[str] = None

@@ -16,3 +16,7 @@ def test_hourly_digest_job_is_always_registered():
     assert "requeue_unfinished_content" in job_ids
 
     scheduler.remove_all_jobs()
+
+
+def test_scheduler_timezone_comes_from_settings_default():
+    assert str(scheduler.timezone) == "Asia/Shanghai"

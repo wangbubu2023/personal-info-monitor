@@ -233,25 +233,63 @@ def storage_state_path_for_playwright(browser_session: Optional[Dict[str, Any]])
     return str(p.resolve()) if p.is_file() else None
 
 
-def cookie_items_for_hosts(hosts: set[str], cookies: Dict[str, str]) -> List[Dict[str, str]]:
+def _playwright_cookie_attrs(raw_value: Any) -> tuple[str | None, Dict[str, Any]]:
+    if not isinstance(raw_value, dict):
+        return (str(raw_value), {}) if raw_value is not None else (None, {})
+
+    value = raw_value.get("value")
+    if value is None:
+        return None, {}
+
+    attrs: Dict[str, Any] = {}
+    for key in ("expires", "httpOnly", "path", "secure", "sameSite"):
+        if key in raw_value and raw_value[key] is not None:
+            attrs[key] = raw_value[key]
+    return str(value), attrs
+
+
+def _cookie_payload_for_domain(name: str, value: str, domain: str, attrs: Dict[str, Any]) -> Dict[str, Any]:
+    item: Dict[str, Any] = {
+        "name": name,
+        "value": value,
+        "domain": domain,
+        "path": str(attrs.get("path") or "/"),
+    }
+    item.update({k: v for k, v in attrs.items() if k in {"expires", "httpOnly", "secure", "sameSite"}})
+    if name.startswith("__Secure-"):
+        item["secure"] = True
+    return item
+
+
+def _host_cookie_payload(name: str, value: str, host: str, attrs: Dict[str, Any]) -> Dict[str, Any]:
+    item: Dict[str, Any] = {
+        "name": name,
+        "value": value,
+        "url": f"https://{host}/",
+        "path": "/",
+        "secure": True,
+    }
+    item.update({k: v for k, v in attrs.items() if k in {"expires", "httpOnly", "sameSite"}})
+    return item
+
+
+def cookie_items_for_hosts(hosts: set[str], cookies: Dict[str, Any]) -> List[Dict[str, Any]]:
     """Build Playwright cookie payloads for all candidate hosts."""
-    cookie_items: List[Dict[str, str]] = []
+    cookie_items: List[Dict[str, Any]] = []
     for host in hosts:
         for name, value in cookies.items():
-            if not name or value is None:
+            name = str(name or "")
+            cookie_value, attrs = _playwright_cookie_attrs(value)
+            if not name or cookie_value is None:
+                continue
+            if name.startswith("__Host-"):
+                cookie_items.append(_host_cookie_payload(name, cookie_value, host, attrs))
                 continue
             for domain in cookie_domains_for_host(host):
-                cookie_items.append(
-                    {
-                        "name": str(name),
-                        "value": str(value),
-                        "domain": domain,
-                        "path": "/",
-                    }
-                )
+                cookie_items.append(_cookie_payload_for_domain(name, cookie_value, domain, attrs))
     return cookie_items
 
 
-def build_runtime_cookie_list(source_url: str, cookies: Dict[str, str]) -> List[Dict[str, str]]:
+def build_runtime_cookie_list(source_url: str, cookies: Dict[str, Any]) -> List[Dict[str, Any]]:
     host = (urlparse(source_url).hostname or "").lower()
     return cookie_items_for_hosts({host} if host else set(), cookies)
