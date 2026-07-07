@@ -116,6 +116,10 @@ async def test_reader_payload_includes_source_id(client, db_session):
     payload = response.json()
     assert payload["source_id"] == str(source.id)
     assert payload["source_name"] == "36kr"
+    assert payload["blocks"][0] == {
+        "type": "paragraph",
+        "text": "This is a long enough body for reader testing.",
+    }
 
 
 @pytest.mark.asyncio

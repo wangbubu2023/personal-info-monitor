@@ -389,6 +389,7 @@ export const mockApi = async (page: Page) => {
         total_items: digestItems.length,
         categories: {
           websites: { count: 2, items: digestItems },
+          rss: { count: 0, items: [] },
           x_accounts: { count: 0, items: [] },
           youtube: { count: 0, items: [] },
           podcasts: { count: 0, items: [] },

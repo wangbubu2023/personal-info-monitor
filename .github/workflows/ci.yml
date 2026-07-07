@@ -60,7 +60,7 @@ jobs:
             || { echo "::error::requirements.txt is out of sync with pyproject.toml. Run 'uv lock && uv export --no-hashes --no-dev --no-emit-project --format requirements.txt -o requirements.txt' and commit."; exit 1; }
 
       - name: Run pytest with coverage
-        run: cd backend && ./.venv/bin/pytest -q --cov=app --cov-fail-under=60
+        run: cd backend && ./.venv/bin/pytest -q --cov=app --cov-fail-under=70
 
   frontend:
     name: Frontend Lint, Test & Audit
@@ -78,6 +78,9 @@ jobs:
       - name: Install dependencies
         run: cd frontend && npm ci
 
+      - name: Install Playwright browsers
+        run: cd frontend && npx playwright install --with-deps chromium
+
       - name: Lint
         run: cd frontend && npm run lint
 
@@ -86,6 +89,9 @@ jobs:
 
       - name: Test
         run: cd frontend && npm test
+
+      - name: E2E
+        run: cd frontend && npm run e2e
 
       - name: Audit production dependencies
         run: cd frontend && npm audit --omit=dev

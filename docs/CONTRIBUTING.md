@@ -27,7 +27,7 @@
 
 ## 测试矩阵
 
-在提交 PR 前，请确保以下四项全部通过：
+在提交 PR 前，请确保以下门禁全部通过：
 
 ### 1. 后端测试
 
@@ -36,7 +36,7 @@ cd backend
 ./.venv/bin/pytest -q
 ```
 
-覆盖率低于 60% 时 CI 会失败（`--cov-fail-under=60`）。
+覆盖率低于 70% 时 CI 会失败（`--cov-fail-under=70`）。
 
 ### 2. 前端测试
 
@@ -56,7 +56,21 @@ npm run lint
 
 使用 ESLint，`--max-warnings 0`，任何警告均视为错误。
 
-### 4. 前端依赖安全扫描
+### 4. 前端 E2E
+
+```bash
+cd frontend
+npm run e2e
+```
+
+使用 Playwright 运行 `frontend/e2e/specs` 下的端到端流程测试。首次运行如缺少浏览器，请先执行：
+
+```bash
+cd frontend
+npx playwright install chromium
+```
+
+### 5. 前端依赖安全扫描
 
 ```bash
 cd frontend
@@ -65,12 +79,34 @@ npm audit --omit=dev
 
 仅检查生产依赖，开发依赖漏洞不阻断。
 
+### 6. 后端工程纪律门禁
+
+CI 会额外执行以下后端检查，本地修改相关区域时也建议同步运行：
+
+```bash
+cd backend
+uv run ruff check app
+uv run python scripts/check_ble001_budget.py
+uv run --with 'vulture>=2.11' python scripts/check_dead_code.py
+uv run python scripts/export_openapi.py ../frontend/src/types/openapi.json
+git diff --exit-code -- ../frontend/src/types/openapi.json
+uv run python scripts/check_domain_imports.py --phase=7
+uv run python scripts/check_offline_eval_regression.py
+```
+
+- `BLE001`：禁止新增盲目吞异常的生产代码债务；预算由 `backend/scripts/ble001_budget.json` 控制，只允许下降或持平。
+- `dead-code`：Vulture 死代码预算由 `backend/scripts/dead_code_budget.json` 控制，新增未使用代码会阻断 CI。
+- `OpenAPI`：后端接口变更后必须重新导出并提交 `frontend/src/types/openapi.json`；前端还会用 `npm run check:api-types` 校验生成类型。
+- `domain boundary`：`scripts/check_domain_imports.py --phase=7` 会阻止跨层/跨域反向依赖，规则背景见 [`docs/MODULE_BOUNDARIES.md`](MODULE_BOUNDARIES.md)。
+
 ## 提交前检查清单
 
 - [ ] `cd backend && ./.venv/bin/pytest -q` 通过
 - [ ] `cd frontend && npm test` 通过
 - [ ] `cd frontend && npm run lint` 通过（零警告）
+- [ ] `cd frontend && npm run e2e` 通过
 - [ ] `cd frontend && npm audit --omit=dev` 无高危漏洞
+- [ ] 涉及后端接口、领域边界、异常处理或清理代码时，同步运行对应工程纪律门禁
 
 ## 分支命名规范
 
@@ -93,6 +129,8 @@ npm audit --omit=dev
 - [ ] 本地后端测试通过
 - [ ] 本地前端测试通过
 - [ ] Lint 通过
+- [ ] E2E 通过
+- [ ] 工程纪律门禁通过（如涉及后端接口、异常处理、死代码或领域边界）
 - [ ] 依赖安全扫描通过
 - [ ] 手动验证步骤（如适用）
 ```
@@ -103,8 +141,8 @@ npm audit --omit=dev
 
 | Job | 内容 |
 |-----|------|
-| `backend` | pytest + 覆盖率检查（≥60%） |
-| `frontend` | ESLint + Vitest + npm audit |
+| `backend` | ruff、BLE001 预算、dead-code 预算、OpenAPI、domain boundary、offline eval、requirements 同步、pytest + 覆盖率检查（≥70%） |
+| `frontend` | ESLint、OpenAPI 类型生成校验、Vitest、Playwright E2E、npm audit |
 | `security` | pip-audit 后端依赖安全扫描 |
 
 **PR 合并前所有 job 必须全绿。**

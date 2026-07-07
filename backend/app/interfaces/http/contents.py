@@ -2,6 +2,7 @@
 
 from app.interfaces.http.content_shared import (
     _build_clean_reader_html,
+    _build_reader_blocks,
     _clean_x_reader_body,
     _derive_title_from_body,
     _extract_x_article_url,
@@ -35,6 +36,7 @@ router.routes.extend(crud_router.routes)
 __all__ = [
     "MAX_CONTENTS_PAGE_SIZE",
     "_build_clean_reader_html",
+    "_build_reader_blocks",
     "_build_low_signal_cleanup_report",
     "_clean_x_reader_body",
     "_derive_title_from_body",

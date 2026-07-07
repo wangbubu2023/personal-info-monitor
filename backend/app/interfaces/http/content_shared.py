@@ -23,6 +23,7 @@ from __future__ import annotations
 
 from app.domains.enrich.reader.shared import (  # noqa: F401 — re-exported for backwards compatibility
     _build_clean_reader_html,
+    _build_reader_blocks,
     _clean_x_reader_body,
     _derive_title_from_body,
     _extract_x_article_url,
@@ -72,6 +73,7 @@ __all__ = [
     "_is_valid_translation_text",
     "_is_valid_title_translation",
     "_split_for_reader",
+    "_build_reader_blocks",
     "_derive_title_from_body",
     "_clean_x_reader_body",
     "_build_clean_reader_html",

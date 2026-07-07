@@ -15,6 +15,96 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useReader } from '../hooks/useReader';
 import SectionNote from '../components/ui/SectionNote';
 import PageLoading from '../components/common/PageLoading';
+import type { ReaderBlock } from '../services/contents';
+
+function safeHttpUrl(value?: string): string {
+  if (!value) return '';
+  try {
+    const url = new URL(value);
+    return ['http:', 'https:'].includes(url.protocol) ? url.toString() : '';
+  } catch {
+    return '';
+  }
+}
+
+function renderReaderBlock(block: ReaderBlock, index: number): React.ReactNode {
+  const key = `${block.type}-${index}`;
+  if (block.type === 'heading') {
+    const level = block.level || 2;
+    const HeadingTag = level <= 2 ? 'h2' : level === 3 ? 'h3' : 'h4';
+    const className = level <= 2
+      ? 'mb-5 mt-11 text-[24px] font-semibold leading-[1.35] text-[#293859]'
+      : 'mb-4 mt-9 text-[20px] font-semibold leading-[1.4] text-[#293859]';
+    return (
+      <HeadingTag key={key} className={className}>
+        {block.text}
+      </HeadingTag>
+    );
+  }
+
+  if (block.type === 'image') {
+    const src = safeHttpUrl(block.src);
+    if (!src) return null;
+    return (
+      <figure key={key} className="my-10 overflow-hidden rounded-lg border border-[rgba(88,100,118,0.14)] bg-white">
+        <img
+          src={src}
+          alt={block.alt || block.caption || ''}
+          loading="lazy"
+          className="h-auto max-h-[640px] w-full object-contain"
+        />
+        {block.caption ? (
+          <figcaption className="border-t border-[rgba(88,100,118,0.1)] px-4 py-3 text-[13px] leading-relaxed text-[#586476]">
+            {block.caption}
+          </figcaption>
+        ) : null}
+      </figure>
+    );
+  }
+
+  if (block.type === 'quote') {
+    return (
+      <blockquote
+        key={key}
+        className="my-9 border-l-4 border-[#49A8C9] bg-white/70 px-6 py-5 text-[17px] leading-[1.8] text-[#293859]"
+      >
+        {block.text}
+      </blockquote>
+    );
+  }
+
+  if (block.type === 'code') {
+    return (
+      <pre key={key} className="my-9 max-w-full overflow-x-auto rounded-lg bg-[#1f2937] p-5 text-[14px] leading-[1.7] text-[#f8fafc]">
+        <code>{block.text}</code>
+      </pre>
+    );
+  }
+
+  if (block.type === 'link') {
+    const href = safeHttpUrl(block.href);
+    if (!href) return null;
+    return (
+      <p key={key} className="mb-9">
+        <a
+          href={href}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex max-w-full items-center gap-2 break-all font-semibold text-[#0b6f91] underline-offset-4 hover:underline"
+        >
+          <ExternalLink size={16} className="shrink-0" />
+          {block.text || href}
+        </a>
+      </p>
+    );
+  }
+
+  return (
+    <p key={key} className="mb-9 whitespace-pre-wrap selection:bg-[#49A8C9]/25">
+      {block.text}
+    </p>
+  );
+}
 
 const ReaderPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -39,7 +129,7 @@ const ReaderPage: React.FC = () => {
       })
     : '/';
 
-  const { data, loading, error, displayTitle, displayParagraphs, stream } = useReader(id, translateRequested);
+  const { data, loading, error, displayTitle, displayBlocks, stream } = useReader(id, translateRequested);
 
   if (loading) return <PageLoading />;
 
@@ -76,14 +166,16 @@ const ReaderPage: React.FC = () => {
             </Link>
 
             <div className="flex flex-wrap items-center gap-2">
-              <a
-                href={data.original_url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-2 rounded-xl border border-[rgba(88,100,118,0.18)] bg-white/70 px-3.5 py-2 text-[12px] font-semibold text-[#586476] shadow-sm transition-all hover:border-[#49A8C9]/40 hover:bg-white hover:text-[#293859]"
-              >
-                <ExternalLink size={14} /> 原文链接
-              </a>
+              {safeHttpUrl(data.original_url) ? (
+                <a
+                  href={safeHttpUrl(data.original_url)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-2 rounded-xl border border-[rgba(88,100,118,0.18)] bg-white/70 px-3.5 py-2 text-[12px] font-semibold text-[#586476] shadow-sm transition-all hover:border-[#49A8C9]/40 hover:bg-white hover:text-[#293859]"
+                >
+                  <ExternalLink size={14} /> 原文链接
+                </a>
+              ) : null}
 
               <Link
                 to={readerTogglePath}
@@ -161,17 +253,10 @@ const ReaderPage: React.FC = () => {
           </header>
 
           <div className="max-w-none text-[18px] leading-[1.85] text-[#293859]" data-testid="reader-iframe">
-            {displayParagraphs.length === 0 ? (
+            {displayBlocks.length === 0 ? (
               <div className="py-16 text-center text-[15px] font-medium italic text-[#586476]">正文为空。</div>
             ) : (
-              displayParagraphs.map((paragraph, index) => (
-                <p
-                  key={`${index}-${paragraph.slice(0, 20)}`}
-                  className="mb-9 whitespace-pre-wrap selection:bg-[#49A8C9]/25"
-                >
-                  {paragraph}
-                </p>
-              ))
+              displayBlocks.map((block, index) => renderReaderBlock(block, index))
             )}
           </div>
         </article>

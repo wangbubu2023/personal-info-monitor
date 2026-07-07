@@ -23,6 +23,7 @@ from sqlalchemy.orm import selectinload
 
 from app.interfaces.http.content_shared import (
     _build_clean_reader_html,
+    _build_reader_blocks,
     _is_valid_translation_text,
     _reader_body_hash,
     _split_for_reader,
@@ -124,6 +125,8 @@ async def get_reader_payload(
 
     display_title = (content.translated_title or content.title or "").strip() if translate else (content.title or "").strip()
     display_body = body_zh if (translate and body_zh) else body_raw
+    block_source_body = display_body if translate else ((content.full_content or "").strip() or display_body)
+    blocks = _build_reader_blocks(block_source_body, metadata=metadata)
     clean_html = _build_clean_reader_html(
         title=display_title,
         source_name=content.source.name if content.source else "",
@@ -158,6 +161,7 @@ async def get_reader_payload(
         "has_translation_cache": has_translated_cache,
         "body_translation_source": body_translation_source,
         "body_translation_is_summary": False,
+        "blocks": blocks,
         "clean_html": clean_html,
     }
 

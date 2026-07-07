@@ -1,4 +1,5 @@
 from app.api.contents import (
+    _build_reader_blocks,
     _derive_title_from_body,
     _extract_x_article_url,
     _is_valid_title_translation,
@@ -57,3 +58,53 @@ def test_derive_title_from_body_skips_shortcut_noise():
         "3小时\n"
     )
     assert _derive_title_from_body(body) == "分享6个我觉得应该必装的Skills。"
+
+
+def test_build_reader_blocks_maps_safe_block_types():
+    text = "\n\n".join(
+        [
+            "# Section title",
+            "A normal paragraph.",
+            "> A quoted line\n> with continuation.",
+            "```python\nprint('hello')\n```",
+            "![Chart](https://example.com/chart.png \"Quarterly chart\")",
+            "[Source](https://example.com/story)",
+            "javascript:alert(1)",
+        ]
+    )
+
+    blocks = _build_reader_blocks(
+        text,
+        metadata={
+            "image": "https://example.com/lead.webp",
+            "media": [{"url": "https://example.com/ignored.mp4", "type": "video/mp4"}],
+        },
+    )
+
+    assert [block["type"] for block in blocks] == [
+        "image",
+        "heading",
+        "paragraph",
+        "quote",
+        "code",
+        "image",
+        "link",
+        "paragraph",
+    ]
+    assert blocks[0]["src"] == "https://example.com/lead.webp"
+    assert blocks[1]["level"] == 1
+    assert blocks[3]["text"] == "A quoted line\nwith continuation."
+    assert blocks[4]["language"] == "python"
+    assert blocks[5]["caption"] == "Quarterly chart"
+    assert blocks[6]["href"] == "https://example.com/story"
+
+
+def test_build_reader_blocks_filters_unsafe_urls():
+    blocks = _build_reader_blocks(
+        "![x](javascript:alert(1))\n\n[Bad](file:///etc/passwd)\n\nhttps://example.com/photo.jpg",
+        metadata={"image": "file:///tmp/secret.png", "images": ["https://example.com/safe.png"]},
+    )
+
+    assert [block["type"] for block in blocks] == ["image", "paragraph", "paragraph", "image"]
+    assert blocks[0]["src"] == "https://example.com/safe.png"
+    assert blocks[-1]["src"] == "https://example.com/photo.jpg"

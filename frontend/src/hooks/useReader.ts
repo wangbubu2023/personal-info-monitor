@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useMemo } from 'react';
 import { contentsApi } from '../services/contents';
-import type { ReaderPayload } from '../services/contents';
+import type { ReaderBlock, ReaderPayload } from '../services/contents';
 
 function splitForReader(text: string): string[] {
   const cleaned = (text || '').replace(/\r\n/g, '\n').trim();
@@ -12,6 +12,13 @@ function splitForReader(text: string): string[] {
     .split(/(?<=[。！？.!?])\s+/)
     .map((p) => p.replace(/<DOT>/g, '.').trim())
     .filter(Boolean);
+}
+
+function paragraphsToBlocks(paragraphs: string[]): ReaderBlock[] {
+  return paragraphs
+    .map((text) => text.trim())
+    .filter(Boolean)
+    .map<ReaderBlock>((text) => ({ type: 'paragraph', text }));
 }
 
 export const useReader = (id: string | undefined, translateRequested: boolean) => {
@@ -101,12 +108,23 @@ export const useReader = (id: string | undefined, translateRequested: boolean) =
     return splitForReader(data.body_zh || data.body_raw || '');
   }, [data, translateRequested, streamChunks, streamFinished, streamSucceeded]);
 
+  const displayBlocks = useMemo(() => {
+    if (!data) return [];
+    const mediaBlocks = (data.blocks || []).filter((block) => block.type === 'image');
+    if (!translateRequested || (streamFinished && !streamSucceeded)) {
+      return data.blocks?.length ? data.blocks : paragraphsToBlocks(splitForReader(data.body_raw || ''));
+    }
+    if (streamChunks.length > 0) return [...mediaBlocks, ...paragraphsToBlocks(streamChunks)];
+    return [...mediaBlocks, ...paragraphsToBlocks(splitForReader(data.body_zh || data.body_raw || ''))];
+  }, [data, translateRequested, streamChunks, streamFinished, streamSucceeded]);
+
   return {
     data,
     loading,
     error,
     displayTitle,
     displayParagraphs,
+    displayBlocks,
     stream: {
       chunks: streamChunks,
       total: streamTotal,

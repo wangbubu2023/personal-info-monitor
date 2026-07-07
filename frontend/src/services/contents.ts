@@ -24,6 +24,14 @@ export interface ContentUpdate {
   full_content?: string
 }
 
+export type ReaderBlock =
+  | { type: 'paragraph'; text: string }
+  | { type: 'heading'; text: string; level?: 1 | 2 | 3 | 4 }
+  | { type: 'image'; src: string; alt?: string; caption?: string }
+  | { type: 'quote'; text: string }
+  | { type: 'code'; text: string; language?: string }
+  | { type: 'link'; text: string; href: string }
+
 export interface ReaderPayload {
   id: string
   source_id: string
@@ -39,6 +47,7 @@ export interface ReaderPayload {
   has_translation_cache?: boolean
   body_translation_source?: string
   body_translation_is_summary?: boolean
+  blocks?: ReaderBlock[]
   clean_html: string
 }
 
