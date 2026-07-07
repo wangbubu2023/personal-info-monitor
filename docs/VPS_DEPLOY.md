@@ -11,9 +11,6 @@
 
 - `http://127.0.0.1:8000`
 
-v1.4.0 发布后的人工评测、offline eval history 与 VPS/X/付费墙实测交接，见
-[`V1_4_RELEASE_HANDOFF.md`](V1_4_RELEASE_HANDOFF.md)。
-
 ## 前置要求
 
 - Python 3.11+

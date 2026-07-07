@@ -2,12 +2,11 @@
 
 > 适用版本：master 当前 HEAD（post-Phase-7 audit 之后），后端约 270 个
 > Python 模块、约 80 个测试文件；前端约 100 个 TS/TSX 文件；CLI 7 个模块；
-> 文档 16 篇活档 + reviews 归档。具体数量随重构变动，以仓库实际为准
+> 文档保持为当前仍使用的运维、架构、用户和 Agent 指南。具体数量随重构变动，以仓库实际为准
 > （例如 `find backend/app -name '*.py' | wc -l`）。
 >
 > 配套阅读：[`ARCHITECTURE.md`](./ARCHITECTURE.md)（架构总览）、
 > [`MODULE_BOUNDARIES.md`](./MODULE_BOUNDARIES.md)（边界一页纸）。
-> 重构实施历史见 [`reviews/archive/MODULE_REFACTOR_PLAN.md`](./reviews/archive/MODULE_REFACTOR_PLAN.md)。
 
 ---
 
@@ -700,49 +699,12 @@ docs/
 ├── API_GUIDE.md                API 端点 + 限速 + Prometheus rate() 样例
 ├── LOCAL_RUN.md                本地运行的全部细节（含 LaunchAgent / launchctl）
 ├── VPS_DEPLOY.md               VPS 部署（systemd / Nginx / 反向代理 / TLS）
-├── V1_4_RELEASE_HANDOFF.md     v1.4 发布、人工评测、VPS 实测交接
 ├── CONTRIBUTING.md             贡献指南（branch / commit / PR / 测试要求）
-├── TROUBLESHOOTING.md          故障排查手册
-└── reviews/                          历史审计 / 设计文档归档
-    ├── README.md                     归档说明 + 最新事实在哪儿看
-    └── archive/
-        ├── MODULE_REFACTOR_PLAN.md       Phase 0–7 完整实施记录 +
-        │                                 旧路径 → 新路径映射 +
-        │                                 仍保留的 shim 清单
-        ├── CLI_SPEC.md                   ./pim 与 pimctl 早期设计规划
-        │                                 （Phase 1+2 已落地；Phase 3
-        │                                 MCP 兼容尚未实施）
-        ├── audit-fix-plan.md             2026-04 第三版审计修复计划
-        ├── AI_DECOUPLING_REFACTOR_PLAN.md  AI 解耦第一版计划
-        ├── pim_aihot_upgrade_plan_2026-05-07.md
-        │                                 AIHOT 借鉴升级计划（atoms / 3 小时报已落地）
-        ├── audit-2026-05-02/             2026-05-02 第四版代码审计 11 件套
-        │   ├── _audit-plan.md
-        │   ├── 00-summary.md
-        │   ├── 01-architecture.md
-        │   ├── 02-security.md
-        │   ├── 03-pipeline.md
-        │   ├── 04-ai-processing.md
-        │   ├── 05-api-design.md
-        │   ├── 06-database.md
-        │   ├── 07-scheduler.md
-        │   ├── 08-testing.md
-        │   ├── 09-frontend.md
-        │   ├── 10-cli-ops.md
-        │   └── 11-deps-standards.md
-        ├── superpowers-plans/            2026-04 并行实施计划（按 Stream）
-        │   ├── 2026-04-01-audit-fixes.md
-        │   ├── 2026-04-01-stream1-frontend.md
-        │   ├── 2026-04-01-stream2-backend.md
-        │   ├── 2026-04-01-stream3-ci-docs.md
-        │   └── 2026-04-01-stream4-tauri-observability.md
-        └── superpowers-specs/
-            └── 2026-04-01-phase2-3-design.md   Phase 2/3 设计文档
+└── TROUBLESHOOTING.md          故障排查手册
 ```
 
-> `docs/` 顶层只保留**当前仍活的运维 / 架构 / 用户/Agent / 决策**文档；
-> 已完成的实施计划（如 `MODULE_REFACTOR_PLAN.md`）与早期设计规划
-> （如 `CLI_SPEC.md`）统一归档到 `reviews/archive/`，避免和最新事实混淆。
+> `docs/` 顶层只保留**当前仍活的运维 / 架构 / 用户 / Agent / 决策**文档；
+> 已完成的历史审查、实施计划和交接材料不再作为仓库事实源保存。
 
 ---
 

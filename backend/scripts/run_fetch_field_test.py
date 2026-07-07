@@ -17,7 +17,7 @@ from typing import Any, Callable
 
 backend_dir = Path(__file__).resolve().parents[1]
 repo_root = backend_dir.parent
-DEFAULT_REPORT = repo_root / "docs" / "reviews" / "2026-07-02-fetch-field-test.md"
+DEFAULT_REPORT = Path.home() / ".pim" / "data" / "reports" / "fetch-field-test.md"
 DEFAULT_SERVER = "http://127.0.0.1:8000"
 RUNTIME_SECRETS = Path.home() / ".pim" / "data" / "runtime-secrets.json"
 

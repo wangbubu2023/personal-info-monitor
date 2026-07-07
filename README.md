@@ -128,8 +128,7 @@ jq -r .PIM_API_KEY ~/.pim/data/runtime-secrets.json
 ```
 
 完整命令树见 [`docs/PIMCTL_REFERENCE.md`](docs/PIMCTL_REFERENCE.md)。
-Agent 集成方式见 [`docs/AGENT_GUIDE.md`](docs/AGENT_GUIDE.md)。CLI 早期
-设计规划已归档至 [`docs/reviews/archive/CLI_SPEC.md`](docs/reviews/archive/CLI_SPEC.md)。
+Agent 集成方式见 [`docs/AGENT_GUIDE.md`](docs/AGENT_GUIDE.md)。
 
 ## API
 
@@ -201,13 +200,11 @@ CI 在 [`.github/workflows/ci.yml`](.github/workflows/ci.yml) 中串行执行
 | **pimctl 命令参考** | [`docs/PIMCTL_REFERENCE.md`](docs/PIMCTL_REFERENCE.md) |
 | **本地运行细节** | [`docs/LOCAL_RUN.md`](docs/LOCAL_RUN.md) |
 | **VPS 部署** | [`docs/VPS_DEPLOY.md`](docs/VPS_DEPLOY.md) |
-| **v1.4 发布/验收交接** | [`docs/V1_4_RELEASE_HANDOFF.md`](docs/V1_4_RELEASE_HANDOFF.md) |
 | **API 指南 + Prometheus** | [`docs/API_GUIDE.md`](docs/API_GUIDE.md) |
 | **故障排查** | [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md) |
 | **贡献规则** | [`docs/CONTRIBUTING.md`](docs/CONTRIBUTING.md) |
 | **后端 README** | [`backend/README.md`](backend/README.md) |
 | **前端 README** | [`frontend/README.md`](frontend/README.md) |
-| **历史审计与归档** | [`docs/reviews/README.md`](docs/reviews/README.md) |
 
 ## 故障排查速查
 
