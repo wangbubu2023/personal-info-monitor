@@ -37,19 +37,33 @@
 
 ### P1 · 阅读动线收尾（正在做，别烂尾）
 
-- [ ] **T6 提交当前未提交的改动**：9 个文件 + 2 个新 utils（readerFlow/readerLayout）。先跑前后端测试再提交。注意：`.git/index.lock` 有一个残留的 0 字节锁文件（今天 20:13），提交前先 `rm .git/index.lock`。
-- [ ] **T7 补 hide（隐藏/不感兴趣）**：当前键位只有 j/k/r/l，反馈闭环需要 hide 信号入 lane 统计——没有负反馈，8/5 回看就少一半信息。
-- [ ] **T8 排版验收**：随机抽 5 篇付费墙正文，标准是「不想跳回原站」。不达标继续调 readerLayout，不默认「能显示=完成」。
+- [x] **T6 提交当前未提交的改动**：已提交（`5eddf2a`），残留 index.lock 已清理。⚠️ 前后端测试尚未在本机跑过（沙箱无法运行 macOS 构建的 .venv/node_modules），提交后请本地跑 `npm test` + pytest 或看 CI。
+- [x] **T7 补 hide（隐藏/不感兴趣）**：已实现（`b033b1a`）——`h` 键 + 工具栏「不感兴趣」按钮，走 `PATCH /contents/{id}` 的 `archived`，后端自动记 hide 反馈事件；hide 后自动跳下一篇。
+- [ ] **T8 排版验收**：随机抽 5 篇付费墙正文，标准是「不想跳回原站」。不达标继续调 readerLayout，不默认「能显示=完成」。（需人工判断，未做）
 
 ### P1 · eval 冷启动（工具全齐，只差 2 小时人肉）
 
 - [ ] **T9**：`export_eval_candidates` 拉 200 条 → `prelabel_eval_candidates` LLM 预标 → 只仲裁分歧样本（约 2 小时）→ 替换 4 条玩具数据 → 跑出第一个真实 precision@20 / duplicate_rate。此后阈值、embedding、冻结解除才有依据。
+  需在有 `.env` 和真实数据库的机器上跑（沙箱无法执行），runbook：
+
+  ```bash
+  cd backend
+  uv run python scripts/export_eval_candidates.py --limit 200          # → ~/.pim/data/eval_candidates.jsonl
+  uv run python scripts/prelabel_eval_candidates.py ~/.pim/data/eval_candidates.jsonl \
+      --output ~/.pim/data/eval_prelabeled.jsonl                       # LLM 预标三档
+  uv run python scripts/review_eval_candidates.py export-sheet ~/.pim/data/eval_prelabeled.jsonl \
+      --output ~/.pim/data/eval_review.tsv                             # 只改分歧行（也可用 export-html 在浏览器里审）
+  uv run python scripts/review_eval_candidates.py apply ~/.pim/data/eval_prelabeled.jsonl \
+      --sheet ~/.pim/data/eval_review.tsv --output ~/.pim/data/eval_labeled.jsonl
+  uv run python scripts/validate_eval_set.py ~/.pim/data/eval_labeled.jsonl --install   # 替换玩具 eval_set
+  uv run python scripts/run_offline_eval.py                            # 第一批真实数字
+  ```
 
 ### P2 · 钉规矩（每条 ≤半小时）
 
-- [ ] **T10 反馈回看进日历**：建 2026-08-05 的 scheduled task，自动出三个数：事件总量、star/hide 的 lane 分布、star 内容的 final_score 分布（star 集中在低分 = 排序背离偏好）。
-- [ ] **T11 `docs/SECURITY_MODEL.md`**：每个防护机制一行「防什么 / 不防什么 / 依据」。本轮 KDF、SSRF/rebinding 改动后尤其该写——写的过程就是威胁模型审查。
-- [ ] **T12 CONTRIBUTING 补三条硬规矩**：① 每新增一模块删等量旧代码；② `max_file_lines` 门禁，基线 = 1702/1636/1583/955，只减不增；③ 一次触碰：因修 bug 打开四大文件时顺手拆出所改的那块。
+- [x] **T10 反馈回看进日历**：Cowork 定时任务 `pim-feedback-review-2026-08-05` 已建，2026-08-05 09:00 触发，自动出三个数并把结论写回本文档。（注意：任务在 Claude 桌面 App 打开时运行，当天没开的话下次启动补跑。）
+- [x] **T11 `docs/SECURITY_MODEL.md`**：已写（`d26ea2d`）——8 个机制逐行「防什么 / 不防什么 / 依据」+ 部署假设 + 已知未覆盖清单。新增防护时必须同步更新。
+- [x] **T12 CONTRIBUTING 三条硬规矩 + 行数门禁**：已落地（`6e4107a`）——`scripts/check_file_lines.py` + `file_lines_budget.json`（基线 1583/1702/1636/955，只减不增）进 CI；CONTRIBUTING 新增「复杂度预算」节（增模块删等量 / 行数只减不增 / 一次触碰）。
 
 ---
 
