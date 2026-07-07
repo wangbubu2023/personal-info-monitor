@@ -37,7 +37,7 @@ class TestEncryptData:
     def test_roundtrip_dict(self):
         payload = {"hello": "world", "num": 1}
         encrypted = encrypt_data(payload)
-        assert encrypted.startswith("v3:")
+        assert encrypted.startswith("v4:")
         assert decrypt_data(encrypted) == payload
 
     def test_rejects_non_dict(self):
@@ -52,6 +52,14 @@ class TestEncryptString:
 
 
 class TestLegacyEnvelopes:
+    def test_decrypts_v3_envelope(self):
+        """v3 (PBKDF2@600k) rows written before the v4 cutover must keep decrypting."""
+        salt = b"0123456789abcdef"
+        fernet = _derive(salt, 600_000)
+        token = fernet.encrypt(json.dumps({"pbkdf2": "v3"}).encode())
+        packed = base64.urlsafe_b64encode(salt + token).decode()
+        assert decrypt_data(f"v3:{packed}") == {"pbkdf2": "v3"}
+
     def test_decrypts_v2_envelope(self):
         salt = b"0123456789abcdef"
         assert len(salt) == _SALT_LENGTH
@@ -66,6 +74,11 @@ class TestLegacyEnvelopes:
         token = fernet.encrypt(json.dumps({"legacy": "static"}).encode())
         encoded = base64.urlsafe_b64encode(token).decode()
         assert decrypt_data(encoded) == {"legacy": "static"}
+
+    def test_v4_invalid_short_payload(self):
+        bad = "v4:" + base64.urlsafe_b64encode(b"short").decode()
+        with pytest.raises(ValueError):
+            decrypt_data(bad)
 
     def test_v3_invalid_short_payload(self):
         # less than salt length

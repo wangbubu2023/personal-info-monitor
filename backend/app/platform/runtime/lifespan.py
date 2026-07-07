@@ -45,8 +45,17 @@ FetchHandler = Callable[[str, bool], Awaitable[None]]
 ProcessHandler = Callable[[str, "str | None"], Awaitable[None]]
 
 
-async def enqueue_unfinished_content_on_startup(*, limit: int = 200, lookback_hours: int = 24) -> int:
-    """Requeue recent content that was stored before finish_content completed."""
+async def enqueue_unfinished_content_on_startup(
+    *, limit: int = 200, lookback_hours: int = 24, job_id: str = "startup-refinish"
+) -> int:
+    """Requeue recent content that was stored before finish_content completed.
+
+    Runs at startup *and* on a periodic schedule (see ``requeue_unfinished_content``):
+    a bounded-queue drop or a worker crash mid-finish otherwise leaves content
+    stuck in a half-processed state until the next restart, which for the
+    long-running service install may be days away. The query is idempotent —
+    items that already have ``fetch_acceptance`` recorded are skipped.
+    """
     from app.database import SessionLocal
     from app.models import Content
     from app.tasks.task_queue import task_queue
@@ -76,10 +85,10 @@ async def enqueue_unfinished_content_on_startup(*, limit: int = 200, lookback_ho
     ids = await asyncio.to_thread(_query_ids)
     enqueued = 0
     for content_id in ids:
-        if await task_queue.enqueue_ingest_finish(content_id, job_id="startup-refinish"):
+        if await task_queue.enqueue_ingest_finish(content_id, job_id=job_id):
             enqueued += 1
     if enqueued:
-        logger.info("Requeued %d unfinished content items on startup", enqueued)
+        logger.info("Requeued %d unfinished content items (%s)", enqueued, job_id)
     return enqueued
 
 

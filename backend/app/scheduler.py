@@ -20,6 +20,11 @@ _JOB_DEFAULTS = {
 
 scheduler = AsyncIOScheduler(timezone="Asia/Shanghai")
 
+# Hold strong references to fire-and-forget startup tasks. asyncio only keeps a
+# weak reference to tasks created via ``loop.create_task``; without this the GC
+# can collect a still-running task mid-flight.
+_startup_tasks: set = set()
+
 
 def setup_scheduler():
     """Register all scheduled jobs."""
@@ -29,6 +34,7 @@ def setup_scheduler():
         cleanup_old_content,
         cleanup_error_logs,
         purge_expired_runtime_locks,
+        requeue_unfinished_content,
         run_markdown_export,
     )
     from app.domains.enrich.notifications.daily_digest import send_daily_digest_emails
@@ -119,6 +125,18 @@ def setup_scheduler():
         **_JOB_DEFAULTS,
     )
 
+    # Self-heal content stuck mid-finish (queue drops / worker crashes). The
+    # same recovery runs at startup; this covers the long-running service that
+    # may not restart for days.
+    scheduler.add_job(
+        requeue_unfinished_content,
+        IntervalTrigger(hours=6),
+        id="requeue_unfinished_content",
+        name="Requeue unfinished content",
+        replace_existing=True,
+        **_JOB_DEFAULTS,
+    )
+
     scheduler.add_job(
         run_markdown_export,
         CronTrigger(minute=30),  # 每小时 30 分执行
@@ -137,6 +155,8 @@ def trigger_startup_jobs() -> None:
 
     try:
         loop = asyncio.get_running_loop()
-        loop.create_task(generate_previous_hour_digest())
+        task = loop.create_task(generate_previous_hour_digest())
+        _startup_tasks.add(task)
+        task.add_done_callback(_startup_tasks.discard)
     except RuntimeError:
         logger.warning("Skip startup digest catch-up: no running event loop")

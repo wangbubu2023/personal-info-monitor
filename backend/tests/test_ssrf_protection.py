@@ -180,6 +180,37 @@ async def test_fetch_public_http_text_revalidates_redirect_target(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_fetch_public_http_text_pins_connection_to_validated_ip(monkeypatch):
+    """The connection must target the validated IP, not re-resolve the hostname.
+
+    This closes the DNS-rebinding window: aiohttp connects to the exact address
+    we vetted, while Host + TLS SNI still carry the real hostname.
+    """
+    session = _FakeSession([_FakeResponse(200, body="ok")])
+
+    async def _fake_resolve(hostname: str, _port: int):
+        assert hostname == "example.com"
+        return ["93.184.216.34"]
+
+    monkeypatch.setattr("app.platform.security.ssrf._resolve_host_addresses", _fake_resolve)
+
+    result = await fetch_public_http_text(session, "https://example.com/start")
+
+    assert result.status == 200
+    assert result.text == "ok"
+    # Result URL is the real hostname URL, not the pinned IP.
+    assert result.url == "https://example.com/start"
+
+    request_url, request_kwargs = session.calls[0]
+    # aiohttp is pointed at the IP literal — no second DNS lookup can occur.
+    assert request_url == "https://93.184.216.34/start"
+    # Host header preserves the origin for virtual-hosted servers.
+    assert request_kwargs["headers"]["Host"] == "example.com"
+    # TLS validates against the real hostname via SNI.
+    assert request_kwargs["server_hostname"] == "example.com"
+
+
+@pytest.mark.asyncio
 async def test_fetch_public_http_text_blocks_cookie_cross_host_redirect(monkeypatch):
     session = _FakeSession(
         [

@@ -110,3 +110,14 @@ async def purge_expired_runtime_locks():
             logger.info("Purged %d expired runtime lock row(s)", n)
 
     await asyncio.to_thread(_purge)
+
+
+async def requeue_unfinished_content():
+    """Periodically requeue content stuck mid-finish (queue drops / worker crashes).
+
+    The same recovery runs once at startup; scheduling it every few hours means
+    the long-running service install self-heals without waiting for a restart.
+    """
+    from app.platform.runtime.lifespan import enqueue_unfinished_content_on_startup
+
+    await enqueue_unfinished_content_on_startup(job_id="periodic-refinish")

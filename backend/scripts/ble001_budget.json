@@ -1,5 +1,5 @@
 {
-  "max_total": 189,
+  "max_total": 188,
   "scope": "app",
   "ruff_args": [
     "--select",

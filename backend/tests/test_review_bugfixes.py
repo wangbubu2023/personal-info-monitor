@@ -45,9 +45,9 @@ def _legacy_v2_encrypt(payload: dict) -> str:
     return f"v2:{packed}"
 
 
-def test_encrypt_data_roundtrip_uses_v3_envelope():
+def test_encrypt_data_roundtrip_uses_v4_envelope():
     encrypted = encrypt_data({"foo": "bar"})
-    assert encrypted.startswith("v3:")
+    assert encrypted.startswith("v4:")
     assert decrypt_data(encrypted) == {"foo": "bar"}
 
 
@@ -62,12 +62,17 @@ def test_decrypt_data_supports_v2_payload():
     assert decrypt_data(legacy) == {"legacy_v2": True}
 
 
-def test_encrypt_data_uses_600k_iterations():
-    """Guard-rail test: catch accidental downgrades of PBKDF2 work factor."""
+def test_legacy_pbkdf2_iterations_unchanged():
+    """Guard-rail test: the PBKDF2 constants decrypt historical v2/v3 rows.
+
+    Changing them would silently break decryption of existing envelopes, so
+    they must stay frozen even though new writes use the HKDF v4 envelope.
+    """
     from app.utils import encryption
 
     assert encryption._ITERATIONS_DEFAULT >= 600_000
     assert encryption._ITERATIONS_V3 == 600_000
+    assert encryption._ITERATIONS_V2 == 100_000
 
 
 def test_collector_factory_supports_rss():

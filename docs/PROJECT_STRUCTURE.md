@@ -675,7 +675,7 @@ cli/
 └── pimctl/
     ├── __init__.py        版本号 / 公共导出
     ├── __main__.py        `python -m cli.pimctl` 入口；./pimctl wrapper 调它
-    ├── app.py             Click 主 group + 全部子命令注册
+    ├── app.py             argparse 主 parser + 全部子命令注册
     │                       ↳ auth / system / sources / contents / settings / 等
     ├── client.py          HTTP 客户端：拼 X-API-Key、统一错误处理、--json 信封
     ├── config.py          配置文件解析（~/.pim/pimctl.toml）+ profile 切换

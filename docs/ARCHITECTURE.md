@@ -22,7 +22,7 @@ flowchart LR
   end
 
   subgraph CLI[命令行]
-    PIMCTL[pimctl<br/>（Click）]
+    PIMCTL[pimctl<br/>（argparse）]
   end
 
   subgraph BACKEND[FastAPI 进程]
@@ -72,7 +72,7 @@ flowchart LR
 ```
 
 - **前端**：纯 SPA，所有 API 调用都带 `X-API-Key`。Tauri 只是一个可选外壳，加载同一个 SPA。
-- **CLI**：`pimctl` 是一个独立的 Click 包（`cli/pimctl/`），通过 HTTP 访问后端，不直接读数据库。
+- **CLI**：`pimctl` 是一个独立的 argparse 包（`cli/pimctl/`），通过 HTTP 访问后端，不直接读数据库。
 - **后端**：一个 FastAPI 进程同时承载 HTTP、调度器、有界任务队列与 5 个领域包；状态完全保存在 SQLite + `data_dir` 的文件里。
 
 ### 1.1 后端代码分层
@@ -297,7 +297,7 @@ PIM 有两个互补的 CLI，职责严格分开：
 | 入口 | 位置 | 面向 | 依赖 | 典型命令 |
 | --- | --- | --- | --- | --- |
 | `./pim` | 仓库根目录的 `pim` Python 脚本 | **宿主机运维**（macOS 本地 / VPS） | 只依赖系统 Python 3.11+ 和 `backend/.venv` | `./pim setup`、`./pim start [--prod]`、`./pim install-service`、`./pim status`、`./pim backup`、`./pim rollback <rev>`、`./pim logs`、`./pim cleanup`、`./pim bootstrap-url` |
-| `pimctl` | `cli/pimctl/`（Click 包） | **脚本 / Agent / 远程调用** | 通过 HTTP+`X-API-Key` 访问后端，不直接读数据库 | `pimctl auth login`、`pimctl system health`、`pimctl sources …`、`pimctl contents search …`、`pimctl settings …` |
+| `pimctl` | `cli/pimctl/`（argparse 包） | **脚本 / Agent / 远程调用** | 通过 HTTP+`X-API-Key` 访问后端，不直接读数据库 | `pimctl auth login`、`pimctl system health`、`pimctl sources …`、`pimctl contents search …`、`pimctl settings …` |
 
 - `./pim` 只做**生命周期**：venv、依赖安装、LaunchAgent、启停、日志轮转、SQLite 备份/回滚。它是可选的，目的是让个人用户在 macOS 上 "一键跑"。
 - `pimctl` 只做**业务 API 的封装**：每条命令都对应一条或少数几条后端 API 调用，统一支持 `--json` 信封，专为无头调用和 Agent 设计。
