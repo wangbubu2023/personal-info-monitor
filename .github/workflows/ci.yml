@@ -40,6 +40,9 @@ jobs:
         # budget model (only-decrease) tolerates minor version drift.
         run: cd backend && uv run --with 'vulture>=2.11' python scripts/check_dead_code.py
 
+      - name: Verify file line budget (only-decrease)
+        run: cd backend && uv run python scripts/check_file_lines.py
+
       - name: Verify OpenAPI schema is current
         run: |
           cd backend

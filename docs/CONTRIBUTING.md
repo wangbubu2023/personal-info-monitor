@@ -92,12 +92,22 @@ uv run python scripts/export_openapi.py ../frontend/src/types/openapi.json
 git diff --exit-code -- ../frontend/src/types/openapi.json
 uv run python scripts/check_domain_imports.py --phase=7
 uv run python scripts/check_offline_eval_regression.py
+uv run python scripts/check_file_lines.py
 ```
 
 - `BLE001`：禁止新增盲目吞异常的生产代码债务；预算由 `backend/scripts/ble001_budget.json` 控制，只允许下降或持平。
 - `dead-code`：Vulture 死代码预算由 `backend/scripts/dead_code_budget.json` 控制，新增未使用代码会阻断 CI。
 - `OpenAPI`：后端接口变更后必须重新导出并提交 `frontend/src/types/openapi.json`；前端还会用 `npm run check:api-types` 校验生成类型。
 - `domain boundary`：`scripts/check_domain_imports.py --phase=7` 会阻止跨层/跨域反向依赖，规则背景见 [`docs/MODULE_BOUNDARIES.md`](MODULE_BOUNDARIES.md)。
+- `file-lines`：千行大文件行数预算由 `backend/scripts/file_lines_budget.json` 控制，只减不增（见下方「复杂度预算」）。
+
+## 复杂度预算（硬规矩）
+
+单人维护的系统，复杂度是持续税。以下三条与 BLE001 / dead-code 预算同级，PR 审阅时按此执行：
+
+1. **增模块删等量**：每新增一个模块/文件，应在同一 PR 中删除大致等量的旧代码（死代码、废弃路径、被替代的实现）。做不到时在 PR 描述里说明原因。
+2. **行数预算只减不增**：`backend/scripts/file_lines_budget.json` 锚定四个千行文件的当前行数（website.py 1583 / pimctl app.py 1702 / pim 1636 / CredentialsTab.tsx 955）。CI 阻止它们继续变长；瘦身后运行 `check_file_lines.py --update` 提交新基线。不强迫专项重构。
+3. **一次触碰规则**：功能冻结期内，因修 bug 打开上述大文件时，顺手把所改动的那一块拆出到独立模块——拆你摸到的部分即可，不扩大范围。
 
 ## 提交前检查清单
 
