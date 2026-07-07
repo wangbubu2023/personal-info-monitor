@@ -15,6 +15,7 @@ from app.domains.enrich.reader.body_loader import _website_body_needs_reader_bac
 from app.api.contents_reader import (
     _backfill_website_reader_body,
     _build_reader_translation_done_payload,
+    _build_reader_blocks,
     _clean_x_body_if_needed,
     _clear_reader_translation_cache,
     _emit_cached_reader_translation,
@@ -29,6 +30,24 @@ from app.api.contents_reader import (
     _translate_reader_text,
     _upgrade_x_reader_body,
 )
+
+
+# ---------------------------------------------------------------------------
+# _build_reader_blocks
+# ---------------------------------------------------------------------------
+
+class TestBuildReaderBlocks:
+
+    def test_parses_footnote_blocks(self):
+        blocks = _build_reader_blocks("[1] This source footnote should render separately from the article body.")
+
+        assert blocks == [
+            {
+                "type": "footnote",
+                "marker": "1",
+                "text": "This source footnote should render separately from the article body.",
+            }
+        ]
 
 
 # ---------------------------------------------------------------------------

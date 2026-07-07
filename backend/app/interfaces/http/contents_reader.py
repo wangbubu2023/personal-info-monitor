@@ -154,6 +154,8 @@ async def get_reader_payload(
         "translated_title": content.translated_title,
         "original_url": content.original_url,
         "publish_time": content.publish_time.isoformat() if content.publish_time else None,
+        "read_status": content.read_status,
+        "favorited": content.favorited,
         "body_raw": body_raw,
         "body_zh": display_body,
         "translation_requested": translate,

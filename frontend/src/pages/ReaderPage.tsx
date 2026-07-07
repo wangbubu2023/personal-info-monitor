@@ -1,5 +1,5 @@
-import React from 'react';
-import { useParams, Link, useSearchParams } from 'react-router-dom';
+import React, { useCallback, useEffect, useMemo } from 'react';
+import { useParams, Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { buildDashboardHomePath, buildDashboardSourcePath, buildReaderPath } from '../components/Dashboard/dashboardUtils';
 import {
   ArrowLeft,
@@ -10,12 +10,17 @@ import {
   Bookmark,
   ShieldCheck,
   Languages,
+  CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useReader } from '../hooks/useReader';
 import SectionNote from '../components/ui/SectionNote';
 import PageLoading from '../components/common/PageLoading';
 import type { ReaderBlock } from '../services/contents';
+import { getReaderNeighbor, recordReaderInteraction } from '../utils/readerFlow';
+import { getReaderLayoutProfile, type ReaderLayoutProfile } from '../utils/readerLayout';
 
 function safeHttpUrl(value?: string): string {
   if (!value) return '';
@@ -27,7 +32,7 @@ function safeHttpUrl(value?: string): string {
   }
 }
 
-function renderReaderBlock(block: ReaderBlock, index: number): React.ReactNode {
+function renderReaderBlock(block: ReaderBlock, index: number, layout: ReaderLayoutProfile): React.ReactNode {
   const key = `${block.type}-${index}`;
   if (block.type === 'heading') {
     const level = block.level || 2;
@@ -46,7 +51,7 @@ function renderReaderBlock(block: ReaderBlock, index: number): React.ReactNode {
     const src = safeHttpUrl(block.src);
     if (!src) return null;
     return (
-      <figure key={key} className="my-10 overflow-hidden rounded-lg border border-[rgba(88,100,118,0.14)] bg-white">
+      <figure key={key} className={layout.figureClassName}>
         <img
           src={src}
           alt={block.alt || block.caption || ''}
@@ -75,9 +80,18 @@ function renderReaderBlock(block: ReaderBlock, index: number): React.ReactNode {
 
   if (block.type === 'code') {
     return (
-      <pre key={key} className="my-9 max-w-full overflow-x-auto rounded-lg bg-[#1f2937] p-5 text-[14px] leading-[1.7] text-[#f8fafc]">
+      <pre key={key} className={layout.codeClassName}>
         <code>{block.text}</code>
       </pre>
+    );
+  }
+
+  if (block.type === 'footnote') {
+    return (
+      <aside key={key} className={layout.footnoteClassName}>
+        <span className="mr-2 font-semibold text-[#8C866A]">[{block.marker || index + 1}]</span>
+        {block.text}
+      </aside>
     );
   }
 
@@ -108,6 +122,7 @@ function renderReaderBlock(block: ReaderBlock, index: number): React.ReactNode {
 
 const ReaderPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const translateRequested = ['1', 'true', 'yes'].includes((searchParams.get('translate') || '').toLowerCase());
   const fromTab = searchParams.get('tab') || undefined;
@@ -129,7 +144,75 @@ const ReaderPage: React.FC = () => {
       })
     : '/';
 
-  const { data, loading, error, displayTitle, displayBlocks, stream } = useReader(id, translateRequested);
+  const { data, loading, error, displayTitle, displayBlocks, markAsRead, setReadLater, stream } = useReader(id, translateRequested);
+  const layout = useMemo(
+    () => getReaderLayoutProfile(data?.original_url, data?.source_name),
+    [data?.original_url, data?.source_name],
+  );
+  const previousItem = useMemo(() => getReaderNeighbor(id, -1), [id]);
+  const nextItem = useMemo(() => getReaderNeighbor(id, 1), [id]);
+
+  const navigateToNeighbor = useCallback((direction: -1 | 1, channel: 'keyboard' | 'click') => {
+    const neighbor = direction < 0 ? previousItem : nextItem;
+    if (!neighbor) return;
+    recordReaderInteraction(channel, 'navigate');
+    navigate(buildReaderPath(neighbor.id, {
+      translate: translateRequested,
+      ...(fromScoreLab
+        ? { from: 'score-lab' }
+        : fromSearch || fromSourceId
+          ? { search: fromSearch, sourceId: fromSourceId, sourceName: fromSourceName }
+          : { tab: fromTab }),
+    }));
+  }, [
+    fromScoreLab,
+    fromSearch,
+    fromSourceId,
+    fromSourceName,
+    fromTab,
+    navigate,
+    nextItem,
+    previousItem,
+    translateRequested,
+  ]);
+
+  const markCurrentAsRead = useCallback(async (channel: 'keyboard' | 'click') => {
+    if (!id || data?.read_status) return;
+    recordReaderInteraction(channel, 'mark_read');
+    await markAsRead();
+  }, [data?.read_status, id, markAsRead]);
+
+  const toggleReadLater = useCallback(async (channel: 'keyboard' | 'click') => {
+    if (!id || !data) return;
+    recordReaderInteraction(channel, 'read_later');
+    await setReadLater(!data.favorited);
+  }, [data, id, setReadLater]);
+
+  useEffect(() => {
+    if (!data) return;
+    const handler = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target && ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName)) return;
+      if (event.metaKey || event.ctrlKey || event.altKey) return;
+
+      if (event.key === 'j') {
+        event.preventDefault();
+        navigateToNeighbor(1, 'keyboard');
+      } else if (event.key === 'k') {
+        event.preventDefault();
+        navigateToNeighbor(-1, 'keyboard');
+      } else if (event.key.toLowerCase() === 'r') {
+        event.preventDefault();
+        void markCurrentAsRead('keyboard');
+      } else if (event.key.toLowerCase() === 'l') {
+        event.preventDefault();
+        void toggleReadLater('keyboard');
+      }
+    };
+
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [data, markCurrentAsRead, navigateToNeighbor, toggleReadLater]);
 
   if (loading) return <PageLoading />;
 
@@ -166,6 +249,47 @@ const ReaderPage: React.FC = () => {
             </Link>
 
             <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                disabled={!previousItem}
+                onClick={() => navigateToNeighbor(-1, 'click')}
+                className="flex h-9 w-9 items-center justify-center rounded-xl border border-[rgba(88,100,118,0.18)] bg-white/60 text-[#586476] transition-all hover:bg-white hover:text-[#293859] disabled:cursor-not-allowed disabled:opacity-35"
+                aria-label="上一篇"
+              >
+                <ChevronLeft size={16} />
+              </button>
+              <button
+                type="button"
+                disabled={!nextItem}
+                onClick={() => navigateToNeighbor(1, 'click')}
+                className="flex h-9 w-9 items-center justify-center rounded-xl border border-[rgba(88,100,118,0.18)] bg-white/60 text-[#586476] transition-all hover:bg-white hover:text-[#293859] disabled:cursor-not-allowed disabled:opacity-35"
+                aria-label="下一篇"
+              >
+                <ChevronRight size={16} />
+              </button>
+              <button
+                type="button"
+                onClick={() => void markCurrentAsRead('click')}
+                disabled={!!data.read_status}
+                className={`flex items-center gap-2 rounded-xl border px-3.5 py-2 text-[12px] font-semibold transition-all ${
+                  data.read_status
+                    ? 'border-[#7a7358]/20 bg-[#f4f0e6] text-[#7a7358]'
+                    : 'border-[rgba(88,100,118,0.18)] bg-white/60 text-[#586476] hover:bg-white hover:text-[#293859]'
+                }`}
+              >
+                <CheckCircle2 size={14} /> {data.read_status ? '已读' : '标为已读'}
+              </button>
+              <button
+                type="button"
+                onClick={() => void toggleReadLater('click')}
+                className={`flex items-center gap-2 rounded-xl border px-3.5 py-2 text-[12px] font-semibold transition-all ${
+                  data.favorited
+                    ? 'border-[#49A8C9]/35 bg-[#49A8C9] text-white shadow-md shadow-[#49A8C9]/20'
+                    : 'border-[rgba(88,100,118,0.18)] bg-white/60 text-[#586476] hover:bg-white hover:text-[#293859]'
+                }`}
+              >
+                <Bookmark size={14} /> {data.favorited ? '已稍后读' : '稍后读'}
+              </button>
               {safeHttpUrl(data.original_url) ? (
                 <a
                   href={safeHttpUrl(data.original_url)}
@@ -221,7 +345,7 @@ const ReaderPage: React.FC = () => {
           )}
         </AnimatePresence>
 
-        <article className="space-y-14">
+        <article className={layout.articleClassName} data-reader-layout={layout.key}>
           <header className="space-y-7">
             <div className="flex items-center gap-2 text-[12px] font-semibold uppercase tracking-[0.2em] text-[#8C866A]">
               <ShieldCheck size={12} /> 存档条目
@@ -252,11 +376,11 @@ const ReaderPage: React.FC = () => {
             </div>
           </header>
 
-          <div className="max-w-none text-[18px] leading-[1.85] text-[#293859]" data-testid="reader-iframe">
+          <div className={layout.bodyClassName} data-testid="reader-iframe">
             {displayBlocks.length === 0 ? (
               <div className="py-16 text-center text-[15px] font-medium italic text-[#586476]">正文为空。</div>
             ) : (
-              displayBlocks.map((block, index) => renderReaderBlock(block, index))
+              displayBlocks.map((block, index) => renderReaderBlock(block, index, layout))
             )}
           </div>
         </article>

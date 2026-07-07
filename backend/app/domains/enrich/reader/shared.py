@@ -42,6 +42,7 @@ _MARKDOWN_LINK_RE = re.compile(r"^\[([^\]]+)\]\((https?://[^)\s]+)\)$")
 _BARE_HTTP_URL_RE = re.compile(r"^https?://[^\s<>()]+$")
 _IMAGE_URL_RE = re.compile(r"\.(?:avif|gif|jpe?g|png|webp)(?:[?#].*)?$", re.IGNORECASE)
 _CODE_FENCE_RE = re.compile(r"^```([A-Za-z0-9_+.-]{0,32})?\n?(.*?)\n?```$", re.DOTALL)
+_FOOTNOTE_RE = re.compile(r"^(?:\[(\d{1,3})\]|\^(\d{1,3})|(\d{1,3})\.)\s+(.{8,})$", re.DOTALL)
 
 
 def _title_looks_like_url(title: str) -> bool:
@@ -253,6 +254,13 @@ def _reader_block_from_paragraph(paragraph: str) -> dict[str, Any] | None:
         text = _reader_text(heading_match.group(2), limit=240)
         if text:
             return {"type": "heading", "level": min(4, len(heading_match.group(1))), "text": text}
+
+    footnote_match = _FOOTNOTE_RE.match(raw)
+    if footnote_match:
+        marker = footnote_match.group(1) or footnote_match.group(2) or footnote_match.group(3) or ""
+        text = _reader_text(footnote_match.group(4), limit=6000)
+        if text:
+            return {"type": "footnote", "marker": marker, "text": text}
 
     quote_lines = []
     for line in raw.split("\n"):

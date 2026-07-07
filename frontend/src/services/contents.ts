@@ -30,6 +30,7 @@ export type ReaderBlock =
   | { type: 'image'; src: string; alt?: string; caption?: string }
   | { type: 'quote'; text: string }
   | { type: 'code'; text: string; language?: string }
+  | { type: 'footnote'; marker?: string; text: string }
   | { type: 'link'; text: string; href: string }
 
 export interface ReaderPayload {
@@ -40,6 +41,8 @@ export interface ReaderPayload {
   translated_title?: string
   original_url: string
   publish_time?: string
+  read_status?: boolean
+  favorited?: boolean
   body_raw: string
   body_zh: string
   translation_requested?: boolean

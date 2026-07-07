@@ -34,6 +34,7 @@ interface DashboardItemCardProps {
   /** 若来自单一信源视图，用于阅读页返回时恢复 `?source_id=` */
   sourceReturnId?: string;
   sourceReturnName?: string;
+  focused?: boolean;
 }
 
 function splitSummaryLink(summary?: string): { text: string; hasInlineLink: boolean } {
@@ -49,6 +50,7 @@ const DashboardItemCard: React.FC<DashboardItemCardProps> = ({
   searchReturnQuery,
   sourceReturnId,
   sourceReturnName,
+  focused = false,
 }) => {
   const readerOpts = {
     ...(searchReturnQuery ? { search: searchReturnQuery } : {}),
@@ -78,7 +80,12 @@ const DashboardItemCard: React.FC<DashboardItemCardProps> = ({
     <motion.article
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
-      className="group relative overflow-hidden rounded-2xl border border-[rgba(88,100,118,0.1)] bg-white/95 p-5 shadow-[0_8px_28px_-12px_rgba(41,56,89,0.12)] transition-all hover:border-[#49A8C9]/22 hover:bg-white hover:shadow-[0_12px_36px_-14px_rgba(41,56,89,0.14)]"
+      data-reader-card-id={item.id}
+      className={`group relative overflow-hidden rounded-2xl border bg-white/95 p-5 shadow-[0_8px_28px_-12px_rgba(41,56,89,0.12)] transition-all hover:border-[#49A8C9]/22 hover:bg-white hover:shadow-[0_12px_36px_-14px_rgba(41,56,89,0.14)] ${
+        focused
+          ? 'border-[#49A8C9]/55 ring-2 ring-[#49A8C9]/20'
+          : 'border-[rgba(88,100,118,0.1)]'
+      }`}
     >
       {!item.read_status && (
         <div className="absolute left-0 top-0 h-full w-1 bg-[#49A8C9]" />

@@ -47,6 +47,18 @@ export const useReader = (id: string | undefined, translateRequested: boolean) =
     }
   }, [id]);
 
+  const markAsRead = useCallback(async () => {
+    if (!id) return;
+    await contentsApi.markAsRead(id);
+    setData((prev) => prev ? { ...prev, read_status: true } : prev);
+  }, [id]);
+
+  const setReadLater = useCallback(async (favorited: boolean) => {
+    if (!id) return;
+    const result = await contentsApi.setFavorite(id, favorited);
+    setData((prev) => prev ? { ...prev, favorited: result.favorited } : prev);
+  }, [id]);
+
   useEffect(() => {
     fetchReader();
   }, [fetchReader]);
@@ -125,6 +137,8 @@ export const useReader = (id: string | undefined, translateRequested: boolean) =
     displayTitle,
     displayParagraphs,
     displayBlocks,
+    markAsRead,
+    setReadLater,
     stream: {
       chunks: streamChunks,
       total: streamTotal,

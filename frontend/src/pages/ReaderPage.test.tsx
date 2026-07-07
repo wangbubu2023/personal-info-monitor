@@ -1,6 +1,7 @@
-import { render, screen } from '@testing-library/react'
+import { cleanup, render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import ReaderPage from './ReaderPage'
 
@@ -23,15 +24,24 @@ function renderReaderPage() {
 }
 
 describe('ReaderPage', () => {
+  const markAsRead = vi.fn()
+  const setReadLater = vi.fn()
+
+  afterEach(() => {
+    cleanup()
+  })
+
   beforeEach(() => {
     vi.clearAllMocks()
     mockUseReader.mockReturnValue({
       data: {
         id: 'content-1',
         source_id: 'source-1',
-        source_name: 'Example',
+        source_name: '纽约时报中文版',
         title: 'Original title',
-        original_url: 'https://example.com/story',
+        original_url: 'https://cn.nytimes.com/world/story',
+        read_status: false,
+        favorited: false,
         body_raw: '',
         body_zh: '',
         clean_html: '',
@@ -47,6 +57,7 @@ describe('ReaderPage', () => {
         { type: 'image', src: 'https://example.com/diagram.png', alt: 'Diagram', caption: 'System diagram' },
         { type: 'quote', text: 'Quoted context' },
         { type: 'code', language: 'ts', text: 'const answer = 42' },
+        { type: 'footnote', marker: '1', text: 'A careful source note' },
         { type: 'link', href: 'https://example.com/read-more', text: 'Read more' },
         { type: 'link', href: 'javascript:alert(1)', text: 'Unsafe link' },
         { type: 'image', src: 'javascript:alert(1)', alt: 'Unsafe image' },
@@ -59,6 +70,8 @@ describe('ReaderPage', () => {
         succeeded: false,
         hint: null,
       },
+      markAsRead,
+      setReadLater,
     })
   })
 
@@ -77,9 +90,27 @@ describe('ReaderPage', () => {
 
     expect(screen.getByText('Quoted context').tagName).toBe('BLOCKQUOTE')
     expect(container.querySelector('pre code')?.textContent).toBe('const answer = 42')
+    expect(screen.getByText('A careful source note')).toBeTruthy()
 
     const link = screen.getByRole('link', { name: /Read more/ }) as HTMLAnchorElement
     expect(link.href).toBe('https://example.com/read-more')
     expect(screen.queryByText('Unsafe link')).toBeNull()
+  })
+
+  it('uses paid-source layout profiles', () => {
+    renderReaderPage()
+
+    expect(screen.getByTestId('reader-iframe').closest('article')?.getAttribute('data-reader-layout')).toBe('nyt-cn')
+  })
+
+  it('handles reader keyboard actions', async () => {
+    const user = userEvent.setup()
+    renderReaderPage()
+
+    await user.keyboard('r')
+    expect(markAsRead).toHaveBeenCalledTimes(1)
+
+    await user.keyboard('l')
+    expect(setReadLater).toHaveBeenCalledWith(true)
   })
 })
