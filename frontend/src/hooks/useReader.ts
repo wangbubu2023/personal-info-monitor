@@ -59,6 +59,12 @@ export const useReader = (id: string | undefined, translateRequested: boolean) =
     setData((prev) => prev ? { ...prev, favorited: result.favorited } : prev);
   }, [id]);
 
+  const hide = useCallback(async () => {
+    if (!id) return;
+    // archived=true records a "hide" feedback event server-side (negative signal for scoring).
+    await contentsApi.update(id, { archived: true });
+  }, [id]);
+
   useEffect(() => {
     fetchReader();
   }, [fetchReader]);
@@ -139,6 +145,7 @@ export const useReader = (id: string | undefined, translateRequested: boolean) =
     displayBlocks,
     markAsRead,
     setReadLater,
+    hide,
     stream: {
       chunks: streamChunks,
       total: streamTotal,

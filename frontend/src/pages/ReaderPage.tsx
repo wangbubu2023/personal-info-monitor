@@ -13,6 +13,7 @@ import {
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
+  EyeOff,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useReader } from '../hooks/useReader';
@@ -144,7 +145,7 @@ const ReaderPage: React.FC = () => {
       })
     : '/';
 
-  const { data, loading, error, displayTitle, displayBlocks, markAsRead, setReadLater, stream } = useReader(id, translateRequested);
+  const { data, loading, error, displayTitle, displayBlocks, markAsRead, setReadLater, hide, stream } = useReader(id, translateRequested);
   const layout = useMemo(
     () => getReaderLayoutProfile(data?.original_url, data?.source_name),
     [data?.original_url, data?.source_name],
@@ -152,10 +153,10 @@ const ReaderPage: React.FC = () => {
   const previousItem = useMemo(() => getReaderNeighbor(id, -1), [id]);
   const nextItem = useMemo(() => getReaderNeighbor(id, 1), [id]);
 
-  const navigateToNeighbor = useCallback((direction: -1 | 1, channel: 'keyboard' | 'click') => {
+  const navigateToNeighbor = useCallback((direction: -1 | 1, channel: 'keyboard' | 'click', record = true) => {
     const neighbor = direction < 0 ? previousItem : nextItem;
     if (!neighbor) return;
-    recordReaderInteraction(channel, 'navigate');
+    if (record) recordReaderInteraction(channel, 'navigate');
     navigate(buildReaderPath(neighbor.id, {
       translate: translateRequested,
       ...(fromScoreLab
@@ -188,6 +189,18 @@ const ReaderPage: React.FC = () => {
     await setReadLater(!data.favorited);
   }, [data, id, setReadLater]);
 
+  const hideCurrent = useCallback(async (channel: 'keyboard' | 'click') => {
+    if (!id || !data) return;
+    recordReaderInteraction(channel, 'hide');
+    await hide();
+    // Hidden means "not interested" — leave the article immediately.
+    if (nextItem) {
+      navigateToNeighbor(1, channel, false);
+    } else {
+      navigate(backHref);
+    }
+  }, [backHref, data, hide, id, navigate, navigateToNeighbor, nextItem]);
+
   useEffect(() => {
     if (!data) return;
     const handler = (event: KeyboardEvent) => {
@@ -207,12 +220,15 @@ const ReaderPage: React.FC = () => {
       } else if (event.key.toLowerCase() === 'l') {
         event.preventDefault();
         void toggleReadLater('keyboard');
+      } else if (event.key.toLowerCase() === 'h') {
+        event.preventDefault();
+        void hideCurrent('keyboard');
       }
     };
 
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [data, markCurrentAsRead, navigateToNeighbor, toggleReadLater]);
+  }, [data, hideCurrent, markCurrentAsRead, navigateToNeighbor, toggleReadLater]);
 
   if (loading) return <PageLoading />;
 
@@ -289,6 +305,15 @@ const ReaderPage: React.FC = () => {
                 }`}
               >
                 <Bookmark size={14} /> {data.favorited ? '已稍后读' : '稍后读'}
+              </button>
+              <button
+                type="button"
+                onClick={() => void hideCurrent('click')}
+                className="flex items-center gap-2 rounded-xl border border-[rgba(88,100,118,0.18)] bg-white/60 px-3.5 py-2 text-[12px] font-semibold text-[#586476] transition-all hover:border-rose-300/60 hover:bg-white hover:text-rose-500"
+                aria-label="不感兴趣"
+                title="隐藏并记为负反馈（h）"
+              >
+                <EyeOff size={14} /> 不感兴趣
               </button>
               {safeHttpUrl(data.original_url) ? (
                 <a

@@ -19,6 +19,7 @@ export interface ReaderInteractionMetrics {
   opened: number
   markedRead: number
   readLater: number
+  hidden: number
   lastEventAt?: string
 }
 
@@ -35,6 +36,7 @@ const EMPTY_METRICS: ReaderInteractionMetrics = {
   opened: 0,
   markedRead: 0,
   readLater: 0,
+  hidden: 0,
 }
 
 function emptyMetrics(): ReaderInteractionMetrics {
@@ -80,7 +82,8 @@ export function getReaderNeighbor(id: string | undefined, direction: -1 | 1): Re
 }
 
 export function readReaderMetrics(): ReaderInteractionMetrics {
-  return readJson<ReaderInteractionMetrics>(METRICS_KEY, emptyMetrics())
+  // Merge with empty shape so metrics persisted by older versions (without `hidden`) stay valid.
+  return { ...emptyMetrics(), ...readJson<Partial<ReaderInteractionMetrics>>(METRICS_KEY, {}) }
 }
 
 export function saveReaderMetricsBaseline(metrics: ReaderInteractionMetrics = readReaderMetrics()): void {
@@ -88,7 +91,7 @@ export function saveReaderMetricsBaseline(metrics: ReaderInteractionMetrics = re
 }
 
 export function compareReaderMetrics(): ReaderInteractionComparison {
-  const baseline = readJson<ReaderInteractionMetrics>(`${METRICS_KEY}.baseline`, emptyMetrics())
+  const baseline = { ...emptyMetrics(), ...readJson<Partial<ReaderInteractionMetrics>>(`${METRICS_KEY}.baseline`, {}) }
   const current = readReaderMetrics()
   const delta: ReaderInteractionMetrics = {
     keyboard: current.keyboard - baseline.keyboard,
@@ -96,6 +99,7 @@ export function compareReaderMetrics(): ReaderInteractionComparison {
     opened: current.opened - baseline.opened,
     markedRead: current.markedRead - baseline.markedRead,
     readLater: current.readLater - baseline.readLater,
+    hidden: current.hidden - baseline.hidden,
     lastEventAt: current.lastEventAt,
   }
   const totalInteractions = Math.max(1, delta.keyboard + delta.clicks)
@@ -109,7 +113,7 @@ export function compareReaderMetrics(): ReaderInteractionComparison {
 
 export function recordReaderInteraction(
   channel: 'keyboard' | 'click',
-  action: 'open' | 'mark_read' | 'read_later' | 'navigate',
+  action: 'open' | 'mark_read' | 'read_later' | 'hide' | 'navigate',
 ): ReaderInteractionMetrics {
   const next = { ...readReaderMetrics(), lastEventAt: new Date().toISOString() }
   if (channel === 'keyboard') next.keyboard += 1
@@ -117,6 +121,7 @@ export function recordReaderInteraction(
   if (action === 'open') next.opened += 1
   if (action === 'mark_read') next.markedRead += 1
   if (action === 'read_later') next.readLater += 1
+  if (action === 'hide') next.hidden += 1
   writeJson(METRICS_KEY, next)
   return next
 }

@@ -26,6 +26,7 @@ function renderReaderPage() {
 describe('ReaderPage', () => {
   const markAsRead = vi.fn()
   const setReadLater = vi.fn()
+  const hide = vi.fn()
 
   afterEach(() => {
     cleanup()
@@ -72,6 +73,7 @@ describe('ReaderPage', () => {
       },
       markAsRead,
       setReadLater,
+      hide,
     })
   })
 
@@ -112,5 +114,16 @@ describe('ReaderPage', () => {
 
     await user.keyboard('l')
     expect(setReadLater).toHaveBeenCalledWith(true)
+
+    await user.keyboard('h')
+    expect(hide).toHaveBeenCalledTimes(1)
+  })
+
+  it('hides via toolbar button and records negative feedback intent', async () => {
+    const user = userEvent.setup()
+    renderReaderPage()
+
+    await user.click(screen.getByRole('button', { name: '不感兴趣' }))
+    expect(hide).toHaveBeenCalledTimes(1)
   })
 })
