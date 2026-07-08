@@ -102,6 +102,52 @@ describe('dashboardUtils', () => {
     expect(items.map((item) => item.id)).toEqual(['x-1', 'r-1', 'y-1', 'w-1'])
   })
 
+  it('sorts obvious future publish times by fetched_at fallback', () => {
+    const digest: Digest = {
+      ...digestFixture,
+      total_items: 2,
+      categories: {
+        ...digestFixture.categories,
+        websites: {
+          count: 2,
+          items: [
+            {
+              id: 'nyt-bad-time',
+              source_name: '纽约时报中文版',
+              title: 'Future-shifted sitemap item',
+              url: 'https://cn.nytimes.com/world/item',
+              publish_time: '2026-07-08T10:12:00',
+              fetched_at: '2026-07-08T02:12:00',
+              read_status: false,
+              favorited: false,
+              keyword_matches: [],
+              metadata: {},
+            },
+            {
+              id: 'fresh-normal',
+              source_name: 'Normal',
+              title: 'Normal item',
+              url: 'https://example.com/normal',
+              publish_time: '2026-07-08T03:00:00',
+              fetched_at: '2026-07-08T03:05:00',
+              read_status: false,
+              favorited: false,
+              keyword_matches: [],
+              metadata: {},
+            },
+          ],
+        },
+        rss: { count: 0, items: [] },
+        x_accounts: { count: 0, items: [] },
+        youtube: { count: 0, items: [] },
+        podcasts: { count: 0, items: [] },
+      },
+    }
+
+    const items = getDashboardItems(digest, 'websites')
+    expect(items.map((item) => item.id)).toEqual(['fresh-normal', 'nyt-bad-time'])
+  })
+
   it('sorts merged items by score desc when requested', () => {
     const items = getDashboardItems(digestFixture, 'all', 'score_desc')
     expect(items.map((item) => item.id)).toEqual(['w-1', 'y-1', 'x-1', 'r-1'])

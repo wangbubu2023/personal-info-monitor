@@ -25,7 +25,7 @@ function renderReaderPage() {
 
 describe('ReaderPage', () => {
   const markAsRead = vi.fn()
-  const setReadLater = vi.fn()
+  const setLiked = vi.fn()
   const hide = vi.fn()
 
   afterEach(() => {
@@ -72,7 +72,7 @@ describe('ReaderPage', () => {
         hint: null,
       },
       markAsRead,
-      setReadLater,
+      setLiked,
       hide,
     })
   })
@@ -113,10 +113,16 @@ describe('ReaderPage', () => {
     expect(markAsRead).toHaveBeenCalledTimes(1)
 
     await user.keyboard('l')
-    expect(setReadLater).toHaveBeenCalledWith(true)
+    expect(setLiked).toHaveBeenCalledWith(true)
 
     await user.keyboard('h')
     expect(hide).toHaveBeenCalledTimes(1)
+  })
+
+  it('labels positive feedback as like', () => {
+    renderReaderPage()
+
+    expect(screen.getByRole('button', { name: '喜欢' })).toBeTruthy()
   })
 
   it('hides via toolbar button and records negative feedback intent', async () => {

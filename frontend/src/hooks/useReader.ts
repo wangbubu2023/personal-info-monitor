@@ -53,7 +53,7 @@ export const useReader = (id: string | undefined, translateRequested: boolean) =
     setData((prev) => prev ? { ...prev, read_status: true } : prev);
   }, [id]);
 
-  const setReadLater = useCallback(async (favorited: boolean) => {
+  const setLiked = useCallback(async (favorited: boolean) => {
     if (!id) return;
     const result = await contentsApi.setFavorite(id, favorited);
     setData((prev) => prev ? { ...prev, favorited: result.favorited } : prev);
@@ -144,7 +144,7 @@ export const useReader = (id: string | undefined, translateRequested: boolean) =
     displayParagraphs,
     displayBlocks,
     markAsRead,
-    setReadLater,
+    setLiked,
     hide,
     stream: {
       chunks: streamChunks,

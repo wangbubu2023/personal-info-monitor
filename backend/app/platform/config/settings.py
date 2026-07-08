@@ -58,6 +58,7 @@ class Settings(BaseSettings):
     scheduler_timezone: str = "Asia/Shanghai"
     event_loop_slow_callback_seconds: float = 1.0
     event_loop_lag_probe_interval_seconds: float = 1.0
+    pim_ui_upgrade_args: str = ""
 
     # OpenAI
     openai_api_key: Optional[str] = None

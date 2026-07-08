@@ -105,9 +105,20 @@ export const renderDashboardTimePair = (publish?: string, fetched?: string) => {
   return `抓取 ${fetchedText || '--'} / 发布 ${publishText || '--'}`
 }
 
+const FUTURE_PUBLISH_TOLERANCE_MS = 15 * 60 * 1000
+
+function getDashboardSortTimestamp(item: DigestItem): number {
+  const publishMs = parseApiDate(item.publish_time)?.getTime()
+  const fetchedMs = parseApiDate(item.fetched_at)?.getTime()
+  if (publishMs === undefined && fetchedMs === undefined) return 0
+  if (publishMs === undefined) return fetchedMs ?? 0
+  if (fetchedMs === undefined) return publishMs
+  return publishMs > fetchedMs + FUTURE_PUBLISH_TOLERANCE_MS ? fetchedMs : publishMs
+}
+
 function compareDashboardItemsByTimeDesc(a: DigestItem, b: DigestItem): number {
-  const pb = parseApiDate(b.publish_time)?.getTime() ?? 0
-  const pa = parseApiDate(a.publish_time)?.getTime() ?? 0
+  const pb = getDashboardSortTimestamp(b)
+  const pa = getDashboardSortTimestamp(a)
   if (pb !== pa) return pb - pa
   const fb = parseApiDate(b.fetched_at)?.getTime() ?? 0
   const fa = parseApiDate(a.fetched_at)?.getTime() ?? 0

@@ -28,6 +28,10 @@ vi.mock('./TaskPromptsTab', () => ({
   default: () => React.createElement('div', null, 'Task Prompts'),
 }))
 
+vi.mock('./MaintenanceTab', () => ({
+  default: () => React.createElement('div', null, 'Maintenance'),
+}))
+
 import Settings from './Settings'
 
 describe('Settings', () => {
@@ -41,6 +45,7 @@ describe('Settings', () => {
     expect(html).toContain('登录与凭据')
     expect(html).toContain('智能引擎')
     expect(html).toContain('任务提示')
+    expect(html).toContain('系统维护')
     expect(html).not.toContain('搜索词管理')
     expect(html).toContain('settings-page')
   })

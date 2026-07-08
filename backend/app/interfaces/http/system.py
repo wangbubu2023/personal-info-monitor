@@ -101,6 +101,22 @@ def reload_score_vocab_runtime() -> Dict[str, Any]:
     return {"status": "ok", "vocab": snapshot}
 
 
+@router.get("/upgrade")
+def get_upgrade_status() -> Dict[str, Any]:
+    """Return the latest UI-triggered upgrade status and log tail."""
+    from app.platform.runtime.upgrade import get_upgrade_status as read_upgrade_status
+
+    return read_upgrade_status()
+
+
+@router.post("/upgrade")
+def start_upgrade() -> Dict[str, Any]:
+    """Start a detached ``./pim upgrade`` runner if one is not already active."""
+    from app.platform.runtime.upgrade import start_upgrade as launch_upgrade
+
+    return launch_upgrade()
+
+
 @router.get("/doctor")
 async def get_system_doctor() -> Dict[str, Any]:
     """Perform a full system diagnostic audit."""

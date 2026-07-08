@@ -1,6 +1,6 @@
 import React, { Suspense, lazy, useMemo, useCallback, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Cpu, Database, Tag as TagIcon, MessageSquareText, ShieldAlert, ShieldCheck, Gauge, Activity } from 'lucide-react';
+import { Cpu, Database, Tag as TagIcon, MessageSquareText, ShieldAlert, Gauge, Activity, Wrench } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { KEYWORD_MONITORING_ENABLED, SCORE_LAB_BUILD_ENABLED } from '../../config/features';
 import PanelLoading from '../common/PanelLoading';
@@ -11,6 +11,7 @@ const FetchHealthTab = lazy(() => import('./FetchHealthTab'));
 const CredentialsTab = lazy(() => import('./CredentialsTab'));
 const AIModelTab = lazy(() => import('./AIModelTab'));
 const TaskPromptsTab = lazy(() => import('./TaskPromptsTab'));
+const MaintenanceTab = lazy(() => import('./MaintenanceTab'));
 
 /**
  * URL keys we used to ship: `api-keys` (API key tab) and `browser-sessions`
@@ -37,7 +38,7 @@ const Settings: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
 
   const validTabKeys = useMemo(() => {
-    const keys: string[] = ['sources', 'fetch-health', 'credentials', 'ai-model', 'task-prompts'];
+    const keys: string[] = ['sources', 'fetch-health', 'credentials', 'ai-model', 'task-prompts', 'maintenance'];
     if (KEYWORD_MONITORING_ENABLED) keys.push('keywords');
     if (SCORE_LAB_BUILD_ENABLED) keys.push('score-lab');
     return keys;
@@ -96,6 +97,13 @@ const Settings: React.FC = () => {
       description: '后台任务使用的选稿说明与综述提示；当前含每小时简报。',
       content: <TaskPromptsTab />,
     },
+    {
+      key: 'maintenance',
+      label: '系统维护',
+      icon: Wrench,
+      description: '执行升级等本机运维动作，并查看最近一次操作日志。',
+      content: <MaintenanceTab />,
+    },
   ];
 
   if (KEYWORD_MONITORING_ENABLED) {
@@ -147,7 +155,7 @@ const Settings: React.FC = () => {
   return (
     <div className="min-h-screen bg-[#f5f9fc] pb-16" data-testid="settings-page">
       <div className="mx-auto max-w-page pl-5 pr-6 sm:pl-7 sm:pr-8 lg:pl-9 lg:pr-10">
-        {/* 第一层：标题行 + 角标 */}
+        {/* 第一层：标题行 */}
         <div className="flex flex-col gap-3.5 pb-1 pt-4 sm:gap-4 sm:pt-5">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <PageHeroTitle
@@ -155,10 +163,6 @@ const Settings: React.FC = () => {
               titleEn="System Settings"
               data-testid="settings-header-title"
             />
-            <div className="flex shrink-0 items-center gap-1.5 self-start rounded-lg border border-[#8C866A]/18 bg-white/90 px-2.5 py-1.5 text-[12px] font-medium text-[#5e5a47] shadow-sm">
-              <ShieldCheck size={13} strokeWidth={iconStroke} className="shrink-0 text-[#8C866A]" />
-              本地优先
-            </div>
           </div>
         </div>
 

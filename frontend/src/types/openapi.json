@@ -8625,6 +8625,62 @@
         ]
       }
     },
+    "/api/system/upgrade": {
+      "get": {
+        "description": "Return the latest UI-triggered upgrade status and log tail.",
+        "operationId": "get_upgrade_status_api_system_upgrade_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Upgrade Status Api System Upgrade Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Get Upgrade Status",
+        "tags": [
+          "system"
+        ]
+      },
+      "post": {
+        "description": "Start a detached ``./pim upgrade`` runner if one is not already active.",
+        "operationId": "start_upgrade_api_system_upgrade_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Start Upgrade Api System Upgrade Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Start Upgrade",
+        "tags": [
+          "system"
+        ]
+      }
+    },
     "/health": {
       "get": {
         "description": "Detailed health check endpoint for authenticated operators.",

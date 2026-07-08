@@ -17,7 +17,7 @@ over the module-level helpers.
 import asyncio
 import random
 from collections import Counter
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import urlparse
 from xml.etree import ElementTree
@@ -1233,7 +1233,10 @@ class WebsiteCollector(BaseCollector):
         if not text:
             return None
         try:
-            return datetime.fromisoformat(text.replace("Z", "+00:00")).replace(tzinfo=None)
+            parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+            if parsed.tzinfo is not None:
+                return parsed.astimezone(timezone.utc).replace(tzinfo=None)
+            return parsed
         except ValueError:
             return None
 

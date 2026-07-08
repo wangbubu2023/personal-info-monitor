@@ -32,6 +32,19 @@ export interface RuntimeFeatures {
   atoms_knowledge_enabled?: boolean
 }
 
+export interface UpgradeStatus {
+  status: 'idle' | 'running' | 'succeeded' | 'failed'
+  pid: number | null
+  started_at: string | null
+  finished_at: string | null
+  exit_code: number | null
+  command: string[]
+  log_path: string
+  log_tail: string
+  message: string
+  configured_args?: string[]
+}
+
 export const systemApi = {
   getQueueStatus: async (): Promise<QueueStatus> => {
     const response = await api.get<QueueStatus>('/system/queue')
@@ -40,6 +53,16 @@ export const systemApi = {
 
   getFeatures: async (): Promise<RuntimeFeatures> => {
     const response = await api.get<RuntimeFeatures>('/system/features')
+    return response.data
+  },
+
+  getUpgradeStatus: async (): Promise<UpgradeStatus> => {
+    const response = await api.get<UpgradeStatus>('/system/upgrade')
+    return response.data
+  },
+
+  startUpgrade: async (): Promise<UpgradeStatus> => {
+    const response = await api.post<UpgradeStatus>('/system/upgrade')
     return response.data
   },
 }

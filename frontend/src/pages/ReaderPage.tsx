@@ -145,7 +145,7 @@ const ReaderPage: React.FC = () => {
       })
     : '/';
 
-  const { data, loading, error, displayTitle, displayBlocks, markAsRead, setReadLater, hide, stream } = useReader(id, translateRequested);
+  const { data, loading, error, displayTitle, displayBlocks, markAsRead, setLiked, hide, stream } = useReader(id, translateRequested);
   const layout = useMemo(
     () => getReaderLayoutProfile(data?.original_url, data?.source_name),
     [data?.original_url, data?.source_name],
@@ -183,11 +183,11 @@ const ReaderPage: React.FC = () => {
     await markAsRead();
   }, [data?.read_status, id, markAsRead]);
 
-  const toggleReadLater = useCallback(async (channel: 'keyboard' | 'click') => {
+  const toggleLiked = useCallback(async (channel: 'keyboard' | 'click') => {
     if (!id || !data) return;
-    recordReaderInteraction(channel, 'read_later');
-    await setReadLater(!data.favorited);
-  }, [data, id, setReadLater]);
+    recordReaderInteraction(channel, 'like');
+    await setLiked(!data.favorited);
+  }, [data, id, setLiked]);
 
   const hideCurrent = useCallback(async (channel: 'keyboard' | 'click') => {
     if (!id || !data) return;
@@ -219,7 +219,7 @@ const ReaderPage: React.FC = () => {
         void markCurrentAsRead('keyboard');
       } else if (event.key.toLowerCase() === 'l') {
         event.preventDefault();
-        void toggleReadLater('keyboard');
+        void toggleLiked('keyboard');
       } else if (event.key.toLowerCase() === 'h') {
         event.preventDefault();
         void hideCurrent('keyboard');
@@ -228,7 +228,7 @@ const ReaderPage: React.FC = () => {
 
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [data, hideCurrent, markCurrentAsRead, navigateToNeighbor, toggleReadLater]);
+  }, [data, hideCurrent, markCurrentAsRead, navigateToNeighbor, toggleLiked]);
 
   if (loading) return <PageLoading />;
 
@@ -297,14 +297,14 @@ const ReaderPage: React.FC = () => {
               </button>
               <button
                 type="button"
-                onClick={() => void toggleReadLater('click')}
+                onClick={() => void toggleLiked('click')}
                 className={`flex items-center gap-2 rounded-xl border px-3.5 py-2 text-[12px] font-semibold transition-all ${
                   data.favorited
                     ? 'border-[#49A8C9]/35 bg-[#49A8C9] text-white shadow-md shadow-[#49A8C9]/20'
                     : 'border-[rgba(88,100,118,0.18)] bg-white/60 text-[#586476] hover:bg-white hover:text-[#293859]'
                 }`}
               >
-                <Bookmark size={14} /> {data.favorited ? '已稍后读' : '稍后读'}
+                <Bookmark size={14} /> {data.favorited ? '已喜欢' : '喜欢'}
               </button>
               <button
                 type="button"

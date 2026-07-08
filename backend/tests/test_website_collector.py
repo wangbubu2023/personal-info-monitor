@@ -1351,6 +1351,14 @@ class TestRssOnlyMode:
         assert entries[0]["title"] == "Markets big story"
         assert entries[0]["publish_time"].isoformat() == "2026-07-04T14:52:56.276000"
 
+    def test_parse_sitemap_time_normalises_offset_to_utc_naive(self):
+        collector = WebsiteCollector()
+
+        result = collector._parse_sitemap_time("2026-07-08T10:12:00+08:00")
+
+        assert result == datetime(2026, 7, 8, 2, 12, 0)
+        assert result.tzinfo is None
+
     @pytest.mark.asyncio
     async def test_rss_only_skips_direct_article_hydration(self):
         """Even with cookies + a browser session on the source, rss_only must
