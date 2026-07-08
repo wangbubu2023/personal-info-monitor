@@ -16,6 +16,7 @@ from app.domains.fetch.collectors.base import BaseCollector
 from app.models import Source
 from app.utils.logger import get_logger
 from app.platform.security.ssrf import fetch_public_http_text
+from app.utils.http import permissive_session_kwargs
 from app.utils.text import strip_html_tags, text_looks_like_embedded_binary
 
 logger = get_logger(__name__)
@@ -49,7 +50,28 @@ class RSSCollector(BaseCollector):
                 cookie_header = "; ".join([f"{k}={v}" for k, v in cookies.items() if k and v])
                 if cookie_header:
                     request_headers = {"Cookie": cookie_header}
-            feed = await asyncio.to_thread(feedparser.parse, source.url, request_headers=request_headers)
+            headers = dict(request_headers or {})
+            if "User-Agent" not in headers:
+                headers["User-Agent"] = self.user_agents[0]
+
+            async with aiohttp.ClientSession(**permissive_session_kwargs()) as session:
+                response = await fetch_public_http_text(
+                    session,
+                    source.url,
+                    source_url=source.url,
+                    validation_cookies=cookies or None,
+                    headers=headers,
+                    cookies=cookies if cookies else None,
+                    timeout=aiohttp.ClientTimeout(total=20),
+                    text_errors="replace",
+                )
+
+            feed = await asyncio.to_thread(
+                feedparser.parse,
+                response.text,
+                response_headers={"content-location": response.url},
+            )
+            setattr(feed, "status", response.status)
 
             self._record_feed_health(source, feed)
 

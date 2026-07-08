@@ -155,6 +155,17 @@ class _FakeSession:
         return self.responses.pop(0)
 
 
+class _FailingResponse:
+    def __init__(self, exc):
+        self.exc = exc
+
+    async def __aenter__(self):
+        raise self.exc
+
+    async def __aexit__(self, exc_type, exc, tb):
+        return False
+
+
 @pytest.mark.asyncio
 async def test_fetch_public_http_text_revalidates_redirect_target(monkeypatch):
     session = _FakeSession(
@@ -208,6 +219,29 @@ async def test_fetch_public_http_text_pins_connection_to_validated_ip(monkeypatc
     assert request_kwargs["headers"]["Host"] == "example.com"
     # TLS validates against the real hostname via SNI.
     assert request_kwargs["server_hostname"] == "example.com"
+
+
+@pytest.mark.asyncio
+async def test_fetch_public_http_text_falls_back_to_next_validated_address(monkeypatch):
+    session = _FakeSession(
+        [
+            _FailingResponse(OSError("Cannot assign requested address")),
+            _FakeResponse(200, body="ok"),
+        ]
+    )
+
+    async def _fake_resolve(hostname: str, _port: int):
+        assert hostname == "example.com"
+        return ["2606:2800:220:1:248:1893:25c8:1946", "93.184.216.34"]
+
+    monkeypatch.setattr("app.platform.security.ssrf._resolve_host_addresses", _fake_resolve)
+
+    result = await fetch_public_http_text(session, "https://example.com/start")
+
+    assert result.status == 200
+    assert result.text == "ok"
+    assert session.calls[0][0] == "https://[2606:2800:220:1:248:1893:25c8:1946]/start"
+    assert session.calls[1][0] == "https://93.184.216.34/start"
 
 
 @pytest.mark.asyncio

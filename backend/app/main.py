@@ -25,6 +25,7 @@ logger = get_logger(__name__)
 DEFAULT_API_PORT = 8000
 DEV_FRONTEND_URL = os.getenv("PIM_DEV_FRONTEND_URL", "http://127.0.0.1:3000").strip() or "http://127.0.0.1:3000"
 DEV_SERVER_MODE = os.getenv("PIM_DEV_SERVER", "").strip().lower() in {"1", "true", "yes"}
+APP_VERSION = "1.4.2"
 SPA_NO_CACHE_HEADERS = {
     "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
     "Pragma": "no-cache",
@@ -98,7 +99,7 @@ async def _process_handler(content_id: str, job_id: str | None) -> None:
 app = FastAPI(
     title=settings.app_name,
     description="个人化资讯监控管理系统 API",
-    version="1.4.0",
+    version=APP_VERSION,
     lifespan=build_lifespan(
         fetch_handler=_fetch_handler,
         process_handler=_process_handler,
@@ -239,7 +240,7 @@ else:
             status = f"running (Frontend dev server: {DEV_FRONTEND_URL})"
         return {
             "name": settings.app_name,
-            "version": "1.4.0",
+            "version": APP_VERSION,
             "status": status,
         }
 

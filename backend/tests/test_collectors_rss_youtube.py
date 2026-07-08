@@ -87,14 +87,14 @@ async def test_rss_fetch_issues_no_page_requests_before_dedupe():
          patch.object(collector, "_record_feed_health"), \
          patch(
              "app.domains.fetch.collectors.rss.fetch_public_http_text",
-             new_callable=AsyncMock,
-         ) as page_fetch, \
+             new=AsyncMock(return_value=SimpleNamespace(status=200, text="<rss />", url=source.url)),
+         ) as feed_fetch, \
          patch("app.domains.fetch.collectors.rss.feedparser.parse", return_value=parsed):
         contents = await collector.fetch(source)
 
     assert len(contents) == 1
     assert contents[0]["external_id"] == "entry-1"
-    page_fetch.assert_not_awaited()
+    feed_fetch.assert_awaited_once()
 
 
 @pytest.mark.asyncio

@@ -52,9 +52,25 @@ async def _resolve_host_addresses(hostname: str, port: int) -> List[str]:
             type=socket.SOCK_STREAM,
             proto=socket.IPPROTO_TCP,
         )
-        return list({info[4][0] for info in infos if info and info[4]})
+        addresses: list[str] = []
+        for info in infos:
+            if not info or not info[4]:
+                continue
+            address = info[4][0]
+            if address not in addresses:
+                addresses.append(address)
+        return sorted(addresses, key=_address_preference_key)
     except socket.gaierror:
         return []
+
+
+def _address_preference_key(address: str) -> tuple[int, str]:
+    """Prefer IPv4 addresses on hosts where IPv6 is resolved but unusable."""
+    try:
+        parsed = ipaddress.ip_address(address)
+    except ValueError:
+        return (2, address)
+    return (0 if parsed.version == 4 else 1, address)
 
 
 async def assert_public_http_target(url: str) -> List[str]:
@@ -172,30 +188,49 @@ async def fetch_public_http_text(
         kwargs = dict(request_kwargs)
         kwargs["allow_redirects"] = False
 
-        # Pin the connection to a validated address so aiohttp cannot re-resolve
-        # the hostname to an internal IP after our check (DNS rebinding / TOCTOU).
-        request_url, host_header, server_hostname = _pin_request_to_ip(current_url, addresses[0])
-        headers = dict(kwargs.get("headers") or {})
-        headers.setdefault("Host", host_header)
-        kwargs["headers"] = headers
-        if server_hostname is not None:
-            kwargs.setdefault("server_hostname", server_hostname)
+        last_connect_error: BaseException | None = None
+        for address in addresses:
+            # Pin the connection to a validated address so aiohttp cannot
+            # re-resolve the hostname to an internal IP after our check (DNS
+            # rebinding / TOCTOU). Try every validated address because some
+            # deployments resolve IPv6 first even though the host has no IPv6
+            # route, producing "Cannot assign requested address".
+            request_url, host_header, server_hostname = _pin_request_to_ip(current_url, address)
+            address_kwargs = dict(kwargs)
+            headers = dict(address_kwargs.get("headers") or {})
+            headers.setdefault("Host", host_header)
+            address_kwargs["headers"] = headers
+            if server_hostname is not None:
+                address_kwargs.setdefault("server_hostname", server_hostname)
 
-        async with requester(request_url, **kwargs) as response:
-            if response.status in REDIRECT_STATUSES:
-                location = (response.headers.get("Location") or "").strip()
-                if not location:
-                    return PublicHttpTextResult(response.status, current_url, "")
-                # Resolve the redirect against the real hostname URL we are
-                # tracking (not the pinned IP URL aiohttp sees).
-                current_url = urljoin(current_url, location)
+            try:
+                async with requester(request_url, **address_kwargs) as response:
+                    if response.status in REDIRECT_STATUSES:
+                        location = (response.headers.get("Location") or "").strip()
+                        if not location:
+                            return PublicHttpTextResult(response.status, current_url, "")
+                        # Resolve the redirect against the real hostname URL we
+                        # are tracking (not the pinned IP URL aiohttp sees).
+                        current_url = urljoin(current_url, location)
+                        break
+                    if read_body:
+                        if text_errors is None:
+                            body = await response.text()
+                        else:
+                            body = await response.text(errors=text_errors)
+                    else:
+                        body = ""
+                    return PublicHttpTextResult(response.status, current_url, body)
+            except (aiohttp.ClientConnectorError, OSError, TimeoutError) as exc:
+                last_connect_error = exc
+                logger.debug("Pinned HTTP request to %s failed for %s: %s", address, current_url, exc)
                 continue
-            if read_body:
-                if text_errors is None:
-                    body = await response.text()
-                else:
-                    body = await response.text(errors=text_errors)
-            else:
-                body = ""
-            return PublicHttpTextResult(response.status, current_url, body)
+        else:
+            if last_connect_error is not None:
+                raise last_connect_error
+            raise ValueError(f"hostname did not resolve to usable addresses: {current_url}")
+
+        # A redirect was accepted; re-enter the outer loop to validate the new
+        # target before making the next request.
+        continue
     raise ValueError(f"redirect limit exceeded for {url}")
