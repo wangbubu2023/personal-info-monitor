@@ -15,6 +15,10 @@ def test_hourly_digest_job_is_always_registered():
     assert "purge_expired_runtime_locks" in job_ids
     assert "requeue_unfinished_content" in job_ids
 
+    hourly_job = scheduler.get_job("generate_hourly_digest")
+    assert hourly_job is not None
+    assert str(hourly_job.trigger) == "cron[minute='10']"
+
     scheduler.remove_all_jobs()
 
 

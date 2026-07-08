@@ -125,6 +125,14 @@ describe('ReaderPage', () => {
     expect(screen.getByRole('button', { name: '喜欢' })).toBeTruthy()
   })
 
+  it('shows toolbar shortcut hints', () => {
+    renderReaderPage()
+
+    for (const key of ['K', 'J', 'R', 'L', 'H']) {
+      expect(screen.getByText(key)).toBeTruthy()
+    }
+  })
+
   it('hides via toolbar button and records negative feedback intent', async () => {
     const user = userEvent.setup()
     renderReaderPage()

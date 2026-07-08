@@ -174,6 +174,44 @@ async def test_daily_digest_orders_items_by_publish_time_not_fetch_batch(client,
 
 
 @pytest.mark.asyncio
+async def test_daily_digest_excludes_archived_items(client, db_session):
+    source = Source(name="Feed", type=SourceType.RSS, url="https://example.com/feed.xml")
+    now = utcnow_naive()
+    visible = Content(
+        source=source,
+        title="Visible item",
+        summary="Summary",
+        original_url="https://example.com/visible",
+        content_type="rss",
+        fetched_at=now,
+        publish_time=now,
+        read_status=False,
+    )
+    hidden = Content(
+        source=source,
+        title="Hidden item",
+        summary="Summary",
+        original_url="https://example.com/hidden",
+        content_type="rss",
+        fetched_at=now,
+        publish_time=now,
+        read_status=False,
+        archived=True,
+    )
+    db_session.add_all([source, visible, hidden])
+    await db_session.commit()
+
+    response = await client.get(
+        "/api/digest",
+        params=[("date", _digest_date_param(now)), ("unread_only", "false")],
+    )
+
+    assert response.status_code == 200
+    items = response.json()["categories"]["rss"]["items"]
+    assert [item["title"] for item in items] == ["Visible item"]
+
+
+@pytest.mark.asyncio
 async def test_daily_digest_supports_date_range_and_score_desc(client, db_session):
     source = Source(name="Scored", type=SourceType.WEBSITE, url="https://example.com")
     base = utcnow_naive().replace(hour=3, minute=0, second=0, microsecond=0)
@@ -303,7 +341,7 @@ async def test_hourly_digest_detail_returns_score_top_20_across_types(client, db
     }
     now = utcnow_naive().replace(minute=10, second=0, microsecond=0)
     cal = _digest_calendar_date(now)
-    start_utc, _ = _completed_hour_label_to_utc_window(cal, now.hour, window_hours=3)
+    start_utc, _ = _completed_hour_label_to_utc_window(cal, now.hour, window_hours=1)
     digest = HourlyDigest(
         digest_date=cal,
         hour=now.hour,

@@ -31,6 +31,12 @@ from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
+BRIEFING_SECTIONS: tuple[tuple[str, str], ...] = (
+    ("need_to_know", "需要你现在知道"),
+    ("brewing", "正在发酵"),
+    ("later", "可稍后看"),
+)
+
 
 def build_synthesis_materials(selected: List[dict]) -> str:
     parts: List[str] = []
@@ -52,6 +58,40 @@ def build_synthesis_materials(selected: List[dict]) -> str:
     return "\n".join(parts).strip()
 
 
+def _event_local_link(item: dict) -> str:
+    title = clean_digest_text(str(item.get("title") or "未命名事件").strip())
+    local_path = str(item.get("local_reader_path") or "").strip()
+    if local_path:
+        return f"[{title}]({local_path})"
+    return title
+
+
+def _event_sources_text(item: dict) -> str:
+    source_names = item.get("source_names")
+    if isinstance(source_names, list) and source_names:
+        return "、".join(str(x).strip() for x in source_names if str(x).strip())
+    return str(item.get("source_name") or "Unknown").strip()
+
+
+def build_event_briefing_materials(event_items: List[dict]) -> str:
+    parts: List[str] = []
+    for idx, item in enumerate(event_items, start=1):
+        parts.append(
+            f"### 事件 {idx}\n"
+            f"- 分区：{item.get('section')}\n"
+            f"- 标题链接：{_event_local_link(item)}\n"
+            f"- 来源：{_event_sources_text(item)}\n"
+            f"- 重要性：{item.get('importance_score')} / 100\n"
+            f"- 增量性：{item.get('incremental_score')} / 100\n"
+            f"- 置信度：{item.get('confidence_score')} / 100\n"
+            f"- 发生了什么：{clean_digest_text(str(item.get('what_happened') or item.get('summary') or ''))}\n"
+            f"- 为什么重要：{clean_digest_text(str(item.get('why_matters') or ''))}\n"
+            f"- 新信号：{clean_digest_text(str(item.get('new_signal') or item.get('summary') or ''))}\n"
+            f"- 还缺什么确认：{clean_digest_text(str(item.get('missing_confirmation') or ''))}\n"
+        )
+    return "\n".join(parts).strip()
+
+
 async def llm_synthesize_hourly_digest(
     model_client: ModelProviderClient,
     runtime,
@@ -66,23 +106,114 @@ async def llm_synthesize_hourly_digest(
     # answer that fails validation.
     cap = max(2000, min(8192, int(getattr(runtime, "max_tokens", 1000) or 1000) * 3))
     prompt = (
-        f"你正在生成「每小时简报」，当前是写综述步骤。必须遵守下列任务说明。\n\n"
+        f"你正在生成「每小时快报」，当前是根据结构化事件卡写最终正文。必须遵守下列任务说明。\n\n"
         f"{task_prompt}\n\n"
         f"---\n"
         f"结构与格式硬约束：\n"
         f"- 第一行必须是：`## {title}` ，然后空一行再写正文。\n"
+        f"- 第二段必须以 `一句话：` 开头，概括过去一小时真正值得注意的变化。\n"
+        f"- 之后只使用这三个三级标题：`### 需要你现在知道`、`### 正在发酵`、`### 可稍后看`。\n"
+        f"- `需要你现在知道` 中每个事件写 3 个短句：发生了什么；为什么重要；来源和本地阅读链接。\n"
+        f"- `正在发酵` 中每个事件写 2 个短句：新信号是什么；还缺什么确认。\n"
+        f"- `可稍后看` 只保留 3-5 条，每条一行。\n"
         f"- 禁止输出代码围栏。\n"
         f"- 不要输出 <think> 等思考标签；直接写最终简报即可。\n\n"
-        f"素材：\n{materials}"
+        f"结构化事件卡：\n{materials}"
     )
     return await model_client.generate_text(
         runtime,
         prompt=prompt,
-        system_prompt="你是资深中文编辑，擅长把多条资讯写成一篇综述。",
+        system_prompt="你是克制的中文私人秘书，只根据给定事件卡写短快报。",
         temperature=0.2,
         max_tokens=cap,
         timeout_seconds=150.0,
     )
+
+
+def _split_event_items(event_items: List[dict]) -> dict[str, list[dict]]:
+    sections = {key: [] for key, _ in BRIEFING_SECTIONS}
+    for item in event_items:
+        section = str(item.get("section") or "later")
+        if section not in sections:
+            section = "later"
+        sections[section].append(item)
+    return sections
+
+
+def _render_need_to_know(item: dict) -> list[str]:
+    link = _event_local_link(item)
+    sources = _event_sources_text(item)
+    what = clean_digest_text(str(item.get("what_happened") or item.get("summary") or "本小时出现新的相关进展。"))
+    why = clean_digest_text(str(item.get("why_matters") or "该事件综合评分较高，值得现在知道。"))
+    return [
+        f"**{link}**",
+        f"发生了什么：{what}",
+        f"为什么重要：{why}",
+        f"来源：{sources}；本地阅读：{link}",
+        "",
+    ]
+
+
+def _render_brewing(item: dict) -> list[str]:
+    link = _event_local_link(item)
+    signal = clean_digest_text(str(item.get("new_signal") or item.get("summary") or "出现新的报道或材料。"))
+    missing = clean_digest_text(str(item.get("missing_confirmation") or "还需要更多独立来源确认。"))
+    return [
+        f"**{link}**",
+        f"新信号：{signal}",
+        f"还缺什么确认：{missing}",
+        "",
+    ]
+
+
+def build_hourly_briefing_digest(
+    title: str,
+    event_items: List[dict],
+    *,
+    reason: str | None = None,
+) -> str:
+    sections = _split_event_items(event_items)
+    top = (sections["need_to_know"] or sections["brewing"] or sections["later"])[:1]
+    if top:
+        one_liner = f"一句话：过去一小时真正值得注意的是，{clean_digest_text(str(top[0].get('title') or '一个新信号'))}。"
+    else:
+        one_liner = "一句话：过去一小时没有足够重要、增量明确且可信的新增事件。"
+
+    lines: list[str] = [f"## {title}", "", one_liner, ""]
+    if reason:
+        lines.append(f"> 降级渲染：{reason.strip()}")
+        lines.append("")
+
+    lines.append("### 需要你现在知道")
+    lines.append("")
+    if sections["need_to_know"]:
+        for item in sections["need_to_know"][:4]:
+            lines.extend(_render_need_to_know(item))
+    else:
+        lines.append("本小时没有达到“需要现在知道”阈值的事件。")
+        lines.append("")
+
+    lines.append("### 正在发酵")
+    lines.append("")
+    if sections["brewing"]:
+        for item in sections["brewing"][:4]:
+            lines.extend(_render_brewing(item))
+    else:
+        lines.append("暂无需要持续跟踪但尚未确认的明显信号。")
+        lines.append("")
+
+    lines.append("### 可稍后看")
+    lines.append("")
+    later = sections["later"][:5]
+    if later:
+        for item in later:
+            score = item.get("importance_score", item.get("score"))
+            score_text = f"，重要性 {score:g}" if isinstance(score, (int, float)) else ""
+            lines.append(f"- {_event_local_link(item)}（{_event_sources_text(item)}{score_text}）")
+    else:
+        lines.append("暂无高分但不紧急的补充素材。")
+
+    return "\n".join(lines).strip()
 
 
 def build_cluster_prompt_v1(title: str, clusters: List[dict], *, candidate_limit: int) -> str:

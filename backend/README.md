@@ -45,7 +45,7 @@ app/
 │   ├── enrich/                  # LLM 富化、reader、digest、通知
 │   │   ├── content/             # 摘要/翻译触发与重处理
 │   │   ├── reader/              # 正文加载 / 翻译 / NDJSON 流
-│   │   ├── hourly/              # 3 小时简报
+│   │   ├── hourly/              # 每小时快报 / 可配置窗口简报
 │   │   └── notifications/       # daily_digest / doctor / keyword_alert
 │   └── atoms/                   # 新闻原子库（ATOMS_ENABLED）；atoms + atom_relations 表
 ├── platform/                    # 横切基础设施（禁止依赖 domains）

@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Optional
 from uuid import UUID
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from app.models import Content, Source
@@ -45,6 +45,7 @@ class DigestService:
             self.db.query(Content)
             .join(Source)
             .filter(Content.fetched_at >= day_start, Content.fetched_at < day_end)
+            .filter(or_(Content.archived.is_(False), Content.archived.is_(None)))
         )
 
         if unread_only:

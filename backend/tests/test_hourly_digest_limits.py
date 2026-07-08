@@ -106,6 +106,46 @@ def test_build_digest_from_items_groups_sections_and_sources():
     assert "摘要二（来源：[source-b](https://example.com/b) [点击查看原文](https://example.com/b)）" in body
 
 
+def test_build_hourly_briefing_digest_uses_redesigned_sections():
+    body = digest_tasks._build_hourly_briefing_digest(
+        "7 月 8 日 10 时简报",
+        [
+            {
+                "section": "need_to_know",
+                "title": "模型政策更新",
+                "what_happened": "监管机构发布了新的模型政策。",
+                "why_matters": "这是高优先级政策信号。",
+                "source_names": ["Official"],
+                "local_reader_path": "/reader/abc",
+                "importance_score": 82.0,
+            },
+            {
+                "section": "brewing",
+                "title": "芯片出口传闻",
+                "new_signal": "多家媒体提到新限制正在讨论。",
+                "missing_confirmation": "还缺官方文件。",
+                "source_names": ["Wire"],
+                "local_reader_path": "/reader/def",
+            },
+            {
+                "section": "later",
+                "title": "产品小更新",
+                "source_names": ["Blog"],
+                "local_reader_path": "/reader/ghi",
+                "importance_score": 61.0,
+            },
+        ],
+    )
+
+    assert "一句话：过去一小时真正值得注意的是，模型政策更新。" in body
+    assert "### 需要你现在知道" in body
+    assert "发生了什么：监管机构发布了新的模型政策。" in body
+    assert "### 正在发酵" in body
+    assert "还缺什么确认：还缺官方文件。" in body
+    assert "### 可稍后看" in body
+    assert "- [产品小更新](/reader/ghi)（Blog，重要性 61）" in body
+
+
 def test_localize_fallback_clusters_translates_primary_items(monkeypatch):
     class _FakeTranslator:
         def is_chinese(self, text: str) -> bool:

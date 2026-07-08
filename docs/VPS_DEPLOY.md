@@ -92,7 +92,7 @@ Linux 容器或 root-run 服务默认使用 `PIM_PLAYWRIGHT_NO_SANDBOX=auto`，�
 `~/.pim/data/runtime-secrets.json` 或已登录 profile：
 
 ```bash
-./pim auth-bundle sync https://example.com \
+./pim login-sync https://example.com \
   --remote pim@your-vps \
   --remote-pim ~/personal-info-monitor
 ```
@@ -100,7 +100,7 @@ Linux 容器或 root-run 服务默认使用 `PIM_PLAYWRIGHT_NO_SANDBOX=auto`，�
 如果远端 PIM 不在本机 `http://127.0.0.1:8000`，可显式传远端服务地址或 profile：
 
 ```bash
-./pim auth-bundle sync https://example.com \
+./pim login-sync https://example.com \
   --remote pim@your-vps \
   --remote-pim ~/personal-info-monitor \
   --remote-server https://your-pim.example.com \

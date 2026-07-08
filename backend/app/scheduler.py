@@ -54,13 +54,13 @@ def setup_scheduler():
     )
 
     # Digest should always be registered when the feature is visible in the UI.
-    # It now runs on completed 3-hour boundaries; runtime availability is
-    # checked inside the task itself.
+    # Run at minute 10 so fetch/finalize jobs have time to finish the previous
+    # completed hour before the briefing is generated.
     scheduler.add_job(
         generate_previous_hour_digest,
-        CronTrigger(hour="*/3", minute=0),
+        CronTrigger(minute=10),
         id="generate_hourly_digest",
-        name="Generate 3-hour digest",
+        name="Generate hourly briefing",
         replace_existing=True,
         **_JOB_DEFAULTS,
     )

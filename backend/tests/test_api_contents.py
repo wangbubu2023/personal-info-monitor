@@ -94,6 +94,27 @@ async def test_contents_list_filters_by_source_id(client, db_session):
 
 
 @pytest.mark.asyncio
+async def test_contents_list_excludes_archived_by_default(client, db_session):
+    _, visible = await _seed_content(db_session, title="Visible article")
+    _, hidden = await _seed_content(db_session, title="Hidden article")
+    hidden.archived = True
+    await db_session.commit()
+
+    response = await client.get("/api/contents")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["total"] == 1
+    assert payload["items"][0]["id"] == str(visible.id)
+
+    archived_response = await client.get("/api/contents", params={"archived": "true"})
+    assert archived_response.status_code == 200
+    archived_payload = archived_response.json()
+    assert archived_payload["total"] == 1
+    assert archived_payload["items"][0]["id"] == str(hidden.id)
+
+
+@pytest.mark.asyncio
 async def test_contents_search_matches_source_name(client, db_session):
     _, content = await _seed_content(db_session, source_name="Product Hunt", title="Unrelated launch")
     await _seed_content(db_session, source_name="Other Source", title="Another item")

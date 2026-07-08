@@ -1,10 +1,19 @@
-import { render, screen } from '@testing-library/react'
+import { cleanup, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter } from 'react-router-dom'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import DashboardDigestList from './DashboardDigestList'
 import type { DigestItem } from '../../types'
+
+vi.mock('../../services/contents', () => ({
+  contentsApi: {
+    markAsRead: vi.fn(async () => undefined),
+    setFavorite: vi.fn(async (_id: string, favorited: boolean) => ({ favorited })),
+    update: vi.fn(async () => ({})),
+  },
+}))
 
 function item(id: string, title: string, readStatus: boolean): DigestItem {
   return {
@@ -20,25 +29,47 @@ function item(id: string, title: string, readStatus: boolean): DigestItem {
   }
 }
 
-describe('DashboardDigestList', () => {
-  it('collapses fully-read event groups and expands them on demand', async () => {
-    const user = userEvent.setup()
-    render(
+function renderList(items: DigestItem[]) {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  })
+  return render(
+    <QueryClientProvider client={queryClient}>
       <MemoryRouter>
         <DashboardDigestList
           isLoading={false}
-          items={[item('a', 'First item', true), item('b', 'Second item', true)]}
+          items={items}
           rangeLabel="2026-07-07"
           activeTab="all"
           categories={[{ key: 'all', label: '全部', type: 'all' }]}
         />
-      </MemoryRouter>,
-    )
+      </MemoryRouter>
+    </QueryClientProvider>,
+  )
+}
+
+describe('DashboardDigestList', () => {
+  afterEach(() => {
+    cleanup()
+    vi.clearAllMocks()
+  })
+
+  it('collapses fully-read event groups and expands them on demand', async () => {
+    const user = userEvent.setup()
+    renderList([item('a', 'First item', true), item('b', 'Second item', true)])
 
     expect(screen.getByText(/已读事件簇/)).toBeTruthy()
     expect(screen.queryByText('Second item')).toBeNull()
 
     await user.click(screen.getByText(/已读事件簇/))
     expect(screen.getByText('Second item')).toBeTruthy()
+  })
+
+  it('shows list feedback actions', () => {
+    renderList([{ ...item('a', 'First item', false), metadata: {} }])
+
+    expect(screen.getByRole('button', { name: '标为已读' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: '喜欢' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: '不感兴趣' })).toBeTruthy()
   })
 })

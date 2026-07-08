@@ -7,7 +7,12 @@ from types import SimpleNamespace
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from cli.pimctl.app import handle_auth_bundle, handle_auth_bundle_export, handle_auth_bundle_sync
+from cli.pimctl.app import (
+    handle_auth_bundle,
+    handle_auth_bundle_export,
+    handle_auth_bundle_sync,
+    handle_auth_bundle_wizard,
+)
 
 
 class _FakeClient:
@@ -143,7 +148,7 @@ def test_auth_bundle_sync_exports_uploads_and_imports_remote(monkeypatch, tmp_pa
         return SimpleNamespace(returncode=0)
 
     monkeypatch.setattr("app.platform.auth.bundle.export_auth_bundle", fake_export_auth_bundle)
-    monkeypatch.setattr("cli.pimctl.app.subprocess.run", fake_run)
+    monkeypatch.setattr("cli.pimctl.auth_bundle.subprocess.run", fake_run)
 
     output_path = tmp_path / "example.pim-auth-bundle.json"
     args = SimpleNamespace(
@@ -212,3 +217,63 @@ def test_auth_bundle_sync_exports_uploads_and_imports_remote(monkeypatch, tmp_pa
     out = capsys.readouterr().out
     assert "pim@example-vps" in out
     assert "Remote Deleted" in out
+
+
+def test_auth_bundle_wizard_normalizes_site_and_reuses_sync(monkeypatch, tmp_path: Path, capsys):
+    export_calls = []
+    run_calls = []
+
+    async def fake_export_auth_bundle(**kwargs):
+        export_calls.append(kwargs)
+        output_path = Path(kwargs["output_path"])
+        output_path.write_text("{}", encoding="utf-8")
+        return {
+            "site_host": "example.com",
+            "cookies": [{"name": "session", "value": "abc"}],
+            "storage_state": {"cookies": [{"name": "session", "value": "abc"}]},
+        }
+
+    def fake_run(cmd, *, check):
+        run_calls.append((cmd, check))
+        return SimpleNamespace(returncode=0)
+
+    monkeypatch.setattr("app.platform.auth.bundle.export_auth_bundle", fake_export_auth_bundle)
+    monkeypatch.setattr("cli.pimctl.auth_bundle.subprocess.run", fake_run)
+
+    output_path = tmp_path / "example.pim-auth-bundle.json"
+    args = SimpleNamespace(
+        site_url="example.com",
+        remote="pim@example-vps",
+        remote_pim="~/personal-info-monitor",
+        remote_dir="/tmp/pim-auth-bundles",
+        remote_server=None,
+        remote_api_key=None,
+        remote_profile=None,
+        out=str(output_path),
+        name=None,
+        profile_dir=None,
+        headless=True,
+        dwell_seconds=12,
+        identity_file=None,
+        ssh_option=[],
+        ssh_bin="ssh",
+        scp_bin="scp",
+        bind_matching_sources=True,
+        create_browser_session=True,
+        keep_remote=False,
+        yes=True,
+        quiet=False,
+        server=None,
+        profile=None,
+    )
+
+    assert handle_auth_bundle_wizard(args, as_json=False) == 0
+
+    assert args.site_url == "https://example.com"
+    assert export_calls[0]["site_url"] == "https://example.com"
+    assert run_calls[0][0] == ["ssh", "pim@example-vps", "mkdir -p -- /tmp/pim-auth-bundles"]
+
+    out = capsys.readouterr().out
+    assert "PIM login-state sync wizard" in out
+    assert "Next checks:" in out
+    assert "session_expired" in out

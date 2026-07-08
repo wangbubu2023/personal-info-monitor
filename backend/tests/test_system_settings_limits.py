@@ -160,7 +160,7 @@ def test_apply_patch_hourly_digest_prompt_and_content_types():
     )
     assert updated["hourly_digest"]["prompt"] == "只关心半导体，少用形容词"
     assert updated["hourly_digest"]["content_types"] == ["rss", "website"]
-    assert updated["hourly_digest"]["window_hours"] == 3
+    assert updated["hourly_digest"]["window_hours"] == 1
 
 
 def test_apply_patch_hourly_digest_window_hours_clamped():
@@ -204,5 +204,5 @@ def test_normalize_hourly_digest_content_types_defaults():
 
 
 def test_normalize_hourly_digest_window_hours_defaults():
-    assert normalize_hourly_digest_window_hours({}) == 3
+    assert normalize_hourly_digest_window_hours({}) == 1
     assert normalize_hourly_digest_window_hours({"hourly_digest": {"window_hours": "2"}}) == 2

@@ -1,7 +1,7 @@
 import React from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Alert, Button, Modal, Tag, message } from 'antd'
-import { DownloadCloud, RefreshCw } from 'lucide-react'
+import { DownloadCloud, FileDown, RefreshCw } from 'lucide-react'
 import { systemApi, type UpgradeStatus } from '../../services/system'
 import { formatLocalDateTime } from '../../utils/datetime'
 import SettingsSection from './SettingsSection'
@@ -35,6 +35,12 @@ const MaintenanceTab: React.FC = () => {
     onError: () => message.error('无法启动升级，请检查后端日志'),
   })
 
+  const supportBundleMutation = useMutation({
+    mutationFn: systemApi.downloadSupportBundle,
+    onSuccess: () => message.success('诊断包已导出'),
+    onError: () => message.error('无法导出诊断包，请检查后端日志'),
+  })
+
   const running = status?.status === 'running' || startMutation.isPending
   const meta = statusMeta[status?.status || 'idle']
 
@@ -51,6 +57,37 @@ const MaintenanceTab: React.FC = () => {
 
   return (
     <div className="flex flex-col gap-5" data-testid="maintenance-tab">
+      <SettingsSection
+        title="诊断包"
+        description="导出当前环境、健康检查、抓取失败摘要、浏览器会话状态与最近日志尾部；不会包含数据库、Cookie、runtime-secrets.json 或 API Key。"
+        actions={
+          <Button
+            type="primary"
+            size="small"
+            icon={<FileDown size={14} strokeWidth={iconStroke} />}
+            onClick={() => supportBundleMutation.mutate()}
+            loading={supportBundleMutation.isPending}
+          >
+            导出诊断包
+          </Button>
+        }
+      >
+        <div className="grid gap-3 text-[13px] text-[#586476] md:grid-cols-3">
+          <div>
+            <span className="text-[#7a8799]">格式</span>
+            <span className="ml-2 text-[#293859]">ZIP</span>
+          </div>
+          <div>
+            <span className="text-[#7a8799]">日志</span>
+            <span className="ml-2 text-[#293859]">最近尾部</span>
+          </div>
+          <div>
+            <span className="text-[#7a8799]">隐私</span>
+            <span className="ml-2 text-[#293859]">已脱敏</span>
+          </div>
+        </div>
+      </SettingsSection>
+
       <SettingsSection
         title="版本升级"
         description="从当前服务器上的 Git checkout 拉取更新、刷新依赖与前端产物，并按 ./pim 的策略重启服务。"

@@ -195,10 +195,10 @@ def classify_digest_category(text: str) -> str:
 def hourly_digest_skip_format_validation() -> bool:
     """When enabled, accept any non-empty LLM digest (skip ### / 来源： /reader/ gate).
 
-    Set ``PIM_HOURLY_DIGEST_SKIP_FORMAT_VALIDATION=false`` to restore the format check.
-    Defaults to enabled so operators can inspect raw model output without code edits.
+    Set ``PIM_HOURLY_DIGEST_SKIP_FORMAT_VALIDATION=true`` to inspect raw model output
+    without code edits.
     """
-    raw = os.environ.get("PIM_HOURLY_DIGEST_SKIP_FORMAT_VALIDATION", "true").strip().lower()
+    raw = os.environ.get("PIM_HOURLY_DIGEST_SKIP_FORMAT_VALIDATION", "false").strip().lower()
     return raw in {"1", "true", "yes", "on"}
 
 

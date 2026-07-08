@@ -249,12 +249,12 @@ HourlyDigestContentType = Literal["website", "rss", "x", "youtube", "podcast"]
 
 
 class HourlyDigestSettings(BaseModel):
-    """简报窗口：统一任务提示词（选稿+综述）与窗口长度。"""
+    """简报窗口：统一任务提示词与窗口长度。"""
 
     prompt: str = Field(
         default="",
         max_length=8000,
-        description="选稿与写综述时模型须遵循的说明；空则后端使用内置默认。",
+        description="生成快报时模型须遵循的说明；空则后端使用内置默认。",
     )
     prompt_effective: str | None = Field(
         default=None,
@@ -265,10 +265,10 @@ class HourlyDigestSettings(BaseModel):
         description="旧版兼容字段：生成简报时已不再按入库类型过滤。",
     )
     window_hours: int = Field(
-        default=3,
+        default=1,
         ge=1,
         le=24,
-        description="简报覆盖的已完成小时窗口，默认 3 小时。",
+        description="简报覆盖的已完成小时窗口，默认 1 小时；设为 3 可作为低噪声简报。",
     )
 
 

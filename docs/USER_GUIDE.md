@@ -161,7 +161,7 @@ Cookie 复用、异地 IP、付费内容抓取和 API 调用有不同服务条�
 如果 PIM 部署在 VPS 上，而目标站点只能在本地桌面环境稳定登录，可在本地运行：
 
 ```bash
-./pim auth-bundle sync https://example.com \
+./pim login-sync https://example.com \
   --remote pim@your-vps \
   --remote-pim ~/personal-info-monitor
 ```

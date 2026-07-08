@@ -27,12 +27,15 @@ Usage:
     ./pim backup            Create a SQLite backup and archive local config
     ./pim rollback <rev>    Downgrade Alembic schema to a target revision
     ./pim logs              Tail the log file
+    ./pim support-bundle    Export a redacted diagnostic zip for bug reports
+                            Use --out <path> to choose the output file.
     ./pim cleanup           Remove stale caches, rotated logs, and Python __pycache__
     ./pim bootstrap-url     Print a one-shot URL containing the bootstrap token
                             Use --origin https://example.com for VPS/public access.
                             for auto-provisioning a fresh web browser session
     ./pim auth-bundle       Export/import local browser login bundles
                             Example: ./pim auth-bundle export https://example.com --out example.pim-auth-bundle.json
+    ./pim login-sync        Guided local browser login-state sync to a VPS
     ./pim capture-session   Alias for: ./pim auth-bundle export <site_url> [...]
 """
 
@@ -1583,22 +1586,51 @@ def cmd_bootstrap_url():
     print("API Key is cached locally and the token is stripped from history.", file=sys.stderr)
 
 
-def cmd_auth_bundle():
-    """Run the embedded Auth Bundle utility through the backend venv."""
+def _run_auth_bundle_cli(*prefix_args: str):
     if not VENV.exists():
         print("venv not found. Run: ./pim setup", file=sys.stderr)
         sys.exit(1)
-    cmd = [_python(), str(ROOT / "pimctl"), "auth-bundle", *sys.argv[2:]]
+    cmd = [_python(), str(ROOT / "pimctl"), "auth-bundle", *prefix_args, *sys.argv[2:]]
     raise SystemExit(subprocess.call(cmd, cwd=str(ROOT)))
 
 
-def cmd_capture_session():
-    """Capture a browser login session as an Auth Bundle."""
+def cmd_support_bundle():
+    """Create a redacted support bundle zip."""
     if not VENV.exists():
         print("venv not found. Run: ./pim setup", file=sys.stderr)
         sys.exit(1)
-    cmd = [_python(), str(ROOT / "pimctl"), "auth-bundle", "export", *sys.argv[2:]]
-    raise SystemExit(subprocess.call(cmd, cwd=str(ROOT)))
+
+    args = sys.argv[2:]
+    output_path = None
+    if "--out" in args:
+        idx = args.index("--out")
+        if idx + 1 >= len(args) or not args[idx + 1].strip():
+            print("Usage: ./pim support-bundle [--out /path/to/bundle.zip]", file=sys.stderr)
+            sys.exit(2)
+        output_path = args[idx + 1]
+
+    script = r"""
+from pathlib import Path
+import sys
+
+from app.config import bootstrap_runtime_environment
+from app.database import SessionLocal
+from app.domains.system.support_bundle import SupportBundleService
+
+bootstrap_runtime_environment()
+out = Path(sys.argv[1]).expanduser() if len(sys.argv) > 1 and sys.argv[1] else None
+db = SessionLocal()
+try:
+    path = SupportBundleService(db).build_bundle(out)
+finally:
+    db.close()
+print(path)
+"""
+    cmd = [_python(), "-c", script]
+    if output_path:
+        cmd.append(output_path)
+    proc = subprocess.run(cmd, cwd=str(BACKEND), text=True)
+    raise SystemExit(proc.returncode)
 
 
 COMMANDS = {
@@ -1614,13 +1646,15 @@ COMMANDS = {
     "backup": cmd_backup,
     "rollback": cmd_rollback,
     "logs": cmd_logs,
+    "support-bundle": cmd_support_bundle,
     "cleanup": cmd_cleanup,
     "install-service": cmd_install_service,
     "uninstall-service": cmd_uninstall_service,
     "service-run": cmd_service_run,
     "bootstrap-url": cmd_bootstrap_url,
-    "auth-bundle": cmd_auth_bundle,
-    "capture-session": cmd_capture_session,
+    "auth-bundle": lambda: _run_auth_bundle_cli(),
+    "login-sync": lambda: _run_auth_bundle_cli("wizard"),
+    "capture-session": lambda: _run_auth_bundle_cli("export"),
 }
 
 

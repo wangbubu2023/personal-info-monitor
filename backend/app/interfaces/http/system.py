@@ -4,7 +4,7 @@ import asyncio
 from typing import Any, Dict, List
 
 from fastapi import APIRouter
-from fastapi.responses import PlainTextResponse
+from fastapi.responses import PlainTextResponse, Response
 
 from app.background import task_tracker
 from app.config import get_settings
@@ -131,6 +131,30 @@ async def get_system_doctor() -> Dict[str, Any]:
             db.close()
 
     return await asyncio.to_thread(_run_audit)
+
+
+@router.get("/support-bundle")
+async def download_support_bundle() -> Response:
+    """Generate a redacted diagnostic bundle for manual sharing."""
+    from app.database import SessionLocal
+    from app.domains.system.support_bundle import SupportBundleService
+
+    def _build() -> tuple[str, bytes]:
+        db = SessionLocal()
+        try:
+            return SupportBundleService(db).build_bundle_bytes()
+        finally:
+            db.close()
+
+    filename, payload = await asyncio.to_thread(_build)
+    return Response(
+        content=payload,
+        media_type="application/zip",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Cache-Control": "no-store",
+        },
+    )
 
 
 @router.post("/search/rebuild")

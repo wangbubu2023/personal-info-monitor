@@ -7,7 +7,7 @@ into this package:
 * ``domains/enrich/reader/`` — moved from ``app/services/reader/``
   (Reader body loader, NDJSON streaming, translation orchestration)
 * ``domains/enrich/digest/`` — daily digest service
-* ``domains/enrich/hourly/`` — 3-hourly digest (the ``hourly_digest_tasks``
+* ``domains/enrich/hourly/`` — hourly briefing (the ``hourly_digest_tasks``
   name is kept on the HTTP boundary for backwards compatibility)
 * ``domains/enrich/ranking.py`` — event clustering / scoring
 * ``domains/enrich/notifications.py`` — keyword/doctor alert content

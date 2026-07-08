@@ -163,7 +163,7 @@ VPS 首次登录 Web UI 时可生成公网引导链接：
 VPS 上需要复用本地桌面登录态时，可从本地一条命令采集、上传并导入：
 
 ```bash
-./pim auth-bundle sync https://example.com --remote pim@your-vps --remote-pim ~/personal-info-monitor
+./pim login-sync https://example.com --remote pim@your-vps --remote-pim ~/personal-info-monitor
 ```
 
 详见 [`docs/VPS_DEPLOY.md`](docs/VPS_DEPLOY.md)。

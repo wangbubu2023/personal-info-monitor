@@ -6,7 +6,7 @@ from uuid import UUID
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import case, extract, func, select
+from sqlalchemy import case, extract, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -206,6 +206,7 @@ async def get_daily_digest(
         select(Content)
         .options(selectinload(Content.source))
         .filter(Content.fetched_at >= day_start, Content.fetched_at < day_end)
+        .filter(or_(Content.archived.is_(False), Content.archived.is_(None)))
     )
     
     # Apply filters

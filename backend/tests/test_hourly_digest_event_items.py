@@ -1,7 +1,10 @@
 from datetime import datetime
 from uuid import uuid4
 
-from app.domains.enrich.hourly.repository import build_hourly_digest_event_items
+from app.domains.enrich.hourly.repository import (
+    build_hourly_digest_event_briefing_items,
+    build_hourly_digest_event_items,
+)
 
 
 def test_build_hourly_digest_event_items_is_compact_and_structured():
@@ -41,3 +44,44 @@ def test_build_hourly_digest_event_items_is_compact_and_structured():
             "duplicate_group_id": "title:abc",
         }
     ]
+
+
+def test_build_hourly_digest_event_briefing_items_adds_scores_and_section():
+    content_id = str(uuid4())
+    event_items = build_hourly_digest_event_briefing_items(
+        [
+            {
+                "event_key": "event-1",
+                "event_score": 82.4,
+                "corroboration_tier": "moderate",
+                "independent_source_count": 2,
+                "items": [
+                    {
+                        "content_id": content_id,
+                        "title": "Major model policy update",
+                        "summary": "A regulator published a new model policy update.",
+                        "source_id": "source-a",
+                        "source_name": "Official",
+                        "source_url": "https://official.example.com",
+                        "article_url": "https://official.example.com/policy",
+                        "publish_time": datetime(2026, 7, 2, 1, 2, 3),
+                        "fetched_at": datetime(2026, 7, 2, 1, 3, 0),
+                        "score_confidence": 0.88,
+                        "fulltext_status": "full",
+                        "lane": "policy",
+                        "metadata": {"duplicate_group_id": "title:policy"},
+                    }
+                ],
+                "topic": "Major model policy update",
+            }
+        ],
+        previous_event_index={},
+    )
+
+    assert event_items[0]["event_key"] == "event-1"
+    assert event_items[0]["section"] == "need_to_know"
+    assert event_items[0]["importance_score"] == 82.4
+    assert event_items[0]["incremental_score"] >= 70
+    assert event_items[0]["confidence_score"] == 88
+    assert event_items[0]["local_reader_path"] == f"/reader/{content_id}"
+    assert event_items[0]["source_names"] == ["Official"]

@@ -33,6 +33,17 @@ function safeHttpUrl(value?: string): string {
   }
 }
 
+function ShortcutHint({ children }: { children: React.ReactNode }) {
+  return (
+    <kbd
+      aria-hidden="true"
+      className="inline-flex h-5 min-w-5 items-center justify-center rounded-md border border-current/20 bg-white/45 px-1.5 font-mono text-[10px] font-bold leading-none text-current opacity-80"
+    >
+      {children}
+    </kbd>
+  );
+}
+
 function renderReaderBlock(block: ReaderBlock, index: number, layout: ReaderLayoutProfile): React.ReactNode {
   const key = `${block.type}-${index}`;
   if (block.type === 'heading') {
@@ -207,20 +218,21 @@ const ReaderPage: React.FC = () => {
       const target = event.target as HTMLElement | null;
       if (target && ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName)) return;
       if (event.metaKey || event.ctrlKey || event.altKey) return;
+      const key = event.key.toLowerCase();
 
-      if (event.key === 'j') {
+      if (key === 'j') {
         event.preventDefault();
         navigateToNeighbor(1, 'keyboard');
-      } else if (event.key === 'k') {
+      } else if (key === 'k') {
         event.preventDefault();
         navigateToNeighbor(-1, 'keyboard');
-      } else if (event.key.toLowerCase() === 'r') {
+      } else if (key === 'r') {
         event.preventDefault();
         void markCurrentAsRead('keyboard');
-      } else if (event.key.toLowerCase() === 'l') {
+      } else if (key === 'l') {
         event.preventDefault();
         void toggleLiked('keyboard');
-      } else if (event.key.toLowerCase() === 'h') {
+      } else if (key === 'h') {
         event.preventDefault();
         void hideCurrent('keyboard');
       }
@@ -269,19 +281,21 @@ const ReaderPage: React.FC = () => {
                 type="button"
                 disabled={!previousItem}
                 onClick={() => navigateToNeighbor(-1, 'click')}
-                className="flex h-9 w-9 items-center justify-center rounded-xl border border-[rgba(88,100,118,0.18)] bg-white/60 text-[#586476] transition-all hover:bg-white hover:text-[#293859] disabled:cursor-not-allowed disabled:opacity-35"
-                aria-label="上一篇"
+                className="flex h-9 items-center justify-center gap-1.5 rounded-xl border border-[rgba(88,100,118,0.18)] bg-white/60 px-2 text-[#586476] transition-all hover:bg-white hover:text-[#293859] disabled:cursor-not-allowed disabled:opacity-35"
+                aria-label="上一篇（K）"
               >
                 <ChevronLeft size={16} />
+                <ShortcutHint>K</ShortcutHint>
               </button>
               <button
                 type="button"
                 disabled={!nextItem}
                 onClick={() => navigateToNeighbor(1, 'click')}
-                className="flex h-9 w-9 items-center justify-center rounded-xl border border-[rgba(88,100,118,0.18)] bg-white/60 text-[#586476] transition-all hover:bg-white hover:text-[#293859] disabled:cursor-not-allowed disabled:opacity-35"
-                aria-label="下一篇"
+                className="flex h-9 items-center justify-center gap-1.5 rounded-xl border border-[rgba(88,100,118,0.18)] bg-white/60 px-2 text-[#586476] transition-all hover:bg-white hover:text-[#293859] disabled:cursor-not-allowed disabled:opacity-35"
+                aria-label="下一篇（J）"
               >
                 <ChevronRight size={16} />
+                <ShortcutHint>J</ShortcutHint>
               </button>
               <button
                 type="button"
@@ -293,7 +307,7 @@ const ReaderPage: React.FC = () => {
                     : 'border-[rgba(88,100,118,0.18)] bg-white/60 text-[#586476] hover:bg-white hover:text-[#293859]'
                 }`}
               >
-                <CheckCircle2 size={14} /> {data.read_status ? '已读' : '标为已读'}
+                <CheckCircle2 size={14} /> {data.read_status ? '已读' : '标为已读'} <ShortcutHint>R</ShortcutHint>
               </button>
               <button
                 type="button"
@@ -304,16 +318,16 @@ const ReaderPage: React.FC = () => {
                     : 'border-[rgba(88,100,118,0.18)] bg-white/60 text-[#586476] hover:bg-white hover:text-[#293859]'
                 }`}
               >
-                <Bookmark size={14} /> {data.favorited ? '已喜欢' : '喜欢'}
+                <Bookmark size={14} /> {data.favorited ? '已喜欢' : '喜欢'} <ShortcutHint>L</ShortcutHint>
               </button>
               <button
                 type="button"
                 onClick={() => void hideCurrent('click')}
                 className="flex items-center gap-2 rounded-xl border border-[rgba(88,100,118,0.18)] bg-white/60 px-3.5 py-2 text-[12px] font-semibold text-[#586476] transition-all hover:border-rose-300/60 hover:bg-white hover:text-rose-500"
                 aria-label="不感兴趣"
-                title="隐藏并记为负反馈（h）"
+                title="隐藏并记为负反馈（H）"
               >
-                <EyeOff size={14} /> 不感兴趣
+                <EyeOff size={14} /> 不感兴趣 <ShortcutHint>H</ShortcutHint>
               </button>
               {safeHttpUrl(data.original_url) ? (
                 <a

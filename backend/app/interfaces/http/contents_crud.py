@@ -76,9 +76,12 @@ async def list_contents(
     if favorited is not None:
         query = query.filter(Content.favorited == favorited)
         count_query = count_query.filter(Content.favorited == favorited)
-    if archived is not None:
-        query = query.filter(Content.archived == archived)
-        count_query = count_query.filter(Content.archived == archived)
+    if archived is True:
+        archived_clause = Content.archived.is_(True)
+    else:
+        archived_clause = or_(Content.archived.is_(False), Content.archived.is_(None))
+    query = query.filter(archived_clause)
+    count_query = count_query.filter(archived_clause)
     if date_from:
         query = query.filter(Content.publish_time >= date_from)
         count_query = count_query.filter(Content.publish_time >= date_from)

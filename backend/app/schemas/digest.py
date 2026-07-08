@@ -80,17 +80,32 @@ class HourlyDigestSummary(BaseModel):
 class HourlyDigestEventItem(BaseModel):
     """Structured event card stored with an hourly digest."""
 
+    event_key: Optional[str] = None
+    section: Optional[str] = None
     content_id: UUID
     title: str
     summary: Optional[str] = None
+    what_happened: Optional[str] = None
+    why_matters: Optional[str] = None
+    new_signal: Optional[str] = None
+    missing_confirmation: Optional[str] = None
     source_name: str
+    source_names: List[str] = Field(default_factory=list)
+    source_keys: List[str] = Field(default_factory=list)
     source_url: Optional[str] = None
     url: str
+    local_reader_path: Optional[str] = None
     publish_time: Optional[str] = None
     fetched_at: Optional[str] = None
     score: Optional[float] = None
+    importance_score: Optional[float] = None
+    incremental_score: Optional[float] = None
+    confidence_score: Optional[float] = None
     lane: Optional[str] = None
     duplicate_group_id: Optional[str] = None
+    corroboration_tier: Optional[str] = None
+    independent_source_count: Optional[int] = None
+    is_repeat_event: bool = False
 
 
 class HourlyDigestDetail(BaseModel):

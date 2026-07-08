@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   ExternalLink,
   Clock,
@@ -8,9 +9,11 @@ import {
   FileText,
   Gauge,
   Star,
+  EyeOff,
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { KEYWORD_MONITORING_ENABLED } from '../../config/features';
+import { contentsApi } from '../../services/contents';
 import type { DigestItem } from '../../types';
 import {
   buildDashboardSourcePath,
@@ -72,9 +75,77 @@ const DashboardItemCard: React.FC<DashboardItemCardProps> = ({
   const sourceStars = getDigestItemSourceStars(item);
   const fulltextLabel = getDigestItemFulltextStatusLabel(item);
   const recommendationReason = getDigestItemRecommendationReason(item);
+  const queryClient = useQueryClient();
+  const [readStatus, setReadStatus] = useState(Boolean(item.read_status));
+  const [favorited, setFavorited] = useState(Boolean(item.favorited));
+  const [hidden, setHidden] = useState(false);
+  const [pendingAction, setPendingAction] = useState<'read' | 'like' | 'hide' | null>(null);
 
   const hasKeywords =
     KEYWORD_MONITORING_ENABLED && item.keyword_matches && item.keyword_matches.length > 0;
+
+  useEffect(() => {
+    setReadStatus(Boolean(item.read_status));
+    setFavorited(Boolean(item.favorited));
+    setHidden(false);
+  }, [item.favorited, item.id, item.read_status]);
+
+  const refreshDashboardData = async () => {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] }),
+      queryClient.invalidateQueries({ queryKey: ['dashboard-contents'] }),
+      queryClient.invalidateQueries({ queryKey: ['digest'] }),
+    ]);
+  };
+
+  const markReadFromList = async () => {
+    if (readStatus || pendingAction) return;
+    setPendingAction('read');
+    setReadStatus(true);
+    try {
+      await contentsApi.markAsRead(item.id);
+      await refreshDashboardData();
+    } catch (error) {
+      setReadStatus(false);
+      // Keep the card usable if the backend rejects the update.
+      console.error('Failed to mark content as read', error);
+    } finally {
+      setPendingAction(null);
+    }
+  };
+
+  const toggleLikeFromList = async () => {
+    if (pendingAction) return;
+    const next = !favorited;
+    setPendingAction('like');
+    setFavorited(next);
+    try {
+      const result = await contentsApi.setFavorite(item.id, next);
+      setFavorited(Boolean(result.favorited));
+      await refreshDashboardData();
+    } catch (error) {
+      setFavorited(!next);
+      console.error('Failed to update favorite status', error);
+    } finally {
+      setPendingAction(null);
+    }
+  };
+
+  const hideFromList = async () => {
+    if (pendingAction) return;
+    setPendingAction('hide');
+    try {
+      await contentsApi.update(item.id, { archived: true });
+      setHidden(true);
+      await refreshDashboardData();
+    } catch (error) {
+      console.error('Failed to hide content', error);
+    } finally {
+      setPendingAction(null);
+    }
+  };
+
+  if (hidden) return null;
 
   return (
     <motion.article
@@ -87,7 +158,7 @@ const DashboardItemCard: React.FC<DashboardItemCardProps> = ({
           : 'border-[rgba(88,100,118,0.1)]'
       }`}
     >
-      {!item.read_status && (
+      {!readStatus && (
         <div className="absolute left-0 top-0 h-full w-1 bg-[#49A8C9]" />
       )}
 
@@ -147,7 +218,7 @@ const DashboardItemCard: React.FC<DashboardItemCardProps> = ({
               <ExternalLink size={10} className="shrink-0 opacity-70" aria-hidden />
             </a>
           </div>
-          {item.read_status && (
+          {readStatus && (
             <span className="flex items-center gap-1 text-[#8a96a5]">
               <CheckCircle2 size={12} />
               已读
@@ -160,7 +231,7 @@ const DashboardItemCard: React.FC<DashboardItemCardProps> = ({
             to={buildReaderPath(item.id, readerOpts)}
             data-testid={`dashboard-title-link-${item.id}`}
             className={`transition-colors hover:text-[#49A8C9] ${
-              item.read_status ? 'text-[#5f6f82]' : 'text-[#2c3a50]'
+              readStatus ? 'text-[#5f6f82]' : 'text-[#2c3a50]'
             }`}
           >
             {item.translated_title || item.title}
@@ -193,6 +264,45 @@ const DashboardItemCard: React.FC<DashboardItemCardProps> = ({
             <span className="ml-1">{recommendationReason.why_matters}</span>
           </p>
         ) : null}
+
+        <div className="flex flex-wrap items-center gap-2 pt-0.5">
+          <button
+            type="button"
+            onClick={() => void markReadFromList()}
+            disabled={readStatus || pendingAction !== null}
+            className={`inline-flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-[12px] font-semibold transition-all ${
+              readStatus
+                ? 'cursor-default border-[#8a96a5]/18 bg-[#eef1f4] text-[#8a96a5]'
+                : 'border-[rgba(88,100,118,0.14)] bg-white/70 text-[#5f6f82] hover:border-[#49A8C9]/30 hover:bg-white hover:text-[#2c3a50]'
+            } disabled:opacity-60`}
+          >
+            <CheckCircle2 size={13} />
+            {readStatus ? '已读' : '标为已读'}
+          </button>
+          <button
+            type="button"
+            onClick={() => void toggleLikeFromList()}
+            disabled={pendingAction !== null}
+            className={`inline-flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-[12px] font-semibold transition-all ${
+              favorited
+                ? 'border-[#49A8C9]/30 bg-[#49A8C9] text-white shadow-sm shadow-[#49A8C9]/20'
+                : 'border-[rgba(88,100,118,0.14)] bg-white/70 text-[#5f6f82] hover:border-[#49A8C9]/30 hover:bg-white hover:text-[#2c3a50]'
+            } disabled:opacity-60`}
+            aria-pressed={favorited}
+          >
+            <Star size={13} className={favorited ? 'fill-current' : ''} />
+            {favorited ? '已喜欢' : '喜欢'}
+          </button>
+          <button
+            type="button"
+            onClick={() => void hideFromList()}
+            disabled={pendingAction !== null}
+            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[rgba(88,100,118,0.14)] bg-white/70 px-2.5 text-[12px] font-semibold text-[#5f6f82] transition-all hover:border-rose-300/60 hover:bg-white hover:text-rose-500 disabled:opacity-60"
+          >
+            <EyeOff size={13} />
+            不感兴趣
+          </button>
+        </div>
 
         {hasKeywords && (
           <div className="mt-0.5 flex flex-wrap gap-2 border-t border-[rgba(88,100,118,0.08)] pt-3">

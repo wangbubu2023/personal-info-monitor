@@ -65,4 +65,21 @@ export const systemApi = {
     const response = await api.post<UpgradeStatus>('/system/upgrade')
     return response.data
   },
+
+  downloadSupportBundle: async (): Promise<void> => {
+    const response = await api.get<Blob>('/system/support-bundle', {
+      responseType: 'blob',
+    })
+    const disposition = response.headers['content-disposition'] || ''
+    const filenameMatch = disposition.match(/filename="([^"]+)"/)
+    const filename = filenameMatch?.[1] || `pim-support-bundle-${Date.now()}.zip`
+    const blobUrl = URL.createObjectURL(response.data)
+    const link = document.createElement('a')
+    link.href = blobUrl
+    link.download = filename
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    URL.revokeObjectURL(blobUrl)
+  },
 }
