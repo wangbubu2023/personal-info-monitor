@@ -1,13 +1,15 @@
 import React, { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Alert, Button, Card, Descriptions, Empty, Input, Popconfirm, QRCode, Space, Table, Tag, Typography, message } from 'antd'
-import { CopyOutlined, DeleteOutlined, LinkOutlined, ReloadOutlined } from '@ant-design/icons'
+import { CopyOutlined, DeleteOutlined, DownloadOutlined, LinkOutlined, ReloadOutlined } from '@ant-design/icons'
 import { authAssistantApi, type AuthAssistantDevice, type AuthAssistantPairingToken } from '../../services/authAssistant'
 import { getApiBaseURL } from '../../services/api'
 import { formatLocalDateTime } from '../../utils/datetime'
 import SettingsSection from './SettingsSection'
 
 const { Paragraph, Text } = Typography
+const AUTH_ASSISTANT_MAC_DOWNLOAD_URL = 'https://github.com/wangbubu2023/personal-info-monitor/releases/latest/download/PIM-Auth-Assistant-macOS-arm64.dmg'
+const AUTH_ASSISTANT_RELEASE_URL = 'https://github.com/wangbubu2023/personal-info-monitor/releases/latest'
 
 function inferPublicServerURL(): string {
   const apiBase = getApiBaseURL()
@@ -129,6 +131,30 @@ const AuthAssistantTab: React.FC = () => {
           </Button>
         }
       >
+        <Alert
+          type="success"
+          showIcon
+          className="mb-4"
+          message="先下载本地助手"
+          description="在需要采集登录态的 Mac 上安装 PIM Auth Assistant，再回到这里生成配对码完成连接。"
+          action={
+            <Space wrap>
+              <Button
+                type="primary"
+                icon={<DownloadOutlined />}
+                href={AUTH_ASSISTANT_MAC_DOWNLOAD_URL}
+                target="_blank"
+                rel="noreferrer"
+              >
+                下载 macOS 版
+              </Button>
+              <Button href={AUTH_ASSISTANT_RELEASE_URL} target="_blank" rel="noreferrer">
+                其他版本
+              </Button>
+            </Space>
+          }
+        />
+
         <Alert
           type="info"
           showIcon

@@ -106,10 +106,11 @@ Auth Assistant 用来解决“PIM 跑在 VPS，但登录态只能在本地浏览
 推荐流程：
 
 1. 在远程 PIM Web 打开 `设置 -> Auth Assistant`。
-2. 生成 10 分钟有效的一次性配对码。
-3. 在本地打开 `auth-assistant/` 应用，填入远程 PIM 地址和配对码完成连接。
-4. 本地采集 X、WSJ、NYTimes 等站点登录态。
-5. 上传到 PIM，后端会导入为 Auth Config / Browser Session，并自动绑定匹配信源。
+2. 点击页面里的“下载 macOS 版”，或从 [GitHub Releases](https://github.com/wangbubu2023/personal-info-monitor/releases/latest) 下载 `PIM-Auth-Assistant-macOS-arm64.dmg`。
+3. 在远程 PIM Web 生成 10 分钟有效的一次性配对码。
+4. 在本地打开 PIM Auth Assistant，填入远程 PIM 地址和配对码完成连接。
+5. 本地采集 X、WSJ、NYTimes 等站点登录态。
+6. 上传到 PIM，后端会导入为 Auth Config / Browser Session，并自动绑定匹配信源。
 
 安全边界：
 
