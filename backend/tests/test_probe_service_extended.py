@@ -548,6 +548,36 @@ class TestProbeX:
                 assert result.status == "error"
                 assert "未配置" in result.message
 
+    @pytest.mark.asyncio
+    async def test_graphql_uses_probe_cookies_before_global_settings(self):
+        service = ProbeService()
+        mock_user = MagicMock()
+        mock_user.id = "123"
+        mock_client = AsyncMock()
+        mock_client.set_cookies = MagicMock()
+        mock_client.get_user_by_screen_name.return_value = mock_user
+
+        with patch("app.domains.sources.probe.service.get_settings") as mock_settings:
+            settings = MagicMock()
+            settings.x_auth_token = None
+            settings.x_ct0_token = None
+            settings.rsshub_url = "https://rsshub.app"
+            settings.nitter_instances = ""
+            settings.x_bearer_token = None
+            mock_settings.return_value = settings
+            with patch("twikit.Client", return_value=mock_client):
+                result = await service.probe(
+                    "https://x.com/testuser",
+                    "x",
+                    cookies={"auth_token": "cookie-auth", "ct0": "cookie-ct0"},
+                )
+
+        assert result.status == "ok"
+        assert result.strategy == "graphql"
+        mock_client.set_cookies.assert_called_once_with(
+            {"auth_token": "cookie-auth", "ct0": "cookie-ct0"}
+        )
+
 
 # ---------------------------------------------------------------------------
 # _probe_podcast

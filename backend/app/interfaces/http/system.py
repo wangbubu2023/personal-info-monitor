@@ -101,6 +101,14 @@ def reload_score_vocab_runtime() -> Dict[str, Any]:
     return {"status": "ok", "vocab": snapshot}
 
 
+@router.get("/update-check")
+async def get_update_check(include_prerelease: bool = False) -> Dict[str, Any]:
+    """Check GitHub releases and report whether a newer PIM version exists."""
+    from app.platform.runtime.update_check import check_for_updates
+
+    return await check_for_updates(include_prerelease=include_prerelease)
+
+
 @router.get("/upgrade")
 def get_upgrade_status() -> Dict[str, Any]:
     """Return the latest UI-triggered upgrade status and log tail."""

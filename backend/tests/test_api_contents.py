@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import timedelta
+
 import pytest
 from sqlalchemy import select
 
@@ -15,8 +17,11 @@ async def _seed_content(
     source_name: str = "Example",
     source_url: str = "https://example.com/article",
     title: str = "Example Article",
+    metadata: dict | None = None,
+    fetched_at=None,
 ):
     source = Source(name=source_name, type=SourceType.WEBSITE, url="https://example.com")
+    now = utcnow_naive()
     content = Content(
         source=source,
         title=title,
@@ -24,8 +29,9 @@ async def _seed_content(
         original_url=source_url,
         full_content="This is a long enough body for reader testing.",
         content_type="website",
-        publish_time=utcnow_naive(),
-        fetched_at=utcnow_naive(),
+        publish_time=now,
+        fetched_at=fetched_at or now,
+        metadata_=metadata or {},
     )
     db_session.add_all([source, content])
     await db_session.commit()
@@ -91,6 +97,33 @@ async def test_contents_list_filters_by_source_id(client, db_session):
     assert payload["total"] == 1
     assert payload["items"][0]["id"] == str(content_a.id)
     assert payload["items"][0]["source_name"] == "36kr"
+
+
+@pytest.mark.asyncio
+async def test_contents_list_collapses_legacy_duplicate_group(client, db_session):
+    earlier = utcnow_naive() - timedelta(minutes=2)
+    later = utcnow_naive() - timedelta(minutes=1)
+    _, canonical = await _seed_content(
+        db_session,
+        title="Same article title",
+        source_url="https://example.com/a",
+        metadata={"duplicate_group_id": "title:same"},
+        fetched_at=earlier,
+    )
+    await _seed_content(
+        db_session,
+        title="Same article title",
+        source_url="https://example.com/b",
+        metadata={"duplicate_group_id": "title:same"},
+        fetched_at=later,
+    )
+
+    response = await client.get("/api/contents")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["total"] == 1
+    assert payload["items"][0]["id"] == str(canonical.id)
 
 
 @pytest.mark.asyncio

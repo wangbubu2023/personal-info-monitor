@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import React, { useEffect, useState } from 'react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   BookOpen,
   Newspaper,
@@ -11,8 +11,11 @@ import {
   X,
   Database,
   Gauge,
+  DownloadCloud,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useQuery } from '@tanstack/react-query';
+import { systemApi } from '../../services/system';
 import { useScoreLabEnabled } from '../../hooks/useScoreLabEnabled';
 
 interface SidebarItemProps {
@@ -25,6 +28,7 @@ interface SidebarItemProps {
 
 const iconStroke = 1.5
 const appVersion = __APP_VERSION__
+const UPDATE_DISMISS_KEY_PREFIX = 'pim:update-dismissed:'
 
 /** 侧栏分组标题：不透明深色胶囊（与侧栏底色差），区别于下方半透明可点击项；不用竖线以免与选中条重复 */
 const NavSectionLabel: React.FC = () => (
@@ -63,10 +67,84 @@ const SidebarItem: React.FC<SidebarItemProps> = ({ to, label, icon: Icon, isActi
   </Link>
 );
 
+interface UpdateNoticeProps {
+  latestVersion: string
+  onOpenUpgrade: () => void
+  onDismiss: () => void
+}
+
+const UpdateNotice: React.FC<UpdateNoticeProps> = ({ latestVersion, onOpenUpgrade, onDismiss }) => (
+  <div className="mb-3 rounded-[1.15rem] border border-[#7fd4ed]/20 bg-[#203451] px-3 py-3 shadow-[0_14px_32px_-26px_rgba(73,168,201,0.8)]">
+    <div className="flex items-start gap-2.5">
+      <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-[0.8rem] bg-[#49A8C9]/18 text-[#9fe8f6]">
+        <DownloadCloud size={15} strokeWidth={iconStroke} />
+      </span>
+      <div className="min-w-0 flex-1">
+        <div className="text-[12px] font-semibold text-[#d9f3fb]">发现新版本 v{latestVersion}</div>
+        <div className="mt-1 text-[11px] leading-relaxed text-[#9eb0c4]">可以前往系统维护查看发布说明并执行升级。</div>
+        <div className="mt-2 flex gap-2">
+          <button
+            type="button"
+            onClick={onOpenUpgrade}
+            className="rounded-full bg-[#49A8C9] px-2.5 py-1 text-[11px] font-semibold text-white transition-colors hover:bg-[#3d92b0]"
+          >
+            去升级
+          </button>
+          <button
+            type="button"
+            onClick={onDismiss}
+            className="rounded-full px-2 py-1 text-[11px] font-medium text-[#8fa5b8] transition-colors hover:bg-white/[0.06] hover:text-[#D1E0E9]"
+          >
+            稍后
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+)
+
 const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const location = useLocation();
+  const navigate = useNavigate();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [dismissedVersion, setDismissedVersion] = useState<string | null>(null);
   const scoreLabEnabled = useScoreLabEnabled();
+  const { data: updateCheck } = useQuery({
+    queryKey: ['system-update-check'],
+    queryFn: systemApi.checkForUpdates,
+    staleTime: 1000 * 60 * 60 * 6,
+    gcTime: 1000 * 60 * 60 * 12,
+    retry: false,
+  });
+
+  const latestVersion = updateCheck?.latest_version || updateCheck?.latest_tag || null
+  const updateAvailable = Boolean(updateCheck?.update_available && latestVersion && dismissedVersion !== latestVersion)
+
+  useEffect(() => {
+    if (!latestVersion || !updateCheck?.update_available) return
+    try {
+      if (window.localStorage.getItem(`${UPDATE_DISMISS_KEY_PREFIX}${latestVersion}`)) {
+        setDismissedVersion(latestVersion)
+      }
+    } catch {
+      // Ignore localStorage failures; the notice can still be shown for this session.
+    }
+  }, [latestVersion, updateCheck?.update_available])
+
+  const openUpgradeTab = () => {
+    setMobileOpen(false)
+    navigate('/settings?tab=maintenance')
+  }
+
+  const dismissUpdateNotice = () => {
+    if (!latestVersion) return
+    setDismissedVersion(latestVersion)
+    try {
+      window.localStorage.setItem(`${UPDATE_DISMISS_KEY_PREFIX}${latestVersion}`, new Date().toISOString())
+    } catch {
+      // Ignore localStorage failures; session state still suppresses the notice.
+    }
+  }
 
   const navItems = [
     { to: '/', label: '资讯', icon: Newspaper },
@@ -131,6 +209,9 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
         </div>
 
         <div className="pt-5">
+          {updateAvailable && latestVersion ? (
+            <UpdateNotice latestVersion={latestVersion} onOpenUpgrade={openUpgradeTab} onDismiss={dismissUpdateNotice} />
+          ) : null}
           <button
             type="button"
             onClick={handleSpotlightTrigger}
@@ -195,6 +276,11 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
               <div className="mt-4 px-2 text-[11px] font-medium tracking-[0.08em] text-[#7f93aa]">
                 PIM v{appVersion}
               </div>
+              {updateAvailable && latestVersion ? (
+                <div className="mt-3 px-1">
+                  <UpdateNotice latestVersion={latestVersion} onOpenUpgrade={openUpgradeTab} onDismiss={dismissUpdateNotice} />
+                </div>
+              ) : null}
             </motion.aside>
           </>
         )}

@@ -13,6 +13,14 @@ from app.utils.logger import get_logger
 logger = get_logger(__name__)
 
 
+def _x_graphql_cookies(raw_cookies: dict[str, Any]) -> dict[str, str]:
+    auth_token = raw_cookies.get("auth_token") or raw_cookies.get("AUTH_TOKEN")
+    ct0_token = raw_cookies.get("ct0") or raw_cookies.get("CT0")
+    if auth_token and ct0_token:
+        return {"auth_token": str(auth_token), "ct0": str(ct0_token)}
+    return {}
+
+
 class XProbeStrategy:
     def __init__(self, helpers: Any):
         self.helpers = helpers
@@ -24,13 +32,21 @@ class XProbeStrategy:
 
         settings = self.helpers._get_settings()
 
-        auth_token = getattr(settings, "x_auth_token", None)
-        ct0_token = getattr(settings, "x_ct0_token", None)
-        if auth_token and ct0_token:
+        probe_cookies = (
+            self.helpers._get_probe_cookies()
+            if hasattr(self.helpers, "_get_probe_cookies")
+            else {}
+        )
+        graphql_cookies = _x_graphql_cookies(probe_cookies)
+        if not graphql_cookies:
+            auth_token = getattr(settings, "x_auth_token", None)
+            ct0_token = getattr(settings, "x_ct0_token", None)
+            graphql_cookies = _x_graphql_cookies({"auth_token": auth_token, "ct0": ct0_token})
+        if graphql_cookies:
             try:
                 from twikit import Client as TwikitClient
                 client = TwikitClient("en-US")
-                client.set_cookies({"auth_token": auth_token, "ct0": ct0_token})
+                client.set_cookies(graphql_cookies)
                 user = await client.get_user_by_screen_name(username)
                 if user:
                     return ProbeResult(
@@ -86,7 +102,7 @@ class XProbeStrategy:
                 ),
             )
 
-        if not (auth_token and ct0_token):
+        if not graphql_cookies:
             return ProbeResult(
                 status="error", strategy="none",
                 message=f"@{username} 无法抓取：未配置 X_AUTH_TOKEN/X_CT0_TOKEN，且 RSSHub/Nitter 不可用",

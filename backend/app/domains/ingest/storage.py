@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 
 from app.models import Content
+from app.domains.ingest.dedupe import mark_title_group_duplicate_members
 from app.utils.logger import get_logger
 from app.utils.url import normalize_external_id
 
@@ -32,6 +33,7 @@ class StorageStage:
                 with db.begin_nested():
                     db.add(content)
                     db.flush()
+                    mark_title_group_duplicate_members(db, content)
                     saved_count += 1
 
                     marker_candidate = normalize_external_id(content.external_id)

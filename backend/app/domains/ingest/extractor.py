@@ -17,6 +17,7 @@ test targets continue to resolve and external callers
 """
 
 from typing import Optional
+import asyncio
 import re
 
 from app.domains.ingest.quality import _word_count
@@ -93,8 +94,10 @@ class ContentExtractor:
         if structured:
             return normalize_article_text(structured.text)
 
-        # 1. Try Readability LXML (best for structure preservation)
-        content = self._extract_with_readability(html)
+        # 1. Try Readability LXML (best for structure preservation). These
+        # extractors are synchronous and CPU-heavy on large pages, so keep them
+        # off the event loop.
+        content = await asyncio.to_thread(self._extract_with_readability, html)
         read_len = len(content or "")
 
         # 2. Try trafilatura when readability failed, is sparse, looks like a
@@ -110,7 +113,7 @@ class ContentExtractor:
             needs_trafilatura = True
 
         if needs_trafilatura:
-            trafil_content = self._extract_with_trafilatura(html, url)
+            trafil_content = await asyncio.to_thread(self._extract_with_trafilatura, html, url)
             if trafil_content:
                 traf_len = len(trafil_content)
                 if traf_len > read_len and (read_len < 200 or traf_len >= read_len * 1.5):
@@ -118,7 +121,7 @@ class ContentExtractor:
 
         # 3. Fall back to BeautifulSoup if still nothing significant
         if not content or len(content) < 100:
-            content = self._extract_with_beautifulsoup(html)
+            content = await asyncio.to_thread(self._extract_with_beautifulsoup, html)
 
         return normalize_article_text(content) if content else ""
 

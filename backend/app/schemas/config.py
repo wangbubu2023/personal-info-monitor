@@ -267,8 +267,8 @@ class HourlyDigestSettings(BaseModel):
     window_hours: int = Field(
         default=1,
         ge=1,
-        le=24,
-        description="简报覆盖的已完成小时窗口，默认 1 小时；设为 3 可作为低噪声简报。",
+        le=1,
+        description="简报覆盖的已完成小时窗口；小时快报固定为 1 小时。",
     )
 
 

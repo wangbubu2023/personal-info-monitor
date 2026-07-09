@@ -1,6 +1,6 @@
 import React, { Suspense, lazy, useMemo, useCallback, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Cpu, Database, Tag as TagIcon, MessageSquareText, ShieldAlert, Gauge, Activity, Wrench } from 'lucide-react';
+import { Cpu, Database, Tag as TagIcon, MessageSquareText, ShieldAlert, Gauge, Activity, Wrench, KeyRound } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { KEYWORD_MONITORING_ENABLED, SCORE_LAB_BUILD_ENABLED } from '../../config/features';
 import PanelLoading from '../common/PanelLoading';
@@ -12,6 +12,7 @@ const CredentialsTab = lazy(() => import('./CredentialsTab'));
 const AIModelTab = lazy(() => import('./AIModelTab'));
 const TaskPromptsTab = lazy(() => import('./TaskPromptsTab'));
 const MaintenanceTab = lazy(() => import('./MaintenanceTab'));
+const AuthAssistantTab = lazy(() => import('./AuthAssistantTab'));
 
 /**
  * URL keys we used to ship: `api-keys` (API key tab) and `browser-sessions`
@@ -38,7 +39,7 @@ const Settings: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
 
   const validTabKeys = useMemo(() => {
-    const keys: string[] = ['sources', 'fetch-health', 'credentials', 'ai-model', 'task-prompts', 'maintenance'];
+    const keys: string[] = ['sources', 'fetch-health', 'credentials', 'auth-assistant', 'ai-model', 'task-prompts', 'maintenance'];
     if (KEYWORD_MONITORING_ENABLED) keys.push('keywords');
     if (SCORE_LAB_BUILD_ENABLED) keys.push('score-lab');
     return keys;
@@ -82,6 +83,13 @@ const Settings: React.FC = () => {
       icon: ShieldAlert,
       description: '管理站点登录会话、YouTube / X 平台 API Key，以及旧版手动 Cookie。',
       content: <CredentialsTab />,
+    },
+    {
+      key: 'auth-assistant',
+      label: 'Auth Assistant',
+      icon: KeyRound,
+      description: '连接本地 PIM Auth Assistant，上传和管理网页登录态。',
+      content: <AuthAssistantTab />,
     },
     {
       key: 'ai-model',

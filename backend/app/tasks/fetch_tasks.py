@@ -135,7 +135,7 @@ async def _do_fetch(source_id: str, manual_trigger: bool, job_id: str | None = N
 
     finally:
         if lock_acquired:
-            fetch_lock.release(source_id)
+            await asyncio.to_thread(fetch_lock.release, source_id)
         if db is not None:
             db.close()
 

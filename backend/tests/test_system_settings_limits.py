@@ -168,7 +168,7 @@ def test_apply_patch_hourly_digest_window_hours_clamped():
 
     updated = _apply_patch(current, {"hourly_digest": {"window_hours": "99"}})
 
-    assert updated["hourly_digest"]["window_hours"] == 24
+    assert updated["hourly_digest"]["window_hours"] == 1
 
 
 def test_effective_hourly_digest_prompt_prefers_saved_and_legacy():
@@ -198,6 +198,19 @@ def test_get_system_settings_for_response_merges_legacy_into_prompt_field_only()
     assert out["hourly_digest"]["prompt_effective"] == "A\n\nB"
 
 
+def test_get_system_settings_for_response_normalizes_legacy_hourly_window_to_one():
+    base = copy.deepcopy(DEFAULT_SYSTEM_SETTINGS)
+    base["hourly_digest"] = {
+        "prompt": "",
+        "content_types": ["rss"],
+        "window_hours": 3,
+    }
+
+    out = get_system_settings_for_response(base)
+
+    assert out["hourly_digest"]["window_hours"] == 1
+
+
 def test_normalize_hourly_digest_content_types_defaults():
     assert normalize_hourly_digest_content_types({}) == ["website", "rss"]
     assert normalize_hourly_digest_content_types({"hourly_digest": {}}) == ["website", "rss"]
@@ -205,4 +218,5 @@ def test_normalize_hourly_digest_content_types_defaults():
 
 def test_normalize_hourly_digest_window_hours_defaults():
     assert normalize_hourly_digest_window_hours({}) == 1
-    assert normalize_hourly_digest_window_hours({"hourly_digest": {"window_hours": "2"}}) == 2
+    assert normalize_hourly_digest_window_hours({"hourly_digest": {"window_hours": "2"}}) == 1
+    assert normalize_hourly_digest_window_hours({"hourly_digest": {"window_hours": "3"}}) == 1

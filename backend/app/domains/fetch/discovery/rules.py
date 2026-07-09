@@ -7,7 +7,7 @@ Source authors can tune listing discovery via ``Source.metadata_['discovery']``
       "discovery": {
         "mode": "listing",
         "listing_urls": ["https://example.com/news"],
-        "max_links": 20,
+        "max_links": 50,
         "same_domain_only": true,
         "max_depth": 1,
         "url_allow_patterns": ["/news/", "/article/"],
@@ -52,7 +52,7 @@ _DEFAULT_DENY_PATTERNS = (
     "/category/",
 )
 
-_DEFAULT_MAX_LINKS = 20
+_DEFAULT_MAX_LINKS = 50
 _DEFAULT_MIN_TITLE_CHARS = 12
 _MAX_LINKS_CEILING = 50
 
@@ -88,7 +88,7 @@ def _as_int(value: Any, default: int, *, lo: int, hi: int) -> int:
 class DiscoveryRules:
     mode: str
     listing_urls: tuple[str, ...]
-    max_links: int = 20
+    max_links: int = 50
     same_domain_only: bool = True
     max_depth: int = 1
     url_allow_patterns: tuple[str, ...] = ()
@@ -146,7 +146,7 @@ def parse_discovery_rules(metadata: Mapping[str, Any] | None) -> DiscoveryRules 
     return DiscoveryRules(
         mode=mode,
         listing_urls=listing_urls,
-        max_links=_as_int(raw.get("max_links"), 20, lo=1, hi=_MAX_LINKS_CEILING),
+        max_links=_as_int(raw.get("max_links"), _DEFAULT_MAX_LINKS, lo=1, hi=_MAX_LINKS_CEILING),
         same_domain_only=bool(raw.get("same_domain_only", True)),
         max_depth=_as_int(raw.get("max_depth"), 1, lo=1, hi=1),  # hard-capped: no recursion
         url_allow_patterns=_as_str_tuple(raw.get("url_allow_patterns")),

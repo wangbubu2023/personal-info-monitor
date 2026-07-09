@@ -45,6 +45,20 @@ export interface UpgradeStatus {
   configured_args?: string[]
 }
 
+export interface UpdateCheckStatus {
+  status: 'ok' | 'disabled'
+  current_version: string
+  latest_version: string | null
+  latest_tag: string | null
+  update_available: boolean
+  release_url: string | null
+  published_at: string | null
+  release_name: string | null
+  release_notes: string
+  checked_at: string
+  message: string
+}
+
 export const systemApi = {
   getQueueStatus: async (): Promise<QueueStatus> => {
     const response = await api.get<QueueStatus>('/system/queue')
@@ -58,6 +72,11 @@ export const systemApi = {
 
   getUpgradeStatus: async (): Promise<UpgradeStatus> => {
     const response = await api.get<UpgradeStatus>('/system/upgrade')
+    return response.data
+  },
+
+  checkForUpdates: async (): Promise<UpdateCheckStatus> => {
+    const response = await api.get<UpdateCheckStatus>('/system/update-check')
     return response.data
   },
 

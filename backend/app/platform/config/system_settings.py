@@ -204,14 +204,20 @@ def normalize_hourly_digest_content_types(settings: Dict[str, Any]) -> list[str]
 
 
 def normalize_hourly_digest_window_hours(settings: Dict[str, Any]) -> int:
-    """Completed-hour window length used for digest generation."""
+    """Completed-hour window length used for hourly briefing generation.
+
+    v1.4.3 made the product semantic explicit: the scheduled briefing is
+    hourly. Older installations may still have ``window_hours=3`` persisted
+    from the previous default, so normalize every stored value back to one
+    completed hour.
+    """
     hd = settings.get("hourly_digest") if isinstance(settings.get("hourly_digest"), dict) else {}
     raw = hd.get("window_hours") if isinstance(hd, dict) else None
     return _coerce_int(
         raw,
         _HOURLY_DIGEST_WINDOW_HOURS_DEFAULT,
         min_value=1,
-        max_value=24,
+        max_value=1,
     )
 
 
@@ -407,7 +413,7 @@ def _apply_patch(current: Dict[str, Any], patch: Dict[str, Any]) -> Dict[str, An
                 hd_patch.get("window_hours"),
                 _HOURLY_DIGEST_WINDOW_HOURS_DEFAULT,
                 min_value=1,
-                max_value=24,
+                max_value=1,
             )
 
     return updated
@@ -435,6 +441,7 @@ def get_system_settings_for_response(settings: Dict[str, Any]) -> Dict[str, Any]
     hd = response.get("hourly_digest")
     if isinstance(hd, dict):
         hd_out = copy.deepcopy(hd)
+        hd_out["window_hours"] = normalize_hourly_digest_window_hours({"hourly_digest": hd_out})
         prompt_effective = effective_hourly_digest_prompt(hd_out)
         p = str(hd_out.get("prompt") or "").strip()
         if not p:

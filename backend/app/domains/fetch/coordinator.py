@@ -161,6 +161,20 @@ def _commit_and_dispatch_session_alert(db: Session, source: Source) -> None:
         logger.debug("No running event loop; skipped async session alert for source %s", alert_source_id)
 
 
+async def _commit_and_dispatch_session_alert_async(db: Session, source: Source) -> None:
+    """Commit source status without blocking the event loop, then dispatch alerts."""
+    from app.domains.fetch.session_alerts import send_session_health_alert, stamp_session_health_alert
+
+    alert_source_id = str(source.id) if source.id and stamp_session_health_alert(source) else None
+    await asyncio.to_thread(db.commit)
+    if not alert_source_id:
+        return
+    try:
+        asyncio.create_task(send_session_health_alert(alert_source_id))
+    except RuntimeError:
+        logger.debug("No running event loop; skipped async session alert for source %s", alert_source_id)
+
+
 def _apply_keyword_filter(db: Session, source: Source, content_objects: list[Content]) -> tuple[list[Content], int]:
     """Filter content objects by enabled keywords. Returns (kept, filtered_count)."""
     from app.models import Keyword
@@ -220,6 +234,22 @@ async def run_fetch_pipeline(db: Session, source: Source, manual_trigger: bool =
     def _elapsed_ms() -> float:
         return (time.monotonic() - started_at) * 1000.0
 
+    stage_started_at = started_at
+
+    def _mark_stage(stage: str) -> None:
+        nonlocal stage_started_at
+        now = time.monotonic()
+        stage_ms = (now - stage_started_at) * 1000.0
+        total_ms = (now - started_at) * 1000.0
+        logger.info(
+            "Fetch pipeline stage %s for source %s took %.1fms (total=%.1fms)",
+            stage,
+            getattr(source, "id", None) or getattr(source, "name", "unknown"),
+            stage_ms,
+            total_ms,
+        )
+        stage_started_at = now
+
     def _content_fulltext_stats(contents: list[Content]) -> tuple[int, int]:
         fulltext_total = 0
         fulltext_ok = 0
@@ -246,13 +276,15 @@ async def run_fetch_pipeline(db: Session, source: Source, manual_trigger: bool =
 
     # 1. Collector Stage
     raw_contents, merged_warning, primary_warning = await CollectorStage.execute(db, source)
+    _mark_stage("collector")
 
     if not raw_contents:
         logger.info(f"No new content from source: {source.name}")
         _update_source_status(source, merged_warning, primary_warning,
                               "no_new_content", "info", "最近抓取完成但暂无新内容",
                               latency_ms=_elapsed_ms())
-        _commit_and_dispatch_session_alert(db, source)
+        await _commit_and_dispatch_session_alert_async(db, source)
+        _mark_stage("status_commit")
         if primary_warning:
             level = "error" if primary_warning[1] == "error" else "warning"
             return {"status": level, "message": merged_warning or primary_warning[2], "count": 0}
@@ -260,13 +292,15 @@ async def run_fetch_pipeline(db: Session, source: Source, manual_trigger: bool =
 
     # 2. Normalizer Stage (freshness, semantic dedupe, backfill)
     valid_raw_contents, stale_skipped = await NormalizerStage.execute(db, source, raw_contents, manual_trigger)
+    _mark_stage("normalizer")
 
     if not valid_raw_contents:
         logger.info(f"All content already fetched from: {source.name}")
         _update_source_status(source, merged_warning, primary_warning,
                               "up_to_date", "info", "内容已是最新",
                               latency_ms=_elapsed_ms())
-        _commit_and_dispatch_session_alert(db, source)
+        await _commit_and_dispatch_session_alert_async(db, source)
+        _mark_stage("status_commit")
         if primary_warning:
             level = "error" if primary_warning[1] == "error" else "warning"
             return {"status": level, "message": merged_warning or primary_warning[2], "count": 0}
@@ -274,15 +308,18 @@ async def run_fetch_pipeline(db: Session, source: Source, manual_trigger: bool =
 
     # 3. Build lightweight Content objects (no LLM) and persist
     content_objects, build_failed = await build_raw_content_objects(valid_raw_contents, source)
+    _mark_stage("build_content")
     keyword_filtered_count = 0
     if getattr(source, "use_keyword_filter", False):
         content_objects, keyword_filtered_count = _apply_keyword_filter(db, source, content_objects)
+        _mark_stage("keyword_filter")
         if not content_objects:
             logger.info(f"All {keyword_filtered_count} items filtered out by keywords for: {source.name}")
             _update_source_status(source, merged_warning, primary_warning,
                                   "keyword_filtered", "info", f"抓取到 {keyword_filtered_count} 条内容，均不匹配关键词",
                                   latency_ms=_elapsed_ms())
-            _commit_and_dispatch_session_alert(db, source)
+            await _commit_and_dispatch_session_alert_async(db, source)
+            _mark_stage("status_commit")
             return {
                 "status": "success",
                 "message": f"All {keyword_filtered_count} items filtered by keywords",
@@ -290,14 +327,19 @@ async def run_fetch_pipeline(db: Session, source: Source, manual_trigger: bool =
                 "keyword_filtered": keyword_filtered_count,
             }
 
-    saved_count, latest_saved_marker = StorageStage.execute(db, content_objects)
+    saved_count, latest_saved_marker = await asyncio.to_thread(StorageStage.execute, db, content_objects)
+    _mark_stage("storage")
 
     # 4. Update source metadata
     if latest_saved_marker:
         marker = latest_saved_marker[:255] if len(latest_saved_marker) > 255 else latest_saved_marker
         source.last_content_id = marker
-    elif not db.query(Content.id).filter(Content.source_id == source.id).first():
-        source.last_content_id = None
+    else:
+        has_existing_content = await asyncio.to_thread(
+            lambda: db.query(Content.id).filter(Content.source_id == source.id).first() is not None
+        )
+        if not has_existing_content:
+            source.last_content_id = None
 
     fulltext_ok, fulltext_total = _content_fulltext_stats(content_objects)
     _update_source_status(source, merged_warning, primary_warning,
@@ -306,7 +348,8 @@ async def run_fetch_pipeline(db: Session, source: Source, manual_trigger: bool =
                           fulltext_ok=fulltext_ok,
                           fulltext_total=fulltext_total,
                           preferred_strategy=_preferred_strategy())
-    _commit_and_dispatch_session_alert(db, source)
+    await _commit_and_dispatch_session_alert_async(db, source)
+    _mark_stage("status_commit")
 
     # 5. Collect new content IDs for async post-processing
     new_content_ids = [str(c.id) for c in content_objects if c.id]

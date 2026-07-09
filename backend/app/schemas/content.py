@@ -36,6 +36,8 @@ class ContentResponse(ContentBase):
     favorited: bool = False
     archived: bool = False
     is_user_edited: bool = False
+    is_duplicate: Optional[bool] = None
+    duplicate_of: Optional[str] = None
     keyword_matches: List[Dict[str, Any]] = Field(default_factory=list)
     metadata_: Dict[str, Any] = Field(default_factory=dict, alias="metadata")
     fetched_at: datetime

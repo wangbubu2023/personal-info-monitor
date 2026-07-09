@@ -14,6 +14,54 @@ from app.utils.logger import get_logger
 logger = get_logger(__name__)
 
 
+def _metadata_duplicate_group_id(content: Content) -> str:
+    metadata = content.metadata_ if isinstance(content.metadata_, dict) else {}
+    return str(metadata.get("duplicate_group_id") or "").strip()
+
+
+def _canonical_duplicate_member(members: list[Content]) -> Content:
+    return min(
+        members,
+        key=lambda member: (
+            member.fetched_at or member.created_at or utcnow_naive(),
+            str(member.id),
+        ),
+    )
+
+
+def mark_title_group_duplicate_members(db: Session, content: Content) -> None:
+    """Collapse rows sharing a title duplicate group onto one canonical row."""
+    group_id = _metadata_duplicate_group_id(content)
+    if not group_id:
+        return
+
+    members = (
+        db.query(Content)
+        .filter(func.json_extract(Content.metadata_, "$.duplicate_group_id") == group_id)
+        .all()
+    )
+    if len(members) < 2:
+        return
+
+    canonical = _canonical_duplicate_member(members)
+    canonical_id = str(canonical.id)
+    for member in members:
+        metadata = member.metadata_ if isinstance(member.metadata_, dict) else {}
+        merged = dict(metadata)
+        if str(member.id) == canonical_id:
+            member.is_duplicate = False
+            member.duplicate_of = None
+            merged["is_duplicate"] = False
+            merged.pop("duplicate_of", None)
+        else:
+            member.is_duplicate = True
+            member.duplicate_of = canonical_id
+            merged["is_duplicate"] = True
+            merged["duplicate_of"] = canonical_id
+        member.metadata_ = merged
+        member.updated_at = utcnow_naive()
+
+
 def handle_external_id_duplicate(
     db: Session,
     source: Source,

@@ -1,6 +1,6 @@
 [project]
 name = "personal-info-monitor-backend"
-version = "1.4.3"
+version = "1.5.0"
 description = "Personal Information Monitor — FastAPI backend, collectors, AI pipeline."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -34,6 +34,7 @@ dependencies = [
     "trafilatura>=1.6.3",
     "readability-lxml>=0.8.1",
     "lxml>=5.3.0",
+    "lxml-html-clean>=0.4.5",
     # AI/NLP (optional — needed for summarization/translation)
     "openai>=1.57.0",
     # Third-party APIs

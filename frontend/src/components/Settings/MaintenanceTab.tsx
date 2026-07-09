@@ -25,6 +25,11 @@ const MaintenanceTab: React.FC = () => {
     queryFn: systemApi.getUpgradeStatus,
     refetchInterval: (query) => (query.state.data?.status === 'running' ? 3000 : false),
   })
+  const { data: updateCheck, isFetching: isCheckingUpdate, refetch: refetchUpdateCheck } = useQuery({
+    queryKey: ['system-update-check'],
+    queryFn: systemApi.checkForUpdates,
+    staleTime: 1000 * 60 * 30,
+  })
 
   const startMutation = useMutation({
     mutationFn: systemApi.startUpgrade,
@@ -96,8 +101,11 @@ const MaintenanceTab: React.FC = () => {
             <Button
               size="small"
               icon={<RefreshCw size={14} strokeWidth={iconStroke} />}
-              onClick={() => refetch()}
-              loading={isFetching}
+              onClick={() => {
+                refetch()
+                refetchUpdateCheck()
+              }}
+              loading={isFetching || isCheckingUpdate}
             >
               刷新
             </Button>
@@ -115,6 +123,35 @@ const MaintenanceTab: React.FC = () => {
         }
       >
         <div className="flex flex-col gap-4">
+          {updateCheck?.status === 'ok' ? (
+            <Alert
+              type={updateCheck.update_available ? 'info' : 'success'}
+              showIcon
+              message={
+                updateCheck.update_available
+                  ? `发现新版本 v${updateCheck.latest_version || updateCheck.latest_tag}`
+                  : `当前已是最新版本 v${updateCheck.current_version}`
+              }
+              description={
+                updateCheck.update_available ? (
+                  <div className="space-y-2">
+                    <div>
+                      当前版本 v{updateCheck.current_version}，最新版本 v{updateCheck.latest_version || updateCheck.latest_tag}。
+                    </div>
+                    {updateCheck.release_notes ? <div className="whitespace-pre-line">{updateCheck.release_notes}</div> : null}
+                    {updateCheck.release_url ? (
+                      <a href={updateCheck.release_url} target="_blank" rel="noreferrer" className="text-[#2f8fb0]">
+                        查看 GitHub Release
+                      </a>
+                    ) : null}
+                  </div>
+                ) : undefined
+              }
+            />
+          ) : updateCheck?.status === 'disabled' ? (
+            <Alert type="warning" showIcon message="未启用版本检测" description={updateCheck.message} />
+          ) : null}
+
           <div className="grid gap-3 text-[13px] text-[#586476] md:grid-cols-2">
             <div className="flex items-center gap-2">
               <span className="text-[#7a8799]">状态</span>

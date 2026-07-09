@@ -32,6 +32,7 @@ def test_resolve_uses_default_rules_without_explicit_discovery():
     assert isinstance(rules, DiscoveryRules)
     assert rules.enabled
     assert rules.listing_urls == ("https://example.com/news",)
+    assert rules.max_links == 50
     assert rules.require_article_url is True
     assert rules.fallback_to_static_on_empty is True
     assert rules.extra["default"] is True

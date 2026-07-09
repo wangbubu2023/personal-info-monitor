@@ -174,6 +174,47 @@ async def test_bulk_import_x_sources_auto_bind_shared_x_cookie(client: AsyncClie
 
 
 @pytest.mark.asyncio
+async def test_x_probe_cookies_include_source_metadata_tokens():
+    from app.interfaces.http.sources._helpers import _load_source_probe_cookies
+    from app.models import Source
+
+    source = Source(name="dotey", type="x", url="https://x.com/dotey")
+    source.metadata_ = {"x_auth_token": "meta-auth", "x_ct0_token": "meta-ct0"}
+
+    cookies = await _load_source_probe_cookies(AsyncMock(), source)
+
+    assert cookies == {"auth_token": "meta-auth", "ct0": "meta-ct0"}
+
+
+@pytest.mark.asyncio
+async def test_x_probe_cookies_include_auth_config_tokens(client: AsyncClient, db_session):
+    from app.interfaces.http.sources._helpers import _load_source_probe_cookies
+    from app.models import Source
+
+    auth_resp = await client.post(
+        "/api/configs/auth-configs",
+        json={
+            "name": "主 X 账号",
+            "site_url": "https://x.com",
+            "auth_type": "cookie",
+            "cookies": {"auth_token": "config-auth", "ct0": "config-ct0"},
+        },
+    )
+    assert auth_resp.status_code == 200
+
+    source = Source(
+        name="dotey",
+        type="x",
+        url="https://x.com/dotey",
+        auth_config_id=auth_resp.json()["id"],
+    )
+
+    cookies = await _load_source_probe_cookies(db_session, source)
+
+    assert cookies == {"auth_token": "config-auth", "ct0": "config-ct0"}
+
+
+@pytest.mark.asyncio
 async def test_bulk_import_skips_duplicate_urls(client: AsyncClient, db_session):
     from app.models import Source
     db_session.add(Source(name="existing", type="rss", url="https://same.com/feed",

@@ -7,9 +7,9 @@ from typing import Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import func, or_, select, text
+from sqlalchemy import and_, func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import aliased, selectinload
 
 from app.interfaces.http.content_shared import _serialize_content
 from app.database import get_async_db
@@ -46,6 +46,30 @@ async def _sqlite_has_content_fts(db: AsyncSession) -> bool:
     return r.first() is not None
 
 
+def _visible_content_clause():
+    """Hide duplicate rows, including legacy rows that only share a duplicate group."""
+    other = aliased(Content)
+    group_id = func.json_extract(Content.metadata_, "$.duplicate_group_id")
+    other_group_id = func.json_extract(other.metadata_, "$.duplicate_group_id")
+    earlier_same_group = (
+        select(other.id)
+        .where(
+            other.id != Content.id,
+            other_group_id == group_id,
+            or_(
+                other.fetched_at < Content.fetched_at,
+                and_(other.fetched_at == Content.fetched_at, other.id < Content.id),
+            ),
+        )
+        .exists()
+    )
+    return and_(
+        or_(Content.is_duplicate.is_(False), Content.is_duplicate.is_(None)),
+        Content.duplicate_of.is_(None),
+        or_(group_id.is_(None), ~earlier_same_group),
+    )
+
+
 @router.get("", response_model=ContentListResponse)
 async def list_contents(
     page: int = Query(1, ge=1),
@@ -63,6 +87,9 @@ async def list_contents(
     """List all content with pagination and filters."""
     query = select(Content).options(selectinload(Content.source))
     count_query = select(func.count(Content.id))
+    visible_clause = _visible_content_clause()
+    query = query.filter(visible_clause)
+    count_query = count_query.filter(visible_clause)
 
     if source_id:
         query = query.filter(Content.source_id == source_id)

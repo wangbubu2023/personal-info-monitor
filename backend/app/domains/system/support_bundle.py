@@ -77,7 +77,7 @@ def _run_git(args: list[str], repo_root: Path) -> str | None:
             text=True,
             timeout=3,
         )
-    except Exception:
+    except (OSError, subprocess.SubprocessError):
         return None
     if result.returncode != 0:
         return None

@@ -164,6 +164,27 @@ class TestAppendFallbackLinks:
         append_fallback_links(soup=soup, source=source, contents=contents)
         assert len(contents) == 1
 
+    def test_existing_non_article_items_do_not_block_anchor_fallback(self):
+        html = """
+        <html>
+            <a href='/detail/2421751'>未来五年，碳达峰工作这样推进</a>
+            <a href='/detail/2421886'>财联社电报中的重要快讯标题足够长</a>
+        </html>
+        """
+        soup = BeautifulSoup(html, "lxml")
+        source = _make_source("https://www.cls.cn/")
+        contents = [
+            {"url": "https://www.cls.cn/ind?code=sh000001", "title": "上证指数"},
+            {"url": "https://www.cls.cn/ind?code=sz399001", "title": "深证成指"},
+            {"url": "https://www.cls.cn/ind?code=sz399006", "title": "创业板指"},
+            {"url": "https://www.cls.cn/ind?code=sh000905", "title": "中证500"},
+            {"url": "https://www.cls.cn/finance", "title": "看盘"},
+        ]
+        append_fallback_links(soup=soup, source=source, contents=contents)
+        urls = {item["url"] for item in contents}
+        assert "https://www.cls.cn/detail/2421751" in urls
+        assert "https://www.cls.cn/detail/2421886" in urls
+
 
 # ---------------------------------------------------------------------------
 # parse_html_content
@@ -225,3 +246,28 @@ class TestParseHtmlContent:
         result = parse_html_content(html=html, source=source)
         assert len(result) == 1
         assert result[0]["url"].endswith("/custom-2026-04-20/slug-id")
+
+    def test_cls_style_homepage_keeps_headline_and_telegraph_links(self):
+        html = """
+        <html><body>
+          <div class='quote-item'><a href='/ind?code=sh000001'>上证指数</a></div>
+          <div class='quote-item'><a href='/ind?code=sz399001'>深证成指</a></div>
+          <div class='quote-item'><a href='/ind?code=sz399006'>创业板指</a></div>
+          <div class='quote-item'><a href='/ind?code=sh000905'>中证500</a></div>
+          <div class='home-article-headline'>
+            <a href='/detail/2421751'>未来五年，碳达峰工作这样推进</a>
+          </div>
+          <div class='home-article-headline-rec'>
+            <a href='/detail/2421755'>《“十五五”碳达峰行动方案》：到2030年新型储能装机容量力争达到3亿千瓦</a>
+          </div>
+          <div class='telegraph-list'>
+            <a href='/detail/2421886'>【丁薛祥在两院院士大会第二次全体会议上强调 全力抓好党中央关于科技事业各项部署的落实】</a>
+          </div>
+        </body></html>
+        """
+        source = _make_source("https://www.cls.cn/")
+        result = parse_html_content(html=html, source=source)
+        urls = {item["url"] for item in result}
+        assert "https://www.cls.cn/detail/2421751" in urls
+        assert "https://www.cls.cn/detail/2421755" in urls
+        assert "https://www.cls.cn/detail/2421886" in urls

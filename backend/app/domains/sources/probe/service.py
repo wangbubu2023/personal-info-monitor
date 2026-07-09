@@ -154,6 +154,10 @@ class ProbeService:
     def _get_settings():
         return get_settings()
 
+    @staticmethod
+    def _get_probe_cookies() -> Dict[str, str]:
+        return dict(_probe_cookies_var.get() or {})
+
     def _check_known_feeds(self, url: str) -> Optional[str]:
         return self._strategies["rss"].check_known_feeds(url)
 

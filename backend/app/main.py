@@ -5,6 +5,8 @@ import re
 from time import perf_counter
 from uuid import uuid4
 
+from app.platform.runtime.update_check import current_version
+
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse
@@ -15,6 +17,7 @@ from app.config import bootstrap_runtime_environment, get_settings, parse_cors_o
 from app.middleware.api_rate_limit import APIRateLimitMiddleware
 from app.platform.auth import bootstrap_router, inject_bootstrap_meta
 from app.platform.health import health_router
+from app.interfaces.http import auth_assistant
 from app.platform.runtime import build_lifespan
 from app.utils.logger import clear_request_id, get_logger, set_request_id
 from app.utils.metrics import request_metrics
@@ -25,7 +28,7 @@ logger = get_logger(__name__)
 DEFAULT_API_PORT = 8000
 DEV_FRONTEND_URL = os.getenv("PIM_DEV_FRONTEND_URL", "http://127.0.0.1:3000").strip() or "http://127.0.0.1:3000"
 DEV_SERVER_MODE = os.getenv("PIM_DEV_SERVER", "").strip().lower() in {"1", "true", "yes"}
-APP_VERSION = "1.4.2"
+APP_VERSION = current_version()
 SPA_NO_CACHE_HEADERS = {
     "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
     "Pragma": "no-cache",
@@ -124,6 +127,7 @@ app.add_middleware(
 
 # Include API routes
 app.include_router(api_router, prefix="/api")
+app.include_router(auth_assistant.router, prefix="/api/auth-assistant", tags=["auth-assistant"])
 # Platform-level health/liveness endpoints (extracted from this module in Phase 5.12).
 app.include_router(health_router)
 # /local-token endpoint + SPA bootstrap-meta helpers (extracted in Phase 5.14).

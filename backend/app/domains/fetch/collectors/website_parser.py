@@ -94,12 +94,22 @@ def append_fallback_links(
     contents: List[Dict[str, Any]],
 ) -> None:
     """Add anchor-based fallback candidates when primary selectors yield few hits."""
-    if len(contents) >= 5:
+    seen = {str(item.get("url") or "") for item in contents}
+    metadata = source.metadata_ if isinstance(source.metadata_, dict) else {}
+    try:
+        max_links = int(metadata.get("fallback_link_max", 50))
+    except (TypeError, ValueError):
+        max_links = 50
+    max_links = max(0, min(max_links, 100))
+    article_link_count = sum(
+        1 for item in contents
+        if looks_like_article_url(source.url, str(item.get("url") or ""))
+    )
+    if article_link_count >= max_links:
         return
 
-    seen = {str(item.get("url") or "") for item in contents}
     for anchor in soup.select("a[href]"):
-        if len(contents) >= 15:
+        if article_link_count >= max_links:
             break
         href = (anchor.get("href") or "").strip()
         if not href:
@@ -121,6 +131,7 @@ def append_fallback_links(
             continue
 
         seen.add(url)
+        article_link_count += 1
         contents.append(
             {
                 "external_id": url,

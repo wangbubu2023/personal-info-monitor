@@ -1580,6 +1580,46 @@ class TestRssOnlyMode:
         assert source.metadata_["discovery_diagnostics"]["total"] == 1
 
     @pytest.mark.asyncio
+    async def test_default_listing_discovery_falls_back_when_no_candidates_found(self):
+        collector = WebsiteCollector()
+        source = _make_source(url="https://open.example.com/news")
+
+        with patch.object(collector, "_fetch_listing_html", new=AsyncMock(return_value="<html></html>")):
+            result = await collector._maybe_fetch_via_discovery(source, cookies={}, browser_session=None)
+
+        assert result is None
+        assert source.metadata_["discovery_diagnostics"]["kept"] == 0
+        assert source.metadata_["discovery_diagnostics"]["total"] == 0
+
+    @pytest.mark.asyncio
+    async def test_default_listing_discovery_rejected_candidates_do_not_fall_back_to_static(self):
+        collector = WebsiteCollector()
+        source = _make_source(url="https://open.example.com/news")
+        rejected_candidates = [
+            {"url": "https://outside.test/articles/story", "title": "Off domain story title"},
+            {"url": "javascript:;", "title": "Open the app"},
+            {"url": "https://open.example.com/about", "title": "About this portal"},
+            {"url": "https://open.example.com/questions", "title": "Question collection"},
+        ]
+        static_mock = AsyncMock(return_value=[{"url": "https://open.example.com/static-junk"}])
+
+        with patch.object(collector, "_check_ssrf", new_callable=AsyncMock), \
+             patch.object(collector, "get_runtime_auth", return_value=None), \
+             patch.object(collector, "get_runtime_cookies", return_value={}), \
+             patch.object(collector, "get_runtime_browser_session", return_value=None), \
+             patch.object(collector.rss_collector, "discover_feed_url", new=AsyncMock(return_value=None)), \
+             patch.object(collector, "_maybe_fetch_via_sitemap", new=AsyncMock(return_value=None)), \
+             patch.object(collector, "_fetch_listing_html", new=AsyncMock(return_value="<html></html>")), \
+             patch.object(collector, "_parse_html", return_value=rejected_candidates), \
+             patch.object(collector, "_fetch_static", new=static_mock):
+            result = await collector.fetch(source)
+
+        assert result == []
+        assert source.metadata_["discovery_diagnostics"]["kept"] == 0
+        assert source.metadata_["discovery_diagnostics"]["total"] == 4
+        static_mock.assert_not_awaited()
+
+    @pytest.mark.asyncio
     async def test_listing_discovery_fetches_configured_pagination_pages(self):
         collector = WebsiteCollector()
         source = _make_source(

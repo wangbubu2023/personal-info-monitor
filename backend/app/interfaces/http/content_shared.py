@@ -55,6 +55,8 @@ def _serialize_content(content: Content) -> dict:
         "favorited": content.favorited,
         "archived": content.archived,
         "is_user_edited": bool(getattr(content, "is_user_edited", False)),
+        "is_duplicate": getattr(content, "is_duplicate", None),
+        "duplicate_of": getattr(content, "duplicate_of", None),
         "keyword_matches": content.keyword_matches or [],
         "metadata": content.metadata_ or {},
         "fetched_at": content.fetched_at,

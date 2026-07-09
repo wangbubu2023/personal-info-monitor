@@ -11,20 +11,14 @@ import asyncio
 import contextlib
 import json
 import os
+import re
+import select
 import sys
 from pathlib import Path
 from typing import Any
 
 from app.features import PlaywrightDisabledError, playwright_enabled
-from app.platform.browser.playwright_runtime import (
-    async_playwright,
-    backend_name,
-    default_channel,
-    is_patchright_active,
-    recommended_launch_args,
-    timeout_error_types,
-)
-from app.platform.browser.playwright_stealth import stealth_init_script
+from app.platform.browser.playwright_runtime import timeout_error_types
 from app.platform.browser.profiles import profiles_root, slugify_profile_name
 from app.utils.datetime import utcnow_naive
 from app.utils.url import host_matches, normalize_host
@@ -41,6 +35,19 @@ _BROWSER_USER_AGENT = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
     "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
 )
+_AUTH_BUNDLE_DONE_URL = "https://pim.local/auth-bundle-captured"
+_AUTH_BUNDLE_DONE_HTML = """
+<!doctype html>
+<meta charset="utf-8">
+<title>PIM Auth Bundle captured</title>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; padding: 32px; color: #172033; }
+  code { background: #f2f4f7; border-radius: 6px; padding: 2px 6px; }
+</style>
+<h1>登录态已准备导出</h1>
+<p>你可以回到终端，等待命令写出 Auth Bundle 文件。</p>
+<p>如果窗口没有自动关闭，请手动关闭这个浏览器窗口。</p>
+"""
 
 
 class AuthBundleError(ValueError):
@@ -247,28 +254,36 @@ async def _capture_browser_state(
     headless: bool,
     dwell_seconds: int,
 ) -> dict[str, Any]:
-    launch_kwargs: dict[str, Any] = {
-        "user_data_dir": user_data_dir,
-        "headless": bool(headless),
-        "args": recommended_launch_args([]),
-    }
-    channel = default_channel()
-    if channel:
-        launch_kwargs["channel"] = channel
-    if is_patchright_active():
-        launch_kwargs["no_viewport"] = True
-    else:
-        launch_kwargs["user_agent"] = _BROWSER_USER_AGENT
+    launch_kwargs = _browser_launch_kwargs(headless=headless)
+    context_kwargs = _browser_context_kwargs(user_data_dir=user_data_dir)
+    _print_capture_diagnostics(
+        site_url=site_url,
+        user_data_dir=user_data_dir,
+        launch_kwargs=launch_kwargs,
+        context_kwargs=context_kwargs,
+    )
 
-    async with async_playwright() as p:
-        context = await p.chromium.launch_persistent_context(**launch_kwargs)
+    async with _auth_bundle_playwright() as p:
+        browser = await p.chromium.launch(**launch_kwargs)
         try:
-            page = context.pages[0] if context.pages else await context.new_page()
-            if not is_patchright_active():
-                await page.add_init_script(stealth_init_script())
+            browser_version = browser.version
+        except (AttributeError, TypeError):
+            browser_version = "unknown"
+        print(f"Browser version: {browser_version}")
+        context = await browser.new_context(**context_kwargs)
+        try:
+            await context.route(_AUTH_BUNDLE_DONE_URL, _fulfill_auth_bundle_done)
+            if _should_block_google_login_popups(site_url):
+                await _install_x_login_popup_blockers(context)
+            _attach_context_debug_listeners(context)
+            page = await context.new_page()
+            _attach_page_debug_listeners(page, "main")
+            await page.bring_to_front()
 
+            navigation_url = _initial_capture_url(site_url)
+            print(f"Initial navigation URL: {navigation_url}")
             try:
-                await page.goto(site_url, wait_until="domcontentloaded", timeout=45000)
+                await page.goto(navigation_url, wait_until="domcontentloaded", timeout=45000)
             except timeout_error_types():
                 if headless:
                     raise
@@ -280,9 +295,10 @@ async def _capture_browser_state(
                     await page.wait_for_timeout(dwell_seconds * 1000)
                     await _snapshot_context_state(context, holder)
             else:
-                await _wait_for_user_done(context, holder, dwell_seconds)
+                await _wait_for_user_done(context, page, holder, dwell_seconds)
 
             await _snapshot_context_state(context, holder)
+            await _persist_storage_state(user_data_dir, holder.get("storage_state"))
             final_url = page.url if not page.is_closed() else site_url
             title = "" if page.is_closed() else await page.title()
             return {
@@ -294,44 +310,212 @@ async def _capture_browser_state(
         finally:
             with contextlib.suppress(BaseException):
                 await context.close()
+            with contextlib.suppress(BaseException):
+                await browser.close()
 
 
-async def _wait_for_user_done(context, holder: dict[str, Any], dwell_seconds: int) -> None:
+def _auth_bundle_playwright():
+    # Auth Bundle capture is intentionally isolated from PIM's default browser
+    # backend. The fetcher prefers patchright for anti-bot scraping, but users
+    # reported patchright/system Chrome repeatedly opening and closing tabs while
+    # manually logging in to x.com. Use stock Playwright's bundled Chromium here
+    # unless the user explicitly opts back into another backend outside this flow.
+    from playwright.async_api import async_playwright as stock_async_playwright  # type: ignore
+
+    return stock_async_playwright()
+
+
+def _browser_launch_kwargs(*, headless: bool) -> dict[str, Any]:
+    return {
+        "headless": bool(headless),
+        "args": ["--disable-blink-features=AutomationControlled"],
+    }
+
+
+def _browser_context_kwargs(*, user_data_dir: str) -> dict[str, Any]:
+    return {
+        "locale": "zh-CN",
+        "storage_state": _storage_state_path(user_data_dir),
+    }
+
+
+def _initial_capture_url(site_url: str) -> str:
+    site_host = normalize_host(site_url)
+    if site_host in {"x.com", "twitter.com", "www.x.com", "www.twitter.com"}:
+        return "https://x.com/i/flow/login"
+    return site_url
+
+
+def _should_block_google_login_popups(site_url: str) -> bool:
+    site_host = normalize_host(site_url)
+    return site_host in {"x.com", "twitter.com", "www.x.com", "www.twitter.com"}
+
+
+async def _install_x_login_popup_blockers(context) -> None:
+    # X's login page eagerly loads Google Sign-In/FedCM widgets. In Playwright's
+    # bundled Chromium those widgets may repeatedly open accounts.google.com
+    # popups and steal focus before the user can type an X username/password.
+    # For auth-bundle capture we want the native X login form, so block only the
+    # Google identity surfaces and leave x.com itself untouched.
+    print("X login guard: blocking Google Sign-In popups during manual capture.")
+    google_identity_url = re.compile(r"^https://(?:accounts|play)\.google\.com/(?:gsi|v3/signin|signin|log)")
+    await context.route(google_identity_url, _abort_x_google_identity_request)
+    await context.add_init_script(
+        """
+(() => {
+  const blockedHosts = new Set(['accounts.google.com', 'play.google.com']);
+  const originalOpen = window.open;
+  window.open = function(url, target, features) {
+    try {
+      const candidate = new URL(String(url || ''), window.location.href);
+      if (blockedHosts.has(candidate.hostname)) {
+        console.info('[pim-auth-bundle] blocked Google login popup', candidate.href);
+        return null;
+      }
+    } catch (_) {}
+    return originalOpen.call(window, url, target, features);
+  };
+})();
+"""
+    )
+
+
+async def _abort_x_google_identity_request(route) -> None:
+    print(f"[browser-debug] blocked Google identity request url={route.request.url}")
+    await route.abort()
+
+
+def _attach_context_debug_listeners(context) -> None:
+    def on_page(new_page) -> None:
+        label = f"page-{len(context.pages)}"
+        print(f"[browser-debug] page created label={label} url={new_page.url}")
+        _attach_page_debug_listeners(new_page, label)
+
+    context.on("page", on_page)
+
+
+def _attach_page_debug_listeners(page, label: str) -> None:
+    page.on("close", lambda *_: print(f"[browser-debug] page closed label={label}"))
+    page.on("crash", lambda *_: print(f"[browser-debug] page crashed label={label}"))
+    page.on(
+        "framenavigated",
+        lambda frame: print(f"[browser-debug] navigated label={label} url={frame.url}")
+        if frame == page.main_frame
+        else None,
+    )
+    page.on("popup", lambda popup: print(f"[browser-debug] popup label={label} url={popup.url}"))
+    page.on(
+        "requestfailed",
+        lambda request: print(
+            "[browser-debug] request failed "
+            f"label={label} method={request.method} url={request.url} failure={request.failure}"
+        ),
+    )
+
+
+def _print_capture_diagnostics(
+    *,
+    site_url: str,
+    user_data_dir: str,
+    launch_kwargs: dict[str, Any],
+    context_kwargs: dict[str, Any],
+) -> None:
+    print()
+    print("PIM Auth Bundle browser diagnostics")
+    print("-----------------------------------")
+    print(f"Site URL: {site_url}")
+    print("Backend: stock playwright.async_api")
+    print("Launch API: chromium.launch + browser.new_context")
+    print(f"Headless: {launch_kwargs.get('headless')}")
+    print(f"Channel: {launch_kwargs.get('channel') or '<bundled chromium>'}")
+    print(f"Executable path: {launch_kwargs.get('executable_path') or '<playwright default>'}")
+    print(f"Launch args: {launch_kwargs.get('args') or []}")
+    print(f"Context locale: {context_kwargs.get('locale') or '<default>'}")
+    print(f"Context user agent: {context_kwargs.get('user_agent') or '<browser default>'}")
+    print(f"User data dir: {user_data_dir}")
+    print(f"Storage state path: {context_kwargs.get('storage_state') or '<none>'}")
+    print(f"PIM_BROWSER_BACKEND env: {os.environ.get('PIM_BROWSER_BACKEND') or '<unset>'}")
+    print(f"PIM_PLAYWRIGHT_CHANNEL env: {os.environ.get('PIM_PLAYWRIGHT_CHANNEL') or '<unset>'}")
+    print(f"PIM_PLAYWRIGHT_NO_SANDBOX env: {os.environ.get('PIM_PLAYWRIGHT_NO_SANDBOX') or '<unset>'}")
+    print()
+
+
+def _storage_state_path(user_data_dir: str) -> str | None:
+    path = Path(user_data_dir) / "storage_state.json"
+    return str(path) if path.is_file() else None
+
+
+async def _fulfill_auth_bundle_done(route) -> None:
+    await route.fulfill(
+        status=200,
+        content_type="text/html; charset=utf-8",
+        body=_AUTH_BUNDLE_DONE_HTML,
+    )
+
+
+async def _wait_for_user_done(context, page, holder: dict[str, Any], dwell_seconds: int) -> None:
     timeout_s = max(int(dwell_seconds or 0), 30)
+    done_event = asyncio.Event()
     close_event = asyncio.Event()
+    done_url_prefix = _AUTH_BUNDLE_DONE_URL.rstrip("/")
+    stdin_available = sys.stdin.isatty()
+
+    print()
+    print("PIM Auth Bundle capture")
+    print("-----------------------")
+    print("请在打开的浏览器窗口完成登录。")
+    print("完成后回到这个终端按 Enter，或直接关闭浏览器窗口。")
+    print(f"最多等待 {timeout_s} 秒；期间不会自动刷新页面。")
+    print()
+
     context.on("close", lambda *_: close_event.set())
-    for page in list(context.pages):
-        page.on("close", lambda *_: close_event.set())
-    context.on("page", lambda page: page.on("close", lambda *_: close_event.set()))
+    page.on("close", lambda *_: close_event.set())
 
     async def poll_state() -> None:
         try:
-            while True:
-                await asyncio.sleep(1.5)
+            while not done_event.is_set() and not close_event.is_set():
+                await asyncio.sleep(2.0)
                 await _snapshot_context_state(context, holder)
         except asyncio.CancelledError:
             await _snapshot_context_state(context, holder)
             raise
 
     async def poll_pages() -> None:
-        await asyncio.sleep(2)
-        while True:
-            await asyncio.sleep(1.5)
-            open_pages = [page for page in context.pages if not page.is_closed()]
+        await asyncio.sleep(1.0)
+        while not done_event.is_set() and not close_event.is_set():
+            await asyncio.sleep(1.0)
+            open_pages = [candidate for candidate in context.pages if not candidate.is_closed()]
             if not open_pages:
+                close_event.set()
+                return
+            if any((candidate.url or "").rstrip("/").startswith(done_url_prefix) for candidate in open_pages):
+                done_event.set()
+                return
+
+    async def wait_for_enter() -> None:
+        if not stdin_available:
+            await asyncio.Event().wait()
+            return
+        while not done_event.is_set() and not close_event.is_set():
+            readable, _, _ = await asyncio.to_thread(select.select, [sys.stdin], [], [], 0.25)
+            if readable:
+                sys.stdin.readline()
+                done_event.set()
                 return
 
     state_task = asyncio.create_task(poll_state())
     close_task = asyncio.create_task(close_event.wait())
+    done_task = asyncio.create_task(done_event.wait())
     pages_task = asyncio.create_task(poll_pages())
+    enter_task = asyncio.create_task(wait_for_enter())
     try:
         done, pending = await asyncio.wait(
-            {close_task, pages_task},
+            {close_task, done_task, pages_task, enter_task},
             timeout=timeout_s,
             return_when=asyncio.FIRST_COMPLETED,
         )
-        if not done:
-            return
+        if not done and not page.is_closed():
+            print("等待超时，正在导出当前浏览器登录态。")
         for task in pending:
             task.cancel()
             with contextlib.suppress(BaseException):
@@ -347,6 +531,16 @@ async def _snapshot_context_state(context, holder: dict[str, Any]) -> None:
         holder["cookies"] = await context.cookies()
     with contextlib.suppress(BaseException):
         holder["storage_state"] = await context.storage_state()
+
+
+async def _persist_storage_state(user_data_dir: str, storage_state: Any) -> None:
+    if not isinstance(storage_state, dict):
+        return
+    path = Path(user_data_dir) / "storage_state.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    await asyncio.to_thread(path.write_text, json.dumps(storage_state, ensure_ascii=False, indent=2), "utf-8")
+    with contextlib.suppress(OSError):
+        path.chmod(0o600)
 
 
 def _filter_cookie_items(raw_items: Any, site_host: str) -> list[dict[str, Any]]:
@@ -387,6 +581,4 @@ def _public_cookie_item(item: dict[str, Any], *, fallback_domain: str) -> dict[s
 
 
 def _safe_backend_name() -> str:
-    with contextlib.suppress(RuntimeError, ImportError):
-        return backend_name()
-    return "unknown"
+    return "auth-bundle-playwright"

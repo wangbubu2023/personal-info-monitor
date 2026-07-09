@@ -3,6 +3,7 @@
 from app.models.source import Source
 from app.models.content import Content
 from app.models.auth_config import AuthConfig, APIConfig
+from app.models.auth_assistant import AuthAssistantDevice, AuthAssistantImportLog, AuthAssistantPairingToken
 from app.models.keyword import Keyword
 from app.models.email_schedule import EmailSchedule
 from app.models.hourly_digest import HourlyDigest
@@ -27,6 +28,9 @@ __all__ = [
     "Content",
     "AuthConfig",
     "APIConfig",
+    "AuthAssistantDevice",
+    "AuthAssistantImportLog",
+    "AuthAssistantPairingToken",
     "Keyword",
     "EmailSchedule",
     "HourlyDigest",

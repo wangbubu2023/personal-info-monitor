@@ -1,6 +1,7 @@
 """Ingest stage for normalizing and gating contents (freshness, duplicates)."""
 
 from typing import Any, List, Tuple
+import asyncio
 from sqlalchemy.orm import Session
 
 from app.models import Source, Content
@@ -22,6 +23,19 @@ logger = get_logger(__name__)
 # fulltext" worth backfilling over an existing stub. Mirrors the threshold
 # used by :func:`app.domains.ingest.dedupe.handle_external_id_duplicate`.
 _MIN_FULLTEXT_CHARS = 280
+
+
+def _find_semantic_existing_content(
+    db: Session,
+    source_id: Any,
+    title: str,
+    publish_time: Any,
+) -> Content | None:
+    return db.query(Content).filter(
+        Content.source_id == source_id,
+        Content.title == title,
+        Content.publish_time == publish_time,
+    ).first()
 
 
 def _stamp_article_page_metadata(raw_content: dict) -> None:
@@ -192,7 +206,7 @@ class NormalizerStage:
             external_id = normalize_external_id(raw_content.get("external_id"))
             if external_id:
                 raw_content["external_id"] = external_id
-                if handle_external_id_duplicate(db, source, raw_content, external_id):
+                if await asyncio.to_thread(handle_external_id_duplicate, db, source, raw_content, external_id):
                     _append_skip_diagnostic(
                         diagnostics,
                         reason="duplicate_external_id",
@@ -249,11 +263,13 @@ class NormalizerStage:
                         raw_content=raw_content,
                     )
                     continue
-                semantic_existing = db.query(Content).filter(
-                    Content.source_id == source.id,
-                    Content.title == raw_title,
-                    Content.publish_time == publish_time,
-                ).first()
+                semantic_existing = await asyncio.to_thread(
+                    _find_semantic_existing_content,
+                    db,
+                    source.id,
+                    raw_title,
+                    publish_time,
+                )
                 if semantic_existing:
                     logger.info("Skipping semantic-duplicate website content: %s", raw_title)
                     _append_skip_diagnostic(

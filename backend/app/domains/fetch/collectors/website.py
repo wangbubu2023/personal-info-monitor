@@ -786,7 +786,7 @@ class WebsiteCollector(BaseCollector):
         if hydrate_limit <= 0:
             return contents, {"attempted": 0, "hydrated": 0, "failures": {}}
 
-        existing_indexes = self._known_existing_content_indexes(source, contents)
+        existing_indexes = await asyncio.to_thread(self._known_existing_content_indexes, source, contents)
         direct_indexes = [
             i for i, item in enumerate(contents)
             if _helpers.looks_like_article_url(source.url, str(item.get("url") or ""))
@@ -1366,8 +1366,9 @@ class WebsiteCollector(BaseCollector):
         """Run controlled listing-page discovery before generic static fetch.
 
         Explicit per-source discovery treats an empty result as final. The
-        conservative default discovery records diagnostics but falls through
-        to static fetch when it finds nothing.
+        conservative default discovery falls through to static fetch only when
+        no candidates were found; if candidates were found and all rejected,
+        the discovery verdict is authoritative.
         """
         from app.domains.fetch.discovery import (
             expand_listing_urls,
@@ -1439,7 +1440,7 @@ class WebsiteCollector(BaseCollector):
             for article in kept
         ]
         if not contents:
-            if rules.fallback_to_static_on_empty:
+            if rules.fallback_to_static_on_empty and int(diagnostics.get("total") or 0) == 0:
                 return None
             return []
         return await self._maybe_hydrate_public_listing_contents(

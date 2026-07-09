@@ -59,6 +59,8 @@ class Settings(BaseSettings):
     event_loop_slow_callback_seconds: float = 1.0
     event_loop_lag_probe_interval_seconds: float = 1.0
     pim_ui_upgrade_args: str = ""
+    pim_update_check_repo: str = "wangbubu2023/personal-info-monitor"
+    pim_update_check_timeout_seconds: float = 4.0
 
     # OpenAI
     openai_api_key: Optional[str] = None

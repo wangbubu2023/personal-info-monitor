@@ -26,6 +26,8 @@ class Content(Base):
         Index('ix_content_article_score', 'article_score'),
         Index('ix_content_selection_status', 'selection_status'),
         Index('ix_content_lane', 'lane'),
+        Index('ix_content_is_duplicate', 'is_duplicate'),
+        Index('ix_content_duplicate_of', 'duplicate_of'),
     )
 
     id = Column(UUIDString, primary_key=True, default=lambda: str(uuid.uuid4()))
@@ -58,6 +60,10 @@ class Content(Base):
     favorited = Column(Boolean, default=False)
     archived = Column(Boolean, default=False)
     is_user_edited = Column(Boolean, default=False)
+
+    # Duplicate convergence
+    is_duplicate = Column(Boolean, nullable=True)
+    duplicate_of = Column(UUIDString, nullable=True)
 
     # Keyword matching results
     keyword_matches = Column(JSON, default=list)

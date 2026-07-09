@@ -207,8 +207,9 @@ async def _load_source_probe_cookies(
     reuse them so the probe reflects the same access the fetch pipeline has.
     Returns an empty dict on any failure — probes must stay best-effort.
     """
+    normalized: Dict[str, str] = {}
     if not getattr(source, "auth_config_id", None):
-        return {}
+        return _merge_x_metadata_probe_cookies(source, normalized)
     try:
         result = await db.execute(
             select(AuthConfig).filter(AuthConfig.id == source.auth_config_id)
@@ -216,23 +217,36 @@ async def _load_source_probe_cookies(
         auth_config = result.scalar_one_or_none()
     except Exception as exc:  # noqa: BLE001 - DB issues shouldn't block probing
         logger.debug("Probe cookie load failed for source %s: %s", source.id, exc)
-        return {}
+        return _merge_x_metadata_probe_cookies(source, normalized)
     if auth_config is None:
-        return {}
+        return _merge_x_metadata_probe_cookies(source, normalized)
 
     from app.domains.fetch.auth import try_parse_auth_credentials
 
     creds = try_parse_auth_credentials(auth_config)
     cookies = creds.get("cookies") if isinstance(creds, dict) else None
     if not isinstance(cookies, dict):
-        return {}
-    normalized: Dict[str, str] = {}
+        return _merge_x_metadata_probe_cookies(source, normalized)
     for name, value in cookies.items():
         key = str(name or "").strip()
         if not key or value is None:
             continue
         normalized[key] = str(value)
-    return normalized
+    return _merge_x_metadata_probe_cookies(source, normalized)
+
+
+def _merge_x_metadata_probe_cookies(source: Source, cookies: Dict[str, str]) -> Dict[str, str]:
+    """Map legacy source metadata X tokens into probe cookies when present."""
+    source_type = _source_type_value(getattr(source, "type", None))
+    if source_type != "x":
+        return cookies
+    metadata = source.metadata_ if isinstance(source.metadata_, dict) else {}
+    auth_token = metadata.get("x_auth_token") or metadata.get("auth_token")
+    ct0 = metadata.get("x_ct0_token") or metadata.get("ct0")
+    if auth_token and ct0:
+        cookies.setdefault("auth_token", str(auth_token))
+        cookies.setdefault("ct0", str(ct0))
+    return cookies
 
 
 def _pending_probe_metadata() -> dict:
