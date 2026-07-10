@@ -46,7 +46,7 @@ export interface UpgradeStatus {
 }
 
 export interface UpdateCheckStatus {
-  status: 'ok' | 'disabled'
+  status: 'ok' | 'disabled' | 'error'
   current_version: string
   latest_version: string | null
   latest_tag: string | null

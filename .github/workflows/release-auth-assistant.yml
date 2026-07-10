@@ -1,0 +1,130 @@
+name: Release Auth Assistant for macOS
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing or new GitHub release tag (for example v1.5.1)
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: auth-assistant-release-${{ github.event.release.tag_name || inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  macos-arm64:
+    runs-on: macos-latest
+    env:
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+    steps:
+      - name: Resolve release tag
+        id: release
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name || inputs.tag }}
+        run: echo "tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.release.outputs.tag }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: auth-assistant/package-lock.json
+
+      - name: Set up Rust target
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin
+
+      - name: Require Apple distribution credentials
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+        run: |
+          missing=0
+          for name in APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD KEYCHAIN_PASSWORD APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Missing required repository secret: $name"
+              missing=1
+            fi
+          done
+          exit "$missing"
+
+      - name: Import Developer ID certificate
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+        run: |
+          printf '%s' "$APPLE_CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/developer-id.p12"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$RUNNER_TEMP/pim-build.keychain-db"
+          security default-keychain -s "$RUNNER_TEMP/pim-build.keychain-db"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$RUNNER_TEMP/pim-build.keychain-db"
+          security set-keychain-settings -lut 21600 "$RUNNER_TEMP/pim-build.keychain-db"
+          security import "$RUNNER_TEMP/developer-id.p12" \
+            -k "$RUNNER_TEMP/pim-build.keychain-db" \
+            -P "$APPLE_CERTIFICATE_PASSWORD" \
+            -T /usr/bin/codesign
+          security set-key-partition-list \
+            -S apple-tool:,apple:,codesign: \
+            -s -k "$KEYCHAIN_PASSWORD" \
+            "$RUNNER_TEMP/pim-build.keychain-db"
+          identity=$(security find-identity -v -p codesigning "$RUNNER_TEMP/pim-build.keychain-db" \
+            | sed -n 's/.*"\(Developer ID Application:.*\)"/\1/p' \
+            | head -n 1)
+          if [ -z "$identity" ]; then
+            echo "::error::The imported certificate does not contain a valid Developer ID Application identity"
+            exit 1
+          fi
+          echo "APPLE_SIGNING_IDENTITY=$identity" >> "$GITHUB_ENV"
+
+      - name: Install dependencies
+        run: cd auth-assistant && npm ci
+
+      - name: Build, sign, notarize and staple DMG
+        run: cd auth-assistant && npm run tauri:build -- --target aarch64-apple-darwin --bundles dmg
+
+      - name: Verify signed release artifact
+        id: artifact
+        run: |
+          app=$(find auth-assistant/src-tauri/target/aarch64-apple-darwin/release/bundle/macos -maxdepth 1 -name '*.app' -print -quit)
+          dmg=$(find auth-assistant/src-tauri/target/aarch64-apple-darwin/release/bundle/dmg -maxdepth 1 -name '*.dmg' -print -quit)
+          test -n "$app" && test -n "$dmg"
+          codesign --verify --deep --strict --verbose=4 "$app"
+          spctl --assess --type execute --verbose=4 "$app"
+          xcrun stapler validate "$app"
+          hdiutil verify "$dmg"
+          xcrun stapler validate "$dmg"
+          mkdir -p release-assets
+          cp "$dmg" release-assets/PIM-Auth-Assistant-macOS-arm64.dmg
+          shasum -a 256 release-assets/PIM-Auth-Assistant-macOS-arm64.dmg \
+            > release-assets/PIM-Auth-Assistant-macOS-arm64.dmg.sha256
+
+      - name: Upload to GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          if ! gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release create "$RELEASE_TAG" --title "$RELEASE_TAG" --generate-notes
+          fi
+          gh release upload "$RELEASE_TAG" \
+            release-assets/PIM-Auth-Assistant-macOS-arm64.dmg \
+            release-assets/PIM-Auth-Assistant-macOS-arm64.dmg.sha256 \
+            --clobber
+
+      - name: Remove temporary keychain
+        if: always()
+        run: security delete-keychain "$RUNNER_TEMP/pim-build.keychain-db" 2>/dev/null || true

@@ -6,7 +6,6 @@ import {
   Card,
   Form,
   Input,
-  InputNumber,
   Modal,
   Popconfirm,
   Select,
@@ -21,6 +20,7 @@ import {
 import { CloudUploadOutlined, DeleteOutlined, LinkOutlined, UploadOutlined } from '@ant-design/icons'
 import { KeyRound, MonitorPlay, ShieldCheck } from 'lucide-react'
 import type { ColumnsType } from 'antd/es/table'
+import appIconUrl from '../src-tauri/icons/app-icon.svg'
 import { importBundle, importZip, pairWithServer } from './api'
 import {
   deleteBundle,
@@ -35,10 +35,13 @@ import {
   type SavedConnection,
 } from './storage'
 import {
-  captureAuthBundle,
+  cancelAuthCapture,
   exportAuthZipBrowser,
   exportAuthZipDesktop,
+  finishAuthCapture,
   isDesktopRuntime,
+  startAuthCapture,
+  type DesktopCaptureStarted,
 } from './desktop'
 
 const { Title, Paragraph, Text } = Typography
@@ -51,7 +54,6 @@ interface PairFormValues {
 
 interface CaptureFormValues {
   siteUrl: string
-  dwellSeconds: number
 }
 
 function hostFromBundle(bundle: any): string {
@@ -93,6 +95,7 @@ function App() {
   const [captureModalOpen, setCaptureModalOpen] = useState(false)
   const [manualJson, setManualJson] = useState('')
   const [desktopRuntime, setDesktopRuntime] = useState(false)
+  const [captureSession, setCaptureSession] = useState<DesktopCaptureStarted | null>(null)
 
   useEffect(() => {
     isDesktopRuntime().then(setDesktopRuntime)
@@ -122,8 +125,20 @@ function App() {
     },
   })
 
-  const captureMutation = useMutation({
-    mutationFn: (values: CaptureFormValues) => captureAuthBundle(values.siteUrl, values.dwellSeconds),
+  const startCaptureMutation = useMutation({
+    mutationFn: (values: CaptureFormValues) => startAuthCapture(values.siteUrl),
+    onSuccess: (session) => {
+      setCaptureSession(session)
+      message.info(`请在新窗口完成 ${session.site_host} 登录，然后返回这里完成采集`)
+    },
+    onError: (error: any) => message.error(error?.message || String(error) || '无法打开登录窗口'),
+  })
+
+  const finishCaptureMutation = useMutation({
+    mutationFn: () => {
+      if (!captureSession) throw new Error('尚未开始采集')
+      return finishAuthCapture(captureSession.site_url)
+    },
     onSuccess: (result) => {
       const item: SavedBundle = {
         id: newBundleId(),
@@ -133,12 +148,25 @@ function App() {
         bundle: result.bundle,
       }
       setBundles(saveBundle(item))
+      setCaptureSession(null)
       setCaptureModalOpen(false)
       captureForm.resetFields()
       message.success(`已采集并保存 ${item.siteHost} 登录态`)
     },
     onError: (error: any) => message.error(error?.message || String(error) || '采集失败'),
   })
+
+  const closeCaptureModal = async () => {
+    if (captureSession) {
+      try {
+        await cancelAuthCapture()
+      } catch {
+        // The user may already have closed the login window.
+      }
+    }
+    setCaptureSession(null)
+    setCaptureModalOpen(false)
+  }
 
   const uploadBundleMutation = useMutation({
     mutationFn: (bundle: SavedBundle) => {
@@ -305,8 +333,11 @@ function App() {
   return (
     <main className="app-shell">
       <section className="hero-card">
-        <div>
-          <div className="eyebrow"><KeyRound size={16} /> PIM Auth Assistant</div>
+        <div className="hero-copy">
+          <div className="brand-lockup">
+            <img className="brand-icon" src={appIconUrl} alt="" />
+            <div className="eyebrow"><KeyRound size={16} /> PIM Auth Assistant</div>
+          </div>
           <Title level={1}>本地采集网页登录态，安全上传到远程 PIM</Title>
           <Paragraph>
             支持桌面壳、本地浏览器一键采集、auth export zip 导出，以及多个远程 PIM 实例管理。登录态默认保存在本机，只有你点击上传时才发送到选中的 PIM。
@@ -361,7 +392,7 @@ function App() {
               type={desktopRuntime ? 'success' : 'info'}
               showIcon
               message={desktopRuntime ? '桌面能力可用' : '当前是浏览器预览模式'}
-              description={desktopRuntime ? '可以直接打开本地浏览器采集登录态并导出 zip 到下载目录。' : '浏览器预览模式不能调用本机 CLI 采集，但可以粘贴 JSON、上传/导出 zip。'}
+              description={desktopRuntime ? '可以直接打开独立登录窗口采集 Cookie，并导出 zip 到下载目录。' : '浏览器预览模式不能打开桌面登录窗口，但可以粘贴 JSON、上传/导出 zip。'}
             />
             <Space wrap>
               <Button icon={<MonitorPlay size={15} />} type="primary" disabled={!desktopRuntime} onClick={() => setCaptureModalOpen(true)}>
@@ -413,13 +444,11 @@ function App() {
       <Modal
         title="一键浏览器采集登录态"
         open={captureModalOpen}
-        onCancel={() => {
-          if (!captureMutation.isPending) setCaptureModalOpen(false)
-        }}
-        onOk={() => captureForm.submit()}
-        okText={captureMutation.isPending ? '等待浏览器关闭…' : '打开浏览器采集'}
-        okButtonProps={{ loading: captureMutation.isPending }}
-        cancelButtonProps={{ disabled: captureMutation.isPending }}
+        onCancel={closeCaptureModal}
+        onOk={() => captureSession ? finishCaptureMutation.mutate() : captureForm.submit()}
+        okText={captureSession ? '完成登录，采集 Cookie' : '打开安全登录窗口'}
+        okButtonProps={{ loading: startCaptureMutation.isPending || finishCaptureMutation.isPending }}
+        cancelButtonProps={{ disabled: startCaptureMutation.isPending || finishCaptureMutation.isPending }}
         maskClosable={false}
         destroyOnHidden
       >
@@ -428,19 +457,25 @@ function App() {
           showIcon
           className="mb-4"
           message="采集流程"
-          description="输入站点 URL 后会调用本机 PIM CLI 打开可视化浏览器。完成登录后关闭浏览器窗口，Auth Assistant 会把生成的 auth bundle 保存到本地列表。"
+          description="输入站点 URL 后会打开独立的安全登录窗口。完成登录后不要关闭窗口，回到这里点击“完成登录，采集 Cookie”。整个流程由 Auth Assistant 自己完成，不依赖本机安装 PIM CLI。"
         />
+        {captureSession ? (
+          <Alert
+            type="success"
+            showIcon
+            className="mb-4"
+            message={`正在采集 ${captureSession.site_host}`}
+            description="登录窗口保持打开时，完成账号登录并确认页面已进入登录状态，然后回到此处完成采集。"
+          />
+        ) : null}
         <Form
           form={captureForm}
           layout="vertical"
-          initialValues={{ siteUrl: 'https://x.com', dwellSeconds: 300 }}
-          onFinish={(values) => captureMutation.mutate(values)}
+          initialValues={{ siteUrl: 'https://x.com' }}
+          onFinish={(values) => startCaptureMutation.mutate(values)}
         >
           <Form.Item name="siteUrl" label="站点 URL" rules={[{ required: true, message: '请输入站点 URL' }]}>
-            <Input placeholder="https://x.com / https://www.nytimes.com" />
-          </Form.Item>
-          <Form.Item name="dwellSeconds" label="最长等待秒数" rules={[{ required: true, message: '请输入等待时间' }]}>
-            <InputNumber min={30} max={1800} step={30} className="full" />
+            <Input placeholder="https://x.com / https://www.nytimes.com" disabled={Boolean(captureSession)} />
           </Form.Item>
         </Form>
       </Modal>

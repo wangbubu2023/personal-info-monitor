@@ -99,6 +99,34 @@ jobs:
       - name: Audit production dependencies
         run: cd frontend && npm audit --omit=dev
 
+  auth-assistant:
+    name: Auth Assistant Build & Test
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: auth-assistant/package-lock.json
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install frontend dependencies
+        run: cd auth-assistant && npm ci
+
+      - name: Build frontend
+        run: cd auth-assistant && npm run build
+
+      - name: Test Rust commands
+        run: cd auth-assistant/src-tauri && cargo test --locked
+
+      - name: Build desktop binary
+        run: cd auth-assistant && npm run tauri:build -- --no-bundle
+
   security:
     name: Backend Security Scan
     runs-on: ubuntu-latest

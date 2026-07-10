@@ -150,6 +150,8 @@ const MaintenanceTab: React.FC = () => {
             />
           ) : updateCheck?.status === 'disabled' ? (
             <Alert type="warning" showIcon message="未启用版本检测" description={updateCheck.message} />
+          ) : updateCheck?.status === 'error' ? (
+            <Alert type="error" showIcon message="版本检测失败" description={updateCheck.message} />
           ) : null}
 
           <div className="grid gap-3 text-[13px] text-[#586476] md:grid-cols-2">

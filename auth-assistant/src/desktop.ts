@@ -8,6 +8,11 @@ export interface DesktopCaptureResult {
   name: string
 }
 
+export interface DesktopCaptureStarted {
+  site_url: string
+  site_host: string
+}
+
 export interface DesktopExportResult {
   path: string
   profile_count: number
@@ -22,11 +27,16 @@ export async function isDesktopRuntime(): Promise<boolean> {
   }
 }
 
-export async function captureAuthBundle(siteUrl: string, dwellSeconds: number): Promise<DesktopCaptureResult> {
-  return invoke<DesktopCaptureResult>('capture_auth_bundle', {
-    siteUrl,
-    dwellSeconds,
-  })
+export async function startAuthCapture(siteUrl: string): Promise<DesktopCaptureStarted> {
+  return invoke<DesktopCaptureStarted>('start_auth_capture', { siteUrl })
+}
+
+export async function finishAuthCapture(siteUrl: string): Promise<DesktopCaptureResult> {
+  return invoke<DesktopCaptureResult>('finish_auth_capture', { siteUrl })
+}
+
+export async function cancelAuthCapture(): Promise<void> {
+  return invoke<void>('cancel_auth_capture')
 }
 
 export async function exportAuthZipDesktop(bundles: SavedBundle[]): Promise<DesktopExportResult> {

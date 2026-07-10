@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-label="PIM Auth Assistant">
+  <defs>
+    <linearGradient id="surface" x1="170" y1="110" x2="850" y2="920" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#1F3154"/>
+      <stop offset="0.52" stop-color="#293859"/>
+      <stop offset="1" stop-color="#15253F"/>
+    </linearGradient>
+    <linearGradient id="cyan" x1="280" y1="250" x2="760" y2="760" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#79D7ED"/>
+      <stop offset="1" stop-color="#49A8C9"/>
+    </linearGradient>
+  </defs>
+
+  <rect x="72" y="72" width="880" height="880" rx="226" fill="url(#surface)"/>
+  <path
+    d="M511 245C371 245 258 358 258 498c0 66 25 126 66 171"
+    fill="none"
+    stroke="url(#cyan)"
+    stroke-width="92"
+    stroke-linecap="round"
+  />
+  <path
+    d="M513 779c140 0 253-113 253-253 0-66-25-126-66-171"
+    fill="none"
+    stroke="#F6FBFF"
+    stroke-width="92"
+    stroke-linecap="round"
+  />
+  <circle cx="512" cy="506" r="76" fill="#F6FBFF"/>
+  <rect x="470" y="548" width="84" height="154" rx="42" fill="#F6FBFF"/>
+  <circle cx="324" cy="669" r="25" fill="#79D7ED"/>
+  <circle cx="700" cy="355" r="25" fill="#F6FBFF"/>
+</svg>

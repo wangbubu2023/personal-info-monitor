@@ -4,7 +4,7 @@ import asyncio
 import ipaddress
 import logging
 import socket
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 from urllib.parse import urljoin, urlparse, urlunparse
 
@@ -17,11 +17,18 @@ DEFAULT_MAX_PUBLIC_REDIRECTS = 5
 
 @dataclass(frozen=True)
 class PublicHttpTextResult:
-    """HTTP text response returned after SSRF-checked manual redirects."""
+    """HTTP response returned after SSRF-checked manual redirects.
+
+    ``text`` preserves the compatibility surface used by HTML callers, while
+    ``body`` keeps the exact response bytes for formats such as RSS/XML whose
+    parser must perform its own encoding detection.
+    """
 
     status: int
     url: str
     text: str
+    body: bytes = b""
+    headers: Dict[str, str] = field(default_factory=dict)
 
 
 def _is_private_address(host: str) -> bool:
@@ -208,19 +215,32 @@ async def fetch_public_http_text(
                     if response.status in REDIRECT_STATUSES:
                         location = (response.headers.get("Location") or "").strip()
                         if not location:
-                            return PublicHttpTextResult(response.status, current_url, "")
+                            return PublicHttpTextResult(
+                                response.status,
+                                current_url,
+                                "",
+                                headers=dict(response.headers),
+                            )
                         # Resolve the redirect against the real hostname URL we
                         # are tracking (not the pinned IP URL aiohttp sees).
                         current_url = urljoin(current_url, location)
                         break
                     if read_body:
+                        raw_body = await response.read()
                         if text_errors is None:
                             body = await response.text()
                         else:
                             body = await response.text(errors=text_errors)
                     else:
                         body = ""
-                    return PublicHttpTextResult(response.status, current_url, body)
+                        raw_body = b""
+                    return PublicHttpTextResult(
+                        response.status,
+                        current_url,
+                        body,
+                        body=raw_body,
+                        headers=dict(response.headers),
+                    )
             except (aiohttp.ClientConnectorError, OSError, TimeoutError) as exc:
                 last_connect_error = exc
                 logger.debug("Pinned HTTP request to %s failed for %s: %s", address, current_url, exc)

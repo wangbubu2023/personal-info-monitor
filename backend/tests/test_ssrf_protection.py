@@ -142,7 +142,14 @@ class _FakeResponse:
         return False
 
     async def text(self, **_kwargs):
+        if isinstance(self._body, bytes):
+            return self._body.decode("utf-8")
         return self._body
+
+    async def read(self):
+        if isinstance(self._body, bytes):
+            return self._body
+        return self._body.encode("utf-8")
 
 
 class _FakeSession:
@@ -209,6 +216,7 @@ async def test_fetch_public_http_text_pins_connection_to_validated_ip(monkeypatc
 
     assert result.status == 200
     assert result.text == "ok"
+    assert result.body == b"ok"
     # Result URL is the real hostname URL, not the pinned IP.
     assert result.url == "https://example.com/start"
 

@@ -68,8 +68,8 @@ class RSSCollector(BaseCollector):
 
             feed = await asyncio.to_thread(
                 feedparser.parse,
-                response.text,
-                response_headers={"content-location": response.url},
+                response.body,
+                response_headers=self._feed_response_headers(response),
             )
             setattr(feed, "status", response.status)
 
@@ -117,6 +117,16 @@ class RSSCollector(BaseCollector):
                 raise
             self.logger.error(f"Error fetching RSS feed: {e}")
             raise FetchFailureError(classify_exception(e)) from e
+
+    @staticmethod
+    def _feed_response_headers(response: Any) -> Dict[str, str]:
+        """Return the HTTP metadata feedparser needs for byte decoding."""
+        headers = {"content-location": str(response.url)}
+        response_headers = getattr(response, "headers", {}) or {}
+        content_type = response_headers.get("content-type") or response_headers.get("Content-Type")
+        if content_type:
+            headers["content-type"] = str(content_type)
+        return headers
 
     def _record_feed_health(self, source: Source, feed: Any) -> None:
         """Stamp feed health into source metadata (best-effort, never fatal)."""

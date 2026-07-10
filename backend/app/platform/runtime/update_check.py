@@ -106,9 +106,17 @@ def _trim_release_notes(value: Any, *, limit: int = 600) -> str:
 
 
 def _disabled_payload(reason: str) -> dict[str, Any]:
+    return _unavailable_payload("disabled", reason)
+
+
+def _error_payload(reason: str) -> dict[str, Any]:
+    return _unavailable_payload("error", reason)
+
+
+def _unavailable_payload(status: str, reason: str) -> dict[str, Any]:
     version = current_version()
     return {
-        "status": "disabled",
+        "status": status,
         "current_version": version,
         "latest_version": None,
         "latest_tag": None,
@@ -139,15 +147,18 @@ async def check_for_updates(*, include_prerelease: bool = False) -> dict[str, An
         "Accept": "application/vnd.github+json",
         "User-Agent": f"PIM/{version} update-check",
     }
+    token = str(getattr(settings, "pim_update_check_github_token", "") or "").strip()
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
     try:
         async with httpx.AsyncClient(timeout=timeout, follow_redirects=True, headers=headers) as client:
             response = await client.get(api_url)
             response.raise_for_status()
             payload = response.json()
     except httpx.HTTPStatusError as exc:
-        return _disabled_payload(f"GitHub update check failed: HTTP {exc.response.status_code}")
+        return _error_payload(f"GitHub update check failed: HTTP {exc.response.status_code}")
     except (httpx.RequestError, ValueError) as exc:
-        return _disabled_payload(f"GitHub update check failed: {exc.__class__.__name__}")
+        return _error_payload(f"GitHub update check failed: {exc.__class__.__name__}")
 
     release: dict[str, Any] | None
     if include_prerelease and isinstance(payload, list):
@@ -156,7 +167,7 @@ async def check_for_updates(*, include_prerelease: bool = False) -> dict[str, An
         release = payload if isinstance(payload, dict) else None
 
     if not release:
-        return _disabled_payload("No GitHub release was found")
+        return _error_payload("No GitHub release was found")
 
     tag = str(release.get("tag_name") or "").strip()
     latest = parse_release_version(tag)

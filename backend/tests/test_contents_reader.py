@@ -113,6 +113,8 @@ class TestFetchReaderFulltext:
             with patch("app.domains.enrich.reader.body_loader.aiohttp.ClientSession") as mock_session_cls:
                 mock_resp = AsyncMock()
                 mock_resp.status = 404
+                mock_resp.headers = {}
+                mock_resp.read = AsyncMock(return_value=b"")
                 mock_ctx = MagicMock()
                 mock_ctx.__aenter__ = AsyncMock(return_value=mock_resp)
                 mock_ctx.__aexit__ = AsyncMock(return_value=False)
@@ -130,6 +132,8 @@ class TestFetchReaderFulltext:
                 mock_resp = AsyncMock()
                 mock_resp.status = 200
                 mock_resp.text = AsyncMock(return_value="<html>short</html>")
+                mock_resp.read = AsyncMock(return_value=b"<html>short</html>")
+                mock_resp.headers = {}
                 mock_resp.url = "https://example.com/page"
                 mock_ctx = MagicMock()
                 mock_ctx.__aenter__ = AsyncMock(return_value=mock_resp)
@@ -164,6 +168,8 @@ class TestFetchReaderFulltext:
                 mock_resp = AsyncMock()
                 mock_resp.status = 200
                 mock_resp.text = AsyncMock(return_value=long_html)
+                mock_resp.read = AsyncMock(return_value=long_html.encode("utf-8"))
+                mock_resp.headers = {}
                 mock_resp.url = "https://example.com/page"
                 mock_ctx = MagicMock()
                 mock_ctx.__aenter__ = AsyncMock(return_value=mock_resp)

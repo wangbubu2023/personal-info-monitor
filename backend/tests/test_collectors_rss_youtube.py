@@ -87,7 +87,15 @@ async def test_rss_fetch_issues_no_page_requests_before_dedupe():
          patch.object(collector, "_record_feed_health"), \
          patch(
              "app.domains.fetch.collectors.rss.fetch_public_http_text",
-             new=AsyncMock(return_value=SimpleNamespace(status=200, text="<rss />", url=source.url)),
+             new=AsyncMock(
+                 return_value=SimpleNamespace(
+                     status=200,
+                     text="<rss />",
+                     body=b"<rss />",
+                     headers={"Content-Type": "application/rss+xml; charset=utf-8"},
+                     url=source.url,
+                 )
+             ),
          ) as feed_fetch, \
          patch("app.domains.fetch.collectors.rss.feedparser.parse", return_value=parsed):
         contents = await collector.fetch(source)
@@ -95,6 +103,52 @@ async def test_rss_fetch_issues_no_page_requests_before_dedupe():
     assert len(contents) == 1
     assert contents[0]["external_id"] == "entry-1"
     feed_fetch.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "content_type",
+    ["text/xml", "text/xml; charset=windows-1252"],
+)
+async def test_rss_fetch_preserves_utf8_title_from_raw_bytes(content_type):
+    collector = RSSCollector()
+    source = MagicMock()
+    source.url = "https://www.ithome.com/rss/"
+    source.metadata_ = {}
+    raw_feed = """<?xml version="1.0" encoding="UTF-8"?>
+    <rss version="2.0">
+      <channel>
+        <title>IT之家</title>
+        <item>
+          <guid>ithome-1</guid>
+          <title>小米卢伟冰爆料 REDMI Note 17 标准版手机</title>
+          <link>https://www.ithome.com/0/001/001.htm</link>
+          <description>&#x5c0f;&#x7c73;</description>
+        </item>
+      </channel>
+    </rss>
+    """.encode("utf-8")
+    mojibake_text = raw_feed.decode("latin-1")
+
+    with patch.object(collector, "_check_ssrf", new_callable=AsyncMock), \
+         patch.object(collector, "_record_feed_health"), \
+         patch(
+             "app.domains.fetch.collectors.rss.fetch_public_http_text",
+             new=AsyncMock(
+                 return_value=SimpleNamespace(
+                     status=200,
+                     text=mojibake_text,
+                     body=raw_feed,
+                     headers={"Content-Type": content_type},
+                     url=source.url,
+                 )
+             ),
+         ):
+        contents = await collector.fetch(source)
+
+    assert len(contents) == 1
+    assert contents[0]["title"] == "小米卢伟冰爆料 REDMI Note 17 标准版手机"
+    assert contents[0]["content"] == "小米"
 
 
 @pytest.mark.asyncio

@@ -126,7 +126,7 @@ npm install
 npm run dev
 ```
 
-桌面采集命令依赖仓库根目录的 `./pim capture-session`。开发时如果助手不在仓库内运行，可设置 `PIM_PROJECT_ROOT=/path/to/personal-info-monitor`。
+桌面版使用独立的 Tauri 登录窗口采集目标站点 Cookie，不依赖本机安装 PIM CLI 或保留源码仓库。
 
 ## 网站抓取策略
 
@@ -181,6 +181,7 @@ X 抓取优先使用浏览器登录态 Cookie 的 GraphQL 路径，然后才尝�
 | `RSSHUB_URL` | `https://rsshub.app` | RSSHub 实例 |
 | `X_BEARER_TOKEN` | 空 | 官方 X API fallback 凭据 |
 | `PIM_UPDATE_CHECK_REPO` | `wangbubu2023/personal-info-monitor` | GitHub Release 更新检查仓库 |
+| `PIM_UPDATE_CHECK_GITHUB_TOKEN` | 空 | 可选 GitHub token，避免共享出口 IP 的匿名 API 限流 |
 | `API_RATE_LIMIT_PER_MINUTE` | `120` | API 限速，`0` 关闭 |
 | `PIM_BROWSER_BACKEND` | `patchright` | 浏览器后端，可设为 `playwright` |
 | `PIM_PLAYWRIGHT_CHANNEL` | `none` | 可设为 `chrome` 使用系统 Chrome |
@@ -268,13 +269,29 @@ npm run build
 
 CI 运行后端 lint、架构边界、pytest，前端 lint、Vitest、npm audit，以及安全扫描。Playwright E2E 仍建议本地按需执行。
 
+## RSS 标题乱码修复
+
+RSS/XML 抓取会保留原始响应 bytes 交给 feedparser 做编码检测。升级前已经写入数据库的
+latin-1/cp1252 mojibake 标题，可先在后端目录执行只读预览：
+
+```bash
+cd backend
+.venv/bin/python scripts/repair_mojibake_titles.py
+```
+
+确认列出的每一项后再追加 `--apply`。脚本仅扫描 RSS、默认跳过用户手工编辑的标题、只接受
+严格可逆的 UTF-8 修复，并在写入前创建 `pim.db.pre-mojibake-*.bak`。可用
+`--content-id <UUID>` 将范围限制到已确认的记录；脚本不会使用替换字符强行修复不可逆数据。
+
 ## 发布
 
-发布稳定版本时保持三个版本源一致：
+发布稳定版本时保持 Auth Assistant 在内的版本源一致：
 
 - `backend/pyproject.toml`
 - `frontend/package.json`
 - `frontend/src-tauri/tauri.conf.json` / `frontend/src-tauri/Cargo.toml`
+- `auth-assistant/package.json`
+- `auth-assistant/src-tauri/tauri.conf.json` / `auth-assistant/src-tauri/Cargo.toml`
 
 然后提交、打 tag，并创建 GitHub Release。Web 更新检查依赖 GitHub Releases 的 `latest` 端点，仅推 tag 不会触发“发现新版本”提示。
 
@@ -284,6 +301,16 @@ git tag -a v1.5.0 -m "Release 1.5.0"
 git push origin main v1.5.0
 gh release create v1.5.0 --title "v1.5.0" --notes-file /tmp/pim-release-notes.md
 ```
+
+发布 GitHub Release 后，`Release Auth Assistant for macOS` workflow 会构建 arm64 DMG、使用
+Developer ID Application 签名并提交 Apple notarization，验证通过后上传固定文件名
+`PIM-Auth-Assistant-macOS-arm64.dmg`。仓库需配置以下 Actions secrets：
+
+- `APPLE_CERTIFICATE`：Developer ID Application `.p12` 的 base64 内容。
+- `APPLE_CERTIFICATE_PASSWORD`、`KEYCHAIN_PASSWORD`。
+- `APPLE_ID`、`APPLE_PASSWORD`（app-specific password）、`APPLE_TEAM_ID`。
+
+本地无 Apple 证书时会使用 ad-hoc 签名，适合开发验证，不应作为 GitHub Release 公开分发。
 
 ## 文档地图
 
