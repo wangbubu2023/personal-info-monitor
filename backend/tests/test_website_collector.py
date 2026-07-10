@@ -815,6 +815,66 @@ class TestFetchStaticPlaywrightFallback:
         assert "needs_js" not in source.metadata_
 
 
+class TestAuthenticatedDirectFallback:
+
+    @pytest.mark.asyncio
+    async def test_static_failure_does_not_block_economist_rss_fallback(self):
+        collector = WebsiteCollector()
+        source = _make_source(url="https://www.economist.com", metadata_={})
+        static_failure = FetchFailureError(
+            make_failure(
+                FetchFailureCode.HTTP_403,
+                http_status=403,
+                detail="Static fetch failed: https://www.economist.com",
+            )
+        )
+        rss_items = [
+            {
+                "url": "https://www.economist.com/international/story",
+                "title": "International story",
+                "content": "Summary",
+                "publish_time": utcnow_naive(),
+            }
+        ]
+
+        with patch.object(collector, "_check_ssrf", new_callable=AsyncMock), \
+            patch.object(collector, "get_runtime_cookies", return_value={"session": "abc"}), \
+            patch.object(collector, "get_runtime_browser_session", return_value=None), \
+            patch.object(
+                collector,
+                "_fetch_with_playwright",
+                new_callable=AsyncMock,
+                return_value=[],
+            ) as playwright_fetch, \
+            patch.object(
+                collector,
+                "_fetch_static",
+                new_callable=AsyncMock,
+                side_effect=static_failure,
+            ) as static_fetch, \
+            patch.object(
+                collector.rss_collector,
+                "fetch",
+                new_callable=AsyncMock,
+                return_value=rss_items,
+            ) as rss_fetch, \
+            patch.object(
+                collector,
+                "_maybe_hydrate_rss_contents",
+                new_callable=AsyncMock,
+                return_value=rss_items,
+            ):
+            result = await collector.fetch(source)
+
+        assert result == rss_items
+        playwright_fetch.assert_awaited_once_with(source)
+        static_fetch.assert_awaited_once_with(source)
+        rss_fetch.assert_awaited_once()
+        assert rss_fetch.await_args.args[0].url == (
+            "https://www.economist.com/international/rss.xml"
+        )
+
+
 # ---------------------------------------------------------------------------
 # _parse_article_candidate
 # ---------------------------------------------------------------------------

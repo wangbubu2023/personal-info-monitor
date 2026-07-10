@@ -405,12 +405,23 @@ class WebsiteCollector(BaseCollector):
             f"(cookies={bool(cookies)}, browser_session={_helpers.browser_session_auth_ready(browser_session)})"
         )
         for fetcher in (self._fetch_with_playwright, self._fetch_static):
-            hydrated = await self._hydrate_candidate_contents(
-                source,
-                await fetcher(source),
-                cookies,
-                browser_session=browser_session,
-            )
+            try:
+                fetched_contents = await fetcher(source)
+                hydrated = await self._hydrate_candidate_contents(
+                    source,
+                    fetched_contents,
+                    cookies,
+                    browser_session=browser_session,
+                )
+            except Exception as exc:  # noqa: BLE001 - one direct strategy must not block RSS fallback
+                fetcher_name = getattr(fetcher, "__name__", fetcher.__class__.__name__)
+                self.logger.warning(
+                    "Authenticated %s fetch failed for %s; continuing to next strategy: %s",
+                    fetcher_name,
+                    source.url,
+                    exc,
+                )
+                continue
             if hydrated:
                 return hydrated
         return None
