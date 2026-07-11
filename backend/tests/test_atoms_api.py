@@ -10,9 +10,16 @@ from sqlalchemy.orm import sessionmaker
 
 from app.database import Base
 from app.domains.atoms.repository import SqlAtomRepository
+from app.features import atoms_product_enabled
 from app.models import Content, Source
 from app.models.source import SourceType
 from tests.test_atoms_repository import _info_atom
+
+
+pytestmark = pytest.mark.skipif(
+    not atoms_product_enabled(),
+    reason="Atoms product surface is frozen on this branch",
+)
 
 
 def _info_atom_sentence(content_id: str, source_sentence: str):
