@@ -10,7 +10,6 @@ const DigestPage = lazy(() => import('./pages/DigestPage'))
 const SettingsPage = lazy(() => import('./pages/SettingsPage'))
 const ReaderPage = lazy(() => import('./pages/ReaderPage'))
 const EventDetailPage = lazy(() => import('./pages/EventDetailPage'))
-const AtomsPage = lazy(() => import('./pages/AtomsPage'))
 const ScoreLabPage = lazy(() => import('./pages/ScoreLabPage'))
 
 const App: React.FC = () => {
@@ -47,7 +46,6 @@ const App: React.FC = () => {
             <Route path="/digest" element={<DigestPage />} />
             <Route path="/reader/:id" element={<ReaderPage />} />
             <Route path="/events/:eventId" element={<EventDetailPage />} />
-            <Route path="/atoms" element={<AtomsPage />} />
             {SCORE_LAB_BUILD_ENABLED ? <Route path="/score-lab" element={<ScoreLabPage />} /> : null}
             <Route path="/sources" element={<Navigate to="/settings" replace />} />
             <Route path="/settings" element={<SettingsPage />} />

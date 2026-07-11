@@ -438,6 +438,15 @@ def get_system_settings_for_response(settings: Dict[str, Any]) -> Dict[str, Any]
     hourly_digest.prompt_effective = 任务实际将使用的提示词（自定义 / 旧版双字段 / 内置），只读。
     """
     response = _mask_sensitive(settings)
+    try:
+        from app.features import atoms_product_enabled
+
+        if not atoms_product_enabled():
+            response["atoms_enabled"] = False
+            response["atoms_relations_enabled"] = False
+            response.pop("atom_model", None)
+    except ImportError:
+        pass
     hd = response.get("hourly_digest")
     if isinstance(hd, dict):
         hd_out = copy.deepcopy(hd)

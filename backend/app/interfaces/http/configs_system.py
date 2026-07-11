@@ -16,6 +16,7 @@ from app.platform.config.system_settings import (
     get_system_settings_for_response,
     update_system_settings_async,
 )
+from app.features import atoms_product_enabled
 from app.interfaces.http.configs_common_auth import decrypt_api_credentials
 from app.utils.model_catalog import load_model_providers, sanitize_provider_api_base
 
@@ -55,6 +56,12 @@ async def update_system_settings(
     db: AsyncSession = Depends(get_async_db),
 ):
     """Update and persist system settings."""
+    if not atoms_product_enabled():
+        settings_data = {
+            key: value
+            for key, value in settings_data.items()
+            if key not in {"atom_model", "atoms_enabled", "atoms_relations_enabled"}
+        }
     updated = await update_system_settings_async(db, settings_data)
     return get_system_settings_for_response(updated)
 
@@ -94,10 +101,11 @@ async def get_available_models(
     if trans_provider and trans_api_key and str(trans_provider).lower() != "ollama":
         configured_platforms.add(trans_provider)
 
-    atom_provider = (runtime_settings.get("atom_model") or {}).get("provider")
-    atom_api_key = (runtime_settings.get("atom_model") or {}).get("api_key")
-    if atom_provider and atom_api_key and str(atom_provider).lower() != "ollama":
-        configured_platforms.add(atom_provider)
+    if atoms_product_enabled():
+        atom_provider = (runtime_settings.get("atom_model") or {}).get("provider")
+        atom_api_key = (runtime_settings.get("atom_model") or {}).get("api_key")
+        if atom_provider and atom_api_key and str(atom_provider).lower() != "ollama":
+            configured_platforms.add(atom_provider)
 
     configured_base = (runtime_settings.get("ai_model") or {}).get("api_base") or "http://localhost:11434"
     translation_base = (runtime_settings.get("translation_model") or {}).get("api_base") or configured_base

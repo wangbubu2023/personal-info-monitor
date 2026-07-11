@@ -9,7 +9,7 @@ from __future__ import annotations
 import asyncio
 
 from app.background import get_finalize_semaphore, get_llm_semaphore, task_tracker  # noqa: F401
-from app.features import KEYWORD_MONITORING_ENABLED
+from app.features import ATOMS_PRODUCT_ENABLED, KEYWORD_MONITORING_ENABLED
 from app.utils.logger import bind_job_id, get_logger, restore_job_id
 
 logger = get_logger(__name__)
@@ -164,12 +164,13 @@ async def _finish_content_async(content_id: str) -> None:
         if KEYWORD_MONITORING_ENABLED and content.keyword_matches:
             _dispatch_keyword_alerts(db, content)
 
-        try:
-            from app.domains.atoms import atomize_content_async
+        if ATOMS_PRODUCT_ENABLED:
+            try:
+                from app.domains.atoms import atomize_content_async
 
-            await atomize_content_async(str(content.id))
-        except Exception as exc:  # noqa: BLE001
-            logger.debug("atomize_content sidecar failed for %s: %s", content_id, exc)
+                await atomize_content_async(str(content.id))
+            except Exception as exc:  # noqa: BLE001
+                logger.debug("atomize_content sidecar failed for %s: %s", content_id, exc)
 
         try:
             from app.domains.enrich.content.listing_translation import enqueue_listing_translation_job

@@ -49,7 +49,6 @@ def build_parser() -> argparse.ArgumentParser:
     _build_keywords_parser(subparsers)
     _build_settings_parser(subparsers)
     _build_digest_parser(subparsers)
-    _build_atoms_parser(subparsers)
     _build_auth_bundle_parser(subparsers)
 
     return parser
@@ -451,8 +450,6 @@ def dispatch(args, *, as_json: bool) -> int:
         return handle_settings(args, client, as_json=as_json)
     if args.resource == "digest":
         return handle_digest(args, client, as_json=as_json)
-    if args.resource == "atoms":
-        return handle_atoms(args, client, as_json=as_json)
     if args.resource == "auth-bundle":
         return handle_auth_bundle(args, client, as_json=as_json)
 

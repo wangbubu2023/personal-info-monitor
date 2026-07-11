@@ -69,10 +69,11 @@ def get_runtime_features() -> Dict[str, Any]:
         "keyword_monitoring_enabled": feat.KEYWORD_MONITORING_ENABLED,
         "playwright_enabled": feat.playwright_enabled(),
         "x_playwright_enabled": feat.x_playwright_enabled(),
-        "atoms_enabled": feat.atoms_enabled(),
-        "atoms_relations_enabled": feat.atoms_relations_enabled(),
-        "atoms_reconcile_enabled": feat.atoms_reconcile_enabled(),
-        "atoms_knowledge_enabled": feat.atoms_knowledge_enabled(),
+        "atoms_enabled": feat.atoms_product_enabled() and feat.atoms_enabled(),
+        "atoms_relations_enabled": feat.atoms_product_enabled() and feat.atoms_relations_enabled(),
+        "atoms_reconcile_enabled": feat.atoms_product_enabled() and feat.atoms_reconcile_enabled(),
+        "atoms_knowledge_enabled": feat.atoms_product_enabled() and feat.atoms_knowledge_enabled(),
+        "atoms_frozen": not feat.atoms_product_enabled(),
     }
 
 

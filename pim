@@ -349,6 +349,10 @@ def _read_env_var(name: str) -> str | None:
 
 
 def _print_atom_feature_status() -> None:
+    feature_source = Path(__file__).resolve().parent / "backend/app/features.py"
+    if feature_source.exists() and "ATOMS_PRODUCT_ENABLED = False" in feature_source.read_text(encoding="utf-8"):
+        print("  atoms: frozen (main)   relations: frozen")
+        return
     atoms_on = _parse_env_bool(_read_env_var("ATOMS_ENABLED"), default=False)
     relations_on = atoms_on and _parse_env_bool(
         _read_env_var("ATOMS_RELATIONS_ENABLED"),

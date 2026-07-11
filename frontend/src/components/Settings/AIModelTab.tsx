@@ -55,8 +55,6 @@ const AIModelTab: React.FC = () => {
   const currentProvider = modelsData?.providers?.find(p => p.id === selectedProvider)
   const selectedTransProvider = Form.useWatch('trans_provider', form)
   const transProvider = modelsData?.providers?.find(p => p.id === selectedTransProvider)
-  const selectedAtomProvider = Form.useWatch('atom_provider', form)
-  const atomProvider = modelsData?.providers?.find(p => p.id === selectedAtomProvider)
   const selectedScoreProvider = Form.useWatch('score_provider', form)
   const scoreProvider = modelsData?.providers?.find(p => p.id === selectedScoreProvider)
   const selectedTransFbProvider = Form.useWatch('trans_fallback_provider', form)
@@ -67,11 +65,10 @@ const AIModelTab: React.FC = () => {
   const summarizationFallbackOn = Form.useWatch('summarization_fallback_enabled', form)
   const modelOptions = (currentProvider?.models || []).map((m) => ({ value: m.id, label: m.name }))
   const transModelOptions = (transProvider?.models || []).map((m) => ({ value: m.id, label: m.name }))
-  const atomModelOptions = (atomProvider?.models || []).map((m) => ({ value: m.id, label: m.name }))
   const scoreModelOptions = (scoreProvider?.models || []).map((m) => ({ value: m.id, label: m.name }))
   const transFbModelOptions = (transFbProvider?.models || []).map((m) => ({ value: m.id, label: m.name }))
   const sumFbModelOptions = (sumFbProvider?.models || []).map((m) => ({ value: m.id, label: m.name }))
-  const buildModelFilter = (inputValue: string, option: { value?: string; label?: string } | undefined, fieldName: 'model' | 'trans_model' | 'atom_model' | 'score_model' | 'trans_fallback_model' | 'sum_fallback_model') => {
+  const buildModelFilter = (inputValue: string, option: { value?: string; label?: string } | undefined, fieldName: 'model' | 'trans_model' | 'score_model' | 'trans_fallback_model' | 'sum_fallback_model') => {
     const normalizedInput = String(inputValue || '').toLowerCase().trim()
     if (!normalizedInput) return true
     const currentValue = String(form.getFieldValue(fieldName) || '').toLowerCase().trim()
@@ -102,14 +99,6 @@ const AIModelTab: React.FC = () => {
       trans_model: settings.translation_model?.model || 'translategemma:12b',
       trans_ollama_num_ctx: snapOllamaNumCtx(settings.translation_model?.ollama_num_ctx, 2048),
       trans_ollama_no_think: settings.translation_model?.ollama_no_think ?? true,
-      atom_provider: settings.atom_model?.provider || settings.ai_model.provider,
-      atom_model: settings.atom_model?.model || '',
-      atom_temperature: settings.atom_model?.temperature ?? 0.1,
-      atom_max_tokens: settings.atom_model?.max_tokens ?? 4000,
-      atoms_enabled: settings.atoms_enabled ?? false,
-      atoms_relations_enabled: settings.atoms_relations_enabled ?? false,
-      atom_ollama_num_ctx: snapOllamaNumCtx(settings.atom_model?.ollama_num_ctx, 8192),
-      atom_ollama_no_think: settings.atom_model?.ollama_no_think ?? false,
       score_provider: settings.score_model?.provider || settings.ai_model.provider,
       score_model: settings.score_model?.model || '',
       score_temperature: settings.score_model?.temperature ?? 0.1,
@@ -229,20 +218,6 @@ const AIModelTab: React.FC = () => {
             }
           : {}),
       },
-      atom_model: {
-        provider: values.atom_provider,
-        model: values.atom_model,
-        temperature: values.atom_temperature,
-        max_tokens: values.atom_max_tokens,
-        ...(values.atom_provider === 'ollama'
-          ? {
-              ollama_num_ctx: values.atom_ollama_num_ctx,
-              ollama_no_think: values.atom_ollama_no_think === true,
-            }
-          : {}),
-      },
-      atoms_enabled: values.atoms_enabled === true,
-      atoms_relations_enabled: values.atoms_relations_enabled === true,
       score_model: {
         provider: values.score_provider,
         model: values.score_model,
@@ -288,7 +263,7 @@ const AIModelTab: React.FC = () => {
 
       <SettingsSection
         title="模型选择与生成参数"
-        description="已接入的提供商才会出现在这里；此处只选择写作、翻译、原子化和评分通道使用的模型与生成参数。"
+        description="已接入的提供商才会出现在这里；此处只选择写作、翻译和评分通道使用的模型与生成参数。"
       >
       {selectedProvider === 'ollama' && currentProvider?.availability_message ? (
         <SectionNote tone="caution" style={{ marginBottom: 16 }}>
@@ -470,84 +445,6 @@ const AIModelTab: React.FC = () => {
             {selectedTransFbProvider ? (
               renderEffectiveBase('翻译备用通道地址', transFbProvider?.default_api_base)
             ) : null}
-          </>
-        ) : null}
-
-        <FormGroupHeading>原子化模型配置</FormGroupHeading>
-
-        <SectionNote style={{ marginBottom: 16 }}>
-          新闻原子库 LLM 提取专用模型。模型名称留空时将回退使用上方「写作模型」；建议为结构化 JSON 任务选择更强模型。
-        </SectionNote>
-
-        <Form.Item
-          name="atoms_enabled"
-          label="启用新闻原子库"
-          valuePropName="checked"
-          extra="开启后新入库文章会尝试提取结构化事实、观点与数据，并显示「原子库」页面内容。"
-        >
-          <Switch checkedChildren="开启" unCheckedChildren="关闭" />
-        </Form.Item>
-
-        <Form.Item
-          name="atoms_relations_enabled"
-          label="启用原子关联推断"
-          valuePropName="checked"
-          extra="开启后会在原子之间推断印证/矛盾关系；需要先启用新闻原子库。"
-        >
-          <Switch checkedChildren="开启" unCheckedChildren="关闭" />
-        </Form.Item>
-
-        <Form.Item name="atom_provider" label="原子化模型提供商" rules={[{ required: true }]}>
-          <Select placeholder="选择 AI 提供商">
-            {modelsData?.providers?.map(p => (
-              <Option key={p.id} value={p.id}>{p.name}</Option>
-            ))}
-          </Select>
-        </Form.Item>
-
-        <Form.Item
-          name="atom_model"
-          label="原子化模型"
-          extra={selectedAtomProvider === 'ollama'
-            ? '留空则使用写作模型；填写后优先使用该模型做原子提取。'
-            : '留空则使用写作模型。'}
-        >
-          <AutoComplete
-            options={atomModelOptions}
-            placeholder="留空 = 使用写作模型"
-            filterOption={(inputValue, option) => buildModelFilter(inputValue, option, 'atom_model')}
-          />
-        </Form.Item>
-
-        {selectedAtomProvider ? (
-          renderEffectiveBase('当前原子化通道服务地址', atomProvider?.default_api_base)
-        ) : null}
-
-        <Form.Item name="atom_temperature" label="Temperature">
-          <Slider min={0} max={1} step={0.05} />
-        </Form.Item>
-
-        <Form.Item name="atom_max_tokens" label="Max Tokens">
-          <InputNumber min={512} max={16000} step={256} style={{ width: '100%' }} />
-        </Form.Item>
-
-        {selectedAtomProvider === 'ollama' ? (
-          <>
-            <Form.Item
-              name="atom_ollama_num_ctx"
-              label="Context 窗口 (num_ctx)"
-              extra="原子提取使用的 Ollama 上下文长度，默认 8K。"
-            >
-              <OllamaCtxSlider />
-            </Form.Item>
-            <Form.Item
-              name="atom_ollama_no_think"
-              label="关闭思维链 (/no_think)"
-              valuePropName="checked"
-              extra="结构化 JSON 提取建议开启，减少思维链输出干扰。"
-            >
-              <Switch checkedChildren="开启" unCheckedChildren="关闭" />
-            </Form.Item>
           </>
         ) : null}
 

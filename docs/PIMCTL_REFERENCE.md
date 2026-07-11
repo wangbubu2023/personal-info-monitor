@@ -936,6 +936,8 @@ echo "Done"
 
 ## atoms — 新闻原子库
 
+> `main` 分支暂时不注册 `atoms` 命令；以下命令保留给 `dev` 分支的原子库实验使用。
+
 > 需 `ATOMS_ENABLED=true`。默认关闭时 API 返回 404。
 
 ### `pimctl atoms list`

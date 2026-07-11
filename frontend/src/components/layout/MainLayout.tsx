@@ -9,7 +9,6 @@ import {
   Command,
   Menu,
   X,
-  Database,
   Gauge,
   DownloadCloud,
 } from 'lucide-react';
@@ -149,7 +148,6 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const navItems = [
     { to: '/', label: '资讯', icon: Newspaper },
     { to: '/digest', label: '简报', icon: Clock },
-    { to: '/atoms', label: '原子库', icon: Database },
     ...(scoreLabEnabled ? [{ to: '/score-lab', label: '评分', icon: Gauge }] : []),
     { to: '/settings', label: '配置', icon: SlidersHorizontal },
   ]
@@ -158,7 +156,6 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     if (path === '/') return location.pathname === '/'
     if (path === '/settings')
       return location.pathname === '/settings' || location.pathname === '/sources'
-    if (path === '/atoms') return location.pathname === '/atoms'
     if (path === '/score-lab') return location.pathname === '/score-lab'
     return location.pathname === path
   }

@@ -9,6 +9,9 @@ import os
 
 PODCAST_SOURCES_ENABLED = False
 KEYWORD_MONITORING_ENABLED = True
+# Product-level switch. The main branch can freeze the atoms surface without
+# deleting the domain implementation or its database schema.
+ATOMS_PRODUCT_ENABLED = False
 
 PODCAST_DISABLED_DETAIL = "播客监控功能已暂时下线"
 KEYWORD_DISABLED_DETAIL = "关键词过滤功能未启用"
@@ -116,6 +119,15 @@ def atoms_enabled() -> bool:
         setting_key="atoms_enabled",
         env_name="ATOMS_ENABLED",
     )
+
+
+def atoms_product_enabled() -> bool:
+    """Whether the atoms product surface is exposed in this branch.
+
+    ``main`` keeps the implementation and schema for later reuse on ``dev``
+    but intentionally does not expose or execute the product surface.
+    """
+    return ATOMS_PRODUCT_ENABLED
 
 
 def _settings_or_env_feature_enabled(*, setting_key: str, env_name: str) -> bool:

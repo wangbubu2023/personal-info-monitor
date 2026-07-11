@@ -4,6 +4,8 @@
 
 当前版本：**1.5.0**
 
+> 分支提示：`main` 暂时冻结原子库产品入口；原子库相关能力保留在 `dev` 分支继续探索，详见 [`docs/ATOM_FREEZE_MAIN.md`](docs/ATOM_FREEZE_MAIN.md)。
+
 ## 1.5.0 重点
 
 - **Auth Assistant**：在 VPS 上生成一次性配对码，本地桌面助手采集浏览器登录态后上传到远程 PIM。它只拿到受限设备令牌，不会接触 PIM 管理 API Key。
@@ -176,7 +178,7 @@ X 抓取优先使用浏览器登录态 Cookie 的 GraphQL 路径，然后才尝�
 | `ENRICH_AUTO_ON_INGEST` | `false` | 入库后自动摘要/翻译 |
 | `ENRICH_SUMMARY_ENABLED` | `false` | 允许生成摘要 |
 | `ENRICH_TRANSLATE_ENABLED` | `false` | 允许生成翻译 |
-| `ATOMS_ENABLED` | `false` | 结构化事件层 |
+| `ATOMS_ENABLED` | `false` | 结构化事件层；`main` 分支暂时强制冻结，`dev` 分支可继续探索 |
 | `OPENAI_API_KEY` | 空 | 云端模型凭据 |
 | `RSSHUB_URL` | `https://rsshub.app` | RSSHub 实例 |
 | `X_BEARER_TOKEN` | 空 | 官方 X API fallback 凭据 |
