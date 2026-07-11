@@ -15,11 +15,11 @@ Phase 4 step 7 of the refactor extracted both from the legacy
 from __future__ import annotations
 
 import asyncio
-from datetime import date, datetime
+from datetime import datetime
 from typing import Dict
 
 from app.platform.notifications.smtp import send_email
-from app.utils.datetime import utcnow_naive
+from app.utils.datetime import today_in_user_timezone, utcnow_naive
 from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -145,14 +145,15 @@ async def send_daily_digest_emails():
             tasks = []
 
             for schedule in schedules:
-                today_weekday = date.today().weekday()
+                today = today_in_user_timezone()
+                today_weekday = today.weekday()
                 schedule_days = schedule.schedule_days or [1, 2, 3, 4, 5]
                 if today_weekday + 1 not in schedule_days and today_weekday not in schedule_days:
                     continue
 
                 content_filter = schedule.content_filter or {}
                 digest = digest_service.generate_daily_digest(
-                    date=date.today(),
+                    date=today,
                     keyword_ids=content_filter.get("keyword_ids"),
                     unread_only=content_filter.get("unread_only", True)
                 )
@@ -160,7 +161,7 @@ async def send_daily_digest_emails():
                 html_body = render_digest_email(digest, schedule.template)
 
                 for recipient in schedule.recipients or []:
-                    subject = schedule.subject_template.format(date=date.today().isoformat())
+                    subject = schedule.subject_template.format(date=today.isoformat())
                     tasks.append((recipient, subject, html_body))
 
                 schedule.last_sent_at = utcnow_naive()

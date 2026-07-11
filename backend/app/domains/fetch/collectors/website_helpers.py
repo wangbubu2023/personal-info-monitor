@@ -204,7 +204,10 @@ def looks_like_article_url(source_url: str, candidate_url: str) -> bool:
 
 
 def has_browser_session(runtime_session: Optional[Dict[str, Any]]) -> bool:
-    return bool(runtime_session and str(runtime_session.get("user_data_dir") or "").strip())
+    if not runtime_session:
+        return False
+    mode = str(runtime_session.get("session_mode") or "persistent_profile").strip().lower()
+    return bool(mode != "storage_state" and str(runtime_session.get("user_data_dir") or "").strip())
 
 
 def browser_session_auth_ready(runtime_session: Optional[Dict[str, Any]]) -> bool:

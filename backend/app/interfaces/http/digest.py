@@ -3,7 +3,6 @@
 from datetime import date, datetime, timedelta, timezone
 from typing import List, Optional
 from uuid import UUID
-from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import case, extract, func, or_, select
@@ -24,13 +23,13 @@ from app.domains.enrich.hourly.repository import (
     HOURLY_DIGEST_CANDIDATE_LIMIT,
     candidate_ordering,
 )
-from app.utils.datetime import to_iso_z, utcnow_naive
+from app.domains.ingest.visibility import visible_content_clause
+from app.utils.datetime import local_date_range_to_utc_naive, today_in_user_timezone, to_iso_z, utcnow_naive, user_timezone
 from app.utils.logger import get_logger
 from app.domains.ingest.quality_metadata import merge_content_quality_metadata
 from app.utils.text import strip_html_tags, text_looks_like_embedded_binary
 
 logger = get_logger(__name__)
-SYSTEM_TZ = ZoneInfo("Asia/Shanghai")
 
 router = APIRouter()
 
@@ -173,7 +172,7 @@ async def get_daily_digest(
     date_to: Optional[str] = Query(None),
     sort: str = Query("time_desc"),
     keyword_ids: Optional[List[UUID]] = Query(None),
-    unread_only: bool = True,
+    unread_only: bool = False,
     source_types: Optional[List[str]] = Query(None),
     db: AsyncSession = Depends(get_async_db)
 ):
@@ -191,22 +190,21 @@ async def get_daily_digest(
         start_date = _parse_digest_date(digest_date)
         end_date = start_date
     else:
-        start_date = date.today()
+        start_date = today_in_user_timezone()
         end_date = start_date
 
     if end_date < start_date:
         raise HTTPException(status_code=422, detail="date_to must be on or after date_from")
     
-    # Convert local date to UTC range to leverage ix_content_fetched_at index
-    day_start = datetime(start_date.year, start_date.month, start_date.day, tzinfo=SYSTEM_TZ).astimezone(timezone.utc).replace(tzinfo=None)
-    day_end = datetime(end_date.year, end_date.month, end_date.day, tzinfo=SYSTEM_TZ).astimezone(timezone.utc).replace(tzinfo=None) + timedelta(days=1)
+    # Convert business-local date to UTC range to leverage ix_content_fetched_at index.
+    day_start, day_end = local_date_range_to_utc_naive(start_date, end_date)
 
     # Build query
     query = (
         select(Content)
         .options(selectinload(Content.source))
         .filter(Content.fetched_at >= day_start, Content.fetched_at < day_end)
-        .filter(or_(Content.archived.is_(False), Content.archived.is_(None)))
+        .filter(visible_content_clause())
     )
     
     # Apply filters
@@ -277,14 +275,11 @@ async def get_digest_stats(
     db: AsyncSession = Depends(get_async_db)
 ):
     """Get digest statistics for the past N days."""
-    from datetime import timedelta
-    
-    end_date = date.today()
+    end_date = today_in_user_timezone()
     start_date = end_date - timedelta(days=days - 1)
 
-    # Convert local date range to UTC bounds for index-friendly filtering
-    stats_start_utc = datetime(start_date.year, start_date.month, start_date.day, tzinfo=SYSTEM_TZ).astimezone(timezone.utc).replace(tzinfo=None)
-    stats_end_utc = datetime(end_date.year, end_date.month, end_date.day, tzinfo=SYSTEM_TZ).astimezone(timezone.utc).replace(tzinfo=None) + timedelta(days=1)
+    # Convert business-local date range to UTC bounds for index-friendly filtering.
+    stats_start_utc, stats_end_utc = local_date_range_to_utc_naive(start_date, end_date)
 
     # Pull per-day + per-type counts in one pass, then aggregate in Python.
     # On SQLite this collapses two index scans over the same range into one
@@ -358,7 +353,7 @@ def _completed_hour_label_to_utc_window(
 ) -> tuple[datetime, datetime]:
     """Map a digest label hour to the completed local-hour window it summarizes."""
     window_hours = max(1, int(window_hours or 1))
-    end_local = datetime(target_date.year, target_date.month, target_date.day, hour, tzinfo=SYSTEM_TZ)
+    end_local = datetime(target_date.year, target_date.month, target_date.day, hour, tzinfo=user_timezone())
     start_local = end_local - timedelta(hours=window_hours)
     start_utc = start_local.astimezone(timezone.utc).replace(tzinfo=None)
     end_utc = end_local.astimezone(timezone.utc).replace(tzinfo=None)
@@ -377,7 +372,7 @@ async def get_hourly_digests(
     if digest_date:
         target_date = datetime.strptime(digest_date, "%Y-%m-%d").date()
     else:
-        target_date = date.today()
+        target_date = today_in_user_timezone()
     
     result = await db.execute(
         select(HourlyDigest)
@@ -416,7 +411,7 @@ async def get_hourly_digest_detail(
     if digest_date:
         target_date = datetime.strptime(digest_date, "%Y-%m-%d").date()
     else:
-        target_date = date.today()
+        target_date = today_in_user_timezone()
     
     digest_result = await db.execute(
         select(HourlyDigest).filter(
@@ -451,6 +446,7 @@ async def get_hourly_digest_detail(
         .options(selectinload(Content.source))
         .filter(Content.fetched_at >= start_utc)
         .filter(Content.fetched_at < end_utc)
+        .filter(visible_content_clause())
         .order_by(*candidate_ordering(Content))
         .limit(HOURLY_DIGEST_CANDIDATE_LIMIT)
     )

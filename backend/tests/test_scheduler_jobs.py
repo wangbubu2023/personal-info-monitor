@@ -22,5 +22,5 @@ def test_hourly_digest_job_is_always_registered():
     scheduler.remove_all_jobs()
 
 
-def test_scheduler_timezone_comes_from_settings_default():
+def test_scheduler_timezone_comes_from_user_timezone_default():
     assert str(scheduler.timezone) == "Asia/Shanghai"

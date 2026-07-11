@@ -55,6 +55,12 @@ jobs:
       - name: Verify offline eval regression gate
         run: cd backend && uv run python scripts/check_offline_eval_regression.py
 
+      - name: Verify shared Core Eval dataset is installed
+        run: cd backend && uv run python scripts/check_core_eval_dataset.py
+
+      - name: Verify Event clustering eval dataset is installed
+        run: cd backend && uv run python scripts/run_event_cluster_eval.py
+
       - name: Verify requirements.txt matches pyproject.toml
         run: |
           cd backend
@@ -117,6 +123,9 @@ jobs:
 
       - name: Install frontend dependencies
         run: cd auth-assistant && npm ci
+
+      - name: Verify dependencies are pinned
+        run: cd auth-assistant && npm run check:pinned-deps
 
       - name: Build frontend
         run: cd auth-assistant && npm run build

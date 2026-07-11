@@ -55,6 +55,9 @@ class Settings(BaseSettings):
 
     # Fetch concurrency
     fetch_concurrency: int = 20  # Max parallel fetches
+    # Business timezone for user-facing calendar dates (digest/dashboard/hourly/email budgets).
+    user_timezone: str = "Asia/Shanghai"
+    # Backward-compatible scheduler setting; scheduler defaults should match USER_TIMEZONE.
     scheduler_timezone: str = "Asia/Shanghai"
     event_loop_slow_callback_seconds: float = 1.0
     event_loop_lag_probe_interval_seconds: float = 1.0

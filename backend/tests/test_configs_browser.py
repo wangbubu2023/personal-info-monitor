@@ -16,7 +16,7 @@ from app.api.configs_browser import HeadfulBrowserUnavailableError, _browser_err
 from app.auth import verify_api_key
 from app.database import Base, get_async_db
 from app.main import app
-from app.models.browser_session import BrowserSession, BrowserSessionStatus
+from app.models.browser_session import BrowserSession, BrowserSessionMode, BrowserSessionStatus
 
 
 # ---------------------------------------------------------------------------

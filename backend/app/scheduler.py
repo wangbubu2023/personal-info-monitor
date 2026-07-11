@@ -7,6 +7,7 @@ from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 
 from app.platform.config.settings import get_settings
+from app.utils.datetime import user_timezone
 from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -20,7 +21,7 @@ _JOB_DEFAULTS = {
     "max_instances": 1,
 }
 
-scheduler = AsyncIOScheduler(timezone=settings.scheduler_timezone)
+scheduler = AsyncIOScheduler(timezone=user_timezone())
 
 # Hold strong references to fire-and-forget startup tasks. asyncio only keeps a
 # weak reference to tasks created via ``loop.create_task``; without this the GC

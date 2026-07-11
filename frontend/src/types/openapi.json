@@ -825,6 +825,41 @@
         "title": "AtomizeResponse",
         "type": "object"
       },
+      "AuthAssistantBundleImportRequest": {
+        "properties": {
+          "bind_matching_sources": {
+            "default": true,
+            "title": "Bind Matching Sources",
+            "type": "boolean"
+          },
+          "bundle": {
+            "additionalProperties": true,
+            "title": "Bundle",
+            "type": "object"
+          },
+          "create_browser_session": {
+            "default": true,
+            "title": "Create Browser Session",
+            "type": "boolean"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          }
+        },
+        "required": [
+          "bundle"
+        ],
+        "title": "AuthAssistantBundleImportRequest",
+        "type": "object"
+      },
       "AuthBundleImportRequest": {
         "description": "Schema for importing a local Auth Bundle into server-side credentials.",
         "properties": {
@@ -1101,6 +1136,20 @@
         "title": "AuthConfigUpdate",
         "type": "object"
       },
+      "Body_import_auth_export_zip_from_assistant_api_auth_assistant_auth_exports_import_post": {
+        "properties": {
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file"
+        ],
+        "title": "Body_import_auth_export_zip_from_assistant_api_auth_assistant_auth_exports_import_post",
+        "type": "object"
+      },
       "BrowserSessionCreate": {
         "description": "Create/update a persistent browser session profile.",
         "properties": {
@@ -1273,6 +1322,17 @@
             "title": "Created At",
             "type": "string"
           },
+          "duplicate_of": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duplicate Of"
+          },
           "external_id": {
             "anyOf": [
               {
@@ -1309,6 +1369,17 @@
             "format": "uuid",
             "title": "Id",
             "type": "string"
+          },
+          "is_duplicate": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Duplicate"
           },
           "is_user_edited": {
             "default": false,
@@ -1797,6 +1868,338 @@
         "title": "Domain",
         "type": "string"
       },
+      "EventDetailResponse": {
+        "properties": {
+          "current_conclusion": {
+            "title": "Current Conclusion",
+            "type": "string"
+          },
+          "event_id": {
+            "title": "Event Id",
+            "type": "string"
+          },
+          "event_key": {
+            "title": "Event Key",
+            "type": "string"
+          },
+          "extra": {
+            "additionalProperties": true,
+            "title": "Extra",
+            "type": "object"
+          },
+          "feedback": {
+            "items": {
+              "$ref": "#/components/schemas/EventFeedbackItem"
+            },
+            "title": "Feedback",
+            "type": "array"
+          },
+          "independent_source_count": {
+            "default": 0,
+            "title": "Independent Source Count",
+            "type": "integer"
+          },
+          "independent_verification": {
+            "items": {
+              "$ref": "#/components/schemas/EventEvidenceGroup"
+            },
+            "title": "Independent Verification",
+            "type": "array"
+          },
+          "primary_reports": {
+            "items": {
+              "$ref": "#/components/schemas/EventTimelineItem"
+            },
+            "title": "Primary Reports",
+            "type": "array"
+          },
+          "related_discussions": {
+            "items": {
+              "$ref": "#/components/schemas/EventEvidenceGroup"
+            },
+            "title": "Related Discussions",
+            "type": "array"
+          },
+          "snapshots": {
+            "items": {
+              "$ref": "#/components/schemas/EventSnapshotItem"
+            },
+            "title": "Snapshots",
+            "type": "array"
+          },
+          "source_names": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Source Names",
+            "type": "array"
+          },
+          "timeline": {
+            "items": {
+              "$ref": "#/components/schemas/EventTimelineItem"
+            },
+            "title": "Timeline",
+            "type": "array"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          },
+          "why_matters": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Why Matters"
+          }
+        },
+        "required": [
+          "event_id",
+          "event_key",
+          "title",
+          "current_conclusion"
+        ],
+        "title": "EventDetailResponse",
+        "type": "object"
+      },
+      "EventEvidenceGroup": {
+        "properties": {
+          "content_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Content Ids",
+            "type": "array"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "title"
+        ],
+        "title": "EventEvidenceGroup",
+        "type": "object"
+      },
+      "EventFeedbackCreate": {
+        "properties": {
+          "content_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content Id"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type"
+        ],
+        "title": "EventFeedbackCreate",
+        "type": "object"
+      },
+      "EventFeedbackItem": {
+        "properties": {
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type"
+        ],
+        "title": "EventFeedbackItem",
+        "type": "object"
+      },
+      "EventSnapshotItem": {
+        "properties": {
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "summary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Summary"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          },
+          "what_changed": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "What Changed"
+          },
+          "why_matters": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Why Matters"
+          }
+        },
+        "required": [
+          "version",
+          "title"
+        ],
+        "title": "EventSnapshotItem",
+        "type": "object"
+      },
+      "EventTimelineItem": {
+        "properties": {
+          "content_id": {
+            "title": "Content Id",
+            "type": "string"
+          },
+          "fetched_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fetched At"
+          },
+          "publish_time": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Publish Time"
+          },
+          "role": {
+            "default": "supporting",
+            "title": "Role",
+            "type": "string"
+          },
+          "source_name": {
+            "title": "Source Name",
+            "type": "string"
+          },
+          "summary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Summary"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "content_id",
+          "title",
+          "source_name",
+          "url"
+        ],
+        "title": "EventTimelineItem",
+        "type": "object"
+      },
       "FavoriteBody": {
         "description": "Idempotent favorite update (replaces toggle semantics).",
         "properties": {
@@ -1908,10 +2311,40 @@
       "HourlyDigestEventItem": {
         "description": "Structured event card stored with an hourly digest.",
         "properties": {
+          "confidence_score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidence Score"
+          },
           "content_id": {
             "format": "uuid",
             "title": "Content Id",
             "type": "string"
+          },
+          "content_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Content Ids",
+            "type": "array"
+          },
+          "corroboration_tier": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Corroboration Tier"
           },
           "duplicate_group_id": {
             "anyOf": [
@@ -1924,6 +2357,28 @@
             ],
             "title": "Duplicate Group Id"
           },
+          "event_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Event Id"
+          },
+          "event_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Event Key"
+          },
           "fetched_at": {
             "anyOf": [
               {
@@ -1935,6 +2390,44 @@
             ],
             "title": "Fetched At"
           },
+          "importance_score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Importance Score"
+          },
+          "incremental_score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Incremental Score"
+          },
+          "independent_source_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Independent Source Count"
+          },
+          "is_repeat_event": {
+            "default": false,
+            "title": "Is Repeat Event",
+            "type": "boolean"
+          },
           "lane": {
             "anyOf": [
               {
@@ -1945,6 +2438,39 @@
               }
             ],
             "title": "Lane"
+          },
+          "local_reader_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Local Reader Path"
+          },
+          "missing_confirmation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Missing Confirmation"
+          },
+          "new_signal": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "New Signal"
           },
           "publish_time": {
             "anyOf": [
@@ -1968,9 +2494,34 @@
             ],
             "title": "Score"
           },
+          "section": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Section"
+          },
+          "source_keys": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Source Keys",
+            "type": "array"
+          },
           "source_name": {
             "title": "Source Name",
             "type": "string"
+          },
+          "source_names": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Source Names",
+            "type": "array"
           },
           "source_url": {
             "anyOf": [
@@ -2001,6 +2552,28 @@
           "url": {
             "title": "Url",
             "type": "string"
+          },
+          "what_happened": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "What Happened"
+          },
+          "why_matters": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Why Matters"
           }
         },
         "required": [
@@ -2785,6 +3358,112 @@
           "intensity"
         ],
         "title": "OpinionAtomPayload",
+        "type": "object"
+      },
+      "PairingClaimRequest": {
+        "properties": {
+          "app_version": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "App Version"
+          },
+          "device_name": {
+            "default": "PIM Auth Assistant",
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Device Name",
+            "type": "string"
+          },
+          "pairing_token": {
+            "title": "Pairing Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "pairing_token"
+        ],
+        "title": "PairingClaimRequest",
+        "type": "object"
+      },
+      "PairingClaimResponse": {
+        "properties": {
+          "capabilities": {
+            "additionalProperties": {
+              "type": "boolean"
+            },
+            "title": "Capabilities",
+            "type": "object"
+          },
+          "device": {
+            "additionalProperties": true,
+            "title": "Device",
+            "type": "object"
+          },
+          "device_token": {
+            "title": "Device Token",
+            "type": "string"
+          },
+          "server": {
+            "additionalProperties": true,
+            "title": "Server",
+            "type": "object"
+          }
+        },
+        "required": [
+          "device_token",
+          "device",
+          "server",
+          "capabilities"
+        ],
+        "title": "PairingClaimResponse",
+        "type": "object"
+      },
+      "PairingTokenCreateRequest": {
+        "properties": {
+          "ttl_minutes": {
+            "default": 10,
+            "maximum": 60.0,
+            "minimum": 1.0,
+            "title": "Ttl Minutes",
+            "type": "integer"
+          }
+        },
+        "title": "PairingTokenCreateRequest",
+        "type": "object"
+      },
+      "PairingTokenResponse": {
+        "properties": {
+          "expires_at": {
+            "title": "Expires At",
+            "type": "string"
+          },
+          "pairing_token": {
+            "title": "Pairing Token",
+            "type": "string"
+          },
+          "pairing_url": {
+            "title": "Pairing Url",
+            "type": "string"
+          },
+          "token_hint": {
+            "title": "Token Hint",
+            "type": "string"
+          }
+        },
+        "required": [
+          "pairing_token",
+          "pairing_url",
+          "expires_at",
+          "token_hint"
+        ],
+        "title": "PairingTokenResponse",
         "type": "object"
       },
       "PeriodType": {
@@ -3756,6 +4435,149 @@
         ],
         "title": "SubjectType",
         "type": "string"
+      },
+      "TodayHighlightEvent": {
+        "properties": {
+          "confidence_score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidence Score"
+          },
+          "event_id": {
+            "title": "Event Id",
+            "type": "string"
+          },
+          "event_key": {
+            "title": "Event Key",
+            "type": "string"
+          },
+          "importance_score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Importance Score"
+          },
+          "independent_source_count": {
+            "default": 0,
+            "title": "Independent Source Count",
+            "type": "integer"
+          },
+          "primary_content_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Primary Content Id"
+          },
+          "section": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Section"
+          },
+          "source_names": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Source Names",
+            "type": "array"
+          },
+          "summary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Summary"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          },
+          "what_changed": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "What Changed"
+          },
+          "why_matters": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Why Matters"
+          }
+        },
+        "required": [
+          "event_id",
+          "event_key",
+          "title"
+        ],
+        "title": "TodayHighlightEvent",
+        "type": "object"
+      },
+      "TodayHighlightsResponse": {
+        "properties": {
+          "date": {
+            "title": "Date",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/TodayHighlightEvent"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "date"
+        ],
+        "title": "TodayHighlightsResponse",
+        "type": "object"
       },
       "Unit": {
         "enum": [
@@ -5117,6 +5939,288 @@
         ]
       }
     },
+    "/api/auth-assistant/auth-bundles/import": {
+      "post": {
+        "operationId": "import_auth_bundle_from_assistant_api_auth_assistant_auth_bundles_import_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AuthAssistantBundleImportRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Import Auth Bundle From Assistant",
+        "tags": [
+          "auth-assistant"
+        ]
+      }
+    },
+    "/api/auth-assistant/auth-exports/import": {
+      "post": {
+        "operationId": "import_auth_export_zip_from_assistant_api_auth_assistant_auth_exports_import_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_import_auth_export_zip_from_assistant_api_auth_assistant_auth_exports_import_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Import Auth Export Zip From Assistant",
+        "tags": [
+          "auth-assistant"
+        ]
+      }
+    },
+    "/api/auth-assistant/devices": {
+      "get": {
+        "operationId": "list_devices_api_auth_assistant_devices_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "List Devices",
+        "tags": [
+          "auth-assistant"
+        ]
+      }
+    },
+    "/api/auth-assistant/devices/{device_id}": {
+      "delete": {
+        "operationId": "revoke_device_api_auth_assistant_devices__device_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "device_id",
+            "required": true,
+            "schema": {
+              "title": "Device Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Revoke Device",
+        "tags": [
+          "auth-assistant"
+        ]
+      }
+    },
+    "/api/auth-assistant/pair": {
+      "post": {
+        "description": "Exchange a short one-time pairing token for a device token.",
+        "operationId": "claim_pairing_token_api_auth_assistant_pair_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PairingClaimRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PairingClaimResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Claim Pairing Token",
+        "tags": [
+          "auth-assistant"
+        ]
+      }
+    },
+    "/api/auth-assistant/pairing-tokens": {
+      "post": {
+        "description": "Create a one-time pairing token from authenticated PIM Web.",
+        "operationId": "create_pairing_token_api_auth_assistant_pairing_tokens_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PairingTokenCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PairingTokenResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Create Pairing Token",
+        "tags": [
+          "auth-assistant"
+        ]
+      }
+    },
     "/api/configs/ai-models/available": {
       "get": {
         "description": "Get list of available AI models.",
@@ -6389,6 +7493,49 @@
         ]
       }
     },
+    "/api/contents/events/export-md": {
+      "get": {
+        "description": "Download an event-like duplicate group as attribution-first Markdown.",
+        "operationId": "export_event_markdown_api_contents_events_export_md_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "event_key",
+            "required": true,
+            "schema": {
+              "maxLength": 255,
+              "minLength": 1,
+              "title": "Event Key",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Export Event Markdown",
+        "tags": [
+          "contents"
+        ]
+      }
+    },
     "/api/contents/export-md": {
       "post": {
         "description": "Manually trigger incremental markdown export.",
@@ -6560,6 +7707,48 @@
           }
         ],
         "summary": "Update Content",
+        "tags": [
+          "contents"
+        ]
+      }
+    },
+    "/api/contents/{content_id}/export-md": {
+      "get": {
+        "description": "Download a single content item as attribution-first Markdown.",
+        "operationId": "export_content_markdown_api_contents__content_id__export_md_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "content_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Content Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Export Content Markdown",
         "tags": [
           "contents"
         ]
@@ -6888,7 +8077,7 @@
             "name": "unread_only",
             "required": false,
             "schema": {
-              "default": true,
+              "default": false,
               "title": "Unread Only",
               "type": "boolean"
             }
@@ -7115,6 +8304,177 @@
         "summary": "Get Digest Stats",
         "tags": [
           "digest"
+        ]
+      }
+    },
+    "/api/events/today-highlights": {
+      "get": {
+        "description": "Return 3-8 event cards for the PIM Digest page.\n\nEmpty ``items`` means the section should be hidden. The Timeline/资讯 page\nintentionally keeps the full content timeline and does not consume this API.",
+        "operationId": "get_today_highlights_api_events_today_highlights_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "date",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Date"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 8,
+              "maximum": 8,
+              "minimum": 3,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TodayHighlightsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Get Today Highlights",
+        "tags": [
+          "events"
+        ]
+      }
+    },
+    "/api/events/{event_id}": {
+      "get": {
+        "operationId": "get_event_detail_api_events__event_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "event_id",
+            "required": true,
+            "schema": {
+              "title": "Event Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventDetailResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Get Event Detail",
+        "tags": [
+          "events"
+        ]
+      }
+    },
+    "/api/events/{event_id}/feedback": {
+      "post": {
+        "operationId": "create_event_feedback_api_events__event_id__feedback_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "event_id",
+            "required": true,
+            "schema": {
+              "title": "Event Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EventFeedbackCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventFeedbackItem"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Create Event Feedback",
+        "tags": [
+          "events"
         ]
       }
     },
@@ -8620,6 +9980,82 @@
           }
         ],
         "summary": "Get Source Types",
+        "tags": [
+          "system"
+        ]
+      }
+    },
+    "/api/system/support-bundle": {
+      "get": {
+        "description": "Generate a redacted diagnostic bundle for manual sharing.",
+        "operationId": "download_support_bundle_api_system_support_bundle_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Download Support Bundle",
+        "tags": [
+          "system"
+        ]
+      }
+    },
+    "/api/system/update-check": {
+      "get": {
+        "description": "Check GitHub releases and report whether a newer PIM version exists.",
+        "operationId": "get_update_check_api_system_update_check_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "include_prerelease",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Include Prerelease",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Update Check Api System Update Check Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Get Update Check",
         "tags": [
           "system"
         ]

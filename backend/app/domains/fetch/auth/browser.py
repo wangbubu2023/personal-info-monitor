@@ -43,6 +43,7 @@ def serialize_browser_session(session: BrowserSession) -> dict:
         "profile_name": session.profile_name,
         "user_data_dir": session.user_data_dir,
         "storage_state_path": session.storage_state_path,
+        "session_mode": str(session.session_mode or "persistent_profile"),
         "auth_config_id": str(session.auth_config_id) if session.auth_config_id else None,
         "status": session.status.value if hasattr(session.status, "value") else str(session.status),
         "last_validated_at": to_iso_z(session.last_validated_at),

@@ -2,20 +2,18 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, timedelta
 from typing import Any, Dict, List, Optional
 from uuid import UUID
-from zoneinfo import ZoneInfo
 
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from app.models import Content, Source
+from app.utils.datetime import local_date_range_to_utc_naive, today_in_user_timezone
 from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
-
-_SYSTEM_TZ = ZoneInfo("Asia/Shanghai")
 
 
 class DigestService:
@@ -34,12 +32,7 @@ class DigestService:
         """Generate a daily digest."""
         logger.info("Generating digest for %s", date)
 
-        day_start = (
-            datetime(date.year, date.month, date.day, tzinfo=_SYSTEM_TZ)
-            .astimezone(timezone.utc)
-            .replace(tzinfo=None)
-        )
-        day_end = day_start + timedelta(days=1)
+        day_start, day_end = local_date_range_to_utc_naive(date, date)
 
         query = (
             self.db.query(Content)
@@ -120,32 +113,17 @@ class DigestService:
     def get_weekly_summary(self, end_date: Optional[date] = None) -> Dict[str, Any]:
         """Generate a weekly summary."""
         if end_date is None:
-            end_date = date.today()
+            end_date = today_in_user_timezone()
 
         start_date = end_date - timedelta(days=6)
-        week_start_utc = (
-            datetime(start_date.year, start_date.month, start_date.day, tzinfo=_SYSTEM_TZ)
-            .astimezone(timezone.utc)
-            .replace(tzinfo=None)
-        )
-        week_end_utc = (
-            datetime(end_date.year, end_date.month, end_date.day, tzinfo=_SYSTEM_TZ)
-            .astimezone(timezone.utc)
-            .replace(tzinfo=None)
-            + timedelta(days=1)
-        )
+        week_start_utc, week_end_utc = local_date_range_to_utc_naive(start_date, end_date)
 
         daily_counts = {}
         type_counts = {"website": 0, "x": 0, "youtube": 0, "podcast": 0}
 
         current_date = start_date
         while current_date <= end_date:
-            day_start = (
-                datetime(current_date.year, current_date.month, current_date.day, tzinfo=_SYSTEM_TZ)
-                .astimezone(timezone.utc)
-                .replace(tzinfo=None)
-            )
-            day_end = day_start + timedelta(days=1)
+            day_start, day_end = local_date_range_to_utc_naive(current_date, current_date)
             count = self.db.query(Content).filter(Content.fetched_at >= day_start, Content.fetched_at < day_end).count()
             daily_counts[current_date.isoformat()] = count
             current_date += timedelta(days=1)

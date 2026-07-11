@@ -8,7 +8,7 @@ ready to drive an authenticated headless fetch.
 ``auth_ready=True`` requires *all* of:
 
 * ``status == active``
-* profile directory present on disk
+* the mode-specific artefact exists (persistent profile directory or storage_state file)
 * validation cookies + paragraph counts > 0
 * last validation < ``BROWSER_SESSION_AUTH_TTL_DAYS`` ago
 
@@ -67,6 +67,10 @@ def build_browser_session_runtime(db, source) -> dict | None:
     profile_exists = bool(user_data_dir and Path(user_data_dir).is_dir())
     storage_state_exists = bool(storage_state_path and Path(storage_state_path).is_file())
     status = session.status.value if hasattr(session.status, "value") else str(session.status)
+    session_mode = str(session.session_mode or "persistent_profile")
+    is_storage_state = session_mode == "storage_state"
+    is_persistent_profile = not is_storage_state
+    session_artifact_exists = storage_state_exists if is_storage_state else profile_exists
     last_validated_at = session.last_validated_at
     validation_fresh = bool(
         last_validated_at
@@ -76,7 +80,7 @@ def build_browser_session_runtime(db, source) -> dict | None:
     validation_paragraph_count = int(last_validation.get("paragraph_count") or 0)
     auth_ready = bool(
         str(status).lower() == "active"
-        and profile_exists
+        and session_artifact_exists
         and validation_fresh
         and validation_cookie_count > 0
         and validation_paragraph_count > 0
@@ -85,7 +89,9 @@ def build_browser_session_runtime(db, source) -> dict | None:
     auth_warning = None
     if str(status).lower() != "active":
         auth_warning = f"浏览器会话未激活（status={status}），需要重新登录/校验"
-    elif not profile_exists:
+    elif is_storage_state and not storage_state_exists:
+        auth_warning = "浏览器会话 storage_state.json 不存在，需要重新导入或重新登录"
+    elif is_persistent_profile and not profile_exists:
         auth_warning = "浏览器会话 profile 目录不存在，需要重新登录"
     elif not last_validated_at:
         auth_warning = "浏览器会话尚未完成正文校验，需要重新登录或校验"
@@ -105,6 +111,7 @@ def build_browser_session_runtime(db, source) -> dict | None:
         "profile_name": session.profile_name,
         "user_data_dir": user_data_dir,
         "storage_state_path": storage_state_path,
+        "session_mode": session_mode,
         "status": status,
         "last_validated_at": last_validated_at,
         "profile_exists": profile_exists,

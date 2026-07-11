@@ -464,7 +464,11 @@ async def import_auth_bundle_endpoint(
                 "status": result["browser_session"].status.value
                 if hasattr(result["browser_session"].status, "value")
                 else str(result["browser_session"].status),
+                "session_mode": str(result["browser_session"].session_mode or "persistent_profile"),
                 "storage_state_path": result["browser_session"].storage_state_path,
+                "last_validated_at": result["browser_session"].last_validated_at.isoformat() + "Z"
+                if result["browser_session"].last_validated_at
+                else None,
             }
             if result.get("browser_session")
             else None

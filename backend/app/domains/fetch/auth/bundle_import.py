@@ -10,7 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.auth_config import AuthConfig, AuthStatus, AuthType
-from app.models.browser_session import BrowserSession, BrowserSessionStatus
+from app.models.browser_session import BrowserSession, BrowserSessionMode, BrowserSessionStatus
 from app.models.source import Source, SourceType
 from app.platform.auth.bundle import (
     AuthBundleError,
@@ -175,7 +175,6 @@ def _merge_bundle_credentials(
         "captured_with": bundle.get("captured_with") if isinstance(bundle.get("captured_with"), dict) else {},
     }
     auth_config.credentials = encrypt_data(existing)
-    auth_config.last_validated_at = utcnow_naive()
 
 
 async def _upsert_browser_session(
@@ -188,7 +187,6 @@ async def _upsert_browser_session(
     site_url = str(bundle.get("site_url") or "")
     site_host = str(bundle.get("site_host") or normalize_host(site_url))
     profile_name = slugify_profile_name(f"bundle-{site_host}")
-    user_data_dir = str(Path(storage_state_path).parent)
 
     result = await db.execute(select(BrowserSession).filter(BrowserSession.site_host == site_host))
     session = result.scalar_one_or_none()
@@ -205,11 +203,13 @@ async def _upsert_browser_session(
             site_url=site_url,
             site_host=site_host,
             profile_name=profile_name,
-            user_data_dir=user_data_dir,
+            user_data_dir=None,
             storage_state_path=storage_state_path,
+            session_mode=BrowserSessionMode.STORAGE_STATE.value,
             auth_config_id=auth_config.id,
-            status=BrowserSessionStatus.ACTIVE,
-            last_validated_at=utcnow_naive(),
+            status=BrowserSessionStatus.UNVERIFIED,
+            last_validated_at=None,
+            last_error="Auth Bundle 已导入，需用文章 URL 验证正文可读性后才会标记为有效。",
             metadata_=metadata,
         )
         db.add(session)
@@ -218,12 +218,13 @@ async def _upsert_browser_session(
 
     session.site_url = site_url
     session.profile_name = profile_name
-    session.user_data_dir = user_data_dir
+    session.user_data_dir = None
     session.storage_state_path = storage_state_path
+    session.session_mode = BrowserSessionMode.STORAGE_STATE.value
     session.auth_config_id = auth_config.id
-    session.status = BrowserSessionStatus.ACTIVE
-    session.last_error = None
-    session.last_validated_at = utcnow_naive()
+    session.status = BrowserSessionStatus.UNVERIFIED
+    session.last_error = "Auth Bundle 已导入，需用文章 URL 验证正文可读性后才会标记为有效。"
+    session.last_validated_at = None
     session.metadata_ = metadata
     return session
 

@@ -147,7 +147,7 @@ const DashboardDigestList: React.FC<DashboardDigestListProps> = ({
           <p className="mt-1.5 max-w-sm text-center text-[13px] leading-relaxed text-[#5f6f82]">
             {rangeLabel}
             {activeTab === 'all'
-              ? ' 暂无内容。'
+              ? ' 当前模式下暂无内容。'
               : ` 在「${categories.find((c) => c.key === activeTab)?.label || ''}」分类下暂无内容。`}
           </p>
         </motion.div>

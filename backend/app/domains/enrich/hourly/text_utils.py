@@ -12,14 +12,14 @@ import os
 import re
 from datetime import datetime, timedelta, timezone
 from typing import Any
-from zoneinfo import ZoneInfo
-
 from app.platform.config.system_settings import (
     get_system_settings_sync,
     normalize_hourly_digest_window_hours,
 )
+from app.utils.datetime import user_timezone
 
-SYSTEM_TZ = ZoneInfo("Asia/Shanghai")
+
+SYSTEM_TZ = user_timezone()
 
 
 def local_to_utc_naive(dt_local: datetime) -> datetime:

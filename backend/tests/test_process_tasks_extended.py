@@ -19,7 +19,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 @pytest.mark.asyncio
 async def test_finish_content_content_not_found():
-    """When content doesn't exist, logs error and returns without exception."""
+    """Missing content is a completed no-op; real pipeline exceptions raise for retry."""
     mock_sem = MagicMock()
     mock_sem.__aenter__ = AsyncMock(return_value=None)
     mock_sem.__aexit__ = AsyncMock(return_value=False)
@@ -105,6 +105,7 @@ async def test_finish_content_no_keywords_when_disabled():
     mock_content.title = "Test Title"
     mock_content.full_content = "Test content body"
     mock_content.summary = None
+    mock_content.translated_summary = None
     mock_content.keyword_matches = []
     mock_content.metadata_ = {}
     mock_content.source = None
@@ -171,6 +172,48 @@ async def test_finish_content_stamps_baseline_score():
     assert mock_content.final_score == mock_content.metadata_["final_score"]
     assert mock_content.selection_status == mock_content.metadata_["selection_status"]
     assert mock_content.lane == "tech_product"
+    assert "personalization" not in mock_content.metadata_
+
+
+@pytest.mark.asyncio
+async def test_finish_content_removes_stale_personalization_metadata():
+    mock_sem = MagicMock()
+    mock_sem.__aenter__ = AsyncMock(return_value=None)
+    mock_sem.__aexit__ = AsyncMock(return_value=False)
+
+    mock_tracker = MagicMock()
+    mock_tracker.start_process = AsyncMock()
+    mock_tracker.end_process = AsyncMock()
+
+    mock_source = SimpleNamespace(
+        auth_config_id=None,
+        metadata_={"source_stars": 3, "domain_focus": ["AI", "model"], "source_weight": 1.1},
+    )
+    mock_content = MagicMock()
+    mock_content.title = "OpenAI releases new model"
+    mock_content.full_content = "The new AI model improves developer workflows. " * 80
+    mock_content.summary = "The new AI model improves developer workflows."
+    mock_content.translated_summary = None
+    mock_content.keyword_matches = []
+    mock_content.metadata_ = {"personalization": {"adjustment": 8.0}}
+    mock_content.source = mock_source
+    mock_content.auth_config_id = None
+
+    mock_db = MagicMock()
+    mock_db.query.return_value.options.return_value.filter.return_value.first.return_value = mock_content
+    mock_db.close = MagicMock()
+    mock_db.commit = MagicMock()
+
+    with patch("app.domains.ingest.finish.get_llm_semaphore", return_value=mock_sem):
+        with patch("app.domains.ingest.finish.task_tracker", mock_tracker):
+            with patch("app.domains.ingest.finish.KEYWORD_MONITORING_ENABLED", False):
+                with patch("app.database.SessionLocal", return_value=mock_db):
+                    from app.domains.ingest.finish import finish_content
+                    await finish_content("content-1")
+
+    assert mock_content.metadata_["score_version"] == "pim-score-v2"
+    assert "personalization" not in mock_content.metadata_
+    assert mock_content.final_score == mock_content.metadata_["final_score"]
 
 
 @pytest.mark.asyncio

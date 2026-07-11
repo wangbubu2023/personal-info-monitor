@@ -85,6 +85,24 @@ def _configure_event_loop_observability(settings) -> asyncio.Task | None:
     )
 
 
+async def enqueue_due_postprocess_jobs(*, limit: int = 200) -> int:
+    """Refill the execution cache from durable pending postprocess jobs."""
+    from app.platform.workers.postprocess_jobs import due_postprocess_jobs
+    from app.tasks.task_queue import task_queue
+
+    jobs = await asyncio.to_thread(due_postprocess_jobs, limit=limit)
+    enqueued = 0
+    for content_id, job_id in jobs:
+        try:
+            task_queue._process_queue.put_nowait((content_id, job_id))
+            enqueued += 1
+        except asyncio.QueueFull:
+            break
+    if enqueued:
+        logger.info("Queued %d durable postprocess jobs", enqueued)
+    return enqueued
+
+
 async def enqueue_unfinished_content_on_startup(
     *, limit: int = 200, lookback_hours: int = 24, job_id: str = "startup-refinish"
 ) -> int:
@@ -186,6 +204,7 @@ def build_lifespan(
             fetch_handler=fetch_handler,
             process_handler=process_handler,
         )
+        await enqueue_due_postprocess_jobs()
         await enqueue_unfinished_content_on_startup()
 
         print(f"\n  PIM API Key: {_mask_secret(settings.pim_api_key)}")

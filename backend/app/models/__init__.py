@@ -7,10 +7,11 @@ from app.models.auth_assistant import AuthAssistantDevice, AuthAssistantImportLo
 from app.models.keyword import Keyword
 from app.models.email_schedule import EmailSchedule
 from app.models.hourly_digest import HourlyDigest
-from app.models.browser_session import BrowserSession
+from app.models.browser_session import BrowserSession, BrowserSessionMode, BrowserSessionStatus
 from app.models.system_setting import SystemSetting
 from app.models.runtime_lock import RuntimeLock
 from app.models.source_fetch_log import SourceFetchLog
+from app.models.postprocess_job import PostprocessJob
 from app.models.atom import Atom, AtomIdSequence, AtomOperation, AtomRelation
 from app.models.atom_event import (
     AtomEntity,
@@ -21,6 +22,7 @@ from app.models.atom_event import (
     EventSummary,
     KnowledgeEntity,
 )
+from app.models.content_event import ContentEvent, ContentEventMembership, ContentEventSnapshot
 from app.models.score_feedback import ScoreFeedback
 
 __all__ = [
@@ -35,9 +37,12 @@ __all__ = [
     "EmailSchedule",
     "HourlyDigest",
     "BrowserSession",
+    "BrowserSessionMode",
+    "BrowserSessionStatus",
     "SystemSetting",
     "RuntimeLock",
     "SourceFetchLog",
+    "PostprocessJob",
     "Atom",
     "AtomRelation",
     "AtomIdSequence",
@@ -49,5 +54,8 @@ __all__ = [
     "EntityAlias",
     "AtomEntity",
     "EntityRelation",
+    "ContentEvent",
+    "ContentEventMembership",
+    "ContentEventSnapshot",
     "ScoreFeedback",
 ]

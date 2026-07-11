@@ -100,11 +100,19 @@ async def generate_previous_hour_digest() -> None:
         entries = ctx["entries"]
         eligible = [e for e in entries if not is_rejected_selection(e.get("selection_status"))]
         ranked_clusters = RankingService().cluster_and_rank(eligible)
+
         event_items = build_hourly_digest_event_briefing_items(
             ranked_clusters,
             previous_event_index=ctx.get("previous_event_index") or {},
             limit=max_pick,
         )
+
+        def _persist_events():
+            from app.domains.events.repository import upsert_events_from_clusters
+
+            upsert_events_from_clusters(db, ranked_clusters)
+
+        await asyncio.to_thread(_persist_events)
         if not event_items:
             event_items = build_hourly_digest_event_items(entries)
 

@@ -127,6 +127,36 @@ async def test_contents_list_collapses_legacy_duplicate_group(client, db_session
 
 
 @pytest.mark.asyncio
+async def test_contents_list_uses_explicit_canonical_when_later_row_is_better(client, db_session):
+    earlier = utcnow_naive() - timedelta(minutes=2)
+    later = utcnow_naive() - timedelta(minutes=1)
+    _, duplicate = await _seed_content(
+        db_session,
+        title="Same article title",
+        source_url="https://example.com/summary",
+        metadata={"duplicate_group_id": "title:quality", "is_duplicate": True},
+        fetched_at=earlier,
+    )
+    _, canonical = await _seed_content(
+        db_session,
+        title="Same article title",
+        source_url="https://example.com/full",
+        metadata={"duplicate_group_id": "title:quality", "is_duplicate": False},
+        fetched_at=later,
+    )
+    duplicate.is_duplicate = True
+    duplicate.duplicate_of = str(canonical.id)
+    await db_session.commit()
+
+    response = await client.get("/api/contents")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["total"] == 1
+    assert payload["items"][0]["id"] == str(canonical.id)
+
+
+@pytest.mark.asyncio
 async def test_contents_list_excludes_archived_by_default(client, db_session):
     _, visible = await _seed_content(db_session, title="Visible article")
     _, hidden = await _seed_content(db_session, title="Hidden article")
@@ -174,6 +204,75 @@ async def test_reader_payload_includes_source_id(client, db_session):
         "type": "paragraph",
         "text": "This is a long enough body for reader testing.",
     }
+
+
+@pytest.mark.asyncio
+async def test_export_single_content_markdown_omits_full_body_by_default(client, db_session):
+    _, content = await _seed_content(
+        db_session,
+        source_name="Paid Source",
+        source_url="https://example.com/paid-story",
+        title="Paid Story",
+        metadata={"duplicate_group_id": "event:paid-story"},
+    )
+    content.full_content = "Subscriber-only body should not be redistributed."
+    await db_session.commit()
+
+    response = await client.get(f"/api/contents/{content.id}/export-md")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/markdown")
+    markdown = response.text
+    assert "# Paid Story" in markdown
+    assert "来源：Paid Source" in markdown
+    assert f"PIM 内容 ID：{content.id}" in markdown
+    assert "PIM 链接：pim://content/" in markdown
+    assert "原文链接：https://example.com/paid-story" in markdown
+    assert "事件/重复组：event:paid-story" in markdown
+    assert "Subscriber-only body should not be redistributed" not in markdown
+    assert "默认导出不包含完整正文" in markdown
+
+
+@pytest.mark.asyncio
+async def test_export_event_markdown_contains_timeline_without_full_body(client, db_session):
+    _, first = await _seed_content(
+        db_session,
+        source_name="Source A",
+        source_url="https://example.com/a",
+        title="Event Story A",
+        metadata={"duplicate_group_id": "event:launch"},
+    )
+    _, second = await _seed_content(
+        db_session,
+        source_name="Source B",
+        source_url="https://example.com/b",
+        title="Event Story B",
+        metadata={"duplicate_group_id": "event:launch"},
+    )
+    first.full_content = "Paid body A"
+    second.full_content = "Paid body B"
+    await db_session.commit()
+
+    response = await client.get("/api/contents/events/export-md", params={"event_key": "event:launch"})
+
+    assert response.status_code == 200
+    markdown = response.text
+    assert "# Event Story" in markdown
+    assert "事件键：event:launch" in markdown
+    assert "报道数：2" in markdown
+    assert "Source A" in markdown
+    assert "Source B" in markdown
+    assert f"pim://content/{first.id}" in markdown
+    assert "https://example.com/b" in markdown
+    assert "Paid body A" not in markdown
+    assert "Event 导出默认只包含标题" in markdown
+
+
+@pytest.mark.asyncio
+async def test_export_single_content_markdown_404(client):
+    response = await client.get("/api/contents/00000000-0000-0000-0000-000000000000/export-md")
+
+    assert response.status_code == 404
 
 
 @pytest.mark.asyncio

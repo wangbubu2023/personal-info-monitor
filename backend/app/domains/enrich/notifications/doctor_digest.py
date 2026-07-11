@@ -15,10 +15,11 @@ from __future__ import annotations
 
 import asyncio
 import html
-from datetime import date, datetime
+from datetime import datetime
 from typing import Dict
 
 from app.platform.notifications.smtp import send_email
+from app.utils.datetime import today_in_user_timezone
 from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -75,7 +76,7 @@ async def send_doctor_digest_email() -> bool:
         logger.warning("Doctor digest: overall=%s but no recipients configured", overall)
         return False
 
-    subject = f"PIM Doctor: {overall.upper()} ({date.today().isoformat()})"
+    subject = f"PIM Doctor: {overall.upper()} ({today_in_user_timezone().isoformat()})"
     html_body = _render_doctor_digest_html(report)
 
     sent_any = False

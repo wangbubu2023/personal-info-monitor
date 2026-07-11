@@ -52,10 +52,19 @@ def test_fresh_sqlite_database_can_upgrade_to_head(tmp_path):
         source_columns = {
             row[1] for row in conn.execute("PRAGMA table_info(sources)")
         }
+        content_event_columns = {
+            row[1] for row in conn.execute("PRAGMA table_info(content_events)")
+        }
+        content_event_membership_columns = {
+            row[1] for row in conn.execute("PRAGMA table_info(content_event_memberships)")
+        }
+        content_event_snapshot_columns = {
+            row[1] for row in conn.execute("PRAGMA table_info(content_event_snapshots)")
+        }
     finally:
         conn.close()
 
-    assert revision == ("20260709_0028",)
+    assert revision == ("20260711_0029",)
     assert "ix_content_created_at" in indexes
     assert "ix_score_feedback_content_id" in indexes
     assert "ix_score_feedback_event_type" in indexes
@@ -132,3 +141,22 @@ def test_fresh_sqlite_database_can_upgrade_to_head(tmp_path):
     assert "ix_atoms_status" in indexes
     assert "ix_event_clusters_domain" in indexes
     assert "ix_knowledge_entities_canonical_name" in indexes
+    assert {
+        "content_events",
+        "content_event_memberships",
+        "content_event_snapshots",
+    } <= tables
+    assert {
+        "event_id",
+        "event_key",
+        "importance_score",
+        "incremental_score",
+        "confidence_score",
+        "independent_source_count",
+        "metadata",
+    } <= content_event_columns
+    assert {"event_id", "content_id", "role", "confidence", "evidence"} <= content_event_membership_columns
+    assert {"event_id", "version", "what_changed", "why_matters", "source_content_ids"} <= content_event_snapshot_columns
+    assert "ix_content_events_event_key" in indexes
+    assert "ix_content_event_memberships_content" in indexes
+    assert "ix_content_event_snapshots_event" in indexes

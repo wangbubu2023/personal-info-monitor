@@ -43,10 +43,16 @@ type CredentialPlatform = 'youtube' | 'x_twitter'
 
 const STATUS_COPY: Record<BrowserSessionStatus, { color: string; label: string }> = {
   needs_login: { color: 'orange', label: '待登录' },
+  unverified: { color: 'gold', label: '未验证' },
   active: { color: 'green', label: '已就绪' },
   expired: { color: 'red', label: '已过期' },
   error: { color: 'red', label: '异常' },
 }
+
+const SESSION_MODE_COPY = {
+  persistent_profile: '浏览器 Profile',
+  storage_state: 'Storage State',
+} as const
 
 // A host that, if the user points a browser session at it, receives a nicer
 // label in the sessions table. Pure cosmetics; still just normalize_host
@@ -153,7 +159,7 @@ const CredentialsTab: React.FC = () => {
     onSuccess: async (res) => {
       await invalidate()
       const cookies = res.bootstrap?.cookie_count ?? 0
-      message.success(`登录窗口已关闭，抓取到 ${cookies} 个 cookie`)
+      message.success(`登录窗口已关闭，抓取到 ${cookies} 个 cookie；请用付费文章 URL 校验正文后再视为可用`)
       setOpeningSession(null)
     },
     onError: (err: unknown) => {
@@ -324,6 +330,17 @@ const CredentialsTab: React.FC = () => {
       },
     },
     {
+      title: '模式',
+      dataIndex: 'session_mode',
+      key: 'session_mode',
+      width: 130,
+      render: (mode: BrowserSession['session_mode']) => (
+        <Tag color={mode === 'storage_state' ? 'blue' : 'purple'}>
+          {SESSION_MODE_COPY[mode] || mode}
+        </Tag>
+      ),
+    },
+    {
       title: '上次校验',
       dataIndex: 'last_validated_at',
       key: 'last_validated_at',
@@ -375,7 +392,7 @@ const CredentialsTab: React.FC = () => {
           </Tooltip>
           <Popconfirm
             title="删除这个会话？"
-            description="仅移除数据库记录，本地 profile 目录保留；可随时重新创建。"
+            description={record.session_mode === 'storage_state' ? '仅移除数据库记录；已导入的 storage_state 文件保留。' : '仅移除数据库记录，本地 profile 目录保留；可随时重新创建。'}
             okText="删除"
             cancelText="取消"
             onConfirm={() => deleteSessionMutation.mutate(record.id)}
@@ -589,7 +606,7 @@ const CredentialsTab: React.FC = () => {
     <div className="flex flex-col gap-5">
       <SettingsSection
         title="站点登录会话"
-        description="用于需要网页登录态的站点，如纽约时报、WSJ、X 等。点击「重新登录」会弹出可视化浏览器，完成验证码、2FA 或扫码后关闭窗口即可保存会话。"
+        description="用于需要网页登录态的站点，如纽约时报、WSJ、X 等。手动登录会创建真实浏览器 Profile；Auth Assistant 导入的是 Storage State，需用可访问文章 URL 校验正文后才会标记有效。"
         actions={
           <Space>
             <Button size="small" onClick={() => refetchSessions()}>

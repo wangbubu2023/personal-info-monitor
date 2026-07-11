@@ -119,13 +119,27 @@ class TestParseArticleCandidate:
 
 
 class TestAppendFallbackLinks:
-    def test_skips_when_enough_content(self):
-        html = "<html><a href='/post'>Another article link here</a></html>"
+    def test_skips_when_article_link_cap_reached(self):
+        html = "<html><a href='/2026/04/20/another-article'>Another article link here</a></html>"
         soup = BeautifulSoup(html, "lxml")
-        source = _make_source("https://example.com")
-        contents = [{"url": f"https://example.com/p{i}", "title": f"t{i}"} for i in range(5)]
+        source = _make_source("https://example.com", metadata={"fallback_link_max": 5})
+        contents = [
+            {"url": f"https://example.com/2026/04/{20 + i}/existing-article-{i}", "title": f"Article {i}"}
+            for i in range(5)
+        ]
         append_fallback_links(soup=soup, source=source, contents=contents)
         assert len(contents) == 5
+
+    def test_default_fallback_cap_is_fifty_article_links(self):
+        html = "<html><a href='/2026/04/20/another-article'>Another article link here</a></html>"
+        soup = BeautifulSoup(html, "lxml")
+        source = _make_source("https://example.com")
+        contents = [
+            {"url": f"https://example.com/2026/04/{day:02d}/existing-article-{idx}", "title": f"Article {idx}"}
+            for idx, day in enumerate(range(1, 50), start=1)
+        ]
+        append_fallback_links(soup=soup, source=source, contents=contents)
+        assert len(contents) == 50
 
     def test_adds_fallback_anchors_that_look_like_articles(self):
         html = """

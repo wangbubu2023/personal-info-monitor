@@ -19,11 +19,11 @@ from sqlalchemy import Float, cast, func
 from sqlalchemy.exc import IntegrityError
 
 from app.domains.enrich.hourly.text_utils import (
-    SYSTEM_TZ,
     format_digest_title,
     get_digest_window_hours,
     local_to_utc_naive,
 )
+from app.utils.datetime import user_timezone
 from app.utils.datetime import to_iso_z
 from app.utils.logger import get_logger
 
@@ -55,7 +55,7 @@ def _source_key(item: dict) -> str:
 
 
 def _local_digest_label(row) -> datetime:
-    return datetime.combine(row.digest_date, time(hour=int(row.hour or 0)), tzinfo=SYSTEM_TZ)
+    return datetime.combine(row.digest_date, time(hour=int(row.hour or 0)), tzinfo=user_timezone())
 
 
 def candidate_score_expr(content_model):
@@ -316,12 +316,16 @@ def build_hourly_digest_event_briefing_items(
         primary = items[0]
         event_key = str(cluster.get("event_key") or "").strip()
         previous = previous_event_index.get(event_key)
+        from app.domains.events.repository import stable_event_id
+
+        event_id = stable_event_id(event_key) if event_key else ""
         importance = round(_clamp(_safe_float(cluster.get("event_score", cluster.get("score")))), 1)
         incremental = _cluster_incremental_score(cluster, previous)
         confidence = _cluster_confidence(items)
         section = _event_section(importance, incremental, confidence, cluster)
         source_names: list[str] = []
         source_keys: list[str] = []
+        content_ids: list[str] = []
         for item in items:
             source_name = str(item.get("source_name") or "Unknown").strip()
             if source_name and source_name not in source_names:
@@ -329,21 +333,32 @@ def build_hourly_digest_event_briefing_items(
             key = _source_key(item)
             if key and key != "unknown" and key not in source_keys:
                 source_keys.append(key)
+            item_cid = str(item.get("content_id") or "").strip()
+            if item_cid and item_cid not in content_ids:
+                content_ids.append(item_cid)
         cid = str(primary.get("content_id") or "").strip()
         title = str(primary.get("translated_title") or primary.get("title") or cluster.get("topic") or "").strip()
         summary = str(primary.get("translated_summary") or primary.get("summary") or "").strip()
         if len(summary) > 300:
             summary = f"{summary[:297]}..."
+        why_matters = _why_matters(cluster, primary)
+        what_changed = summary or "出现新的报道或材料。"
+        cluster["incremental_score"] = incremental
+        cluster["confidence_score"] = confidence
+        cluster["why_matters"] = why_matters
+        cluster["what_changed"] = what_changed
         event_items.append(
             {
                 "event_key": event_key,
+                "event_id": event_id,
                 "section": section,
                 "content_id": cid,
+                "content_ids": content_ids,
                 "title": title or "未命名事件",
                 "summary": summary or None,
                 "what_happened": summary or "本小时出现新的相关信号。",
-                "why_matters": _why_matters(cluster, primary),
-                "new_signal": summary or "出现新的报道或材料。",
+                "why_matters": why_matters,
+                "new_signal": what_changed,
                 "missing_confirmation": _missing_confirmation(cluster, confidence),
                 "source_name": source_names[0] if source_names else "Unknown",
                 "source_names": source_names,
@@ -398,12 +413,14 @@ def load_digest_rows(
     *,
     candidate_limit: int = HOURLY_DIGEST_CANDIDATE_LIMIT,
 ):
+    from app.domains.ingest.visibility import visible_content_clause
     from app.models import Content
 
     return (
         db.query(Content)
         .filter(Content.fetched_at >= start_utc)
         .filter(Content.fetched_at < end_utc)
+        .filter(visible_content_clause())
         .order_by(*candidate_ordering(Content))
         .limit(max(1, int(candidate_limit or HOURLY_DIGEST_CANDIDATE_LIMIT)))
         .all()
@@ -489,7 +506,7 @@ def build_digest_generation_context(db) -> Optional[dict]:
     is persisted as a side effect), or a context dict the orchestrator
     passes to the selection/synthesis layers otherwise.
     """
-    now_local = datetime.now(SYSTEM_TZ)
+    now_local = datetime.now(user_timezone())
     window_hours = get_digest_window_hours()
     start_local, end_local, start_utc, end_utc = compute_digest_window(
         now_local,

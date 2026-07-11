@@ -10,7 +10,8 @@ from app.models import Content, ScoreFeedback
 
 SCORE_CALIBRATION_EVENT = "score_calibration"
 USER_INTERACTION_EVENTS = frozenset({"open", "star", "hide"})
-VALID_FEEDBACK_EVENT_TYPES = frozenset({SCORE_CALIBRATION_EVENT, *USER_INTERACTION_EVENTS})
+EVENT_CLUSTER_FEEDBACK_EVENTS = frozenset({"event_wrong_merge", "event_missing_merge"})
+VALID_FEEDBACK_EVENT_TYPES = frozenset({SCORE_CALIBRATION_EVENT, *USER_INTERACTION_EVENTS, *EVENT_CLUSTER_FEEDBACK_EVENTS})
 
 
 def content_feedback_snapshot(content: Content, extra: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -60,6 +61,7 @@ async def record_score_feedback_event(
 __all__ = [
     "SCORE_CALIBRATION_EVENT",
     "USER_INTERACTION_EVENTS",
+    "EVENT_CLUSTER_FEEDBACK_EVENTS",
     "VALID_FEEDBACK_EVENT_TYPES",
     "content_feedback_snapshot",
     "record_score_feedback_event",

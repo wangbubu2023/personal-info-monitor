@@ -6,13 +6,14 @@ from datetime import datetime
 from typing import Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import and_, func, or_, select, text
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from sqlalchemy import func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import aliased, selectinload
+from sqlalchemy.orm import selectinload
 
 from app.interfaces.http.content_shared import _serialize_content
 from app.database import get_async_db
+from app.domains.ingest.visibility import visible_content_clause
 from app.domains.score.feedback import content_feedback_snapshot, record_score_feedback_event
 from app.models import Content, Source
 from app.schemas.content import ContentListResponse, ContentResponse, ContentUpdate, FavoriteBody
@@ -22,6 +23,15 @@ logger = get_logger(__name__)
 
 router = APIRouter()
 MAX_CONTENTS_PAGE_SIZE = 200
+
+
+def _safe_export_filename(title: str | None) -> str:
+    safe = "".join(
+        c for c in (title or "untitled")
+        if c.isascii() and (c.isalnum() or c in " -_")
+    ).strip()
+    safe = "-".join(safe.split())[:80]
+    return safe or "content"
 
 
 def _content_ilike_search_clause(search: str):
@@ -46,30 +56,6 @@ async def _sqlite_has_content_fts(db: AsyncSession) -> bool:
     return r.first() is not None
 
 
-def _visible_content_clause():
-    """Hide duplicate rows, including legacy rows that only share a duplicate group."""
-    other = aliased(Content)
-    group_id = func.json_extract(Content.metadata_, "$.duplicate_group_id")
-    other_group_id = func.json_extract(other.metadata_, "$.duplicate_group_id")
-    earlier_same_group = (
-        select(other.id)
-        .where(
-            other.id != Content.id,
-            other_group_id == group_id,
-            or_(
-                other.fetched_at < Content.fetched_at,
-                and_(other.fetched_at == Content.fetched_at, other.id < Content.id),
-            ),
-        )
-        .exists()
-    )
-    return and_(
-        or_(Content.is_duplicate.is_(False), Content.is_duplicate.is_(None)),
-        Content.duplicate_of.is_(None),
-        or_(group_id.is_(None), ~earlier_same_group),
-    )
-
-
 @router.get("", response_model=ContentListResponse)
 async def list_contents(
     page: int = Query(1, ge=1),
@@ -87,9 +73,8 @@ async def list_contents(
     """List all content with pagination and filters."""
     query = select(Content).options(selectinload(Content.source))
     count_query = select(func.count(Content.id))
-    visible_clause = _visible_content_clause()
-    query = query.filter(visible_clause)
-    count_query = count_query.filter(visible_clause)
+    query = query.filter(visible_content_clause(include_archived=archived is True))
+    count_query = count_query.filter(visible_content_clause(include_archived=archived is True))
 
     if source_id:
         query = query.filter(Content.source_id == source_id)
@@ -230,6 +215,69 @@ async def update_content(
     await db.refresh(content)
 
     return ContentResponse(**_serialize_content(content))
+
+
+@router.get("/events/export-md", response_class=Response)
+async def export_event_markdown(
+    event_key: str = Query(..., min_length=1, max_length=255),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Download an event-like duplicate group as attribution-first Markdown."""
+    from app.platform.export import MarkdownExporter
+
+    key = event_key.strip()
+    result = await db.execute(
+        select(Content)
+        .options(selectinload(Content.source))
+        .filter(
+            or_(
+                func.json_extract(Content.metadata_, "$.event_id") == key,
+                func.json_extract(Content.metadata_, "$.duplicate_group_id") == key,
+                func.json_extract(Content.metadata_, "$.canonical_external_id") == key,
+            )
+        )
+        .order_by(Content.publish_time.asc().nulls_last(), Content.fetched_at.asc())
+        .limit(200)
+    )
+    contents = list(result.scalars().all())
+    if not contents:
+        raise HTTPException(status_code=404, detail="Event not found")
+
+    exporter = MarkdownExporter("/tmp/pim-event-export-preview")
+    markdown = exporter.render_event_markdown(contents)
+    filename = f"{_safe_export_filename(key)}.md"
+    return Response(
+        content=markdown,
+        media_type="text/markdown; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.get("/{content_id}/export-md", response_class=Response)
+async def export_content_markdown(
+    content_id: UUID,
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Download a single content item as attribution-first Markdown."""
+    from app.platform.export import MarkdownExporter
+
+    result = await db.execute(
+        select(Content)
+        .options(selectinload(Content.source))
+        .filter(Content.id == content_id)
+    )
+    content = result.scalar_one_or_none()
+    if not content:
+        raise HTTPException(status_code=404, detail="Content not found")
+
+    exporter = MarkdownExporter("/tmp/pim-single-export-preview")
+    markdown = exporter.render_content_markdown(content, include_full_content=False)
+    filename = f"{_safe_export_filename(content.title)}.md"
+    return Response(
+        content=markdown,
+        media_type="text/markdown; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.post("/export-md")

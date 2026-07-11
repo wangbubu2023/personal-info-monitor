@@ -1,12 +1,13 @@
 from __future__ import annotations
 
-from datetime import date, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from uuid import uuid4
 from zoneinfo import ZoneInfo
 
 import pytest
 
 from app.api.digest import _completed_hour_label_to_utc_window
+from app.platform.config.settings import get_settings
 from app.models import Content, HourlyDigest, Source
 from app.models.source import SourceType
 from app.utils.datetime import utcnow_naive
@@ -24,6 +25,53 @@ def _digest_calendar_date(utc_naive) -> date:
 
 def _digest_date_param(utc_naive) -> str:
     return _digest_calendar_date(utc_naive).isoformat()
+
+
+@pytest.mark.asyncio
+async def test_daily_digest_defaults_to_business_timezone_today(client, db_session, monkeypatch):
+    fixed_utc = datetime(2026, 7, 10, 17, 30, tzinfo=timezone.utc)
+
+    class FixedDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            if tz is None:
+                return fixed_utc.replace(tzinfo=None)
+            return fixed_utc.astimezone(tz)
+
+    monkeypatch.setattr("app.utils.datetime.datetime", FixedDateTime)
+    get_settings.cache_clear()
+
+    source = Source(name="Feed", type=SourceType.RSS, url="https://example.com/feed.xml")
+    in_business_today = Content(
+        source=source,
+        title="Shanghai July 11 item",
+        summary="Summary",
+        original_url="https://example.com/in",
+        content_type="rss",
+        fetched_at=datetime(2026, 7, 10, 16, 30),
+        publish_time=datetime(2026, 7, 10, 16, 30),
+        read_status=False,
+    )
+    previous_business_day = Content(
+        source=source,
+        title="UTC July 10 but Shanghai July 10 item",
+        summary="Summary",
+        original_url="https://example.com/out",
+        content_type="rss",
+        fetched_at=datetime(2026, 7, 10, 15, 59),
+        publish_time=datetime(2026, 7, 10, 15, 59),
+        read_status=False,
+    )
+    db_session.add_all([source, in_business_today, previous_business_day])
+    await db_session.commit()
+
+    response = await client.get("/api/digest")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["date"] == "2026-07-11"
+    assert payload["total_items"] == 1
+    assert payload["categories"]["rss"]["items"][0]["title"] == "Shanghai July 11 item"
 
 
 @pytest.mark.asyncio
@@ -70,6 +118,69 @@ async def test_daily_digest_filters_by_keyword_and_type(client, db_session):
     assert payload["total_items"] == 1
     assert payload["categories"]["websites"]["count"] == 1
     assert payload["categories"]["x_accounts"]["count"] == 0
+
+
+@pytest.mark.asyncio
+async def test_daily_digest_includes_read_items_by_default_for_timeline(client, db_session):
+    source = Source(name="Feed", type=SourceType.RSS, url="https://example.com/feed.xml")
+    now = utcnow_naive()
+    content = Content(
+        source=source,
+        title="Already read item",
+        summary="Summary",
+        original_url="https://example.com/read",
+        content_type="rss",
+        fetched_at=now,
+        publish_time=now,
+        read_status=True,
+    )
+    db_session.add_all([source, content])
+    await db_session.commit()
+
+    response = await client.get("/api/digest", params={"date": _digest_date_param(now)})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["total_items"] == 1
+    assert payload["categories"]["rss"]["items"][0]["title"] == "Already read item"
+
+
+@pytest.mark.asyncio
+async def test_daily_digest_filters_read_items_when_unread_only(client, db_session):
+    source = Source(name="Feed", type=SourceType.RSS, url="https://example.com/feed.xml")
+    now = utcnow_naive()
+    read_item = Content(
+        source=source,
+        title="Already read item",
+        summary="Summary",
+        original_url="https://example.com/read",
+        content_type="rss",
+        fetched_at=now,
+        publish_time=now,
+        read_status=True,
+    )
+    unread_item = Content(
+        source=source,
+        title="Unread item",
+        summary="Summary",
+        original_url="https://example.com/unread",
+        content_type="rss",
+        fetched_at=now,
+        publish_time=now,
+        read_status=False,
+    )
+    db_session.add_all([source, read_item, unread_item])
+    await db_session.commit()
+
+    response = await client.get(
+        "/api/digest",
+        params={"date": _digest_date_param(now), "unread_only": "true"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["total_items"] == 1
+    assert payload["categories"]["rss"]["items"][0]["title"] == "Unread item"
 
 
 @pytest.mark.asyncio
@@ -209,6 +320,92 @@ async def test_daily_digest_excludes_archived_items(client, db_session):
     assert response.status_code == 200
     items = response.json()["categories"]["rss"]["items"]
     assert [item["title"] for item in items] == ["Visible item"]
+
+
+@pytest.mark.asyncio
+async def test_daily_digest_collapses_duplicate_group_like_contents_list(client, db_session):
+    source = Source(name="Feed", type=SourceType.RSS, url="https://example.com/feed.xml")
+    now = utcnow_naive()
+    canonical = Content(
+        source=source,
+        title="Same story from first source",
+        summary="Summary",
+        original_url="https://example.com/a",
+        content_type="rss",
+        fetched_at=now - timedelta(minutes=2),
+        publish_time=now - timedelta(minutes=2),
+        read_status=False,
+        metadata_={"duplicate_group_id": "title:same"},
+    )
+    duplicate = Content(
+        source=source,
+        title="Same story from later source",
+        summary="Summary",
+        original_url="https://example.com/b",
+        content_type="rss",
+        fetched_at=now - timedelta(minutes=1),
+        publish_time=now - timedelta(minutes=1),
+        read_status=False,
+        metadata_={"duplicate_group_id": "title:same"},
+    )
+    db_session.add_all([source, canonical, duplicate])
+    await db_session.commit()
+
+    response = await client.get(
+        "/api/digest",
+        params=[("date", _digest_date_param(now)), ("unread_only", "false")],
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["total_items"] == 1
+    items = payload["categories"]["rss"]["items"]
+    assert [item["title"] for item in items] == ["Same story from first source"]
+
+
+@pytest.mark.asyncio
+async def test_daily_digest_uses_explicit_quality_canonical_when_later_row_wins(client, db_session):
+    source = Source(name="Feed", type=SourceType.RSS, url="https://example.com/feed.xml")
+    now = utcnow_naive()
+    duplicate = Content(
+        source=source,
+        title="Summary wire version",
+        summary="Summary",
+        original_url="https://example.com/summary",
+        content_type="rss",
+        fetched_at=now - timedelta(minutes=2),
+        publish_time=now - timedelta(minutes=2),
+        read_status=False,
+        is_duplicate=True,
+        metadata_={"duplicate_group_id": "title:quality", "is_duplicate": True},
+    )
+    canonical = Content(
+        source=source,
+        title="Full primary version",
+        summary="Summary",
+        original_url="https://example.com/full",
+        content_type="rss",
+        fetched_at=now - timedelta(minutes=1),
+        publish_time=now - timedelta(minutes=1),
+        read_status=False,
+        is_duplicate=False,
+        metadata_={"duplicate_group_id": "title:quality", "is_duplicate": False},
+    )
+    db_session.add_all([source, duplicate, canonical])
+    await db_session.flush()
+    duplicate.duplicate_of = str(canonical.id)
+    await db_session.commit()
+
+    response = await client.get(
+        "/api/digest",
+        params=[("date", _digest_date_param(now)), ("unread_only", "false")],
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["total_items"] == 1
+    items = payload["categories"]["rss"]["items"]
+    assert [item["title"] for item in items] == ["Full primary version"]
 
 
 @pytest.mark.asyncio

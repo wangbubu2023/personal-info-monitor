@@ -1,7 +1,6 @@
 """API routes for dashboard summaries."""
 
 from datetime import datetime, time, timedelta, timezone
-from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends
 from sqlalchemy import func, select
@@ -9,17 +8,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_async_db
 from app.models import Content, Source
+from app.utils.datetime import user_timezone
 from app.utils.ttl_cache import TTLCache
 
 router = APIRouter()
-SYSTEM_TZ = ZoneInfo("Asia/Shanghai")
 _dashboard_cache = TTLCache(ttl_seconds=30)
 
 
 def _today_window_utc_naive() -> tuple[datetime, datetime]:
     """Return [today_start, tomorrow_start) in UTC-naive for DB comparison."""
-    now_local = datetime.now(SYSTEM_TZ)
-    start_local = datetime.combine(now_local.date(), time.min, tzinfo=SYSTEM_TZ)
+    tz = user_timezone()
+    now_local = datetime.now(tz)
+    start_local = datetime.combine(now_local.date(), time.min, tzinfo=tz)
     end_local = start_local + timedelta(days=1)
     start_utc = start_local.astimezone(timezone.utc).replace(tzinfo=None)
     end_utc = end_local.astimezone(timezone.utc).replace(tzinfo=None)

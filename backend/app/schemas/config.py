@@ -153,6 +153,7 @@ class BrowserSessionResponse(BaseModel):
     profile_name: str
     user_data_dir: str
     storage_state_path: Optional[str] = None
+    session_mode: str = "persistent_profile"
     auth_config_id: Optional[UUID] = None
     status: str
     last_validated_at: Optional[datetime] = None

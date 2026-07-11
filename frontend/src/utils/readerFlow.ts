@@ -113,7 +113,7 @@ export function compareReaderMetrics(): ReaderInteractionComparison {
 
 export function recordReaderInteraction(
   channel: 'keyboard' | 'click',
-  action: 'open' | 'mark_read' | 'read_later' | 'like' | 'hide' | 'navigate',
+  action: 'open' | 'mark_read' | 'read_later' | 'like' | 'hide' | 'navigate' | 'export',
 ): ReaderInteractionMetrics {
   const next = { ...readReaderMetrics(), lastEventAt: new Date().toISOString() }
   if (channel === 'keyboard') next.keyboard += 1

@@ -96,20 +96,22 @@ class BoundedTaskQueue:
     async def enqueue_ingest_finish(self, content_id: str, job_id: str | None = None) -> bool:
         """Enqueue an ingest-finalization job (LLM-free post-fetch enrichment).
 
-        Renamed from the legacy ``enqueue_process`` in Phase 3 step 5 of
-        the module-refactor blueprint to match the ``ingest.finish_content``
-        target it dispatches to. Phase 7 retired the ``enqueue_process``
-        deprecation alias — callers must address this method directly.
+        The SQLite job table is the durable truth source; the bounded asyncio
+        queue is only the in-process execution cache. A full cache can delay a
+        job, but must not be able to lose it permanently.
         """
+        from app.platform.workers.postprocess_jobs import ensure_postprocess_job
+
+        await asyncio.to_thread(ensure_postprocess_job, content_id, job_id)
         try:
             self._process_queue.put_nowait((content_id, job_id))
             return True
         except asyncio.QueueFull:
             logger.warning(
-                "process queue full (maxsize=%d), dropping content_id=%s",
+                "process queue full (maxsize=%d), deferring durable content_id=%s",
                 self._process_maxsize, content_id,
             )
-            self._record_dropped_task("PROCESS", content_id, f"job_id={job_id}")
+            self._record_dropped_task("PROCESS", content_id, f"job_id={job_id}; durable=pending")
             task_queue_metrics.record_dropped("process")
             return False
 
@@ -168,14 +170,25 @@ class BoundedTaskQueue:
                 break
 
     async def _process_worker(self) -> None:
+        from app.platform.workers.postprocess_jobs import (
+            claim_postprocess_job,
+            mark_postprocess_job_failed,
+            mark_postprocess_job_succeeded,
+        )
+
         while True:
             try:
                 content_id, job_id = await self._process_queue.get()
                 try:
+                    claimed = await asyncio.to_thread(claim_postprocess_job, content_id, job_id)
+                    if not claimed:
+                        continue
                     if self._process_handler is not None:
                         await self._process_handler(content_id, job_id)
-                except Exception:
-                    logger.exception("process worker error for content_id=%s", content_id)
+                    await asyncio.to_thread(mark_postprocess_job_succeeded, content_id, job_id)
+                except Exception as exc:
+                    status = await asyncio.to_thread(mark_postprocess_job_failed, content_id, job_id, exc)
+                    logger.exception("process worker error for content_id=%s status=%s", content_id, status)
                 finally:
                     self._process_queue.task_done()
             except asyncio.CancelledError:

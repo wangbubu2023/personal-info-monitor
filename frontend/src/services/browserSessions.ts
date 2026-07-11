@@ -1,6 +1,8 @@
 import api from './api'
 
-export type BrowserSessionStatus = 'needs_login' | 'active' | 'expired' | 'error'
+export type BrowserSessionStatus = 'needs_login' | 'unverified' | 'active' | 'expired' | 'error'
+
+export type BrowserSessionMode = 'persistent_profile' | 'storage_state'
 
 export interface BrowserSessionBootstrapMeta {
   at?: string
@@ -18,8 +20,9 @@ export interface BrowserSession {
   site_url: string
   site_host: string
   profile_name: string
-  user_data_dir: string
+  user_data_dir?: string | null
   storage_state_path?: string | null
+  session_mode: BrowserSessionMode
   auth_config_id?: string | null
   status: BrowserSessionStatus
   last_validated_at?: string | null

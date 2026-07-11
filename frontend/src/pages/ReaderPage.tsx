@@ -14,12 +14,13 @@ import {
   ChevronLeft,
   ChevronRight,
   EyeOff,
+  Download,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useReader } from '../hooks/useReader';
 import SectionNote from '../components/ui/SectionNote';
 import PageLoading from '../components/common/PageLoading';
-import type { ReaderBlock } from '../services/contents';
+import { contentsApi, type ReaderBlock } from '../services/contents';
 import { getReaderNeighbor, recordReaderInteraction } from '../utils/readerFlow';
 import { getReaderLayoutProfile, type ReaderLayoutProfile } from '../utils/readerLayout';
 
@@ -212,6 +213,12 @@ const ReaderPage: React.FC = () => {
     }
   }, [backHref, data, hide, id, navigate, navigateToNeighbor, nextItem]);
 
+  const exportMarkdown = useCallback(async () => {
+    if (!id || !data) return;
+    recordReaderInteraction('click', 'export');
+    await contentsApi.downloadMarkdown(id, displayTitle || data.title);
+  }, [data, displayTitle, id]);
+
   useEffect(() => {
     if (!data) return;
     const handler = (event: KeyboardEvent) => {
@@ -328,6 +335,14 @@ const ReaderPage: React.FC = () => {
                 title="隐藏并记为负反馈（H）"
               >
                 <EyeOff size={14} /> 不感兴趣 <ShortcutHint>H</ShortcutHint>
+              </button>
+              <button
+                type="button"
+                onClick={() => void exportMarkdown()}
+                className="flex items-center gap-2 rounded-xl border border-[rgba(88,100,118,0.18)] bg-white/60 px-3.5 py-2 text-[12px] font-semibold text-[#586476] transition-all hover:bg-white hover:text-[#293859]"
+                title="导出标题、摘要、来源、PIM 链接、原文链接和归因；默认不包含完整正文"
+              >
+                <Download size={14} /> 导出 Markdown
               </button>
               {safeHttpUrl(data.original_url) ? (
                 <a

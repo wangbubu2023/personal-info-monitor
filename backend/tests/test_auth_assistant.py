@@ -47,6 +47,9 @@ async def test_auth_assistant_pairing_and_bundle_import(client):
     assert import_payload["cookie_count"] == 1
     assert import_payload["storage_state_imported"] is True
     assert import_payload["auth_config"]["site_url"] == "https://example.com"
+    assert import_payload["browser_session"]["status"] == "unverified"
+    assert import_payload["browser_session"]["session_mode"] == "storage_state"
+    assert import_payload["browser_session"]["last_validated_at"] is None
 
 
 @pytest.mark.anyio

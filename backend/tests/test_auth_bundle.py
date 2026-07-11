@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 from httpx import AsyncClient
 
+from app.models.browser_session import BrowserSessionStatus
 from app.platform.auth.bundle import (
     AuthBundleError,
     build_auth_bundle,
@@ -107,6 +108,9 @@ async def test_import_auth_bundle_creates_cookie_auth_and_binds_source(
     assert data["auth_config"]["has_cookies"] is True
     assert data["auth_config"]["cookie_mode"] == "bundle"
     assert data["browser_session"]["site_host"] == "example.com"
+    assert data["browser_session"]["session_mode"] == "storage_state"
+    assert data["browser_session"]["status"] == BrowserSessionStatus.UNVERIFIED.value
+    assert data["browser_session"]["last_validated_at"] is None
 
     storage_state_path = Path(data["browser_session"]["storage_state_path"])
     assert storage_state_path.is_file()

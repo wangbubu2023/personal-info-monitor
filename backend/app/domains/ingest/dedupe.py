@@ -5,6 +5,7 @@ from __future__ import annotations
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
+from app.domains.score.score_utils import normalize_authority_type, normalize_source_stars
 from app.models import Content, Source
 from app.utils.datetime import utcnow_naive
 from app.utils.url import canonical_article_external_id, normalize_external_id
@@ -19,14 +20,108 @@ def _metadata_duplicate_group_id(content: Content) -> str:
     return str(metadata.get("duplicate_group_id") or "").strip()
 
 
-def _canonical_duplicate_member(members: list[Content]) -> Content:
-    return min(
-        members,
-        key=lambda member: (
-            member.fetched_at or member.created_at or utcnow_naive(),
-            str(member.id),
-        ),
+_FULLTEXT_STATUS_RANK = {
+    "full": 5,
+    "partial": 4,
+    "summary_only": 3,
+    "title_only": 1,
+    "blocked": 0,
+    "login_required": 0,
+    "bot_wall": 0,
+    "captcha": 0,
+}
+
+_AUTHORITY_TYPE_RANK = {
+    "official": 5,
+    "primary": 4,
+    "wire": 3,
+    "expert": 3,
+    "analysis": 2,
+    "community": 1,
+    "aggregator": 0,
+    "unknown": 0,
+}
+
+
+def _as_float(value, *, default: float = 0.0) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _fulltext_rank(member: Content, metadata: dict) -> tuple[int, float, int]:
+    status = str(metadata.get("fulltext_status") or "").strip().lower()
+    content_quality = _as_float(metadata.get("content_quality"), default=0.0)
+    body_len = len((member.full_content or "").strip())
+    if not status:
+        if body_len >= 1200:
+            status = "full"
+        elif body_len >= 400:
+            status = "partial"
+        elif (member.summary or member.translated_summary or "").strip():
+            status = "summary_only"
+        else:
+            status = "title_only"
+    return (_FULLTEXT_STATUS_RANK.get(status, 0), content_quality, body_len)
+
+
+def _source_rank(member: Content) -> tuple[int, int]:
+    source = member.source
+    source_metadata = source.metadata_ if source and isinstance(source.metadata_, dict) else {}
+    content_metadata = member.metadata_ if isinstance(member.metadata_, dict) else {}
+    authority_type = normalize_authority_type(
+        content_metadata.get("authority_type") or source_metadata.get("authority_type")
     )
+    source_stars = normalize_source_stars(
+        content_metadata.get("source_stars") or source_metadata.get("source_stars"),
+        default=1,
+    )
+    return (_AUTHORITY_TYPE_RANK.get(authority_type, 0), source_stars)
+
+
+def _score_rank(member: Content, metadata: dict) -> float:
+    for value in (
+        member.final_score,
+        member.article_score,
+        metadata.get("final_score"),
+        metadata.get("article_score"),
+    ):
+        if value is not None:
+            return _as_float(value, default=-1.0)
+    return -1.0
+
+
+def _canonical_rank(member: Content) -> tuple:
+    metadata = member.metadata_ if isinstance(member.metadata_, dict) else {}
+    publish_time = member.publish_time or member.fetched_at or member.created_at or utcnow_naive()
+    fetched_at = member.fetched_at or member.created_at or utcnow_naive()
+    return (
+        *_source_rank(member),
+        *_fulltext_rank(member, metadata),
+        _score_rank(member, metadata),
+        publish_time,
+        fetched_at,
+        str(member.id),
+    )
+
+
+def _canonical_duplicate_member(members: list[Content]) -> Content:
+    """Pick the best readable representative for a duplicate group.
+
+    P1-08: prefer first-party / authoritative sources, then richer body quality,
+    then score and freshness. This intentionally allows a later full-text row to
+    replace an earlier summary-only canonical row.
+    """
+    return max(members, key=_canonical_rank)
+
+
+def _merge_user_state_into_new_canonical(previous: Content | None, canonical: Content) -> None:
+    """Keep user-visible state when the duplicate representative changes."""
+    if previous is None or str(previous.id) == str(canonical.id):
+        return
+    canonical.read_status = bool(canonical.read_status or previous.read_status)
+    canonical.favorited = bool(canonical.favorited or previous.favorited)
 
 
 def mark_title_group_duplicate_members(db: Session, content: Content) -> None:
@@ -43,7 +138,9 @@ def mark_title_group_duplicate_members(db: Session, content: Content) -> None:
     if len(members) < 2:
         return
 
+    previous_canonical = next((member for member in members if not member.is_duplicate and not member.duplicate_of), None)
     canonical = _canonical_duplicate_member(members)
+    _merge_user_state_into_new_canonical(previous_canonical, canonical)
     canonical_id = str(canonical.id)
     for member in members:
         metadata = member.metadata_ if isinstance(member.metadata_, dict) else {}

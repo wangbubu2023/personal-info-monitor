@@ -80,6 +80,7 @@ class TestBaseCollectorAuth:
         source._runtime_auth = {"credentials": {"storage_state_path": str(storage_state)}}
         result = collector.get_runtime_browser_session(source)
         assert result["storage_state_path"] == str(storage_state)
+        assert result["session_mode"] == "storage_state"
         assert result["storage_state_exists"] is True
         assert result["auth_ready"] is True
 

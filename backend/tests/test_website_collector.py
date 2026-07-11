@@ -112,6 +112,18 @@ class TestStorageStatePathForPlaywright:
             is None
         )
 
+    def test_storage_state_mode_uses_state_even_with_legacy_user_data_dir(self, tmp_path):
+        f = tmp_path / "state.json"
+        f.write_text("{}")
+        out = WebsiteCollector._storage_state_path_for_playwright(
+            {
+                "session_mode": "storage_state",
+                "user_data_dir": str(tmp_path / "fake-profile"),
+                "storage_state_path": str(f),
+            }
+        )
+        assert out == str(f.resolve())
+
     def test_returns_resolved_path_when_file_exists(self, tmp_path):
         f = tmp_path / "storage_state.json"
         f.write_text("{}")
@@ -511,8 +523,11 @@ class TestAppendFallbackLinks:
 
     def test_does_not_add_if_enough_content(self):
         from bs4 import BeautifulSoup
-        source = _make_source(url="https://example.com")
-        contents = [{"url": f"https://example.com/a{i}"} for i in range(5)]
+        source = _make_source(url="https://example.com", metadata_={"fallback_link_max": 5})
+        contents = [
+            {"url": f"https://example.com/2026/04/{20 + i}/existing-article-{i}"}
+            for i in range(5)
+        ]
         soup = BeautifulSoup("<html><a href='/extra-page'>Extra Article Link Here</a></html>", "html.parser")
         self.collector._append_fallback_links(soup=soup, source=source, contents=contents)
         assert len(contents) == 5

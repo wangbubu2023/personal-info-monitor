@@ -272,7 +272,9 @@ async def _serialize_import_result(db: AsyncSession, result: dict[str, Any]) -> 
                 "id": str(browser_session.id),
                 "site_host": browser_session.site_host,
                 "status": browser_session.status.value if hasattr(browser_session.status, "value") else str(browser_session.status),
+                "session_mode": str(browser_session.session_mode or "persistent_profile"),
                 "storage_state_path": browser_session.storage_state_path,
+                "last_validated_at": browser_session.last_validated_at.isoformat() + "Z" if browser_session.last_validated_at else None,
             }
             if browser_session
             else None

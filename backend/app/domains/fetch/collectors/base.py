@@ -42,6 +42,7 @@ class BaseCollector(ABC):
             path_exists = Path(storage_state_path).is_file()
             return {
                 "storage_state_path": storage_state_path,
+                "session_mode": "storage_state",
                 "storage_state_exists": path_exists,
                 "auth_ready": path_exists,
                 "auth_warning": None if path_exists else "导入的 storage_state.json 不存在",

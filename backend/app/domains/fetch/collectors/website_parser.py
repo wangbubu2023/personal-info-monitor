@@ -93,7 +93,13 @@ def append_fallback_links(
     source: Source,
     contents: List[Dict[str, Any]],
 ) -> None:
-    """Add anchor-based fallback candidates when primary selectors yield few hits."""
+    """Add anchor-based fallback candidates up to the configured article-link cap.
+
+    The fallback cap applies to article-shaped candidates, not to every item a
+    broad homepage selector may have emitted. This preserves the 1.5.0 behaviour
+    where ticker/nav cards do not block article fallback, while keeping the cap
+    explicit and testable.
+    """
     seen = {str(item.get("url") or "") for item in contents}
     metadata = source.metadata_ if isinstance(source.metadata_, dict) else {}
     try:

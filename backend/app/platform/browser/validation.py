@@ -40,6 +40,58 @@ from app.utils.url import host_matches, normalize_host
 logger = get_logger(__name__)
 
 
+async def _open_validation_context(
+    p: Any,
+    *,
+    user_data_dir: str | None,
+    storage_state_path: str | None,
+    session_mode: str,
+) -> Any:
+    """Open a validation context using the BrowserSession's declared mode."""
+    mode = (session_mode or "persistent_profile").strip().lower()
+    channel = _browser_default_channel()
+    if mode == "storage_state":
+        launch_kwargs: Dict[str, Any] = {
+            "headless": True,
+            "args": recommended_launch_args([]),
+        }
+        if channel:
+            launch_kwargs["channel"] = channel
+        browser = await p.chromium.launch(**launch_kwargs)
+        context_kwargs: Dict[str, Any] = {}
+        if storage_state_path:
+            context_kwargs["storage_state"] = storage_state_path
+        context = await browser.new_context(**context_kwargs)
+        original_close = context.close
+
+        async def _close_with_browser() -> None:
+            try:
+                await original_close()
+            finally:
+                await browser.close()
+
+        context.close = _close_with_browser
+        return context
+
+    if not user_data_dir:
+        raise ValueError("persistent_profile validation requires user_data_dir")
+    launch_kwargs = {
+        "user_data_dir": user_data_dir,
+        "headless": True,
+        "args": recommended_launch_args([]),
+    }
+    if channel:
+        launch_kwargs["channel"] = channel
+    if is_patchright_active():
+        launch_kwargs["no_viewport"] = True
+    else:
+        launch_kwargs["user_agent"] = _BROWSER_USER_AGENT
+        launch_kwargs["args"] = recommended_launch_args([
+            "--disable-features=IsolateOrigins,site-per-process",
+        ])
+    return await p.chromium.launch_persistent_context(**launch_kwargs)
+
+
 def browser_validation_probe_url(site_url: str, test_url: Optional[str]) -> str:
     """Pick the URL Playwright should open when validating a browser session.
 
@@ -111,11 +163,13 @@ async def _validation_paragraph_count(page: Any) -> int:
 
 async def run_browser_validation(
     *,
-    user_data_dir: str,
+    user_data_dir: str | None,
     site_url: str,
     test_url: Optional[str],
     wait_ms: int,
     min_article_paragraphs: int,
+    storage_state_path: str | None = None,
+    session_mode: str = "persistent_profile",
 ) -> Dict[str, Any]:
     _require_playwright("Browser validation")
 
@@ -126,33 +180,23 @@ async def run_browser_validation(
     # ``auth_token`` + ``ct0`` cookies, which is exactly what the X collector
     # reads out of ``runtime_auth.credentials`` afterwards.
     site_host = normalize_host(site_url or "")
+    mode = (session_mode or "persistent_profile").strip().lower()
     if is_x_host(site_host):
         return await _run_x_cookie_validation(
             user_data_dir=user_data_dir,
             site_url=site_url,
+            storage_state_path=storage_state_path,
+            session_mode=mode,
         )
 
     target_url = browser_validation_probe_url(site_url, test_url)
     async with async_playwright() as p:
-        launch_kwargs: Dict[str, Any] = {
-            "user_data_dir": user_data_dir,
-            "headless": True,
-            "args": recommended_launch_args([]),
-        }
-        channel = _browser_default_channel()
-        if channel:
-            launch_kwargs["channel"] = channel
-        if is_patchright_active():
-            launch_kwargs["no_viewport"] = True
-        else:
-            launch_kwargs["user_agent"] = _BROWSER_USER_AGENT
-            # Vanilla playwright benefits from disabling site isolation to avoid
-            # cross-origin iframe separation on news paywalls; patchright
-            # actively discourages extra launch flags.
-            launch_kwargs["args"] = recommended_launch_args([
-                "--disable-features=IsolateOrigins,site-per-process",
-            ])
-        context = await p.chromium.launch_persistent_context(**launch_kwargs)
+        context = await _open_validation_context(
+            p,
+            user_data_dir=user_data_dir,
+            storage_state_path=storage_state_path,
+            session_mode=mode,
+        )
         try:
             page = context.pages[0] if context.pages else await context.new_page()
             if not is_patchright_active():
@@ -235,8 +279,10 @@ async def run_browser_validation(
 
 async def _run_x_cookie_validation(
     *,
-    user_data_dir: str,
+    user_data_dir: str | None,
     site_url: str,
+    storage_state_path: str | None = None,
+    session_mode: str = "persistent_profile",
 ) -> Dict[str, Any]:
     """X-specific validation: succeed iff ``auth_token`` + ``ct0`` cookies exist.
 
@@ -248,19 +294,12 @@ async def _run_x_cookie_validation(
     """
 
     async with async_playwright() as p:
-        launch_kwargs: Dict[str, Any] = {
-            "user_data_dir": user_data_dir,
-            "headless": True,
-            "args": recommended_launch_args([]),
-        }
-        channel = _browser_default_channel()
-        if channel:
-            launch_kwargs["channel"] = channel
-        if is_patchright_active():
-            launch_kwargs["no_viewport"] = True
-        else:
-            launch_kwargs["user_agent"] = _BROWSER_USER_AGENT
-        context = await p.chromium.launch_persistent_context(**launch_kwargs)
+        context = await _open_validation_context(
+            p,
+            user_data_dir=user_data_dir,
+            storage_state_path=storage_state_path,
+            session_mode=session_mode,
+        )
         try:
             page = context.pages[0] if context.pages else await context.new_page()
             if not is_patchright_active():

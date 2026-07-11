@@ -2,7 +2,7 @@
 import asyncio
 import pytest
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import ANY, AsyncMock, MagicMock, patch
 
 
 @pytest.mark.asyncio
@@ -28,8 +28,24 @@ async def test_enqueue_fetch_returns_false_when_queue_full():
 async def test_enqueue_ingest_finish_returns_true_when_capacity_available():
     from app.tasks.task_queue import BoundedTaskQueue
     q = BoundedTaskQueue(fetch_maxsize=5, process_maxsize=5)
-    result = await q.enqueue_ingest_finish("content-1")
+    with patch("app.platform.workers.postprocess_jobs.ensure_postprocess_job") as ensure:
+        result = await q.enqueue_ingest_finish("content-1")
     assert result is True
+    ensure.assert_called_once_with("content-1", None)
+
+
+@pytest.mark.asyncio
+async def test_enqueue_ingest_finish_persists_even_when_process_queue_full():
+    from app.tasks.task_queue import BoundedTaskQueue
+
+    q = BoundedTaskQueue(fetch_maxsize=1, process_maxsize=1)
+    q._process_queue.put_nowait(("content-x", None))
+
+    with patch("app.platform.workers.postprocess_jobs.ensure_postprocess_job") as ensure:
+        result = await q.enqueue_ingest_finish("content-overflow", job_id="fetch-1")
+
+    assert result is False
+    ensure.assert_called_once_with("content-overflow", "fetch-1")
 
 
 @pytest.mark.asyncio
@@ -38,10 +54,12 @@ async def test_enqueue_listing_translation_uses_process_queue_job_id():
 
     q = BoundedTaskQueue(fetch_maxsize=5, process_maxsize=5)
 
-    result = await q.enqueue_listing_translation("content-1")
+    with patch("app.platform.workers.postprocess_jobs.ensure_postprocess_job") as ensure:
+        result = await q.enqueue_listing_translation("content-1")
 
     assert result is True
     assert q._process_queue.get_nowait() == ("content-1", LISTING_TRANSLATION_JOB_ID)
+    ensure.assert_called_once_with("content-1", LISTING_TRANSLATION_JOB_ID)
 
 
 @pytest.mark.asyncio
@@ -51,6 +69,27 @@ async def test_stop_workers_is_idempotent():
     await q.start_workers()
     await q.stop_workers()
     await q.stop_workers()  # 第二次调用不应报错
+
+
+@pytest.mark.asyncio
+async def test_process_worker_marks_success_and_failure():
+    from app.tasks.task_queue import BoundedTaskQueue
+
+    q = BoundedTaskQueue(fetch_maxsize=5, process_maxsize=5)
+    handler = AsyncMock(side_effect=[None, RuntimeError("boom")])
+
+    with patch("app.platform.workers.postprocess_jobs.claim_postprocess_job", return_value=True) as claim:
+        with patch("app.platform.workers.postprocess_jobs.mark_postprocess_job_succeeded") as succeeded:
+            with patch("app.platform.workers.postprocess_jobs.mark_postprocess_job_failed", return_value="pending") as failed:
+                await q.start_workers(fetch_workers=0, process_workers=1, process_handler=handler)
+                q._process_queue.put_nowait(("ok", None))
+                q._process_queue.put_nowait(("bad", None))
+                await asyncio.wait_for(q._process_queue.join(), timeout=2)
+                await q.stop_workers()
+
+    assert claim.call_count == 2
+    succeeded.assert_called_once_with("ok", None)
+    failed.assert_called_once_with("bad", None, ANY)
 
 
 @pytest.mark.asyncio

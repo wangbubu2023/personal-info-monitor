@@ -40,12 +40,21 @@ def get_queue_status() -> Dict[str, Any]:
         logger.warning(f"Failed to get sources status: {e}")
         sources_status = []
 
+    try:
+        from app.platform.workers.postprocess_jobs import postprocess_completion_rate
+
+        postprocess = postprocess_completion_rate()
+    except Exception as e:
+        logger.warning("Failed to get postprocess job metrics: %s", e)
+        postprocess = {"total": 0, "succeeded": 0, "failed": 0, "completion_rate": 1.0}
+
     return {
         "running_fetches": status["running_fetches"],
         "running_processes": status["running_processes"],
         "fetch_concurrency": settings.fetch_concurrency,
         "scheduler_running": bool(getattr(scheduler, "running", False)),
         "scheduled_jobs": len(scheduler.get_jobs()),
+        "postprocess_jobs": postprocess,
         "sources_status": sources_status,
     }
 

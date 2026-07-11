@@ -40,6 +40,7 @@ _MODULE_NAMES: tuple[str, ...] = (
     ".contents_reader",
     ".dashboard",
     ".digest",
+    ".events",
     ".keywords",
     ".score_lab",
     ".sources",

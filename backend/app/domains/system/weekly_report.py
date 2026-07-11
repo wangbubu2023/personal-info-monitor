@@ -33,6 +33,7 @@ from sqlalchemy import func
 
 from app.platform.notifications.smtp import send_email
 from app.utils.datetime import utcnow_naive
+from app.utils.datetime import today_in_user_timezone
 from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -341,7 +342,7 @@ async def send_weekly_health_report_email() -> bool:
         logger.warning("Weekly health report: no recipients configured")
         return False
 
-    subject = f"PIM 每周体检 ({date.today().isoformat()})"
+    subject = f"PIM 每周体检 ({today_in_user_timezone().isoformat()})"
     html_body = _render_weekly_report_html(report)
 
     sent_any = False

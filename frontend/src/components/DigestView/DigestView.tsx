@@ -107,16 +107,23 @@ const DigestView: React.FC = () => {
   const [selectedDate, setSelectedDate] = useState(dayjs());
   const [selectedHour, setSelectedHour] = useState<number | null>(null);
 
+  const selectedDateString = selectedDate.format('YYYY-MM-DD');
+
   const { data: hourlyDigests, isLoading: listLoading } = useQuery<HourlyDigestSummary[]>({
-    queryKey: ['hourly-digests', selectedDate.format('YYYY-MM-DD')],
-    queryFn: () => digestApi.getHourlyDigests(selectedDate.format('YYYY-MM-DD')),
+    queryKey: ['hourly-digests', selectedDateString],
+    queryFn: () => digestApi.getHourlyDigests(selectedDateString),
+  });
+
+  const { data: todayHighlights, isLoading: highlightsLoading } = useQuery({
+    queryKey: ['today-highlights', selectedDateString],
+    queryFn: () => digestApi.getTodayHighlights(selectedDateString),
   });
 
   const { data: digestDetail, isLoading: detailLoading } = useQuery<HourlyDigestDetail | null>({
-    queryKey: ['hourly-digest-detail', selectedDate.format('YYYY-MM-DD'), selectedHour],
+    queryKey: ['hourly-digest-detail', selectedDateString, selectedHour],
     queryFn: () => {
       if (selectedHour === null) return Promise.resolve(null);
-      return digestApi.getHourlyDigestDetail(selectedHour, selectedDate.format('YYYY-MM-DD'));
+      return digestApi.getHourlyDigestDetail(selectedHour, selectedDateString);
     },
     enabled: selectedHour !== null,
   });
@@ -175,7 +182,60 @@ const DigestView: React.FC = () => {
                   <Spin indicator={<Zap className="animate-pulse text-[#49A8C9]" size={32} />} />
                 </div>
               ) : hourlyDigests && hourlyDigests.length > 0 ? (
-                hourlyDigests.map((digest) => (
+                <>
+                  {highlightsLoading ? null : todayHighlights?.items?.length ? (
+                    <section
+                      className="mb-5 rounded-3xl border border-[#8C866A]/18 bg-white/90 p-5 shadow-[0_18px_50px_-22px_rgba(41,56,89,0.22)] sm:p-6"
+                      data-testid="today-highlights"
+                    >
+                      <div className="mb-4 flex items-center justify-between gap-3">
+                        <div>
+                          <h2 className="flex items-center gap-2 text-[18px] font-semibold tracking-tight text-[#293859]">
+                            <Layers3 size={18} className="text-[#8C866A]" strokeWidth={1.75} />
+                            今日重点
+                          </h2>
+                          <p className="mt-1 text-[12px] text-[#5f6f82]">
+                            事件级卡片只在简报页展示；资讯页卡继续保留完整 timeline。
+                          </p>
+                        </div>
+                        <span className="rounded-full border border-[#49A8C9]/18 bg-[#49A8C9]/8 px-2.5 py-1 text-[12px] font-semibold text-[#3a8da9]">
+                          {todayHighlights.items.length} 个事件
+                        </span>
+                      </div>
+                      <div className="grid gap-3 lg:grid-cols-3">
+                        {todayHighlights.items.map((eventItem) => (
+                          <Link
+                            key={eventItem.event_id}
+                            to={`/events/${eventItem.event_id}`}
+                            className="group rounded-2xl border border-[rgba(88,100,118,0.12)] bg-[#fbfdff] p-4 transition-all hover:border-[#49A8C9]/28 hover:bg-white hover:shadow-[0_12px_32px_-22px_rgba(41,56,89,0.25)]"
+                          >
+                            <div className="mb-2 flex items-center justify-between gap-2 text-[11px] font-semibold uppercase tracking-wide text-[#8C866A]">
+                              <span>{eventItem.section === 'brewing' ? '酝酿中' : '必看'}</span>
+                              {typeof eventItem.importance_score === 'number' ? <span>{Math.round(eventItem.importance_score)}分</span> : null}
+                            </div>
+                            <h3 className="line-clamp-2 text-[15px] font-semibold leading-snug text-[#293859] group-hover:text-[#49A8C9]">
+                              {eventItem.title}
+                            </h3>
+                            {eventItem.why_matters ? (
+                              <p className="mt-2 line-clamp-2 text-[12px] leading-relaxed text-[#5f6f82]">
+                                {eventItem.why_matters}
+                              </p>
+                            ) : null}
+                            {eventItem.what_changed ? (
+                              <p className="mt-2 line-clamp-2 text-[12px] leading-relaxed text-[#7a7358]">
+                                <span className="font-semibold">变化</span> {eventItem.what_changed}
+                              </p>
+                            ) : null}
+                            <div className="mt-3 flex flex-wrap items-center gap-2 text-[11px] text-[#5f6f82]">
+                              <span>{eventItem.independent_source_count || eventItem.source_names.length} 个独立来源</span>
+                              {eventItem.updated_at ? <span>{formatLocalDateTime(eventItem.updated_at)}</span> : null}
+                            </div>
+                          </Link>
+                        ))}
+                      </div>
+                    </section>
+                  ) : null}
+                  {hourlyDigests.map((digest) => (
                   <button
                     key={digest.hour}
                     type="button"
@@ -208,7 +268,8 @@ const DigestView: React.FC = () => {
                       size={20}
                     />
                   </button>
-                ))
+                  ))}
+                </>
               ) : (
                 <Empty
                   description={<span className="text-[#586476]">该日暂无简报。</span>}

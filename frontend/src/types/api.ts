@@ -330,6 +330,114 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/auth-assistant/auth-bundles/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Import Auth Bundle From Assistant */
+        post: operations["import_auth_bundle_from_assistant_api_auth_assistant_auth_bundles_import_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth-assistant/auth-exports/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Import Auth Export Zip From Assistant */
+        post: operations["import_auth_export_zip_from_assistant_api_auth_assistant_auth_exports_import_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth-assistant/devices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Devices */
+        get: operations["list_devices_api_auth_assistant_devices_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth-assistant/devices/{device_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Revoke Device */
+        delete: operations["revoke_device_api_auth_assistant_devices__device_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth-assistant/pair": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Claim Pairing Token
+         * @description Exchange a short one-time pairing token for a device token.
+         */
+        post: operations["claim_pairing_token_api_auth_assistant_pair_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth-assistant/pairing-tokens": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Pairing Token
+         * @description Create a one-time pairing token from authenticated PIM Web.
+         */
+        post: operations["create_pairing_token_api_auth_assistant_pairing_tokens_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/configs/ai-models/available": {
         parameters: {
             query?: never;
@@ -673,6 +781,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/contents/events/export-md": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export Event Markdown
+         * @description Download an event-like duplicate group as attribution-first Markdown.
+         */
+        get: operations["export_event_markdown_api_contents_events_export_md_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/contents/export-md": {
         parameters: {
             query?: never;
@@ -719,6 +847,26 @@ export interface paths {
          * @description Update content (mark as read, favorite, archive).
          */
         patch: operations["update_content_api_contents__content_id__patch"];
+        trace?: never;
+    };
+    "/api/contents/{content_id}/export-md": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export Content Markdown
+         * @description Download a single content item as attribution-first Markdown.
+         */
+        get: operations["export_content_markdown_api_contents__content_id__export_md_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/contents/{content_id}/favorite": {
@@ -896,6 +1044,63 @@ export interface paths {
         get: operations["get_digest_stats_api_digest_stats_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/events/today-highlights": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Today Highlights
+         * @description Return 3-8 event cards for the PIM Digest page.
+         *
+         *     Empty ``items`` means the section should be hidden. The Timeline/资讯 page
+         *     intentionally keeps the full content timeline and does not consume this API.
+         */
+        get: operations["get_today_highlights_api_events_today_highlights_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/events/{event_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Event Detail */
+        get: operations["get_event_detail_api_events__event_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/events/{event_id}/feedback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Event Feedback */
+        post: operations["create_event_feedback_api_events__event_id__feedback_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1386,6 +1591,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/system/support-bundle": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download Support Bundle
+         * @description Generate a redacted diagnostic bundle for manual sharing.
+         */
+        get: operations["download_support_bundle_api_system_support_bundle_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/system/update-check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Update Check
+         * @description Check GitHub releases and report whether a newer PIM version exists.
+         */
+        get: operations["get_update_check_api_system_update_check_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/system/upgrade": {
         parameters: {
             query?: never;
@@ -1806,6 +2051,25 @@ export interface components {
             /** Ok */
             ok: boolean;
         };
+        /** AuthAssistantBundleImportRequest */
+        AuthAssistantBundleImportRequest: {
+            /**
+             * Bind Matching Sources
+             * @default true
+             */
+            bind_matching_sources: boolean;
+            /** Bundle */
+            bundle: {
+                [key: string]: unknown;
+            };
+            /**
+             * Create Browser Session
+             * @default true
+             */
+            create_browser_session: boolean;
+            /** Name */
+            name?: string | null;
+        };
         /**
          * AuthBundleImportRequest
          * @description Schema for importing a local Auth Bundle into server-side credentials.
@@ -1919,6 +2183,11 @@ export interface components {
             /** Username */
             username?: string | null;
         };
+        /** Body_import_auth_export_zip_from_assistant_api_auth_assistant_auth_exports_import_post */
+        Body_import_auth_export_zip_from_assistant_api_auth_assistant_auth_exports_import_post: {
+            /** File */
+            file: string;
+        };
         /**
          * BrowserSessionCreate
          * @description Create/update a persistent browser session profile.
@@ -2028,6 +2297,8 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+            /** Duplicate Of */
+            duplicate_of?: string | null;
             /** External Id */
             external_id?: string | null;
             /**
@@ -2047,6 +2318,8 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /** Is Duplicate */
+            is_duplicate?: boolean | null;
             /**
              * Is User Edited
              * @default false
@@ -2231,6 +2504,108 @@ export interface components {
          * @enum {string}
          */
         Domain: "宏观经济" | "金融市场" | "科技" | "汽车" | "房地产" | "能源" | "消费" | "医疗健康" | "政策监管" | "国际关系" | "其他";
+        /** EventDetailResponse */
+        EventDetailResponse: {
+            /** Current Conclusion */
+            current_conclusion: string;
+            /** Event Id */
+            event_id: string;
+            /** Event Key */
+            event_key: string;
+            /** Extra */
+            extra?: {
+                [key: string]: unknown;
+            };
+            /** Feedback */
+            feedback?: components["schemas"]["EventFeedbackItem"][];
+            /**
+             * Independent Source Count
+             * @default 0
+             */
+            independent_source_count: number;
+            /** Independent Verification */
+            independent_verification?: components["schemas"]["EventEvidenceGroup"][];
+            /** Primary Reports */
+            primary_reports?: components["schemas"]["EventTimelineItem"][];
+            /** Related Discussions */
+            related_discussions?: components["schemas"]["EventEvidenceGroup"][];
+            /** Snapshots */
+            snapshots?: components["schemas"]["EventSnapshotItem"][];
+            /** Source Names */
+            source_names?: string[];
+            /** Timeline */
+            timeline?: components["schemas"]["EventTimelineItem"][];
+            /** Title */
+            title: string;
+            /** Updated At */
+            updated_at?: string | null;
+            /** Why Matters */
+            why_matters?: string | null;
+        };
+        /** EventEvidenceGroup */
+        EventEvidenceGroup: {
+            /** Content Ids */
+            content_ids?: string[];
+            /** Key */
+            key: string;
+            /** Title */
+            title: string;
+        };
+        /** EventFeedbackCreate */
+        EventFeedbackCreate: {
+            /** Content Id */
+            content_id?: string | null;
+            /** Note */
+            note?: string | null;
+            /** Type */
+            type: string;
+        };
+        /** EventFeedbackItem */
+        EventFeedbackItem: {
+            /** Created At */
+            created_at?: string | null;
+            /** Note */
+            note?: string | null;
+            /** Type */
+            type: string;
+        };
+        /** EventSnapshotItem */
+        EventSnapshotItem: {
+            /** Created At */
+            created_at?: string | null;
+            /** Summary */
+            summary?: string | null;
+            /** Title */
+            title: string;
+            /** Version */
+            version: number;
+            /** What Changed */
+            what_changed?: string | null;
+            /** Why Matters */
+            why_matters?: string | null;
+        };
+        /** EventTimelineItem */
+        EventTimelineItem: {
+            /** Content Id */
+            content_id: string;
+            /** Fetched At */
+            fetched_at?: string | null;
+            /** Publish Time */
+            publish_time?: string | null;
+            /**
+             * Role
+             * @default supporting
+             */
+            role: string;
+            /** Source Name */
+            source_name: string;
+            /** Summary */
+            summary?: string | null;
+            /** Title */
+            title: string;
+            /** Url */
+            url: string;
+        };
         /**
          * FavoriteBody
          * @description Idempotent favorite update (replaces toggle semantics).
@@ -2285,23 +2660,56 @@ export interface components {
          * @description Structured event card stored with an hourly digest.
          */
         HourlyDigestEventItem: {
+            /** Confidence Score */
+            confidence_score?: number | null;
             /**
              * Content Id
              * Format: uuid
              */
             content_id: string;
+            /** Content Ids */
+            content_ids?: string[];
+            /** Corroboration Tier */
+            corroboration_tier?: string | null;
             /** Duplicate Group Id */
             duplicate_group_id?: string | null;
+            /** Event Id */
+            event_id?: string | null;
+            /** Event Key */
+            event_key?: string | null;
             /** Fetched At */
             fetched_at?: string | null;
+            /** Importance Score */
+            importance_score?: number | null;
+            /** Incremental Score */
+            incremental_score?: number | null;
+            /** Independent Source Count */
+            independent_source_count?: number | null;
+            /**
+             * Is Repeat Event
+             * @default false
+             */
+            is_repeat_event: boolean;
             /** Lane */
             lane?: string | null;
+            /** Local Reader Path */
+            local_reader_path?: string | null;
+            /** Missing Confirmation */
+            missing_confirmation?: string | null;
+            /** New Signal */
+            new_signal?: string | null;
             /** Publish Time */
             publish_time?: string | null;
             /** Score */
             score?: number | null;
+            /** Section */
+            section?: string | null;
+            /** Source Keys */
+            source_keys?: string[];
             /** Source Name */
             source_name: string;
+            /** Source Names */
+            source_names?: string[];
             /** Source Url */
             source_url?: string | null;
             /** Summary */
@@ -2310,6 +2718,10 @@ export interface components {
             title: string;
             /** Url */
             url: string;
+            /** What Happened */
+            what_happened?: string | null;
+            /** Why Matters */
+            why_matters?: string | null;
         };
         /**
          * HourlyDigestSummary
@@ -2629,6 +3041,54 @@ export interface components {
             sentiment: components["schemas"]["Sentiment"];
             /** Who */
             who: components["schemas"]["WhoEntry"][];
+        };
+        /** PairingClaimRequest */
+        PairingClaimRequest: {
+            /** App Version */
+            app_version?: string | null;
+            /**
+             * Device Name
+             * @default PIM Auth Assistant
+             */
+            device_name: string;
+            /** Pairing Token */
+            pairing_token: string;
+        };
+        /** PairingClaimResponse */
+        PairingClaimResponse: {
+            /** Capabilities */
+            capabilities: {
+                [key: string]: boolean;
+            };
+            /** Device */
+            device: {
+                [key: string]: unknown;
+            };
+            /** Device Token */
+            device_token: string;
+            /** Server */
+            server: {
+                [key: string]: unknown;
+            };
+        };
+        /** PairingTokenCreateRequest */
+        PairingTokenCreateRequest: {
+            /**
+             * Ttl Minutes
+             * @default 10
+             */
+            ttl_minutes: number;
+        };
+        /** PairingTokenResponse */
+        PairingTokenResponse: {
+            /** Expires At */
+            expires_at: string;
+            /** Pairing Token */
+            pairing_token: string;
+            /** Pairing Url */
+            pairing_url: string;
+            /** Token Hint */
+            token_hint: string;
         };
         /**
          * PeriodType
@@ -2990,6 +3450,45 @@ export interface components {
          * @enum {string}
          */
         SubjectType: "企业" | "政府机构" | "人物" | "机构" | "国家/地区" | "产品/品牌";
+        /** TodayHighlightEvent */
+        TodayHighlightEvent: {
+            /** Confidence Score */
+            confidence_score?: number | null;
+            /** Event Id */
+            event_id: string;
+            /** Event Key */
+            event_key: string;
+            /** Importance Score */
+            importance_score?: number | null;
+            /**
+             * Independent Source Count
+             * @default 0
+             */
+            independent_source_count: number;
+            /** Primary Content Id */
+            primary_content_id?: string | null;
+            /** Section */
+            section?: string | null;
+            /** Source Names */
+            source_names?: string[];
+            /** Summary */
+            summary?: string | null;
+            /** Title */
+            title: string;
+            /** Updated At */
+            updated_at?: string | null;
+            /** What Changed */
+            what_changed?: string | null;
+            /** Why Matters */
+            why_matters?: string | null;
+        };
+        /** TodayHighlightsResponse */
+        TodayHighlightsResponse: {
+            /** Date */
+            date: string;
+            /** Items */
+            items?: components["schemas"]["TodayHighlightEvent"][];
+        };
         /**
          * Unit
          * @enum {string}
@@ -3730,6 +4229,193 @@ export interface operations {
             };
         };
     };
+    import_auth_bundle_from_assistant_api_auth_assistant_auth_bundles_import_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AuthAssistantBundleImportRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    import_auth_export_zip_from_assistant_api_auth_assistant_auth_exports_import_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_import_auth_export_zip_from_assistant_api_auth_assistant_auth_exports_import_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_devices_api_auth_assistant_devices_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    revoke_device_api_auth_assistant_devices__device_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                device_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    claim_pairing_token_api_auth_assistant_pair_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PairingClaimRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PairingClaimResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_pairing_token_api_auth_assistant_pairing_tokens_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PairingTokenCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PairingTokenResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_available_models_api_configs_ai_models_available_get: {
         parameters: {
             query?: {
@@ -4449,6 +5135,35 @@ export interface operations {
             };
         };
     };
+    export_event_markdown_api_contents_events_export_md_get: {
+        parameters: {
+            query: {
+                event_key: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     manual_export_markdown_api_contents_export_md_post: {
         parameters: {
             query?: never;
@@ -4554,6 +5269,35 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ContentResponse"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_content_markdown_api_contents__content_id__export_md_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                content_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -4836,6 +5580,104 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_today_highlights_api_events_today_highlights_get: {
+        parameters: {
+            query?: {
+                date?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TodayHighlightsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_event_detail_api_events__event_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventDetailResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_event_feedback_api_events__event_id__feedback_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EventFeedbackCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventFeedbackItem"];
                 };
             };
             /** @description Validation Error */
@@ -5751,6 +6593,59 @@ export interface operations {
         parameters: {
             query?: {
                 include_disabled?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    download_support_bundle_api_system_support_bundle_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    get_update_check_api_system_update_check_get: {
+        parameters: {
+            query?: {
+                include_prerelease?: boolean;
             };
             header?: never;
             path?: never;

@@ -19,6 +19,8 @@ const Dashboard: React.FC = () => {
     setSelectedRange,
     sortMode,
     setSortMode,
+    viewMode,
+    setViewMode,
     activeTab,
     setActiveTab,
     stats,
@@ -66,6 +68,8 @@ const Dashboard: React.FC = () => {
             onRangeChange={setSelectedRange}
             sortMode={sortMode}
             onSortModeChange={setSortMode}
+            viewMode={viewMode}
+            onViewModeChange={setViewMode}
             onFetchAll={fetchAll}
             isFetching={isFetchingAll}
           />

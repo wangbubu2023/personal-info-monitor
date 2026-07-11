@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_async_db
 from app.features import PlaywrightDisabledError
 from app.models.auth_config import AuthConfig
-from app.models.browser_session import BrowserSession, BrowserSessionStatus
+from app.models.browser_session import BrowserSession, BrowserSessionMode, BrowserSessionStatus
 from app.schemas.config import (
     BrowserSessionCreate,
     BrowserSessionOpenLoginRequest,
@@ -107,6 +107,7 @@ async def create_browser_session(
             profile_name=profile_name,
             user_data_dir=user_data_dir,
             storage_state_path=storage_state_path,
+            session_mode=BrowserSessionMode.PERSISTENT_PROFILE.value,
             auth_config_id=auth_config_id,
             status=BrowserSessionStatus.NEEDS_LOGIN,
         )
@@ -312,6 +313,8 @@ async def validate_browser_session(
             test_url=req.test_url,
             wait_ms=req.wait_ms,
             min_article_paragraphs=req.min_article_paragraphs,
+            storage_state_path=session.storage_state_path,
+            session_mode=str(session.session_mode or "persistent_profile"),
         )
     except PlaywrightDisabledError as exc:
         logger.warning("Browser validation rejected: %s", exc)
@@ -330,7 +333,8 @@ async def validate_browser_session(
     session.status = validation["status"]
     session.last_error = None if session.status == BrowserSessionStatus.ACTIVE else validation.get("message")
     session.last_validated_at = utcnow_naive()
-    session.storage_state_path = str(Path(session.user_data_dir) / "storage_state.json")
+    if str(session.session_mode or "") == BrowserSessionMode.PERSISTENT_PROFILE.value and session.user_data_dir:
+        session.storage_state_path = str(Path(session.user_data_dir) / "storage_state.json")
     meta = dict(session.metadata_ or {})
     meta["last_validation"] = {
         "at": utcnow_naive().isoformat() + "Z",

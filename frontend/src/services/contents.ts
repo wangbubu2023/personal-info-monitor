@@ -88,6 +88,18 @@ export type ReaderTranslateStreamEvent =
   | ReaderTranslateStreamChunk
   | ReaderTranslateStreamDone
 
+function downloadMarkdownBlob(data: BlobPart, filenameHint: string): void {
+  const blob = new Blob([data], { type: 'text/markdown;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = `${filenameHint.replace(/[\\/:*?"<>|]+/g, '').slice(0, 80) || 'content'}.md`
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  URL.revokeObjectURL(url)
+}
+
 function buildStreamURL(path: string): string {
   const base = (getApiBaseURL() || '/api').replace(/\/+$/, '')
   if (base.startsWith('http://') || base.startsWith('https://')) {
@@ -196,6 +208,21 @@ export const contentsApi = {
   setFavorite: async (id: string, favorited: boolean): Promise<{ favorited: boolean }> => {
     const response = await api.patch(`/contents/${id}/favorite`, { favorited })
     return response.data
+  },
+
+  // Download a single content item as Markdown.
+  downloadMarkdown: async (id: string, filenameHint?: string): Promise<void> => {
+    const response = await api.get(`/contents/${id}/export-md`, { responseType: 'blob' })
+    downloadMarkdownBlob(response.data, filenameHint || id)
+  },
+
+  // Download an event-like duplicate group as Markdown.
+  downloadEventMarkdown: async (eventKey: string, filenameHint?: string): Promise<void> => {
+    const response = await api.get('/contents/events/export-md', {
+      params: { event_key: eventKey },
+      responseType: 'blob',
+    })
+    downloadMarkdownBlob(response.data, filenameHint || eventKey)
   },
 
   // Delete content

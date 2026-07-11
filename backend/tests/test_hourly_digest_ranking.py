@@ -125,7 +125,7 @@ def test_ranking_clusters_high_score_entries_first_for_stable_topic():
     assert clusters[0]["items"][0]["source_name"] == "Primary"
 
 
-def test_ranking_forces_duplicate_group_into_same_cluster():
+def test_ranking_does_not_force_duplicate_group_into_event_cluster():
     service = RankingService(similarity_threshold=0.9)
     entries = [
         {
@@ -146,8 +146,38 @@ def test_ranking_forces_duplicate_group_into_same_cluster():
 
     clusters = service.cluster_and_rank(entries)
 
+    assert len(clusters) == 2
+    assert all(cluster["event_key"] != "policy-framework" for cluster in clusters)
+
+
+def test_ranking_uses_explicit_event_key_and_outputs_explanation():
+    service = RankingService(similarity_threshold=0.9)
+    entries = [
+        {
+            "title": "Official launches model version 4",
+            "summary": "Official release notes.",
+            "source_name": "Official",
+            "source_url": "https://official.example.com",
+            "metadata": {"article_score": 88, "event_key": "launch-v4", "duplicate_group_id": "rewrite-a"},
+        },
+        {
+            "title": "Analyst covers the same launch",
+            "summary": "Analyst interpretation.",
+            "source_name": "Analyst",
+            "source_url": "https://analyst.example.com",
+            "metadata": {"article_score": 72, "event_key": "launch-v4", "duplicate_group_id": "rewrite-b"},
+        },
+    ]
+
+    clusters = service.cluster_and_rank(entries)
+
     assert len(clusters) == 1
-    assert len(clusters[0]["items"]) == 2
+    assert clusters[0]["event_key"] == "launch-v4"
+    assert clusters[0]["component_scores"]["event_score"] == clusters[0]["event_score"]
+    assert clusters[0]["threshold_band"] == "explicit_or_single"
+    assert clusters[0]["similarity_thresholds"]["strong"] >= clusters[0]["similarity_thresholds"]["default"]
+    assert "explicit_event_key" in clusters[0]["explain_reasons"]
+    assert clusters[0]["event_signature"]["duplicate_group_ids"] == ["rewrite-a", "rewrite-b"]
 
 
 def test_tokenize_includes_chinese_trigrams():
@@ -169,6 +199,16 @@ def test_tokenize_trigram_improves_similarity():
     b = _tokenize("人民银行维持基准利率不变")
     score = _jaccard(a, b)
     assert score > 0.15  # trigrams give overlap on "人民银" and "民银行"
+
+
+def test_tokenize_adds_multilingual_event_anchors():
+    from app.domains.score.ranking import _tokenize
+
+    zh = _tokenize("模型公司发布安全报告")
+    en = _tokenize("model company releases safety report")
+
+    assert {"sem:model", "sem:company", "sem:safety", "sem:report"} <= zh
+    assert {"sem:model", "sem:company", "sem:safety", "sem:report"} <= en
 
 
 def test_hourly_enrich_uses_score_domain_ranking_module():

@@ -16,6 +16,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app.models.system_setting import SystemSetting
 from app.platform.config.settings import get_settings
+from app.utils.datetime import today_in_user_timezone
 from app.platform.persistence.database import SessionLocal
 from app.utils.logger import get_logger
 
@@ -61,7 +62,7 @@ def current_budget_caps() -> AiBudgetCaps:
 
 
 def _usage_periods(today: date | None = None) -> tuple[str, str]:
-    day = today or date.today()
+    day = today or today_in_user_timezone()
     day_key = day.isoformat()
     month_key = f"{day.year:04d}-{day.month:02d}"
     return day_key, month_key

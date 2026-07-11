@@ -45,10 +45,6 @@ async def _finish_content_async(content_id: str) -> None:
     from app.domains.ingest.quality_metadata import merge_content_quality_metadata
     from app.domains.ingest.summary_clean import apply_summary_cleaning
     from app.domains.score.content_columns import sync_content_score_columns
-    from app.domains.score.personalization import (
-        apply_personal_preference_adjustment,
-        build_personal_preference_profile,
-    )
     from app.domains.score.scoring import merge_baseline_scoring_metadata
     from app.models import Content, Keyword
     from app.domains.ingest.content_processor import ContentProcessor
@@ -130,12 +126,7 @@ async def _finish_content_async(content_id: str) -> None:
                 keyword_objects=keyword_rows if KEYWORD_MONITORING_ENABLED else None,
                 keyword_matches=content.keyword_matches if KEYWORD_MONITORING_ENABLED else None,
             )
-            preference_profile = build_personal_preference_profile(db)
-            meta = apply_personal_preference_adjustment(
-                meta,
-                preference_profile,
-                content=content,
-            )
+            meta.pop("personalization", None)
         else:
             if accept_reason == "suspicious_flat_text":
                 rejected_body_len = len((content.full_content or "").strip())
@@ -187,8 +178,10 @@ async def _finish_content_async(content_id: str) -> None:
         except Exception as exc:  # noqa: BLE001
             logger.debug("listing translation schedule failed for %s: %s", content_id, exc)
 
-    except Exception as exc:
-        logger.error(f"finish_content failed for {content_id}: {exc}")
+    except Exception:
+        db.rollback()
+        logger.exception("finish_content failed for %s", content_id)
+        raise
     finally:
         db.close()
 

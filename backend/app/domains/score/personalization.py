@@ -1,4 +1,9 @@
-"""Single-user preference adjustments for local PIM scoring."""
+"""Observation-only helpers for local user feedback.
+
+Natural reading interactions are retained for auditing and future explicit
+UserRule suggestions. They must not directly mutate general article scores or
+silently change the full timeline.
+"""
 
 from __future__ import annotations
 
@@ -157,6 +162,44 @@ def _selection_status(final_score: float, score_confidence: float, config: Scori
     return "rejected"
 
 
+def describe_personal_preference_observations(
+    profile: PersonalPreferenceProfile | None,
+    *,
+    content: Any | None = None,
+    metadata: Mapping[str, Any] | None = None,
+) -> dict[str, Any] | None:
+    """Summarize matching feedback observations without changing score metadata."""
+
+    if not profile or not profile.has_signals:
+        return None
+
+    meta = dict(metadata or {})
+    lane = _key(meta.get("lane") or getattr(content, "lane", None))
+    content_type = _key(getattr(content, "content_type", None) or meta.get("content_type"))
+    source_id = _key(getattr(content, "source_id", None))
+    if not source_id:
+        source = getattr(content, "source", None)
+        source_id = _key(getattr(source, "id", None))
+
+    observations: list[dict[str, Any]] = []
+    for _amount, detail in (
+        _scope_adjustment(profile.source, source_id, cap=MAX_SOURCE_ADJUSTMENT, scope="source"),
+        _scope_adjustment(profile.lane, lane, cap=MAX_LANE_ADJUSTMENT, scope="lane"),
+        _scope_adjustment(profile.content_type, content_type, cap=MAX_TYPE_ADJUSTMENT, scope="content_type"),
+    ):
+        if detail:
+            observations.append(detail)
+
+    if not observations:
+        return None
+    return {
+        "version": PERSONALIZATION_VERSION,
+        "signals_considered": profile.total_signals,
+        "observations": observations,
+        "effect": "observation_only",
+    }
+
+
 def apply_personal_preference_adjustment(
     metadata: Mapping[str, Any] | None,
     profile: PersonalPreferenceProfile | None,
@@ -164,61 +207,20 @@ def apply_personal_preference_adjustment(
     content: Any | None = None,
     config: ScoringConfig | None = None,
 ) -> dict[str, Any]:
-    """Apply local feedback-derived adjustment to ``final_score`` only."""
+    """Compatibility no-op: feedback observations do not alter article scores.
 
+    PIM is a user-controlled monitor, not a recommendation engine. Natural
+    ``open/star/hide`` feedback is stored as an observation ledger and may later
+    support explicit UserRule suggestions, but it must not rewrite ``final_score``
+    or ``selection_status`` behind the user's back.
+    """
+
+    _ = config
     merged = dict(metadata or {})
-    if not profile or not profile.has_signals:
-        return merged
-
-    base_score = clamp_float(merged.get("article_score", merged.get("final_score")), default=0.0, min_value=0.0, max_value=100.0)
-    lane = _key(merged.get("lane") or getattr(content, "lane", None))
-    content_type = _key(getattr(content, "content_type", None) or merged.get("content_type"))
-    source_id = _key(getattr(content, "source_id", None))
-    if not source_id:
-        source = getattr(content, "source", None)
-        source_id = _key(getattr(source, "id", None))
-
-    contributions: list[dict[str, Any]] = []
-    adjustment = 0.0
-    for amount, detail in (
-        _scope_adjustment(profile.source, source_id, cap=MAX_SOURCE_ADJUSTMENT, scope="source"),
-        _scope_adjustment(profile.lane, lane, cap=MAX_LANE_ADJUSTMENT, scope="lane"),
-        _scope_adjustment(profile.content_type, content_type, cap=MAX_TYPE_ADJUSTMENT, scope="content_type"),
-    ):
-        adjustment += amount
-        if detail and amount != 0:
-            contributions.append(detail)
-
-    adjustment = round(clamp_float(adjustment, default=0.0, min_value=-MAX_TOTAL_ADJUSTMENT, max_value=MAX_TOTAL_ADJUSTMENT), 2)
-    if adjustment == 0:
-        return merged
-
-    config = config or ScoringConfig()
-    final_score = round(clamp_float(base_score + adjustment, default=base_score, min_value=0.0, max_value=100.0), 2)
-    score_confidence = clamp_float(merged.get("score_confidence"), default=0.0, min_value=0.0, max_value=1.0)
-
-    merged["final_score"] = final_score
-    merged["selection_status"] = _selection_status(final_score, score_confidence, config)
-    merged["confidence_limited_by_fulltext"] = (
-        final_score >= config.selected_threshold
-        and score_confidence < config.minimum_selected_confidence
-    )
-    merged["personalization"] = {
-        "version": PERSONALIZATION_VERSION,
-        "base_score": base_score,
-        "adjustment": adjustment,
-        "final_score": final_score,
-        "signals_considered": profile.total_signals,
-        "contributions": contributions,
-    }
-
-    reason = merged.get("recommendation_reason")
-    if isinstance(reason, dict):
-        reason = dict(reason)
-        reason["personalization_adjustment"] = adjustment
-        reason["personalization"] = f"个人反馈修正 {adjustment:+g}，最终分 {final_score:g}。"
-        merged["recommendation_reason"] = reason
-
+    merged.pop("personalization", None)
+    observation = describe_personal_preference_observations(profile, content=content, metadata=merged)
+    if observation:
+        merged["personal_observation"] = observation
     return merged
 
 
@@ -228,4 +230,5 @@ __all__ = [
     "ScopeSignal",
     "apply_personal_preference_adjustment",
     "build_personal_preference_profile",
+    "describe_personal_preference_observations",
 ]

@@ -81,8 +81,10 @@ class HourlyDigestEventItem(BaseModel):
     """Structured event card stored with an hourly digest."""
 
     event_key: Optional[str] = None
+    event_id: Optional[str] = None
     section: Optional[str] = None
     content_id: UUID
+    content_ids: List[UUID] = Field(default_factory=list)
     title: str
     summary: Optional[str] = None
     what_happened: Optional[str] = None
