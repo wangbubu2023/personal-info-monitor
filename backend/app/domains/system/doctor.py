@@ -45,10 +45,10 @@ class DoctorService:
     def _audit_database(self) -> Dict[str, Any]:
         """Check SQLite and FTS5 status."""
         try:
-            sqlite_res = self.db.execute(text("SELECT sqlite_version(), compile_options")).first()
-            version = sqlite_res[0]
-            options = sqlite_res[1]
-            has_fts5 = "ENABLE_FTS5" in options or "FTS5" in options
+            version = self.db.execute(text("SELECT sqlite_version()")).scalar()
+            option_rows = self.db.execute(text("PRAGMA compile_options")).all()
+            options = {str(row[0]).upper() for row in option_rows if row and row[0]}
+            has_fts5 = any("FTS5" in option for option in options)
 
             contents_count = self.db.execute(text("SELECT count(*) FROM contents")).scalar()
             sources_count = self.db.execute(text("SELECT count(*) FROM sources")).scalar()
@@ -120,8 +120,7 @@ class DoctorService:
 
         if master_on:
             warnings.append(
-                "Playwright 默认启用：如需在强化/无头环境下关闭浏览器自动化，"
-                "请设置 PIM_FEATURE_PLAYWRIGHT=false。"
+                "Playwright 默认启用：如需在强化/无头环境下关闭浏览器自动化，" "请设置 PIM_FEATURE_PLAYWRIGHT=false。"
             )
         if x_on:
             warnings.append(
@@ -151,8 +150,7 @@ class DoctorService:
             payload["warnings"] = warnings
         if not master_on:
             payload["message"] = (
-                "Playwright 特性已通过 PIM_FEATURE_PLAYWRIGHT=false 关闭；"
-                "网站抓取将退化为纯 HTTP + RSS。"
+                "Playwright 特性已通过 PIM_FEATURE_PLAYWRIGHT=false 关闭；" "网站抓取将退化为纯 HTTP + RSS。"
             )
         return payload
 

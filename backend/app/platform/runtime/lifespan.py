@@ -55,10 +55,13 @@ async def _watch_event_loop_lag(threshold_seconds: float, interval_seconds: floa
         now = loop.time()
         lag = now - expected
         if lag >= threshold_seconds:
-            logger.warning(
-                "Event loop lag %.3fs exceeded %.3fs threshold; check sync work in async paths",
+            severe = lag >= max(threshold_seconds * 5, 5.0)
+            log = logger.error if severe else logger.warning
+            log(
+                "Event loop lag %.3fs exceeded %.3fs threshold; check sync work in async paths%s",
                 lag,
                 threshold_seconds,
+                " (severe stall)" if severe else "",
             )
         expected = now + interval
 
@@ -220,9 +223,7 @@ def build_lifespan(
             f"{'enabled' if settings.ai_processing_enabled else 'disabled'} "
             f"(enrich: {_enrich_flags})"
         )
-        print(
-            "  Bootstrap URL (web auto-provision): run `./pim bootstrap-url` to print"
-        )
+        print("  Bootstrap URL (web auto-provision): run `./pim bootstrap-url` to print")
         print()
 
         if settings.probe_disable_ssl_verify and settings.debug:

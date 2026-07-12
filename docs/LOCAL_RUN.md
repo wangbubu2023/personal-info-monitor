@@ -116,7 +116,7 @@ uvicorn app.main:app --host 127.0.0.1 --port 8000
 | `JWT_SECRET_KEY` | JWT/签名密钥 |
 | `DATA_DIR` | SQLite 数据目录 |
 | `PIM_PUBLIC_URL` | 公网部署时的浏览器访问地址，用于 `./pim bootstrap-url` |
-| `FETCH_CONCURRENCY` | 抓取并发 |
+| `FETCH_CONCURRENCY` | 抓取并发；同步 DB 连接池会自动按该值扩容，并额外保留 10 个连接 |
 | `AI_PROCESSING_ENABLED` | LLM master kill switch（与 `ENRICH_*` 同时检查，默认 false） |
 | `ENRICH_AUTO_ON_INGEST` | ingest 完成是否自动触发 enrich（默认 false） |
 | `ENRICH_SUMMARY_ENABLED` | Summarizer LLM 摘要开关（默认 false） |

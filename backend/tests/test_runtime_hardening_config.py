@@ -18,6 +18,20 @@ def test_sqlite_connections_use_normal_synchronous(tmp_path):
         conn.close()
 
 
+def test_sync_pool_scales_with_fetch_concurrency():
+    from app.platform.persistence.database import _sync_engine_pool_kwargs
+
+    class _Settings:
+        fetch_concurrency = 20
+
+    options = _sync_engine_pool_kwargs(_Settings())
+
+    assert options["pool_size"] == 20
+    assert options["max_overflow"] == 10
+    assert options["pool_timeout"] == 30
+    assert options["pool_pre_ping"] is True
+
+
 def test_alembic_revision_file_template_is_date_prefixed():
     ini_text = Path("alembic.ini").read_text(encoding="utf-8")
 

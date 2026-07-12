@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.machinery
 import importlib.util
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -48,6 +49,21 @@ def test_upgrade_rejects_detached_checkout_when_pull_needed(monkeypatch):
 
     with pytest.raises(SystemExit):
         pim._ensure_git_ready(no_pull=False)
+
+
+def test_upgrade_handles_symbolic_ref_failure_as_detached_checkout(monkeypatch):
+    pim = _load_pim_cli()
+
+    def fake_check_output(cmd, **kwargs):  # noqa: ARG001
+        if cmd[:2] == ["git", "status"]:
+            return ""
+        if cmd[:3] == ["git", "symbolic-ref", "--short"]:
+            raise subprocess.CalledProcessError(1, cmd)
+        raise AssertionError(cmd)
+
+    monkeypatch.setattr(pim.subprocess, "check_output", fake_check_output)
+
+    pim._ensure_git_ready(no_pull=True)
 
 
 def test_pid_file_recovers_legacy_location(monkeypatch, tmp_path):

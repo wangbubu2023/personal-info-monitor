@@ -177,7 +177,7 @@ X 抓取优先使用浏览器登录态 Cookie 的 GraphQL 路径，然后才尝�
 |---|---|---|
 | `DATA_DIR` | `~/.pim/data` | SQLite、日志、浏览器会话目录 |
 | `PIM_PUBLIC_URL` | 空 | VPS / 反向代理公网地址 |
-| `FETCH_CONCURRENCY` | `20` | 并发抓取上限 |
+| `FETCH_CONCURRENCY` | `20` | 并发抓取上限；同步 DB 连接池会自动至少按该值配置，并额外保留 10 个 overflow 连接 |
 | `AI_PROCESSING_ENABLED` | `false` | LLM 总开关 |
 | `ENRICH_AUTO_ON_INGEST` | `false` | 入库后自动摘要/翻译 |
 | `ENRICH_SUMMARY_ENABLED` | `false` | 允许生成摘要 |

@@ -700,11 +700,17 @@ def _ensure_git_ready(*, no_pull: bool) -> None:
         print("Commit/stash them first, then rerun ./pim upgrade.", file=sys.stderr)
         sys.exit(1)
 
-    branch = subprocess.check_output(
-        ["git", "symbolic-ref", "--short", "-q", "HEAD"],
-        cwd=str(ROOT),
-        text=True,
-    ).strip()
+    try:
+        branch = subprocess.check_output(
+            ["git", "symbolic-ref", "--short", "-q", "HEAD"],
+            cwd=str(ROOT),
+            text=True,
+        ).strip()
+    except subprocess.CalledProcessError:
+        # ``git symbolic-ref`` exits 1 for a detached HEAD. Treat that as an
+        # expected empty branch so the explicit detached-checkout policy below
+        # can decide whether --no-pull makes the upgrade safe to continue.
+        branch = ""
     if not branch and not no_pull:
         print("Current checkout is detached (likely a tag). Checkout main before upgrading.", file=sys.stderr)
         print("Example: git checkout main && git pull --ff-only", file=sys.stderr)

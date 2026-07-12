@@ -22,15 +22,37 @@ class UUIDString(TypeDecorator):
     def process_result_value(self, value, dialect):
         return value  # keep as string
 
+
 from app.platform.config.settings import get_settings
 
 settings = get_settings()
+
+
+def _sync_engine_pool_kwargs(current_settings) -> dict[str, int | bool]:
+    """Size the synchronous pool for fetch and process worker concurrency.
+
+    Fetch workers keep a synchronous ORM session around while a source is
+    being collected. SQLAlchemy's SQLite default (5 connections plus 10
+    overflow) is therefore smaller than the default 20 fetch workers and can
+    block the event loop while waiting for a connection. Keep a small floor
+    for low-volume installs and leave overflow headroom for the four process
+    workers plus maintenance/API thread work.
+    """
+    fetch_concurrency = max(1, int(current_settings.fetch_concurrency))
+    return {
+        "pool_size": max(fetch_concurrency, 10),
+        "max_overflow": 10,
+        "pool_timeout": 30,
+        "pool_pre_ping": True,
+    }
+
 
 # Synchronous engine (for background tasks running in threads)
 engine = create_engine(
     settings.database_url,
     connect_args={"check_same_thread": False},
     echo=settings.debug,
+    **_sync_engine_pool_kwargs(settings),
 )
 
 # Asynchronous engine (for FastAPI endpoints).
@@ -72,6 +94,7 @@ AsyncSessionLocal = sessionmaker(
     bind=async_engine,
     expire_on_commit=False,
 )
+
 
 # Base class for models
 class Base(DeclarativeBase):
