@@ -1,6 +1,6 @@
 [project]
 name = "personal-info-monitor-backend"
-version = "1.5.0"
+version = "1.6.0"
 description = "Personal Information Monitor — FastAPI backend, collectors, AI pipeline."
 readme = "README.md"
 requires-python = ">=3.11"
