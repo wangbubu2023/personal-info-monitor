@@ -12,15 +12,30 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.database import get_async_db
+from app.domains.events.personal_state import mark_event_seen, update_event_state
 from app.domains.events.repository import build_event_detail, list_today_highlights
 from app.domains.score.feedback import content_feedback_snapshot, record_score_feedback_event
 from app.models import Content
 from app.schemas.events import EventDetailResponse, EventFeedbackCreate, EventFeedbackItem, TodayHighlightsResponse
-from app.utils.datetime import today_in_user_timezone
+from app.schemas.personal_monitor import EventStateUpdate, PersonalItemStateResponse
+from app.utils.datetime import to_iso_z, today_in_user_timezone
 
 router = APIRouter()
 
 _VALID_EVENT_FEEDBACK = frozenset({"event_wrong_merge", "event_missing_merge"})
+
+
+def _personal_state_response(state) -> PersonalItemStateResponse:
+    return PersonalItemStateResponse(
+        target_type=state.target_type,
+        target_id=state.target_id,
+        last_seen_version=int(state.last_seen_version or 0),
+        saved=bool(state.saved),
+        read_later=bool(state.read_later),
+        hidden=bool(state.hidden),
+        read_at=to_iso_z(state.read_at),
+        updated_at=to_iso_z(state.updated_at),
+    )
 
 
 @router.get("/today-highlights", response_model=TodayHighlightsResponse)
@@ -46,6 +61,34 @@ async def get_event_detail(event_id: str, db: AsyncSession = Depends(get_async_d
     if not detail:
         raise HTTPException(status_code=404, detail="Event not found")
     return EventDetailResponse(**detail)
+
+
+@router.post("/{event_id}/seen", response_model=PersonalItemStateResponse)
+async def mark_event_as_seen(event_id: str, db: AsyncSession = Depends(get_async_db)):
+    try:
+        state = await mark_event_seen(db, event_id.strip())
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    await db.commit()
+    await db.refresh(state)
+    return _personal_state_response(state)
+
+
+@router.patch("/{event_id}/state", response_model=PersonalItemStateResponse)
+async def patch_event_state(event_id: str, body: EventStateUpdate, db: AsyncSession = Depends(get_async_db)):
+    try:
+        state = await update_event_state(
+            db,
+            event_id.strip(),
+            saved=body.saved,
+            read_later=body.read_later,
+            hidden=body.hidden,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    await db.commit()
+    await db.refresh(state)
+    return _personal_state_response(state)
 
 
 @router.post("/{event_id}/feedback", response_model=EventFeedbackItem)

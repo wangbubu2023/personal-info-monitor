@@ -21,6 +21,9 @@ class TodayHighlightEvent(BaseModel):
     importance_score: Optional[float] = None
     confidence_score: Optional[float] = None
     primary_content_id: Optional[str] = None
+    latest_version: int = 0
+    user_seen_version: int = 0
+    has_updates: bool = False
 
 
 class TodayHighlightsResponse(BaseModel):
@@ -46,6 +49,7 @@ class EventSnapshotItem(BaseModel):
     what_changed: Optional[str] = None
     why_matters: Optional[str] = None
     created_at: Optional[str] = None
+    is_seen: bool = False
 
 
 class EventFeedbackCreate(BaseModel):
@@ -75,6 +79,12 @@ class EventDetailResponse(BaseModel):
     source_names: list[str] = Field(default_factory=list)
     independent_source_count: int = 0
     updated_at: Optional[str] = None
+    latest_version: int = 0
+    user_seen_version: int = 0
+    has_updates: bool = False
+    saved: bool = False
+    read_later: bool = False
+    hidden: bool = False
     timeline: list[EventTimelineItem] = Field(default_factory=list)
     snapshots: list[EventSnapshotItem] = Field(default_factory=list)
     primary_reports: list[EventTimelineItem] = Field(default_factory=list)

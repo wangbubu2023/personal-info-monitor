@@ -4,6 +4,13 @@
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
+
+from app.database import Base
+from app.models import Source
+
 
 @pytest.mark.asyncio
 async def test_fetch_source_source_not_found():
@@ -86,6 +93,41 @@ async def test_fetch_source_exception_is_caught():
                     await fetch_source("src-1")  # Must not raise
 
     mock_tracker.end_fetch.assert_called_once()
+
+
+def test_persist_fetch_task_exception_writes_structured_failure(monkeypatch):
+    from app.domains.sources.status import persist_fetch_task_exception
+    import app.domains.sources.status as status_module
+
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(engine)
+    session_factory = sessionmaker(bind=engine)
+    monkeypatch.setattr("app.database.SessionLocal", session_factory)
+
+    db = session_factory()
+    try:
+        db.add(Source(id="src-timeout", name="Timeout Source", url="https://example.com", type="website"))
+        db.commit()
+    finally:
+        db.close()
+
+    persist_fetch_task_exception("src-timeout", TimeoutError("socket timed out"))
+
+    db = session_factory()
+    try:
+        source = db.query(Source).filter(Source.id == "src-timeout").one()
+        assert source.error_count == 1
+        assert source.last_fetch_outcome_code == "timeout"
+        assert source.last_fetch_outcome_severity == "warning"
+        assert "抓取超时" in source.last_error
+        assert source.metadata_["last_fetch_outcome"]["code"] == "timeout"
+    finally:
+        db.close()
+        engine.dispose()
 
 
 @pytest.mark.asyncio

@@ -7,6 +7,7 @@ from datetime import timedelta
 from sqlalchemy import or_
 
 from app.models.postprocess_job import PostprocessJob
+from app.platform.observability.failure_classifier import classify_exception
 from app.platform.persistence.database import SessionLocal
 from app.utils.datetime import utcnow_naive
 
@@ -104,6 +105,9 @@ def mark_postprocess_job_succeeded(content_id: str, job_id: str | None = None) -
         job.finished_at = now
         job.locked_at = None
         job.last_error = None
+        job.failure_code = None
+        job.failure_severity = None
+        job.failure_retryable = None
         job.updated_at = now
         db.commit()
     finally:
@@ -121,10 +125,15 @@ def mark_postprocess_job_failed(content_id: str, job_id: str | None, error: Base
             return "dead"
         attempts = int(job.attempts or 0)
         max_attempts = int(job.max_attempts or 3)
-        job.last_error = str(error)[:4000]
+        failure = classify_exception(error)
+        failure_code = getattr(failure.code, "value", failure.code)
+        job.last_error = f"[{failure_code}] {failure.message}"[:4000]
+        job.failure_code = str(failure_code)
+        job.failure_severity = failure.severity
+        job.failure_retryable = failure.retryable
         job.locked_at = None
         job.finished_at = now
-        if attempts >= max_attempts:
+        if not failure.retryable or attempts >= max_attempts:
             job.status = "dead"
         else:
             delay_seconds = min(3600, 60 * (2 ** max(0, attempts - 1)))

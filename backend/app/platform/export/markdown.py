@@ -42,14 +42,20 @@ class MarkdownExporter:
         body = self._build_body(content, include_full_content=include_full_content)
         return frontmatter.dumps(frontmatter.Post(body, **fm_data))
 
-    def render_event_markdown(self, contents: list[Content], *, title: str | None = None) -> str:
-        """Render an event-like group as Markdown with source timeline and attribution."""
+    def render_event_markdown(
+        self,
+        contents: list[Content],
+        *,
+        title: str | None = None,
+        event_key: str | None = None,
+    ) -> str:
+        """Render a persisted Event with source timeline and attribution."""
         items = [content for content in contents if content]
         if not items:
             return "# Empty Event\n"
 
         primary = items[0]
-        event_key = self._event_key(primary)
+        event_key = str(event_key or self._event_key(primary) or "").strip()
         fm_data = {
             "title": title or primary.translated_title or primary.title,
             "event_key": event_key,
@@ -131,7 +137,7 @@ class MarkdownExporter:
 
     def _event_key(self, content: Content) -> str:
         metadata = content.metadata_ if isinstance(content.metadata_, dict) else {}
-        return str(metadata.get("event_id") or metadata.get("duplicate_group_id") or metadata.get("canonical_external_id") or "")
+        return str(metadata.get("event_id") or "")
 
     def _build_body(self, content: Content, *, include_full_content: bool = True) -> str:
         metadata = content.metadata_ if isinstance(content.metadata_, dict) else {}
@@ -147,13 +153,12 @@ class MarkdownExporter:
             f"- PIM 链接：pim://content/{content.id}",
             f"- 原文链接：{content.original_url}",
         ])
-        event_keys = [
-            ("事件/重复组", metadata.get("event_id") or metadata.get("duplicate_group_id")),
-            ("Canonical 外部 ID", metadata.get("canonical_external_id")),
-        ]
-        for label, value in event_keys:
-            if value:
-                lines.append(f"- {label}：{value}")
+        if metadata.get("event_id"):
+            lines.append(f"- 事件 ID：{metadata['event_id']}")
+        if metadata.get("duplicate_group_id"):
+            lines.append(f"- 近重复组：{metadata['duplicate_group_id']}")
+        if metadata.get("canonical_external_id"):
+            lines.append(f"- Canonical 外部 ID：{metadata['canonical_external_id']}")
         lines.append("")
 
         if content.summary:

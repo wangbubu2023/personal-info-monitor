@@ -159,8 +159,8 @@ const DashboardDigestList: React.FC<DashboardDigestListProps> = ({
 
 function eventGroupKey(item: DigestItem): string {
   const metadata = item.metadata || {};
-  const duplicateGroup = metadata.duplicate_group_id || metadata.canonical_external_id || metadata.event_id;
-  return duplicateGroup ? `event:${String(duplicateGroup)}` : `item:${item.id}`;
+  const eventId = metadata.event_id;
+  return eventId ? `event:${String(eventId)}` : `item:${item.id}`;
 }
 
 function buildDigestGroups(items: DigestItem[]) {

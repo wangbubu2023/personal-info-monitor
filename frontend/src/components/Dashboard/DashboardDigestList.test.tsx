@@ -25,7 +25,7 @@ function item(id: string, title: string, readStatus: boolean): DigestItem {
     read_status: readStatus,
     favorited: false,
     keyword_matches: [],
-    metadata: { duplicate_group_id: 'event-1' },
+    metadata: { event_id: 'event-1' },
   }
 }
 

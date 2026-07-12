@@ -13,11 +13,12 @@ import hashlib
 from datetime import date, datetime
 from typing import Any, Iterable
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from sqlalchemy.orm.session import Session
 
+from app.domains.events.personal_state import get_event_read_state, get_or_create_item_state
 from app.models import Content, ContentEvent, ContentEventMembership, ContentEventSnapshot, HourlyDigest, ScoreFeedback
 from app.utils.datetime import to_iso_z, utcnow_naive
 
@@ -155,7 +156,14 @@ def upsert_events_from_clusters(db: Session, clusters: list[dict[str, Any]]) -> 
         )
         latest_ids = set(latest_snapshot.source_content_ids or []) if latest_snapshot else set()
         current_ids = set(source_content_ids)
-        should_create_snapshot = latest_snapshot is None or latest_snapshot.summary != summary or latest_ids != current_ids
+        should_create_snapshot = (
+            latest_snapshot is None
+            or latest_snapshot.title != title
+            or latest_snapshot.summary != summary
+            or latest_snapshot.what_changed != what_changed
+            or latest_snapshot.why_matters != why_matters
+            or latest_ids != current_ids
+        )
         if should_create_snapshot:
             db.add(
                 ContentEventSnapshot(
@@ -207,15 +215,16 @@ async def list_today_highlights(db: AsyncSession, target_date: date, *, limit: i
             section = str(item.get("section") or "").strip()
             if section not in {"need_to_know", "brewing"}:
                 continue
-            event_key = str(item.get("event_key") or item.get("duplicate_group_id") or item.get("content_id") or "").strip()
-            if not event_key:
+            event_id = str(item.get("event_id") or "").strip()
+            if not event_id:
                 continue
+            event_key = str(item.get("event_key") or "").strip()
             score = float(item.get("importance_score") or item.get("score") or 0.0)
-            existing = candidates.get(event_key)
+            existing = candidates.get(event_id)
             if existing and float(existing.get("importance_score") or 0.0) >= score:
                 continue
-            candidates[event_key] = {
-                "event_id": str(item.get("event_id") or stable_event_id(event_key)),
+            candidates[event_id] = {
+                "event_id": event_id,
                 "event_key": event_key,
                 "section": section,
                 "title": item.get("title") or "未命名事件",
@@ -231,48 +240,31 @@ async def list_today_highlights(db: AsyncSession, target_date: date, *, limit: i
             }
     ordered = sorted(candidates.values(), key=lambda item: float(item.get("importance_score") or 0.0), reverse=True)
     qualified = [item for item in ordered if float(item.get("importance_score") or 0.0) >= 60]
-    return qualified[: max(3, min(8, int(limit or 8)))] if len(qualified) >= 3 else []
+    selected = qualified[: max(3, min(8, int(limit or 8)))] if len(qualified) >= 3 else []
+    for item in selected:
+        read_state = await get_event_read_state(db, str(item.get("event_id") or ""))
+        item["latest_version"] = read_state.latest_version
+        item["user_seen_version"] = read_state.user_seen_version
+        item["has_updates"] = read_state.has_updates
+    return selected
 
 
 async def build_event_detail(db: AsyncSession, event_id: str) -> dict[str, Any] | None:
     event = await db.get(ContentEvent, event_id)
+    if event is None:
+        return None
     contents: list[Content] = []
-    if event is not None:
-        membership_result = await db.execute(
-            select(ContentEventMembership).where(ContentEventMembership.event_id == event_id)
-        )
-        content_ids = [str(row.content_id) for row in membership_result.scalars().all()]
-        if content_ids:
-            content_result = await db.execute(
-                select(Content).options(selectinload(Content.source)).where(Content.id.in_(content_ids))
-            )
-            contents = list(content_result.scalars().all())
-    else:
-        fallback_key = event_id.strip()
+    membership_result = await db.execute(
+        select(ContentEventMembership).where(ContentEventMembership.event_id == event_id)
+    )
+    content_ids = [str(row.content_id) for row in membership_result.scalars().all()]
+    if content_ids:
         content_result = await db.execute(
             select(Content)
             .options(selectinload(Content.source))
-            .where(
-                or_(
-                    func.json_extract(Content.metadata_, "$.event_id") == fallback_key,
-                    func.json_extract(Content.metadata_, "$.event_key") == fallback_key,
-                    func.json_extract(Content.metadata_, "$.duplicate_group_id") == fallback_key,
-                    func.json_extract(Content.metadata_, "$.canonical_external_id") == fallback_key,
-                )
-            )
-            .order_by(Content.publish_time.asc().nulls_last(), Content.fetched_at.asc())
+            .where(Content.id.in_(content_ids))
         )
         contents = list(content_result.scalars().all())
-        if not contents:
-            return None
-        event = ContentEvent(
-            event_id=stable_event_id(fallback_key),
-            event_key=fallback_key,
-            title=contents[0].title or "未命名事件",
-            summary=contents[0].summary,
-            independent_source_count=len({c.source_id for c in contents}),
-            source_names=list({c.source.name for c in contents if c.source}),
-        )
     contents.sort(key=lambda c: (c.publish_time or c.fetched_at or utcnow_naive(), str(c.id)))
     timeline = [
         {
@@ -307,6 +299,8 @@ async def build_event_detail(db: AsyncSession, event_id: str) -> dict[str, Any] 
         .limit(10)
     )
     snapshots = list(snapshots_result.scalars().all())
+    read_state = await get_event_read_state(db, event.event_id)
+    personal_state = await get_or_create_item_state(db, "event", event.event_id)
     feedback_result = await db.execute(
         select(ScoreFeedback)
         .where(ScoreFeedback.event_type.in_(["event_wrong_merge", "event_missing_merge"]))
@@ -323,6 +317,12 @@ async def build_event_detail(db: AsyncSession, event_id: str) -> dict[str, Any] 
         "source_names": event.source_names or [c.source.name for c in contents if c.source],
         "independent_source_count": event.independent_source_count,
         "updated_at": to_iso_z(event.last_seen_at or event.updated_at),
+        "latest_version": read_state.latest_version,
+        "user_seen_version": read_state.user_seen_version,
+        "has_updates": read_state.has_updates,
+        "saved": bool(personal_state.saved),
+        "read_later": bool(personal_state.read_later),
+        "hidden": bool(personal_state.hidden),
         "timeline": timeline,
         "snapshots": [
             {
@@ -332,6 +332,7 @@ async def build_event_detail(db: AsyncSession, event_id: str) -> dict[str, Any] 
                 "what_changed": row.what_changed,
                 "why_matters": row.why_matters,
                 "created_at": to_iso_z(row.created_at),
+                "is_seen": int(row.version or 0) <= read_state.user_seen_version,
             }
             for row in snapshots
         ],

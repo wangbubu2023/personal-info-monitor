@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import Column, DateTime, Index, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, Column, DateTime, Index, Integer, String, Text, UniqueConstraint
 
 from app.database import Base, UUIDString
 from app.utils.datetime import utcnow_naive
@@ -32,5 +32,8 @@ class PostprocessJob(Base):
     started_at = Column(DateTime, nullable=True)
     finished_at = Column(DateTime, nullable=True)
     last_error = Column(Text, nullable=True)
+    failure_code = Column(String(64), nullable=True)
+    failure_severity = Column(String(16), nullable=True)
+    failure_retryable = Column(Boolean, nullable=True)
     created_at = Column(DateTime, default=utcnow_naive, nullable=False)
     updated_at = Column(DateTime, default=utcnow_naive, onupdate=utcnow_naive, nullable=False)

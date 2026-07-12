@@ -5,9 +5,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import EventDetailPage from './EventDetailPage'
 
-const { mockGetEventDetail, mockSubmitEventFeedback } = vi.hoisted(() => ({
+const { mockGetEventDetail, mockMarkEventSeen, mockSubmitEventFeedback, mockUpdateEventState } = vi.hoisted(() => ({
   mockGetEventDetail: vi.fn(),
+  mockMarkEventSeen: vi.fn(),
   mockSubmitEventFeedback: vi.fn(),
+  mockUpdateEventState: vi.fn(),
 }))
 
 vi.mock('../services/digest', async () => {
@@ -16,7 +18,9 @@ vi.mock('../services/digest', async () => {
     ...actual,
     digestApi: {
       getEventDetail: mockGetEventDetail,
+      markEventSeen: mockMarkEventSeen,
       submitEventFeedback: mockSubmitEventFeedback,
+      updateEventState: mockUpdateEventState,
     },
   }
 })
@@ -37,7 +41,9 @@ function renderEventDetail() {
 describe('EventDetailPage', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mockMarkEventSeen.mockResolvedValue({ target_type: 'event', target_id: 'event-1', last_seen_version: 2, saved: false, read_later: false, hidden: false })
     mockSubmitEventFeedback.mockResolvedValue({ type: 'event_wrong_merge' })
+    mockUpdateEventState.mockResolvedValue({ target_type: 'event', target_id: 'event-1', last_seen_version: 0, saved: true, read_later: false, hidden: false })
     mockGetEventDetail.mockResolvedValue({
       event_id: 'event-1',
       event_key: 'launch-v4',
@@ -47,6 +53,12 @@ describe('EventDetailPage', () => {
       source_names: ['Official', 'Analyst'],
       independent_source_count: 2,
       updated_at: '2026-07-11T09:00:00Z',
+      latest_version: 2,
+      user_seen_version: 1,
+      has_updates: true,
+      saved: false,
+      read_later: false,
+      hidden: false,
       timeline: [
         {
           content_id: 'content-1',
@@ -67,7 +79,7 @@ describe('EventDetailPage', () => {
           publish_time: '2026-07-11T09:00:00Z',
         },
       ],
-      snapshots: [{ version: 1, title: '模型公司发布新版路线图', what_changed: '新增分析师解读。' }],
+      snapshots: [{ version: 2, title: '模型公司发布新版路线图', what_changed: '新增分析师解读。', is_seen: false }],
       primary_reports: [],
       independent_verification: [{ key: 'Official', title: 'Official', content_ids: ['content-1'] }],
       related_discussions: [{ key: 'supporting', title: '关联讨论', content_ids: ['content-1'] }],
@@ -83,6 +95,10 @@ describe('EventDetailPage', () => {
     expect(screen.getByText('官方发布路线图')).toBeTruthy()
     expect(screen.getByText('分析师解读路线图')).toBeTruthy()
     expect(screen.getByText('新增分析师解读。')).toBeTruthy()
+    expect(screen.getByTestId('event-update-badge')).toBeTruthy()
+    expect(screen.getByText('新变化')).toBeTruthy()
+    expect(screen.getByRole('button', { name: /标记已读/ })).toBeTruthy()
+    expect(screen.getByRole('button', { name: /^收藏$/ })).toBeTruthy()
     expect(screen.getByText('独立验证')).toBeTruthy()
     expect(screen.getByText('观点 / 关联讨论')).toBeTruthy()
     expect(screen.getByRole('button', { name: /误合/ })).toBeTruthy()

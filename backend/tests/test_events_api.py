@@ -158,6 +158,10 @@ async def test_event_detail_returns_timeline_snapshots_and_feedback(client, db_s
     assert detail_response.status_code == 200
     detail = detail_response.json()
     assert detail["current_conclusion"] == "Current conclusion"
+    assert detail["latest_version"] == 1
+    assert detail["user_seen_version"] == 0
+    assert detail["has_updates"] is True
+    assert detail["snapshots"][0]["is_seen"] is False
     assert [item["title"] for item in detail["timeline"]] == ["First report", "Follow-up report"]
     assert detail["timeline"][-1]["role"] == "primary"
     assert detail["snapshots"][0]["what_changed"] == "Follow-up appeared"
@@ -165,6 +169,67 @@ async def test_event_detail_returns_timeline_snapshots_and_feedback(client, db_s
     assert detail["independent_verification"][0]["title"] == "Official"
     assert detail["related_discussions"][0]["title"] == "关联讨论"
     assert detail["feedback"][0]["type"] == "event_wrong_merge"
+
+    seen_response = await client.post(f"/api/events/{event_id}/seen")
+    assert seen_response.status_code == 200
+    assert seen_response.json()["last_seen_version"] == 1
+
+    detail_seen_response = await client.get(f"/api/events/{event_id}")
+    assert detail_seen_response.status_code == 200
+    detail_seen = detail_seen_response.json()
+    assert detail_seen["has_updates"] is False
+    assert detail_seen["snapshots"][0]["is_seen"] is True
+
+    state_response = await client.patch(f"/api/events/{event_id}/state", json={"saved": True, "read_later": True})
+    assert state_response.status_code == 200
+    assert state_response.json()["saved"] is True
+    assert state_response.json()["read_later"] is True
+
+
+@pytest.mark.asyncio
+async def test_personal_monitor_observation_suggestion_requires_confirmed_rule(client, db_session):
+    source = Source(name="Monitor Source", type=SourceType.WEBSITE, url="https://monitor.example.com")
+    contents = [
+        Content(
+            source=source,
+            title=f"Monitor article {idx}",
+            summary="Useful monitor item",
+            original_url=f"https://monitor.example.com/{idx}",
+            content_type="website",
+            fetched_at=datetime(2026, 7, 11, 8, idx),
+            publish_time=datetime(2026, 7, 11, 8, idx),
+            metadata_={"lane": "ai_policy"},
+        )
+        for idx in range(3)
+    ]
+    db_session.add_all([source, *contents])
+    await db_session.commit()
+
+    for content in contents:
+        response = await client.patch(f"/api/personal-monitor/reports/{content.id}/state", json={"saved": True})
+        assert response.status_code == 200
+
+    suggestions = await client.get("/api/personal-monitor/observations/suggestions")
+    assert suggestions.status_code == 200
+    items = suggestions.json()
+    assert len(items) == 1
+    assert items[0]["scope_type"] == "topic"
+    assert items[0]["scope_key"] == "ai_policy"
+    assert items[0]["suggestion_status"] == "suggested"
+    assert items[0]["suggested_rule"] == "highlight"
+
+    rules_before = await client.get("/api/personal-monitor/rules")
+    assert rules_before.status_code == 200
+    assert rules_before.json() == []
+
+    accepted = await client.post(f"/api/personal-monitor/observations/{items[0]['id']}/accept")
+    assert accepted.status_code == 200
+    assert accepted.json()["rule"] == "highlight"
+    assert accepted.json()["status"] == "active"
+
+    rules_after = await client.get("/api/personal-monitor/rules")
+    assert rules_after.status_code == 200
+    assert len(rules_after.json()) == 1
 
 
 def test_build_event_briefing_items_separates_event_from_duplicate_group():

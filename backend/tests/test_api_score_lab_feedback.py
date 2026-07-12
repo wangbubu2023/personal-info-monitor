@@ -120,7 +120,7 @@ async def test_score_lab_feedback_list_includes_interaction_events(client, db_se
     assert response.status_code == 200
     items = response.json()["items"]
     event_types = {item["event_type"] for item in items}
-    assert {"open", "star", "hide"} <= event_types
+    assert {"opened", "saved", "hidden"} <= event_types
     values = {item["event_type"]: item["event_value"] for item in items}
-    assert values["star"] is True
-    assert values["hide"] is True
+    assert values["saved"] is True
+    assert values["hidden"] is True

@@ -45,7 +45,17 @@ def merge_warning_messages(*messages: str | None) -> str | None:
     return "；".join(normalized)
 
 
-def set_last_fetch_outcome(source, code: str, severity: str, message: str) -> None:
+def set_last_fetch_outcome(
+    source,
+    code: str,
+    severity: str,
+    message: str,
+    *,
+    retryable: bool | None = None,
+    http_status: int | None = None,
+    cooldown_seconds: int | None = None,
+    details: Mapping[str, Any] | None = None,
+) -> None:
     """Stamp the latest fetch outcome onto structured columns and metadata.
 
     Mutates ``source.metadata_`` **in place** (re-assigning a dict copy)
@@ -58,6 +68,14 @@ def set_last_fetch_outcome(source, code: str, severity: str, message: str) -> No
         "message": str(message or ""),
         "updated_at": updated_at.isoformat() + "Z",
     }
+    if retryable is not None:
+        payload["retryable"] = bool(retryable)
+    if http_status is not None:
+        payload["http_status"] = int(http_status)
+    if cooldown_seconds is not None:
+        payload["cooldown_seconds"] = int(cooldown_seconds)
+    if details:
+        payload["details"] = dict(details)
     if hasattr(source, "last_fetch_outcome_code"):
         source.last_fetch_outcome_code = payload["code"]
         source.last_fetch_outcome_severity = payload["severity"]
@@ -91,22 +109,35 @@ def last_fetch_outcome_metadata(source) -> dict[str, Any]:
 def persist_fetch_task_exception(source_id: str, exc: Exception) -> None:
     """Best-effort persistence of source error state when task setup fails early.
 
-    Wraps the entire write in a broad ``except`` because this runs from
-    the outermost fetch task ``except`` branch — if we cannot even log
-    the error we don't want to escalate further and mask the original
-    exception.
+    Task setup sits outside the normal collector/coordinator warning path, so
+    classify the exception here as well. This keeps fetch failures visible in
+    the same structured ``last_fetch_outcome`` surface used by regular
+    collector failures, instead of leaving operators with an opaque free-form
+    ``last_error`` string.
     """
     try:
         from app.database import SessionLocal
+        from app.domains.fetch.failures import classify_exception
         from app.models import Source
 
+        failure = classify_exception(exc)
         db = SessionLocal()
         try:
             source = db.query(Source).filter(Source.id == source_id).first()
             if not source:
                 return
             source.error_count = (source.error_count or 0) + 1
-            source.last_error = str(exc)
+            source.last_error = failure.message
+            set_last_fetch_outcome(
+                source,
+                failure.code.value,
+                failure.severity,
+                failure.message,
+                retryable=failure.retryable,
+                http_status=failure.http_status,
+                cooldown_seconds=failure.cooldown_seconds,
+                details=failure.details,
+            )
             db.commit()
         finally:
             db.close()

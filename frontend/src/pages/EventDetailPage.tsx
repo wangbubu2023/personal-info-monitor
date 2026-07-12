@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { AlertTriangle, ArrowLeft, CheckCircle2, Clock, ExternalLink, GitMerge, MessageSquareWarning } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, Bookmark, CheckCircle2, Clock, ExternalLink, Eye, GitMerge, MessageSquareWarning } from 'lucide-react'
 import { motion } from 'framer-motion'
 import { digestApi } from '../services/digest'
 import { formatLocalDateTime } from '../utils/datetime'
@@ -24,6 +24,22 @@ const EventDetailPage: React.FC = () => {
     onSuccess: async () => {
       setNote('')
       await queryClient.invalidateQueries({ queryKey: ['event-detail', eventId] })
+    },
+  })
+
+  const markSeenMutation = useMutation({
+    mutationFn: () => digestApi.markEventSeen(eventId),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['event-detail', eventId] })
+      await queryClient.invalidateQueries({ queryKey: ['today-highlights'] })
+    },
+  })
+
+  const stateMutation = useMutation({
+    mutationFn: (body: { saved?: boolean; read_later?: boolean; hidden?: boolean }) => digestApi.updateEventState(eventId, body),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['event-detail', eventId] })
+      await queryClient.invalidateQueries({ queryKey: ['today-highlights'] })
     },
   })
 
@@ -61,10 +77,39 @@ const EventDetailPage: React.FC = () => {
               <span className="rounded-full border border-[#49A8C9]/18 bg-[#49A8C9]/8 px-2 py-0.5 text-[#3a8da9]">
                 {data.independent_source_count} 个独立来源
               </span>
+              {data.has_updates ? (
+                <span className="rounded-full border border-[#d97706]/18 bg-[#fff7ed] px-2 py-0.5 text-[#b45309]" data-testid="event-update-badge">
+                  v{data.latest_version || 0} 有新变化
+                </span>
+              ) : (
+                <span className="rounded-full border border-[#16a34a]/14 bg-[#f0fdf4] px-2 py-0.5 text-[#15803d]">
+                  已读到 v{data.user_seen_version || 0}
+                </span>
+              )}
               {data.updated_at ? <span>更新于 {formatLocalDateTime(data.updated_at)}</span> : null}
               <span>Event ID: {data.event_id}</span>
             </div>
-            <h1 className="text-[26px] font-semibold leading-tight tracking-tight text-[#293859] sm:text-[32px]">{data.title}</h1>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <h1 className="text-[26px] font-semibold leading-tight tracking-tight text-[#293859] sm:text-[32px]">{data.title}</h1>
+              <div className="flex shrink-0 flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => markSeenMutation.mutate()}
+                  disabled={markSeenMutation.isPending}
+                  className="inline-flex items-center gap-1.5 rounded-full border border-[#49A8C9]/18 bg-[#49A8C9]/8 px-3 py-1.5 text-[12px] font-semibold text-[#3a8da9] transition-colors hover:bg-[#49A8C9]/12 disabled:opacity-60"
+                >
+                  <Eye size={13} /> 标记已读
+                </button>
+                <button
+                  type="button"
+                  onClick={() => stateMutation.mutate({ saved: !data.saved })}
+                  disabled={stateMutation.isPending}
+                  className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[12px] font-semibold transition-colors disabled:opacity-60 ${data.saved ? 'border-[#8C866A]/22 bg-[#8C866A]/12 text-[#6f684f]' : 'border-[rgba(88,100,118,0.14)] bg-white text-[#5f6f82] hover:bg-[#f4f7fa]'}`}
+                >
+                  <Bookmark size={13} /> {data.saved ? '已收藏' : '收藏'}
+                </button>
+              </div>
+            </div>
             <p className="text-[15px] leading-relaxed text-[#293859]">{data.current_conclusion}</p>
             {data.why_matters ? (
               <p className="rounded-2xl border border-[#8C866A]/18 bg-[#8C866A]/8 p-4 text-[14px] leading-relaxed text-[#6f684f]">
@@ -123,8 +168,13 @@ const EventDetailPage: React.FC = () => {
                 </h2>
                 <div className="space-y-3">
                   {data.snapshots.length ? data.snapshots.map((snapshot) => (
-                    <div key={snapshot.version} className="border-l-2 border-[#8C866A]/35 pl-3">
-                      <div className="text-[12px] font-semibold text-[#8C866A]">v{snapshot.version} · {snapshot.created_at ? formatLocalDateTime(snapshot.created_at) : '—'}</div>
+                    <div key={snapshot.version} className={`border-l-2 pl-3 ${snapshot.is_seen ? 'border-[#8C866A]/28' : 'border-[#d97706]/45'}`}>
+                      <div className="flex flex-wrap items-center gap-2 text-[12px] font-semibold text-[#8C866A]">
+                        <span>v{snapshot.version} · {snapshot.created_at ? formatLocalDateTime(snapshot.created_at) : '—'}</span>
+                        <span className={`rounded-full px-1.5 py-0.5 text-[10px] ${snapshot.is_seen ? 'bg-[#eef4f8] text-[#5f6f82]' : 'bg-[#fff7ed] text-[#b45309]'}`}>
+                          {snapshot.is_seen ? '已读' : '新变化'}
+                        </span>
+                      </div>
                       {snapshot.what_changed ? <p className="mt-1 text-[13px] text-[#293859]">{snapshot.what_changed}</p> : null}
                     </div>
                   )) : <p className="text-[13px] text-[#5f6f82]">暂无版本快照。</p>}

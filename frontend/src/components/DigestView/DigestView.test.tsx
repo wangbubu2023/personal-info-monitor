@@ -53,6 +53,9 @@ describe('DigestView today highlights', () => {
           source_names: ['Official', 'Analyst'],
           importance_score: 88,
           updated_at: '2026-07-11T09:00:00Z',
+          latest_version: 2,
+          user_seen_version: 1,
+          has_updates: true,
         },
       ],
     })
@@ -63,6 +66,7 @@ describe('DigestView today highlights', () => {
 
     expect(await screen.findByTestId('today-highlights')).toBeTruthy()
     expect(screen.getByText('今日重点')).toBeTruthy()
+    expect(screen.getByTestId('today-highlight-update-badge')).toBeTruthy()
     expect(screen.getByRole('link', { name: /模型公司发布新版路线图/ }).getAttribute('href')).toBe('/events/event-1')
     expect(screen.getByTestId('digest-hour-card-9')).toBeTruthy()
   })

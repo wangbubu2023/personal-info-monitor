@@ -94,6 +94,9 @@ export interface TodayHighlightEvent {
   importance_score?: number | null
   confidence_score?: number | null
   primary_content_id?: string | null
+  latest_version?: number
+  user_seen_version?: number
+  has_updates?: boolean
 }
 
 export interface TodayHighlightsResponse {
@@ -119,6 +122,7 @@ export interface EventSnapshotItem {
   what_changed?: string | null
   why_matters?: string | null
   created_at?: string | null
+  is_seen?: boolean
 }
 
 export interface EventFeedbackItem {
@@ -142,6 +146,12 @@ export interface EventDetailResponse {
   source_names: string[]
   independent_source_count: number
   updated_at?: string | null
+  latest_version?: number
+  user_seen_version?: number
+  has_updates?: boolean
+  saved?: boolean
+  read_later?: boolean
+  hidden?: boolean
   timeline: EventTimelineItem[]
   snapshots: EventSnapshotItem[]
   primary_reports?: EventTimelineItem[]
@@ -154,6 +164,23 @@ export interface EventFeedbackCreate {
   type: 'event_wrong_merge' | 'event_missing_merge'
   note?: string
   content_id?: string
+}
+
+export interface PersonalItemStateResponse {
+  target_type: string
+  target_id: string
+  last_seen_version: number
+  saved: boolean
+  read_later: boolean
+  hidden: boolean
+  read_at?: string | null
+  updated_at?: string | null
+}
+
+export interface EventStateUpdate {
+  saved?: boolean
+  read_later?: boolean
+  hidden?: boolean
 }
 
 export const digestApi = {
@@ -195,6 +222,16 @@ export const digestApi = {
 
   getEventDetail: async (eventId: string): Promise<EventDetailResponse> => {
     const response = await api.get(`/events/${eventId}`)
+    return response.data
+  },
+
+  markEventSeen: async (eventId: string): Promise<PersonalItemStateResponse> => {
+    const response = await api.post(`/events/${eventId}/seen`)
+    return response.data
+  },
+
+  updateEventState: async (eventId: string, body: EventStateUpdate): Promise<PersonalItemStateResponse> => {
+    const response = await api.patch(`/events/${eventId}/state`, body)
     return response.data
   },
 

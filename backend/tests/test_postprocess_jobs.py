@@ -32,8 +32,16 @@ def test_postprocess_job_lifecycle(monkeypatch, tmp_path):
     assert claim_postprocess_job("content-1", "fetch-1") is True
     assert due_postprocess_jobs() == []
 
-    status = mark_postprocess_job_failed("content-1", "fetch-1", RuntimeError("temporary"))
+    status = mark_postprocess_job_failed("content-1", "fetch-1", TimeoutError("temporary"))
     assert status == "pending"
+
+    db = session_factory()
+    try:
+        job = db.query(PostprocessJob).one()
+        assert job.last_error.startswith("[timeout]")
+        assert "抓取超时" in job.last_error
+    finally:
+        db.close()
 
     db = session_factory()
     try:

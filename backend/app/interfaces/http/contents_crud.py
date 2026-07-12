@@ -13,9 +13,9 @@ from sqlalchemy.orm import selectinload
 
 from app.interfaces.http.content_shared import _serialize_content
 from app.database import get_async_db
+from app.domains.events.personal_state import record_report_interaction_from_content
 from app.domains.ingest.visibility import visible_content_clause
-from app.domains.score.feedback import content_feedback_snapshot, record_score_feedback_event
-from app.models import Content, Source
+from app.models import Content, ContentEvent, ContentEventMembership, Source
 from app.schemas.content import ContentListResponse, ContentResponse, ContentUpdate, FavoriteBody
 from app.utils.logger import get_logger
 
@@ -203,13 +203,15 @@ async def update_content(
         content.is_user_edited = True
 
     for event_type, event_value in interaction_events:
-        await record_score_feedback_event(
-            db,
-            content,
-            event_type=event_type,
-            event_value=event_value,
-            snapshot=content_feedback_snapshot(content, {"source": "contents.patch"}),
-        )
+        personal_action = {"open": "completed", "star": "saved", "hide": "hidden"}.get(event_type)
+        if personal_action:
+            await record_report_interaction_from_content(
+                db,
+                content,
+                action=personal_action,
+                action_value=event_value,
+                evidence={"source": "contents.patch"},
+            )
 
     await db.commit()
     await db.refresh(content)
@@ -222,20 +224,23 @@ async def export_event_markdown(
     event_key: str = Query(..., min_length=1, max_length=255),
     db: AsyncSession = Depends(get_async_db),
 ):
-    """Download an event-like duplicate group as attribution-first Markdown."""
+    """Download a persisted Event as attribution-first Markdown."""
     from app.platform.export import MarkdownExporter
 
     key = event_key.strip()
+    event = await db.scalar(select(ContentEvent).where(ContentEvent.event_key == key))
+    if event is None:
+        raise HTTPException(status_code=404, detail="Event not found")
+    membership_result = await db.execute(
+        select(ContentEventMembership.content_id).where(ContentEventMembership.event_id == event.event_id)
+    )
+    content_ids = [row[0] for row in membership_result.all()]
+    if not content_ids:
+        raise HTTPException(status_code=404, detail="Event has no reports")
     result = await db.execute(
         select(Content)
         .options(selectinload(Content.source))
-        .filter(
-            or_(
-                func.json_extract(Content.metadata_, "$.event_id") == key,
-                func.json_extract(Content.metadata_, "$.duplicate_group_id") == key,
-                func.json_extract(Content.metadata_, "$.canonical_external_id") == key,
-            )
-        )
+        .where(Content.id.in_(content_ids))
         .order_by(Content.publish_time.asc().nulls_last(), Content.fetched_at.asc())
         .limit(200)
     )
@@ -244,8 +249,8 @@ async def export_event_markdown(
         raise HTTPException(status_code=404, detail="Event not found")
 
     exporter = MarkdownExporter("/tmp/pim-event-export-preview")
-    markdown = exporter.render_event_markdown(contents)
-    filename = f"{_safe_export_filename(key)}.md"
+    markdown = exporter.render_event_markdown(contents, title=event.title, event_key=event.event_key)
+    filename = f"{_safe_export_filename(event.title or key)}.md"
     return Response(
         content=markdown,
         media_type="text/markdown; charset=utf-8",
@@ -318,12 +323,12 @@ async def mark_as_read(
         raise HTTPException(status_code=404, detail="Content not found")
 
     content.read_status = True
-    await record_score_feedback_event(
+    await record_report_interaction_from_content(
         db,
         content,
-        event_type="open",
-        event_value=True,
-        snapshot=content_feedback_snapshot(content, {"source": "contents.read"}),
+        action="completed",
+        action_value=True,
+        evidence={"source": "contents.read"},
     )
     await db.commit()
     return {"message": "Content marked as read"}
@@ -341,12 +346,12 @@ async def set_favorite(
         raise HTTPException(status_code=404, detail="Content not found")
 
     content.favorited = body.favorited
-    await record_score_feedback_event(
+    await record_report_interaction_from_content(
         db,
         content,
-        event_type="star",
-        event_value=body.favorited,
-        snapshot=content_feedback_snapshot(content, {"source": "contents.favorite"}),
+        action="saved",
+        action_value=body.favorited,
+        evidence={"source": "contents.favorite"},
     )
     await db.commit()
     return {"message": "Favorite updated", "favorited": content.favorited}

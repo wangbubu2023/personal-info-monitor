@@ -61,10 +61,22 @@ def test_fresh_sqlite_database_can_upgrade_to_head(tmp_path):
         content_event_snapshot_columns = {
             row[1] for row in conn.execute("PRAGMA table_info(content_event_snapshots)")
         }
+        interaction_event_columns = {
+            row[1] for row in conn.execute("PRAGMA table_info(interaction_events)")
+        }
+        personal_item_state_columns = {
+            row[1] for row in conn.execute("PRAGMA table_info(personal_item_states)")
+        }
+        observation_aggregate_columns = {
+            row[1] for row in conn.execute("PRAGMA table_info(observation_aggregates)")
+        }
+        user_rule_columns = {
+            row[1] for row in conn.execute("PRAGMA table_info(user_rules)")
+        }
     finally:
         conn.close()
 
-    assert revision == ("20260711_0029",)
+    assert revision == ("20260712_0031",)
     assert "ix_content_created_at" in indexes
     assert "ix_score_feedback_content_id" in indexes
     assert "ix_score_feedback_event_type" in indexes
@@ -160,3 +172,17 @@ def test_fresh_sqlite_database_can_upgrade_to_head(tmp_path):
     assert "ix_content_events_event_key" in indexes
     assert "ix_content_event_memberships_content" in indexes
     assert "ix_content_event_snapshots_event" in indexes
+    assert {
+        "interaction_events",
+        "personal_item_states",
+        "observation_aggregates",
+        "user_rules",
+    } <= tables
+    assert {"target_type", "target_id", "action", "content_id", "event_id", "scope_type", "scope_key"} <= interaction_event_columns
+    assert {"target_type", "target_id", "last_seen_version", "saved", "read_later", "hidden", "read_at"} <= personal_item_state_columns
+    assert {"scope_type", "scope_key", "positive_evidence_count", "negative_evidence_count", "suggestion_status", "suggested_rule"} <= observation_aggregate_columns
+    assert {"scope_type", "scope_key", "rule", "status", "created_by"} <= user_rule_columns
+    assert "ix_interaction_events_target" in indexes
+    assert "ix_personal_item_states_target" in indexes
+    assert "ix_observation_aggregates_status" in indexes
+    assert "ix_user_rules_scope" in indexes

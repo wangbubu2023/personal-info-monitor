@@ -6,7 +6,7 @@ from typing import Any, Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import Float, cast, func, select
+from sqlalchemy import Float, cast, func, null, select, union_all
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -14,7 +14,7 @@ from app.database import get_async_db
 from app.domains.score.feedback import SCORE_CALIBRATION_EVENT, record_score_feedback_event
 from app.domains.score.score_explain import explain_content_row
 from app.features import KEYWORD_MONITORING_ENABLED
-from app.models import Content, Keyword, ScoreFeedback
+from app.models import Content, InteractionEvent, Keyword, ScoreFeedback
 from app.schemas.score_lab import (
     ScoreExplainResponse,
     ScoreFeedbackCreate,
@@ -227,29 +227,62 @@ async def list_score_feedback(
     limit: int = Query(50, ge=1, le=200),
     db: AsyncSession = Depends(get_async_db),
 ):
+    feedback_query = (
+        select(
+            ScoreFeedback.id.label("id"),
+            ScoreFeedback.content_id.label("content_id"),
+            ScoreFeedback.direction.label("direction"),
+            ScoreFeedback.expected_status.label("expected_status"),
+            ScoreFeedback.note.label("note"),
+            ScoreFeedback.event_type.label("event_type"),
+            ScoreFeedback.event_value.label("event_value"),
+            ScoreFeedback.snapshot.label("snapshot"),
+            ScoreFeedback.created_at.label("created_at"),
+            Content.title.label("content_title"),
+        )
+        .join(Content, Content.id == ScoreFeedback.content_id)
+        .where(ScoreFeedback.event_type == SCORE_CALIBRATION_EVENT)
+    )
+    interaction_query = (
+        select(
+            InteractionEvent.id.label("id"),
+            InteractionEvent.content_id.label("content_id"),
+            InteractionEvent.action.label("direction"),
+            null().label("expected_status"),
+            null().label("note"),
+            InteractionEvent.action.label("event_type"),
+            InteractionEvent.action_value.label("event_value"),
+            InteractionEvent.evidence.label("snapshot"),
+            InteractionEvent.created_at.label("created_at"),
+            Content.title.label("content_title"),
+        )
+        .join(Content, Content.id == InteractionEvent.content_id)
+        .where(InteractionEvent.target_type == "report")
+    )
+    combined = union_all(feedback_query, interaction_query).subquery()
     rows = (
         await db.execute(
-            select(ScoreFeedback, Content.title)
-            .join(Content, Content.id == ScoreFeedback.content_id)
-            .order_by(ScoreFeedback.created_at.desc())
+            select(combined)
+            .order_by(combined.c.created_at.desc())
             .limit(limit)
         )
-    ).all()
+    ).mappings().all()
 
     items = [
         ScoreFeedbackItem(
-            id=feedback.id,
-            content_id=feedback.content_id,
-            direction=feedback.direction,
-            expected_status=feedback.expected_status,
-            note=feedback.note,
-            event_type=feedback.event_type,
-            event_value=feedback.event_value,
-            snapshot=feedback.snapshot or {},
-            created_at=feedback.created_at,
-            content_title=title,
+            id=row["id"],
+            content_id=row["content_id"],
+            direction=row["direction"],
+            expected_status=row["expected_status"],
+            note=row["note"],
+            event_type=row["event_type"],
+            event_value=row["event_value"],
+            snapshot=row["snapshot"] or {},
+            created_at=row["created_at"],
+            content_title=row["content_title"],
         )
-        for feedback, title in rows
+        for row in rows
     ]
-    total = (await db.execute(select(func.count(ScoreFeedback.id)))).scalar() or 0
-    return ScoreFeedbackListResponse(items=items, total=int(total))
+    feedback_total = (await db.execute(select(func.count(ScoreFeedback.id)).where(ScoreFeedback.event_type == SCORE_CALIBRATION_EVENT))).scalar() or 0
+    interaction_total = (await db.execute(select(func.count(InteractionEvent.id)).where(InteractionEvent.target_type == "report"))).scalar() or 0
+    return ScoreFeedbackListResponse(items=items, total=int(feedback_total) + int(interaction_total))

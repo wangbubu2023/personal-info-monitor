@@ -211,7 +211,12 @@ const DigestView: React.FC = () => {
                           >
                             <div className="mb-2 flex items-center justify-between gap-2 text-[11px] font-semibold uppercase tracking-wide text-[#8C866A]">
                               <span>{eventItem.section === 'brewing' ? '酝酿中' : '必看'}</span>
-                              {typeof eventItem.importance_score === 'number' ? <span>{Math.round(eventItem.importance_score)}分</span> : null}
+                              <span className="flex items-center gap-1.5">
+                                {eventItem.has_updates ? (
+                                  <span className="rounded-full bg-[#fff7ed] px-1.5 py-0.5 text-[10px] text-[#b45309]" data-testid="today-highlight-update-badge">有更新</span>
+                                ) : null}
+                                {typeof eventItem.importance_score === 'number' ? <span>{Math.round(eventItem.importance_score)}分</span> : null}
+                              </span>
                             </div>
                             <h3 className="line-clamp-2 text-[15px] font-semibold leading-snug text-[#293859] group-hover:text-[#49A8C9]">
                               {eventItem.title}

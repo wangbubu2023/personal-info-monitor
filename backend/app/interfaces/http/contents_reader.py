@@ -29,7 +29,7 @@ from app.interfaces.http.content_shared import (
     _split_for_reader,
 )
 from app.database import get_async_db
-from app.domains.score.feedback import content_feedback_snapshot, record_score_feedback_event
+from app.domains.events.personal_state import record_report_interaction_from_content
 from app.models import Content
 from app.domains.enrich.reader import body_loader as _body_loader
 from app.domains.enrich.reader import streaming as _streaming
@@ -134,15 +134,12 @@ async def get_reader_payload(
         publish_time=content.publish_time,
         body_zh=display_body,
     )
-    await record_score_feedback_event(
+    await record_report_interaction_from_content(
         db,
         content,
-        event_type="open",
-        event_value=True,
-        snapshot=content_feedback_snapshot(
-            content,
-            {"source": "contents.reader", "translate": translate},
-        ),
+        action="opened",
+        action_value=True,
+        evidence={"source": "contents.reader", "translate": translate},
     )
     await db.commit()
 

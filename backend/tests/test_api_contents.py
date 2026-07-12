@@ -5,8 +5,8 @@ from datetime import timedelta
 import pytest
 from sqlalchemy import select
 
-from app.models import Content, Source
-from app.models.score_feedback import ScoreFeedback
+from app.domains.events.repository import stable_event_id
+from app.models import Content, ContentEvent, ContentEventMembership, InteractionEvent, PersonalItemState, Source
 from app.models.source import SourceType
 from app.utils.datetime import utcnow_naive
 
@@ -68,14 +68,22 @@ async def test_contents_crud_endpoints(client, db_session):
     mark_read = await client.post(f"/api/contents/{content.id}/read")
     assert mark_read.status_code == 200
 
-    feedback_rows = (
+    personal_state = await db_session.scalar(
+        select(PersonalItemState).where(
+            PersonalItemState.target_type == "report",
+            PersonalItemState.target_id == str(content.id),
+        )
+    )
+    assert personal_state is not None
+    assert personal_state.saved is False
+    assert personal_state.hidden is True
+    assert personal_state.last_seen_version == 1
+    interaction_rows = (
         await db_session.execute(
-            select(ScoreFeedback).where(ScoreFeedback.content_id == str(content.id))
+            select(InteractionEvent).where(InteractionEvent.target_id == str(content.id))
         )
     ).scalars().all()
-    event_types = [row.event_type for row in feedback_rows]
-    assert "star" in event_types
-    assert "open" in event_types
+    assert {row.action for row in interaction_rows} >= {"completed", "saved", "hidden"}
 
     delete_response = await client.delete(f"/api/contents/{content.id}")
     assert delete_response.status_code == 200
@@ -228,7 +236,7 @@ async def test_export_single_content_markdown_omits_full_body_by_default(client,
     assert f"PIM 内容 ID：{content.id}" in markdown
     assert "PIM 链接：pim://content/" in markdown
     assert "原文链接：https://example.com/paid-story" in markdown
-    assert "事件/重复组：event:paid-story" in markdown
+    assert "近重复组：event:paid-story" in markdown
     assert "Subscriber-only body should not be redistributed" not in markdown
     assert "默认导出不包含完整正文" in markdown
 
@@ -251,6 +259,23 @@ async def test_export_event_markdown_contains_timeline_without_full_body(client,
     )
     first.full_content = "Paid body A"
     second.full_content = "Paid body B"
+    event_key = "event:launch"
+    event_id = stable_event_id(event_key)
+    db_session.add(
+        ContentEvent(
+            event_id=event_id,
+            event_key=event_key,
+            title="Event Story",
+            summary="Event summary",
+            source_names=["Source A", "Source B"],
+        )
+    )
+    db_session.add_all(
+        [
+            ContentEventMembership(event_id=event_id, content_id=str(first.id), role="primary"),
+            ContentEventMembership(event_id=event_id, content_id=str(second.id), role="supporting"),
+        ]
+    )
     await db_session.commit()
 
     response = await client.get("/api/contents/events/export-md", params={"event_key": "event:launch"})

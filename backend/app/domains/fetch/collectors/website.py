@@ -17,10 +17,8 @@ over the module-level helpers.
 import asyncio
 import random
 from collections import Counter
-from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import urlparse
-from xml.etree import ElementTree
 
 import aiohttp
 from bs4 import BeautifulSoup
@@ -54,6 +52,7 @@ from app.utils.url import normalize_external_id
 from .fetch_profile import diagnose_article_html, get_fetch_profile
 from . import website_helpers as _helpers
 from . import website_parser as _parser
+from . import website_sitemap as _sitemap
 from . import bpc_strategies
 
 logger = get_logger(__name__)
@@ -1192,27 +1191,7 @@ class WebsiteCollector(BaseCollector):
             return None
 
     def _default_sitemap_urls(self, source: Source) -> list[str]:
-        metadata = source.metadata_ if isinstance(source.metadata_, dict) else {}
-        configured = metadata.get("sitemap_urls")
-        if isinstance(configured, str):
-            urls = [configured]
-        elif isinstance(configured, list):
-            urls = [str(url).strip() for url in configured]
-        else:
-            urls = []
-        urls = [url for url in urls if url]
-        if urls:
-            return urls
-
-        parsed = urlparse(source.url)
-        if not parsed.scheme or not parsed.netloc:
-            return []
-        root = f"{parsed.scheme}://{parsed.netloc}"
-        return [
-            f"{root}/sitemap.xml",
-            f"{root}/sitemap/news.xml",
-            f"{root}/news-sitemap.xml",
-        ]
+        return _sitemap.default_sitemap_urls(source)
 
     async def _fetch_sitemap_xml(self, source: Source, url: str) -> Optional[str]:
         metadata = source.metadata_ if isinstance(source.metadata_, dict) else {}
@@ -1239,136 +1218,25 @@ class WebsiteCollector(BaseCollector):
             return None
 
     @staticmethod
-    def _parse_sitemap_time(value: str | None) -> datetime | None:
-        text = str(value or "").strip()
-        if not text:
-            return None
-        try:
-            parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
-            if parsed.tzinfo is not None:
-                return parsed.astimezone(timezone.utc).replace(tzinfo=None)
-            return parsed
-        except ValueError:
-            return None
+    def _parse_sitemap_time(value: str | None):
+        return _sitemap.parse_sitemap_time(value)
 
     @staticmethod
     def _url_title(url: str) -> str:
-        path = urlparse(url).path.strip("/")
-        slug = (path.rsplit("/", 1)[-1] if path else "").strip()
-        title = slug.replace("-", " ").replace("_", " ").strip()
-        return title[:180] or url
+        return _sitemap.url_title(url)
 
     def _parse_sitemap_entries(self, xml_text: str, source: Source) -> tuple[list[Dict[str, Any]], list[str]]:
-        try:
-            root = ElementTree.fromstring(xml_text.encode("utf-8"))
-        except ElementTree.ParseError:
-            return [], []
-
-        def _local(tag: str) -> str:
-            return tag.rsplit("}", 1)[-1].lower()
-
-        def _first_descendant_text(node, name: str) -> str | None:
-            for child in node.iter():
-                if _local(child.tag) == name and child.text:
-                    return str(child.text).strip()
-            return None
-
-        entries: list[Dict[str, Any]] = []
-        nested_sitemaps: list[str] = []
-        if _local(root.tag) == "sitemapindex":
-            for sitemap in root:
-                if _local(sitemap.tag) != "sitemap":
-                    continue
-                loc = next((child.text for child in sitemap if _local(child.tag) == "loc"), None)
-                if loc and _helpers.same_site(source.url, loc):
-                    nested_sitemaps.append(str(loc).strip())
-            return [], nested_sitemaps
-
-        if _local(root.tag) != "urlset":
-            return [], []
-
-        for url_node in root:
-            if _local(url_node.tag) != "url":
-                continue
-            loc = next((child.text for child in url_node if _local(child.tag) == "loc"), None)
-            url = str(loc or "").strip()
-            if not url or not _helpers.same_site(source.url, url):
-                continue
-            if not _helpers.looks_like_article_url(source.url, url):
-                continue
-            lastmod = next((child.text for child in url_node if _local(child.tag) == "lastmod"), None)
-            publication_date = _first_descendant_text(url_node, "publication_date")
-            title = _first_descendant_text(url_node, "title") or self._url_title(url)
-            entries.append(
-                {
-                    "external_id": url,
-                    "title": title,
-                    "content": "",
-                    "url": url,
-                    "publish_time": self._parse_sitemap_time(publication_date or lastmod),
-                    "metadata": {
-                        "discovered_via": "sitemap",
-                        "publish_time_estimated": not (publication_date or lastmod),
-                        "publish_time_raw": publication_date or lastmod or "",
-                    },
-                }
-            )
-        return entries, []
+        return _sitemap.parse_sitemap_entries(xml_text, source)
 
     async def _maybe_fetch_via_sitemap(
         self, source: Source, cookies, browser_session
     ) -> Optional[List[Dict[str, Any]]]:
-        metadata = source.metadata_ if isinstance(source.metadata_, dict) else {}
-        if metadata.get("sitemap_discovery") is False:
-            return None
-
-        sitemap_urls = self._default_sitemap_urls(source)
-        if not sitemap_urls:
-            return None
-
-        max_sitemaps = int(metadata.get("sitemap_max_sitemaps", 3) or 3)
-        max_links = int(metadata.get("sitemap_max_links", 30) or 30)
-        pending = list(sitemap_urls[:max_sitemaps])
-        seen_sitemaps: set[str] = set()
-        contents: list[Dict[str, Any]] = []
-        diagnostics = {
-            "sitemaps_checked": 0,
-            "nested_sitemaps": 0,
-            "kept": 0,
-            "truncated": 0,
-        }
-
-        while pending and len(seen_sitemaps) < max_sitemaps and len(contents) < max_links:
-            sitemap_url = pending.pop(0)
-            if sitemap_url in seen_sitemaps:
-                continue
-            seen_sitemaps.add(sitemap_url)
-            xml_text = await self._fetch_sitemap_xml(source, sitemap_url)
-            diagnostics["sitemaps_checked"] += 1
-            if not xml_text:
-                continue
-            parsed_entries, nested = self._parse_sitemap_entries(xml_text, source)
-            diagnostics["nested_sitemaps"] += len(nested)
-            for nested_url in nested:
-                if nested_url not in seen_sitemaps and len(pending) + len(seen_sitemaps) < max_sitemaps:
-                    pending.append(nested_url)
-            for item in parsed_entries:
-                if len(contents) >= max_links:
-                    diagnostics["truncated"] += 1
-                    break
-                contents.append(item)
-
-        diagnostics["kept"] = len(contents)
-        if not contents and not metadata.get("sitemap_urls"):
-            return None
-
-        diag_meta = dict(metadata)
-        diag_meta["sitemap_diagnostics"] = diagnostics
-        source.metadata_ = diag_meta
-        if not contents:
-            return []
-        return await self._maybe_hydrate_public_listing_contents(
-            source, contents, cookies, browser_session
+        return await _sitemap.maybe_fetch_via_sitemap(
+            source,
+            cookies,
+            browser_session,
+            fetch_sitemap_xml=self._fetch_sitemap_xml,
+            hydrate_public_listing=self._maybe_hydrate_public_listing_contents,
         )
 
     async def _maybe_fetch_via_discovery(

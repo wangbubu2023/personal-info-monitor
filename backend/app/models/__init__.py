@@ -23,6 +23,7 @@ from app.models.atom_event import (
     KnowledgeEntity,
 )
 from app.models.content_event import ContentEvent, ContentEventMembership, ContentEventSnapshot
+from app.models.personal_monitor import InteractionEvent, ObservationAggregate, PersonalItemState, UserRule
 from app.models.score_feedback import ScoreFeedback
 
 __all__ = [
@@ -57,5 +58,9 @@ __all__ = [
     "ContentEvent",
     "ContentEventMembership",
     "ContentEventSnapshot",
+    "InteractionEvent",
+    "ObservationAggregate",
+    "PersonalItemState",
+    "UserRule",
     "ScoreFeedback",
 ]
