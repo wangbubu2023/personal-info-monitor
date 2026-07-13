@@ -1,6 +1,9 @@
 # backend/tests/test_fetch_tasks_extended.py
 """fetch_tasks coverage: normal path, source not found, exception handling."""
 
+import threading
+import time
+
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -134,6 +137,8 @@ def test_persist_fetch_task_exception_writes_structured_failure(monkeypatch):
 async def test_do_fetch_uses_fresh_session_for_pipeline():
     """The admission-check Session must not be passed into the async pipeline."""
     sessions = []
+    main_thread_id = threading.get_ident()
+    db_thread_ids = []
 
     class _FakeSource:
         id = "src-1"
@@ -143,10 +148,14 @@ async def test_do_fetch_uses_fresh_session_for_pipeline():
         url = "https://example.com"
 
     class _FakeQuery:
+        def options(self, *args, **kwargs):
+            return self
+
         def filter(self, *args, **kwargs):
             return self
 
         def first(self):
+            db_thread_ids.append(threading.get_ident())
             return _FakeSource()
 
     class _FakeSession:
@@ -164,9 +173,6 @@ async def test_do_fetch_uses_fresh_session_for_pipeline():
     def _session_factory():
         return _FakeSession(f"session-{len(sessions)}")
 
-    async def _inline_to_thread(func, *args, **kwargs):
-        return func(*args, **kwargs)
-
     pipeline_sessions = []
 
     async def _fake_pipeline(db, source, manual_trigger):
@@ -174,7 +180,6 @@ async def test_do_fetch_uses_fresh_session_for_pipeline():
         return {"saved": 0}
 
     with patch("app.database.SessionLocal", new=_session_factory), \
-         patch("app.tasks.fetch_tasks.asyncio.to_thread", new=_inline_to_thread), \
          patch("app.tasks.fetch_tasks.fetch_lock") as mock_lock, \
          patch("app.tasks.fetch_tasks.domain_limiter") as mock_limiter, \
          patch("app.tasks.fetch_tasks.run_fetch_pipeline", new=_fake_pipeline):
@@ -189,7 +194,127 @@ async def test_do_fetch_uses_fresh_session_for_pipeline():
     assert sessions[0] is not pipeline_sessions[0]
     assert sessions[0].closed is True
     assert sessions[1].closed is True
+    assert db_thread_ids
+    assert all(thread_id != main_thread_id for thread_id in db_thread_ids)
     mock_lock.release.assert_called_once_with("src-1")
+
+
+@pytest.mark.asyncio
+async def test_twenty_fetch_admissions_keep_event_loop_responsive():
+    """Historical 20-way fetches must not serialize sync ORM on uvicorn's loop."""
+    import asyncio
+
+    main_thread_id = threading.get_ident()
+    query_thread_ids: list[int] = []
+
+    class _FakeSource:
+        id = "source"
+        fetch_interval = 60
+        enabled = True
+        type = "website"
+        url = "https://example.com"
+        auth_config = None
+
+    class _FakeQuery:
+        def options(self, *args, **kwargs):
+            return self
+
+        def filter(self, *args, **kwargs):
+            return self
+
+        def first(self):
+            query_thread_ids.append(threading.get_ident())
+            time.sleep(0.02)
+            return _FakeSource()
+
+    class _FakeSession:
+        def query(self, model):
+            return _FakeQuery()
+
+        def close(self):
+            return None
+
+    async def _fake_pipeline(db, source, manual_trigger):
+        await asyncio.sleep(0.02)
+        return {"saved": 0}
+
+    ticks = 0
+    finished = False
+
+    async def _heartbeat():
+        nonlocal ticks
+        while not finished:
+            ticks += 1
+            await asyncio.sleep(0.001)
+
+    with patch("app.database.SessionLocal", new=_FakeSession), \
+         patch("app.tasks.fetch_tasks.fetch_lock") as mock_lock, \
+         patch("app.tasks.fetch_tasks.domain_limiter") as mock_limiter, \
+         patch("app.tasks.fetch_tasks.run_fetch_pipeline", new=_fake_pipeline):
+        mock_lock.acquire.return_value = True
+        mock_limiter.acquire.return_value = True
+
+        from app.tasks.fetch_tasks import _do_fetch
+
+        heartbeat = asyncio.create_task(_heartbeat())
+        try:
+            await asyncio.gather(
+                *(_do_fetch(f"source-{index}", manual_trigger=False) for index in range(20))
+            )
+        finally:
+            finished = True
+            await heartbeat
+
+    assert ticks >= 5
+    assert len(query_thread_ids) == 40
+    assert all(thread_id != main_thread_id for thread_id in query_thread_ids)
+
+
+@pytest.mark.asyncio
+async def test_do_fetch_batches_new_content_finish_jobs():
+    from types import SimpleNamespace
+
+    from app.models.source import SourceType
+
+    source = SimpleNamespace(
+        id="source-1",
+        fetch_interval=60,
+        enabled=True,
+        type=SourceType.WEBSITE,
+        url="https://example.com",
+        auth_config=None,
+    )
+    query = MagicMock()
+    query.options.return_value = query
+    query.filter.return_value = query
+    query.first.return_value = source
+    db = MagicMock()
+    db.query.return_value = query
+
+    async def _fake_pipeline(db, source, manual_trigger):
+        return {
+            "saved": 3,
+            "new_content_ids": ["content-1", "content-2", "content-3"],
+        }
+
+    with patch("app.database.SessionLocal", return_value=db), \
+         patch("app.tasks.fetch_tasks.fetch_lock") as mock_lock, \
+         patch("app.tasks.fetch_tasks.domain_limiter") as mock_limiter, \
+         patch("app.tasks.fetch_tasks.run_fetch_pipeline", new=_fake_pipeline), \
+         patch("app.tasks.task_queue.task_queue") as task_queue:
+        mock_lock.acquire.return_value = True
+        mock_limiter.acquire.return_value = True
+        task_queue.enqueue_ingest_finish_many = AsyncMock(return_value=3)
+
+        from app.tasks.fetch_tasks import _do_fetch
+
+        result = await _do_fetch("source-1", manual_trigger=False, job_id="fetch-1")
+
+    assert result["saved"] == 3
+    task_queue.enqueue_ingest_finish_many.assert_awaited_once_with(
+        ["content-1", "content-2", "content-3"],
+        job_id="fetch-1",
+    )
 
 
 @pytest.mark.asyncio

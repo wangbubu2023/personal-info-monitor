@@ -90,7 +90,7 @@ class ContentExtractor:
         if not html:
             return ""
 
-        structured = extract_structured_article(html, min_chars=120)
+        structured = await asyncio.to_thread(extract_structured_article, html, min_chars=120)
         if structured:
             return normalize_article_text(structured.text)
 

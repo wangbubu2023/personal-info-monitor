@@ -7,6 +7,7 @@ from app.platform.workers.postprocess_jobs import (
     claim_postprocess_job,
     due_postprocess_jobs,
     ensure_postprocess_job,
+    ensure_postprocess_jobs,
     mark_postprocess_job_failed,
     mark_postprocess_job_succeeded,
     postprocess_completion_rate,
@@ -60,6 +61,39 @@ def test_postprocess_job_lifecycle(monkeypatch, tmp_path):
     assert metrics["total"] == 1
     assert metrics["succeeded"] == 1
     assert metrics["completion_rate"] == 1.0
+
+
+def test_postprocess_source_batch_uses_one_commit(monkeypatch, tmp_path):
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import Session, sessionmaker
+
+    import app.platform.workers.postprocess_jobs as jobs
+    from app.database import Base
+
+    commit_calls = 0
+
+    class CountingSession(Session):
+
+        def commit(self):
+            nonlocal commit_calls
+            commit_calls += 1
+            return super().commit()
+
+    engine = create_engine(f"sqlite:///{tmp_path / 'batch-jobs.db'}")
+    Base.metadata.create_all(engine)
+    session_factory = sessionmaker(bind=engine, class_=CountingSession)
+    monkeypatch.setattr(jobs, "SessionLocal", session_factory)
+
+    batch = [(f"content-{index}", "fetch-1") for index in range(20)]
+    assert ensure_postprocess_jobs(batch) == 20
+    assert commit_calls == 1
+
+    # Re-enqueueing active rows performs one batched read and no write commit.
+    assert ensure_postprocess_jobs(batch) == 0
+    assert commit_calls == 1
+
+    with session_factory() as db:
+        assert db.query(PostprocessJob).count() == 20
 
 
 def test_stale_running_postprocess_job_is_recovered(monkeypatch, tmp_path):

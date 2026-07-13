@@ -83,7 +83,10 @@ async def test_finish_content_keyword_matching():
                     with patch("app.domains.ingest.keywords.matcher.KeywordMatcher") as MockMatcher:
                         MockMatcher.return_value.match.return_value = [{"id": "kw-1", "keyword": "test"}]
                         with patch("app.domains.fetch.finalize.hydrate_fetched_content", new_callable=AsyncMock):
-                            with patch("app.domains.ingest.finish._dispatch_keyword_alerts"):
+                            with patch(
+                                "app.domains.ingest.finish._dispatch_keyword_alerts_async",
+                                new=AsyncMock(),
+                            ):
                                 from app.domains.ingest.finish import finish_content
                                 await finish_content("content-1")
 
@@ -397,7 +400,7 @@ async def test_batch_process_contents_honours_reprocess_flags():
 
     with patch.object(process_tasks, "process_content", new=AsyncMock()) as mock_proc:
         with patch("app.tasks.task_queue.task_queue") as mock_queue:
-            mock_queue.enqueue_ingest_finish = AsyncMock()
+            mock_queue.enqueue_ingest_finish_many = AsyncMock()
             await process_tasks.batch_process_contents(
                 ["a", "b"], regenerate_summary=True, retranslate=False
             )
@@ -405,7 +408,7 @@ async def test_batch_process_contents_honours_reprocess_flags():
     assert mock_proc.await_count == 2
     mock_proc.assert_any_await("a", regenerate_summary=True, retranslate=False)
     mock_proc.assert_any_await("b", regenerate_summary=True, retranslate=False)
-    mock_queue.enqueue_ingest_finish.assert_not_called()
+    mock_queue.enqueue_ingest_finish_many.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -415,8 +418,8 @@ async def test_batch_process_contents_without_flags_enqueues_finish():
 
     with patch.object(process_tasks, "process_content", new=AsyncMock()) as mock_proc:
         with patch("app.tasks.task_queue.task_queue") as mock_queue:
-            mock_queue.enqueue_ingest_finish = AsyncMock()
+            mock_queue.enqueue_ingest_finish_many = AsyncMock(return_value=2)
             await process_tasks.batch_process_contents(["a", "b"])
 
     mock_proc.assert_not_awaited()
-    assert mock_queue.enqueue_ingest_finish.await_count == 2
+    mock_queue.enqueue_ingest_finish_many.assert_awaited_once_with(["a", "b"], job_id=None)

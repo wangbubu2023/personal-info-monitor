@@ -52,6 +52,8 @@ async def fetch_source(source_id: str, manual_trigger: bool = False):
 async def _do_fetch(source_id: str, manual_trigger: bool, job_id: str | None = None):
     """执行单源抓取：短生命周期准入检查 + 主循环 async pipeline。"""
     from app.database import SessionLocal
+    from sqlalchemy.orm import joinedload
+
     from app.models import Source
 
     lock_acquired = False
@@ -105,13 +107,30 @@ async def _do_fetch(source_id: str, manual_trigger: bool, job_id: str | None = N
 
         lock_acquired = True
 
-        # --- 阶段 2：在 pipeline 所在线程中创建 DB Session 和 ORM row。 ---
-        db = SessionLocal()
-        source = db.query(Source).filter(Source.id == source_id).first()
+        # --- 阶段 2：在线程中创建 Session 并完整装载 pipeline 所需的
+        # Source/Auth ORM 状态。同步连接池 checkout 与 SELECT 绝不能发生在
+        # uvicorn event loop 上；高并发时一次 checkout 等待即可冻结 HTTP。
+        def _open_pipeline_session():
+            pipeline_db = SessionLocal()
+            try:
+                pipeline_source = (
+                    pipeline_db.query(Source)
+                    .options(joinedload(Source.auth_config))
+                    .filter(Source.id == source_id)
+                    .first()
+                )
+                return pipeline_db, pipeline_source
+            except Exception:
+                pipeline_db.close()
+                raise
+
+        db, source = await asyncio.to_thread(_open_pipeline_session)
         if not source:
             logger.error(f"Source disappeared after fetch lock acquisition: {source_id}")
             return {"status": "error", "message": "Source not found"}
 
+        # The coordinator is cooperative async code. Every synchronous ORM or
+        # CPU-heavy stage inside it is explicitly sent to a worker thread.
         result = await run_fetch_pipeline(db, source, manual_trigger)
 
         # 收集新内容 ID 用于 AI 后处理
@@ -124,8 +143,11 @@ async def _do_fetch(source_id: str, manual_trigger: bool, job_id: str | None = N
         # Dispatch non-blocking ingest-finalization for new content.
         if new_ids:
             from app.tasks.task_queue import task_queue
-            for cid in new_ids:
-                await task_queue.enqueue_ingest_finish(str(cid), job_id=job_id)
+
+            await task_queue.enqueue_ingest_finish_many(
+                [str(content_id) for content_id in new_ids],
+                job_id=job_id,
+            )
 
         return result
 
@@ -137,7 +159,7 @@ async def _do_fetch(source_id: str, manual_trigger: bool, job_id: str | None = N
         if lock_acquired:
             await asyncio.to_thread(fetch_lock.release, source_id)
         if db is not None:
-            db.close()
+            await asyncio.to_thread(db.close)
 
 
 async def fetch_all_sources(manual_trigger: bool = False):

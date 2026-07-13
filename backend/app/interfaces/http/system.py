@@ -8,6 +8,7 @@ from fastapi.responses import PlainTextResponse, Response
 
 from app.background import task_tracker
 from app.config import get_settings
+from app.platform.config.settings import effective_fetch_concurrency
 from app.domains.sources.monitoring import MonitorService
 from app.domains.sources.source_types import source_type_catalog
 from app.database import SessionLocal
@@ -52,6 +53,8 @@ def get_queue_status() -> Dict[str, Any]:
         "running_fetches": status["running_fetches"],
         "running_processes": status["running_processes"],
         "fetch_concurrency": settings.fetch_concurrency,
+        "active_fetch_concurrency": effective_fetch_concurrency(settings),
+        "fetch_active_limit": getattr(settings, "fetch_active_limit", 20),
         "scheduler_running": bool(getattr(scheduler, "running", False)),
         "scheduled_jobs": len(scheduler.get_jobs()),
         "postprocess_jobs": postprocess,

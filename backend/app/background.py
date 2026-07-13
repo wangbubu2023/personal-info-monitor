@@ -158,7 +158,9 @@ def get_fetch_semaphore() -> asyncio.Semaphore:
     global _fetch_semaphore
     if _fetch_semaphore is None:
         from app.config import get_settings
-        _fetch_semaphore = asyncio.Semaphore(get_settings().fetch_concurrency)
+        from app.platform.config.settings import effective_fetch_concurrency
+
+        _fetch_semaphore = asyncio.Semaphore(effective_fetch_concurrency(get_settings()))
     return _fetch_semaphore
 
 
@@ -175,5 +177,9 @@ def get_finalize_semaphore() -> asyncio.Semaphore:
     if _finalize_semaphore is None:
         from app.config import get_settings
 
-        _finalize_semaphore = asyncio.Semaphore(max(1, min(get_settings().fetch_concurrency, 8)))
+        from app.platform.config.settings import effective_fetch_concurrency
+
+        _finalize_semaphore = asyncio.Semaphore(
+            max(1, min(effective_fetch_concurrency(get_settings()), 4))
+        )
     return _finalize_semaphore

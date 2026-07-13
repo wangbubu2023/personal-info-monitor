@@ -115,6 +115,53 @@ class BoundedTaskQueue:
             task_queue_metrics.record_dropped("process")
             return False
 
+    async def enqueue_ingest_finish_many(
+        self,
+        content_ids: list[str],
+        job_id: str | None = None,
+    ) -> int:
+        """Persist a source batch once, then populate the execution cache.
+
+        The durable table remains the truth source when the bounded in-memory
+        queue fills up. The return value is the number immediately cached;
+        every valid ID is durable regardless of that number.
+        """
+        from app.platform.workers.postprocess_jobs import ensure_postprocess_jobs
+
+        unique_ids: list[str] = []
+        seen: set[str] = set()
+        for raw_content_id in content_ids:
+            content_id = str(raw_content_id or "").strip()
+            if not content_id or content_id in seen:
+                continue
+            seen.add(content_id)
+            unique_ids.append(content_id)
+        if not unique_ids:
+            return 0
+        await asyncio.to_thread(
+            ensure_postprocess_jobs,
+            [(content_id, job_id) for content_id in unique_ids],
+        )
+
+        enqueued = 0
+        for content_id in unique_ids:
+            try:
+                self._process_queue.put_nowait((content_id, job_id))
+                enqueued += 1
+            except asyncio.QueueFull:
+                logger.warning(
+                    "process queue full (maxsize=%d), deferring durable content_id=%s",
+                    self._process_maxsize,
+                    content_id,
+                )
+                self._record_dropped_task(
+                    "PROCESS",
+                    content_id,
+                    f"job_id={job_id}; durable=pending",
+                )
+                task_queue_metrics.record_dropped("process")
+        return enqueued
+
     async def enqueue_listing_translation(self, content_id: str) -> bool:
         """Enqueue a bounded listing translation sidecar job."""
         return await self.enqueue_ingest_finish(content_id, job_id=LISTING_TRANSLATION_JOB_ID)
@@ -168,6 +215,9 @@ class BoundedTaskQueue:
                     logger.exception("fetch worker error for source_id=%s", source_id)
                 finally:
                     self._fetch_queue.task_done()
+                    # Explicitly hand control back to request handlers before
+                    # this worker immediately claims another queued source.
+                    await asyncio.sleep(0)
             except asyncio.CancelledError:
                 break
 

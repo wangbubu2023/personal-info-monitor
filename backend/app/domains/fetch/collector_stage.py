@@ -7,6 +7,7 @@ warnings to the coordinator.
 
 from __future__ import annotations
 
+import asyncio
 import re
 from typing import Any, List, Optional, Tuple
 
@@ -136,7 +137,7 @@ class CollectorStage:
         if str(source_type).lower() == "website" and not source.auth_config_id:
             source_host = url_utils.normalize_host(source.url)
             if source_host:
-                candidates = db.query(AuthConfig).all()
+                candidates = await asyncio.to_thread(lambda: db.query(AuthConfig).all())
                 for cfg in candidates:
                     cfg_host = url_utils.normalize_host(cfg.site_url)
                     if not cfg_host:
@@ -151,7 +152,7 @@ class CollectorStage:
         # when a recently validated on-disk profile already has cookies.
         browser_session = None
         if str(source_type).lower() in ("website", "x"):
-            browser_session = build_browser_session_runtime(db, source)
+            browser_session = await asyncio.to_thread(build_browser_session_runtime, db, source)
 
         runtime_auth = {}
         auth_warning = None
@@ -210,6 +211,9 @@ class CollectorStage:
         last_fetch_error = ""
         last_fetch_exc: Exception | None = None
         for fetch_url in source_urls:
+            # A source with many configured URLs must not monopolise uvicorn's
+            # event loop between network operations.
+            await asyncio.sleep(0)
             try:
                 fetched = await fetch_at_ephemeral_source_url(collector, source, fetch_url)
                 fetch_success_count += 1

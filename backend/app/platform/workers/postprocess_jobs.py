@@ -25,26 +25,60 @@ def postprocess_idempotency_key(content_id: str, job_id: str | None = None) -> s
 
 def ensure_postprocess_job(content_id: str, job_id: str | None = None) -> None:
     """Create or revive a durable job before it enters the execution cache."""
-    key = postprocess_idempotency_key(content_id, job_id)
+    ensure_postprocess_jobs([(content_id, job_id)])
+
+
+def ensure_postprocess_jobs(jobs: list[tuple[str, str | None]]) -> int:
+    """Create or revive many durable jobs in one SQLite transaction.
+
+    v1.6 originally opened and committed one session for every content item.
+    A source returning 20 items therefore serialized 20 transactions before
+    its fetch worker could finish, and 20 concurrent sources amplified that
+    into a SQLite write storm.  Load all existing idempotency keys once and
+    persist the whole source batch with a single commit.
+
+    Returns the number of rows created or revived. Active jobs are left
+    untouched and do not cause a write transaction.
+    """
+    normalized: dict[str, tuple[str, str | None]] = {}
+    for content_id, job_id in jobs:
+        cid = str(content_id or "").strip()
+        if not cid:
+            continue
+        normalized[postprocess_idempotency_key(cid, job_id)] = (cid, job_id)
+    if not normalized:
+        return 0
+
     now = utcnow_naive()
     db = SessionLocal()
     try:
-        job = db.query(PostprocessJob).filter(PostprocessJob.idempotency_key == key).first()
-        if job is None:
-            db.add(
-                PostprocessJob(
-                    idempotency_key=key,
-                    content_id=str(content_id),
-                    job_id=job_id,
-                    status="pending",
-                    attempts=0,
-                    max_attempts=3,
-                    run_after=now,
-                    created_at=now,
-                    updated_at=now,
+        existing = (
+            db.query(PostprocessJob)
+            .filter(PostprocessJob.idempotency_key.in_(list(normalized)))
+            .all()
+        )
+        existing_by_key = {job.idempotency_key: job for job in existing}
+        changed = 0
+        for key, (content_id, job_id) in normalized.items():
+            job = existing_by_key.get(key)
+            if job is None:
+                db.add(
+                    PostprocessJob(
+                        idempotency_key=key,
+                        content_id=content_id,
+                        job_id=job_id,
+                        status="pending",
+                        attempts=0,
+                        max_attempts=3,
+                        run_after=now,
+                        created_at=now,
+                        updated_at=now,
+                    )
                 )
-            )
-        elif job.status not in _ACTIVE_STATUSES:
+                changed += 1
+                continue
+            if job.status in _ACTIVE_STATUSES:
+                continue
             job.status = "pending"
             job.attempts = 0
             job.run_after = now
@@ -53,7 +87,10 @@ def ensure_postprocess_job(content_id: str, job_id: str | None = None) -> None:
             job.finished_at = None
             job.last_error = None
             job.updated_at = now
-        db.commit()
+            changed += 1
+        if changed:
+            db.commit()
+        return changed
     finally:
         db.close()
 

@@ -166,6 +166,7 @@ def _metrics_snapshot() -> dict[str, Any]:
 
 def _queue_snapshot() -> dict[str, Any]:
     from app.background import task_tracker
+    from app.platform.config.settings import effective_fetch_concurrency
 
     status = task_tracker.status()
     settings = get_settings()
@@ -173,6 +174,8 @@ def _queue_snapshot() -> dict[str, Any]:
         "running_fetches": status.get("running_fetches"),
         "running_processes": status.get("running_processes"),
         "fetch_concurrency": settings.fetch_concurrency,
+        "active_fetch_concurrency": effective_fetch_concurrency(settings),
+        "fetch_active_limit": getattr(settings, "fetch_active_limit", 20),
     }
 
 

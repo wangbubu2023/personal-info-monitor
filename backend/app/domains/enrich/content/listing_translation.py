@@ -105,8 +105,33 @@ async def _enqueue_scheduled_translation(content_id: str) -> None:
         _scheduled_ids.discard(content_id)
 
 
-async def enqueue_listing_translation_job(content_id: str) -> bool:
-    """Enqueue listing translation through the bounded process queue."""
+async def enqueue_listing_translation_job(
+    content_id: str,
+    *,
+    title: str | None = None,
+    summary: str | None = None,
+    translated_title: str | None = None,
+    translated_summary: str | None = None,
+) -> bool:
+    """Enqueue listing translation only when it can perform useful work.
+
+    v1.6 persisted a translation job for every ingested content row, even
+    when translation was globally disabled. That empty sidecar still paid the
+    durable ensure/claim/succeed transaction sequence. Callers that already
+    hold the content fields can also avoid jobs for Chinese/already-translated
+    rows without another database lookup.
+    """
+    if not await asyncio.to_thread(listing_translation_enabled):
+        return False
+    if title is not None and not await asyncio.to_thread(
+        content_needs_listing_translation,
+        title=title,
+        summary=summary,
+        translated_title=translated_title,
+        translated_summary=translated_summary,
+    ):
+        return False
+
     from app.tasks.task_queue import task_queue
 
     return await task_queue.enqueue_listing_translation(content_id)

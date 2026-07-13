@@ -1292,7 +1292,7 @@ class WebsiteCollector(BaseCollector):
             listing_source = _helpers.source_with_url(source, listing_url)
             if selector_overrides:
                 listing_source.metadata_ = {**(source.metadata_ or {}), **selector_overrides}
-            raw_candidates.extend(self._parse_html(html, listing_source))
+            raw_candidates.extend(await asyncio.to_thread(self._parse_html, html, listing_source))
 
         kept, diagnostics = filter_candidates(raw_candidates, rules, source.url)
         diagnostics["listing_urls_configured"] = len(rules.listing_urls)
@@ -1358,7 +1358,7 @@ class WebsiteCollector(BaseCollector):
                     return []
                 html = response.text
 
-            return self._parse_html(html, source)
+            return await asyncio.to_thread(self._parse_html, html, source)
 
         except (aiohttp.ClientError, TimeoutError, ValueError) as exc:
             from app.domains.fetch.failures import FetchFailureError, classify_exception
@@ -1450,7 +1450,7 @@ class WebsiteCollector(BaseCollector):
                     self.logger.warning(f"Selector '{wait_selector}' not found, continuing anyway")
 
                 html = await page.content()
-                return self._parse_html(html, source)
+                return await asyncio.to_thread(self._parse_html, html, source)
 
         except Exception as exc:  # noqa: BLE001 - broad Playwright surface
             self.logger.error(f"Error fetching with Playwright: {exc}")

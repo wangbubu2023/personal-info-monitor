@@ -87,8 +87,11 @@ async def batch_process_contents(content_ids: list, regenerate_summary: bool = F
         return
 
     from app.tasks.task_queue import task_queue
-    for content_id in content_ids:
-        await task_queue.enqueue_ingest_finish(content_id, job_id=None)
+
+    await task_queue.enqueue_ingest_finish_many(
+        [str(content_id) for content_id in content_ids],
+        job_id=None,
+    )
 
 
 async def update_keyword_matches():

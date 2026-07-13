@@ -277,6 +277,7 @@ async def run_fetch_pipeline(db: Session, source: Source, manual_trigger: bool =
     # 1. Collector Stage
     raw_contents, merged_warning, primary_warning = await CollectorStage.execute(db, source)
     _mark_stage("collector")
+    await asyncio.sleep(0)
 
     if not raw_contents:
         logger.info(f"No new content from source: {source.name}")
@@ -293,6 +294,7 @@ async def run_fetch_pipeline(db: Session, source: Source, manual_trigger: bool =
     # 2. Normalizer Stage (freshness, semantic dedupe, backfill)
     valid_raw_contents, stale_skipped = await NormalizerStage.execute(db, source, raw_contents, manual_trigger)
     _mark_stage("normalizer")
+    await asyncio.sleep(0)
 
     if not valid_raw_contents:
         logger.info(f"All content already fetched from: {source.name}")
@@ -309,9 +311,12 @@ async def run_fetch_pipeline(db: Session, source: Source, manual_trigger: bool =
     # 3. Build lightweight Content objects (no LLM) and persist
     content_objects, build_failed = await build_raw_content_objects(valid_raw_contents, source)
     _mark_stage("build_content")
+    await asyncio.sleep(0)
     keyword_filtered_count = 0
     if getattr(source, "use_keyword_filter", False):
-        content_objects, keyword_filtered_count = _apply_keyword_filter(db, source, content_objects)
+        content_objects, keyword_filtered_count = await asyncio.to_thread(
+            _apply_keyword_filter, db, source, content_objects
+        )
         _mark_stage("keyword_filter")
         if not content_objects:
             logger.info(f"All {keyword_filtered_count} items filtered out by keywords for: {source.name}")

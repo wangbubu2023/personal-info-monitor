@@ -7,6 +7,7 @@ import pytest
 
 from app.domains.enrich.content.listing_translation import (
     content_needs_listing_translation,
+    enqueue_listing_translation_job,
     listing_translation_enabled,
     run_listing_translation_job,
     schedule_listing_translation_backfill,
@@ -59,6 +60,37 @@ def test_content_needs_listing_translation_skips_when_already_translated():
         translated_summary="摘要内容足够长",
         translator=translator,
         )
+
+
+@pytest.mark.asyncio
+async def test_enqueue_listing_translation_skips_disabled_sidecar():
+    with patch(
+        "app.domains.enrich.content.listing_translation.listing_translation_enabled",
+        return_value=False,
+    ), patch("app.tasks.task_queue.task_queue") as task_queue:
+        queued = await enqueue_listing_translation_job("cid-disabled", title="English title")
+
+    assert queued is False
+    task_queue.enqueue_listing_translation.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_enqueue_listing_translation_skips_content_that_needs_no_work():
+    with patch(
+        "app.domains.enrich.content.listing_translation.listing_translation_enabled",
+        return_value=True,
+    ), patch(
+        "app.domains.enrich.content.listing_translation.content_needs_listing_translation",
+        return_value=False,
+    ), patch("app.tasks.task_queue.task_queue") as task_queue:
+        queued = await enqueue_listing_translation_job(
+            "cid-translated",
+            title="Hello",
+            translated_title="你好",
+        )
+
+    assert queued is False
+    task_queue.enqueue_listing_translation.assert_not_called()
 
 
 @pytest.mark.asyncio

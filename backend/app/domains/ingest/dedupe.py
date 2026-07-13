@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from sqlalchemy import func, or_
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.domains.score.score_utils import normalize_authority_type, normalize_source_stars
 from app.models import Content, Source
@@ -132,6 +132,7 @@ def mark_title_group_duplicate_members(db: Session, content: Content) -> None:
 
     members = (
         db.query(Content)
+        .options(joinedload(Content.source))
         .filter(func.json_extract(Content.metadata_, "$.duplicate_group_id") == group_id)
         .all()
     )

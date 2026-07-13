@@ -24,6 +24,7 @@ def test_sync_pool_scales_with_fetch_concurrency():
 
     class _Settings:
         fetch_concurrency = 20
+        fetch_active_limit = 20
 
     options = _sync_engine_pool_kwargs(_Settings())
 
@@ -38,6 +39,27 @@ def test_fetch_concurrency_must_be_positive():
 
     with pytest.raises(ValidationError, match="greater than or equal to 1"):
         Settings(_env_file=None, fetch_concurrency=0)
+
+
+def test_historical_twenty_way_fetch_concurrency_remains_active():
+    from app.platform.config.settings import Settings, effective_fetch_concurrency
+
+    settings = Settings(_env_file=None, fetch_concurrency=20)
+
+    assert settings.fetch_concurrency == 20
+    assert settings.fetch_active_limit == 20
+    assert effective_fetch_concurrency(settings) == 20
+
+
+def test_fetch_active_limit_can_be_tuned_without_exceeding_configured_concurrency():
+    from app.platform.config.settings import Settings, effective_fetch_concurrency
+
+    assert effective_fetch_concurrency(
+        Settings(_env_file=None, fetch_concurrency=12, fetch_active_limit=6)
+    ) == 6
+    assert effective_fetch_concurrency(
+        Settings(_env_file=None, fetch_concurrency=3, fetch_active_limit=6)
+    ) == 3
 
 
 def test_async_sqlite_pool_is_bounded():

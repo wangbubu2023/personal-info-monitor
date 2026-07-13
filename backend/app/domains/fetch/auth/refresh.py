@@ -16,6 +16,8 @@ can surface them through the pipeline warning channel without aborting fetch.
 
 from __future__ import annotations
 
+import asyncio
+
 from app.platform.auth.cookies import cookies_appear_valid
 from app.platform.browser.login_capture import login_and_capture_cookies
 from app.utils.datetime import utcnow_naive
@@ -105,13 +107,13 @@ async def maybe_refresh_auth_cookies(db, source, creds: dict) -> tuple[dict, str
 
         source.auth_config.credentials = encrypt_data(merged)
         source.auth_config.last_validated_at = utcnow_naive()
-        db.commit()
+        await asyncio.to_thread(db.commit)
         logger.info("Auto-login refreshed cookies for source %s", source.id)
         return merged, None
     except Exception as exc:  # noqa: BLE001 - persistence may fail with various ORM/encryption errors
         try:
-            db.rollback()
-            db.refresh(source.auth_config)
+            await asyncio.to_thread(db.rollback)
+            await asyncio.to_thread(db.refresh, source.auth_config)
         except Exception as rollback_exc:  # noqa: BLE001 - best-effort session cleanup
             logger.debug(
                 "Failed to rollback refreshed cookies for source %s: %s",

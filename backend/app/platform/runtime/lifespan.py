@@ -35,6 +35,7 @@ from typing import Awaitable, Callable
 from fastapi import FastAPI
 
 from app.platform.config.settings import get_settings
+from app.platform.config.settings import effective_fetch_concurrency
 from app.platform.observability.logger import get_logger
 from app.platform.observability.metrics import persist_metrics, restore_metrics
 from app.platform.persistence.database import async_engine
@@ -147,10 +148,7 @@ async def enqueue_unfinished_content_on_startup(
             db.close()
 
     ids = await asyncio.to_thread(_query_ids)
-    enqueued = 0
-    for content_id in ids:
-        if await task_queue.enqueue_ingest_finish(content_id, job_id=job_id):
-            enqueued += 1
+    enqueued = await task_queue.enqueue_ingest_finish_many(ids, job_id=job_id)
     if enqueued:
         logger.info("Requeued %d unfinished content items (%s)", enqueued, job_id)
     return enqueued
@@ -205,8 +203,9 @@ def build_lifespan(
 
         from app.tasks.task_queue import task_queue
 
+        active_fetches = effective_fetch_concurrency(settings)
         await task_queue.start_workers(
-            fetch_workers=settings.fetch_concurrency,
+            fetch_workers=active_fetches,
             fetch_handler=fetch_handler,
             process_handler=process_handler,
         )
@@ -215,7 +214,18 @@ def build_lifespan(
 
         print(f"\n  PIM API Key: {_mask_secret(settings.pim_api_key)}")
         print(f"  Data dir:    {settings.data_dir}")
-        print(f"  Fetch concurrency: {settings.fetch_concurrency}")
+        print(
+            "  Fetch concurrency: "
+            f"{active_fetches} active (configured={settings.fetch_concurrency}, "
+            f"safety_limit={settings.fetch_active_limit})"
+        )
+        if active_fetches < settings.fetch_concurrency:
+            logger.warning(
+                "Fetch concurrency emergency-capped at %d (configured=%d); "
+                "raise FETCH_ACTIVE_LIMIT after the host is stable",
+                active_fetches,
+                settings.fetch_concurrency,
+            )
         _enrich_flags = (
             f"auto_on_ingest={settings.enrich_auto_on_ingest}, "
             f"summary={settings.enrich_summary_enabled}, "

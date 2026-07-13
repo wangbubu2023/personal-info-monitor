@@ -49,6 +49,21 @@ async def test_enqueue_ingest_finish_persists_even_when_process_queue_full():
 
 
 @pytest.mark.asyncio
+async def test_enqueue_ingest_finish_many_persists_source_batch_once():
+    from app.tasks.task_queue import BoundedTaskQueue
+
+    q = BoundedTaskQueue(fetch_maxsize=5, process_maxsize=25)
+    content_ids = [f"content-{index}" for index in range(20)]
+
+    with patch("app.platform.workers.postprocess_jobs.ensure_postprocess_jobs") as ensure:
+        enqueued = await q.enqueue_ingest_finish_many(content_ids, job_id="fetch-1")
+
+    assert enqueued == 20
+    ensure.assert_called_once_with([(content_id, "fetch-1") for content_id in content_ids])
+    assert q._process_queue.qsize() == 20
+
+
+@pytest.mark.asyncio
 async def test_enqueue_listing_translation_uses_process_queue_job_id():
     from app.tasks.task_queue import BoundedTaskQueue, LISTING_TRANSLATION_JOB_ID
 
@@ -113,8 +128,11 @@ async def test_startup_refinish_requeues_recent_unfinished_content():
     db.query.return_value.filter.return_value.order_by.return_value.limit.return_value.all.return_value = rows
 
     with patch("app.database.SessionLocal", return_value=db):
-        with patch("app.tasks.task_queue.task_queue.enqueue_ingest_finish", new=AsyncMock(return_value=True)) as enqueue:
+        with patch(
+            "app.tasks.task_queue.task_queue.enqueue_ingest_finish_many",
+            new=AsyncMock(return_value=1),
+        ) as enqueue:
             count = await enqueue_unfinished_content_on_startup()
 
     assert count == 1
-    enqueue.assert_awaited_once_with("needs-finish", job_id="startup-refinish")
+    enqueue.assert_awaited_once_with(["needs-finish"], job_id="startup-refinish")

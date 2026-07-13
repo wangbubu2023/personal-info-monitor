@@ -83,13 +83,17 @@ async def _materialize_hydrated_fulltext(raw_content: dict) -> None:
     """
     html = raw_content.get("html")
     existing_text = str(raw_content.get("content") or "").strip()
-    _stamp_article_page_metadata(raw_content)
+    await asyncio.to_thread(_stamp_article_page_metadata, raw_content)
     if not html or len(existing_text) >= _MIN_FULLTEXT_CHARS:
         return
 
     method = "content_extractor"
     try:
-        structured = extract_structured_article(str(html), min_chars=_MIN_FULLTEXT_CHARS)
+        structured = await asyncio.to_thread(
+            extract_structured_article,
+            str(html),
+            min_chars=_MIN_FULLTEXT_CHARS,
+        )
         if structured:
             extracted = structured.text
             method = f"structured:{structured.method}"
@@ -177,6 +181,9 @@ class NormalizerStage:
         semantic_batch_keys: set[tuple[str, object]] = set()
 
         for raw_content in raw_contents:
+            # Cooperate with HTTP request parsing between items even when a
+            # collector returned a large batch.
+            await asyncio.sleep(0)
             source_type = source.type.value if hasattr(source.type, "value") else source.type
 
             if str(source_type).lower() == "website":

@@ -50,18 +50,29 @@ async def _finish_content_async(content_id: str) -> None:
     from app.domains.ingest.content_processor import ContentProcessor
     from app.domains.ingest.keywords.matcher import KeywordMatcher
 
-    db = SessionLocal()
+    # Session construction is cheap, but its first query checks out a
+    # synchronous SQLite connection. Do both in a worker thread so four
+    # post-process workers cannot stall the HTTP event loop together.
+    def _load_content():
+        loaded_db = SessionLocal()
+        loaded_db.expire_on_commit = False
+        try:
+            loaded_content = (
+                loaded_db.query(Content)
+                .options(joinedload(Content.source).joinedload(Source.auth_config))
+                .filter(Content.id == content_id)
+                .first()
+            )
+            return loaded_db, loaded_content
+        except Exception:
+            loaded_db.close()
+            raise
+
+    db, content = await asyncio.to_thread(_load_content)
     # The rest of this function contains network and optional LLM awaits.
     # Keep loaded ORM state alive, but release the SQLite connection before
     # those awaits so one slow item cannot reserve a sync-pool slot for minutes.
-    db.expire_on_commit = False
     try:
-        content = (
-            db.query(Content)
-            .options(joinedload(Content.source).joinedload(Source.auth_config))
-            .filter(Content.id == content_id)
-            .first()
-        )
         if not content:
             logger.error(f"Content not found: {content_id}")
             return
@@ -170,8 +181,8 @@ async def _finish_content_async(content_id: str) -> None:
         logger.info(f"Post-processed content: {content.title[:50]}")
 
         if KEYWORD_MONITORING_ENABLED and content.keyword_matches:
-            _dispatch_keyword_alerts(db, content)
-            # _dispatch_keyword_alerts performs read-only lookups. End that
+            await _dispatch_keyword_alerts_async(db, content)
+            # Alert preference resolution performs read-only lookups. End that
             # transaction before any subsequent async sidecar work.
             await asyncio.to_thread(db.rollback)
 
@@ -186,7 +197,13 @@ async def _finish_content_async(content_id: str) -> None:
         try:
             from app.domains.enrich.content.listing_translation import enqueue_listing_translation_job
 
-            await enqueue_listing_translation_job(str(content.id))
+            await enqueue_listing_translation_job(
+                str(content.id),
+                title=content.title or "",
+                summary=content.summary,
+                translated_title=content.translated_title,
+                translated_summary=content.translated_summary,
+            )
         except Exception as exc:  # noqa: BLE001
             logger.debug("listing translation schedule failed for %s: %s", content_id, exc)
 
@@ -198,9 +215,18 @@ async def _finish_content_async(content_id: str) -> None:
         await asyncio.to_thread(db.close)
 
 
-def _dispatch_keyword_alerts(db, content) -> None:
-    """Schedule keyword-alert emails fire-and-forget."""
+def _notifiable_keyword_names(db, content) -> list[str]:
     from app.models import Keyword
+
+    names: list[str] = []
+    for match in content.keyword_matches:
+        keyword_obj = db.query(Keyword).filter(Keyword.id == match["id"]).first()
+        if keyword_obj and keyword_obj.notify:
+            names.append(str(match["keyword"]))
+    return names
+
+
+def _schedule_keyword_alerts(content, keyword_names: list[str]) -> None:
     from app.domains.enrich.notifications.keyword_alert import send_keyword_alert
 
     async def _deliver_keyword_alert(keyword: str) -> None:
@@ -209,13 +235,22 @@ def _dispatch_keyword_alerts(db, content) -> None:
         except Exception as exc:
             logger.warning("Keyword alert dispatch failed for %s: %s", content.id, exc)
 
-    for match in content.keyword_matches:
-        keyword_obj = db.query(Keyword).filter(Keyword.id == match["id"]).first()
-        if keyword_obj and keyword_obj.notify:
-            try:
-                asyncio.create_task(_deliver_keyword_alert(match["keyword"]))
-            except RuntimeError:
-                pass
+    for keyword in keyword_names:
+        try:
+            asyncio.create_task(_deliver_keyword_alert(keyword))
+        except RuntimeError:
+            pass
+
+
+def _dispatch_keyword_alerts(db, content) -> None:
+    """Schedule keyword-alert emails fire-and-forget (sync compatibility API)."""
+    _schedule_keyword_alerts(content, _notifiable_keyword_names(db, content))
+
+
+async def _dispatch_keyword_alerts_async(db, content) -> None:
+    """Resolve notification preferences without blocking uvicorn's loop."""
+    keyword_names = await asyncio.to_thread(_notifiable_keyword_names, db, content)
+    _schedule_keyword_alerts(content, keyword_names)
 
 
 __all__ = [

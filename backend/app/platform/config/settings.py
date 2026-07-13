@@ -29,6 +29,19 @@ def _default_cors_origins() -> str:
     )
 
 
+def effective_fetch_concurrency(settings: object) -> int:
+    """Return the number of fetch pipelines allowed to run at once.
+
+    ``FETCH_CONCURRENCY`` existed before fetch work shared a single uvicorn
+    event loop with HTTP. Keep its historical 20-way default while exposing an
+    independent activity cap for constrained hosts and incident mitigation.
+    """
+
+    configured = max(1, int(getattr(settings, "fetch_concurrency", 1) or 1))
+    active_limit = max(1, int(getattr(settings, "fetch_active_limit", 20) or 20))
+    return min(configured, active_limit)
+
+
 class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
 
@@ -55,7 +68,11 @@ class Settings(BaseSettings):
     async_database_url: str = ""
 
     # Fetch concurrency
-    fetch_concurrency: int = Field(default=20, ge=1)  # Max parallel fetches
+    fetch_concurrency: int = Field(default=20, ge=1)  # Legacy/requested max parallel fetches
+    # Emergency/operator activity cap, independent of the requested worker
+    # count. Keep the historical 20-way throughput by default; lower this only
+    # for constrained hosts or incident mitigation.
+    fetch_active_limit: int = Field(default=20, ge=1, le=64)
     # Business timezone for user-facing calendar dates (digest/dashboard/hourly/email budgets).
     user_timezone: str = "Asia/Shanghai"
     # Backward-compatible scheduler setting; scheduler defaults should match USER_TIMEZONE.

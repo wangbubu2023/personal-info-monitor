@@ -3,7 +3,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Index, JSON, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Index, JSON, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import relationship
 
 from app.utils.datetime import utcnow_naive
@@ -88,3 +88,15 @@ class Content(Base):
     def __repr__(self) -> str:
         safe_title = (self.title or "")[:50]
         return f"<Content(id={self.id}, title='{safe_title}...')>"
+
+
+# ``visible_content_clause`` keeps a legacy fallback for rows whose duplicate
+# group was stored only inside JSON metadata. Without this expression index its
+# correlated EXISTS scans and parses the entire contents table for each legacy
+# row (minutes at 30k+ rows). Keep the model metadata aligned with the Alembic
+# migration so test/fresh ``Base.metadata.create_all`` databases behave like
+# upgraded production databases.
+Index(
+    "ix_contents_dup_group_id",
+    func.json_extract(Content.metadata_, "$.duplicate_group_id"),
+)

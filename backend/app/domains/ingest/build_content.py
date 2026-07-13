@@ -17,6 +17,7 @@ imported at module top so they can be monkeypatched by tests through
 ``app.domains.ingest.build_content.<name>`` if needed.
 """
 
+import asyncio
 from datetime import datetime, timezone
 from typing import List
 
@@ -55,6 +56,7 @@ async def build_raw_content_objects(
     build_failed = 0
 
     for raw in raw_contents:
+        await asyncio.sleep(0)
         try:
             main_text = raw.get("content", "")
             html = raw.get("html")
@@ -62,8 +64,8 @@ async def build_raw_content_objects(
             if html and not main_text:
                 main_text = await extractor.extract(html, raw.get("url"))
 
-            main_text_clean = normalize_article_text(main_text) if main_text else ""
-            title = strip_html_tags(raw.get("title", "Untitled"))
+            main_text_clean = await asyncio.to_thread(normalize_article_text, main_text) if main_text else ""
+            title = await asyncio.to_thread(strip_html_tags, raw.get("title", "Untitled"))
 
             # Truncated snippet as placeholder summary (AI will replace it later)
             summary = None
@@ -73,7 +75,7 @@ async def build_raw_content_objects(
             metadata = raw.get("metadata")
             if not isinstance(metadata, dict):
                 metadata = {}
-            metadata, publish_time = _merge_article_page_metadata(raw, metadata)
+            metadata, publish_time = await asyncio.to_thread(_merge_article_page_metadata, raw, metadata)
             if isinstance(publish_time, str):
                 try:
                     publish_time = datetime.fromisoformat(publish_time.replace("Z", "+00:00"))

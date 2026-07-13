@@ -26,7 +26,7 @@ class UUIDString(TypeDecorator):
         return value  # keep as string
 
 
-from app.platform.config.settings import get_settings
+from app.platform.config.settings import effective_fetch_concurrency, get_settings
 
 settings = get_settings()
 
@@ -43,7 +43,7 @@ def _sync_engine_pool_kwargs(current_settings) -> dict[str, int | bool]:
     for low-volume installs and leave overflow headroom for the four process
     workers plus maintenance/API thread work.
     """
-    fetch_concurrency = max(1, int(current_settings.fetch_concurrency))
+    fetch_concurrency = effective_fetch_concurrency(current_settings)
     return {
         "pool_size": max(fetch_concurrency, 10),
         "max_overflow": 10,

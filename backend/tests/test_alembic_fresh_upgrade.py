@@ -76,7 +76,7 @@ def test_fresh_sqlite_database_can_upgrade_to_head(tmp_path):
     finally:
         conn.close()
 
-    assert revision == ("20260712_0031",)
+    assert revision == ("20260713_0032",)
     assert "ix_content_created_at" in indexes
     assert "ix_score_feedback_content_id" in indexes
     assert "ix_score_feedback_event_type" in indexes
@@ -94,6 +94,7 @@ def test_fresh_sqlite_database_can_upgrade_to_head(tmp_path):
     assert "ix_content_lane" in indexes
     assert "ix_content_is_duplicate" in indexes
     assert "ix_content_duplicate_of" in indexes
+    assert "ix_contents_dup_group_id" in indexes
     assert "source_fetch_log" in tables
     assert {
         "auth_assistant_pairing_tokens",
