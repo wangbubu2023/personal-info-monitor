@@ -13,6 +13,7 @@ from app.domains.enrich.content.listing_translation import (
     schedule_listing_translation_backfill,
     translate_listing_fields_async,
     _scheduled_ids,
+    _scheduled_tasks,
 )
 
 
@@ -155,6 +156,7 @@ async def test_translate_listing_fields_async_persists_title_and_summary():
 @pytest.mark.asyncio
 async def test_schedule_listing_translation_backfill_enqueues_bounded_job():
     _scheduled_ids.clear()
+    _scheduled_tasks.clear()
     with patch(
         "app.domains.enrich.content.listing_translation.listing_translation_enabled",
         return_value=True,
@@ -163,7 +165,7 @@ async def test_schedule_listing_translation_backfill_enqueues_bounded_job():
         new=AsyncMock(return_value=True),
     ) as enqueue:
         schedule_listing_translation_backfill(["cid-1", "cid-1"])
-        await asyncio.sleep(0)
+        await asyncio.gather(*tuple(_scheduled_tasks))
 
     enqueue.assert_awaited_once_with("cid-1")
     assert "cid-1" in _scheduled_ids

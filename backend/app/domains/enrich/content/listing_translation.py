@@ -26,6 +26,7 @@ _SUMMARY_TIMEOUT_SECONDS = 20.0
 LISTING_TRANSLATION_JOB_ID = "listing-translation"
 
 _scheduled_ids: set[str] = set()
+_scheduled_tasks: set[asyncio.Task[None]] = set()
 
 
 def listing_translation_enabled() -> bool:
@@ -90,7 +91,9 @@ def schedule_listing_translation_backfill(content_ids: list[str], *, max_items: 
             continue
         _scheduled_ids.add(cid)
         try:
-            asyncio.create_task(_enqueue_scheduled_translation(cid))
+            task = asyncio.create_task(_enqueue_scheduled_translation(cid))
+            _scheduled_tasks.add(task)
+            task.add_done_callback(_scheduled_tasks.discard)
         except RuntimeError:
             _scheduled_ids.discard(cid)
 
