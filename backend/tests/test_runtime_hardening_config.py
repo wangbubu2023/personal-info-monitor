@@ -32,6 +32,14 @@ def test_sync_pool_scales_with_fetch_concurrency():
     assert options["pool_pre_ping"] is True
 
 
+def test_async_sqlite_pool_is_bounded():
+    from app.platform.persistence.database import _ASYNC_DB_CONCURRENCY, async_engine
+
+    assert async_engine.pool.size() == _ASYNC_DB_CONCURRENCY
+    assert async_engine.pool._max_overflow == 0
+    assert async_engine.pool._timeout == 30
+
+
 def test_alembic_revision_file_template_is_date_prefixed():
     ini_text = Path("alembic.ini").read_text(encoding="utf-8")
 

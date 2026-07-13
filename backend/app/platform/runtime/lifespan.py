@@ -90,9 +90,12 @@ def _configure_event_loop_observability(settings) -> asyncio.Task | None:
 
 async def enqueue_due_postprocess_jobs(*, limit: int = 200) -> int:
     """Refill the execution cache from durable pending postprocess jobs."""
-    from app.platform.workers.postprocess_jobs import due_postprocess_jobs
+    from app.platform.workers.postprocess_jobs import due_postprocess_jobs, recover_stale_postprocess_jobs
     from app.tasks.task_queue import task_queue
 
+    recovered = await asyncio.to_thread(recover_stale_postprocess_jobs)
+    if recovered:
+        logger.warning("Recovered %d stale postprocess job(s)", recovered)
     jobs = await asyncio.to_thread(due_postprocess_jobs, limit=limit)
     enqueued = 0
     for content_id, job_id in jobs:

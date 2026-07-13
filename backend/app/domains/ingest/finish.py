@@ -46,21 +46,27 @@ async def _finish_content_async(content_id: str) -> None:
     from app.domains.ingest.summary_clean import apply_summary_cleaning
     from app.domains.score.content_columns import sync_content_score_columns
     from app.domains.score.scoring import merge_baseline_scoring_metadata
-    from app.models import Content, Keyword
+    from app.models import Content, Keyword, Source
     from app.domains.ingest.content_processor import ContentProcessor
     from app.domains.ingest.keywords.matcher import KeywordMatcher
 
     db = SessionLocal()
+    # The rest of this function contains network and optional LLM awaits.
+    # Keep loaded ORM state alive, but release the SQLite connection before
+    # those awaits so one slow item cannot reserve a sync-pool slot for minutes.
+    db.expire_on_commit = False
     try:
         content = (
             db.query(Content)
-            .options(joinedload(Content.source))
+            .options(joinedload(Content.source).joinedload(Source.auth_config))
             .filter(Content.id == content_id)
             .first()
         )
         if not content:
             logger.error(f"Content not found: {content_id}")
             return
+
+        await asyncio.to_thread(db.commit)
 
         source = content.source
         processor = ContentProcessor()
@@ -75,7 +81,9 @@ async def _finish_content_async(content_id: str) -> None:
 
         keyword_rows: list = []
         if KEYWORD_MONITORING_ENABLED:
-            keyword_rows = db.query(Keyword).filter(Keyword.enabled == True).all()  # noqa: E712
+            keyword_rows = await asyncio.to_thread(
+                lambda: db.query(Keyword).filter(Keyword.enabled == True).all()  # noqa: E712
+            )
 
         if KEYWORD_MONITORING_ENABLED and keyword_rows:
             matcher = KeywordMatcher()
@@ -158,11 +166,14 @@ async def _finish_content_async(content_id: str) -> None:
         content.metadata_ = meta
         sync_content_score_columns(content, meta)
 
-        db.commit()
+        await asyncio.to_thread(db.commit)
         logger.info(f"Post-processed content: {content.title[:50]}")
 
         if KEYWORD_MONITORING_ENABLED and content.keyword_matches:
             _dispatch_keyword_alerts(db, content)
+            # _dispatch_keyword_alerts performs read-only lookups. End that
+            # transaction before any subsequent async sidecar work.
+            await asyncio.to_thread(db.rollback)
 
         if ATOMS_PRODUCT_ENABLED:
             try:
@@ -180,11 +191,11 @@ async def _finish_content_async(content_id: str) -> None:
             logger.debug("listing translation schedule failed for %s: %s", content_id, exc)
 
     except Exception:
-        db.rollback()
+        await asyncio.to_thread(db.rollback)
         logger.exception("finish_content failed for %s", content_id)
         raise
     finally:
-        db.close()
+        await asyncio.to_thread(db.close)
 
 
 def _dispatch_keyword_alerts(db, content) -> None:

@@ -10,6 +10,7 @@ from app.platform.workers.postprocess_jobs import (
     mark_postprocess_job_failed,
     mark_postprocess_job_succeeded,
     postprocess_completion_rate,
+    recover_stale_postprocess_jobs,
 )
 from app.utils.datetime import utcnow_naive
 
@@ -59,3 +60,31 @@ def test_postprocess_job_lifecycle(monkeypatch, tmp_path):
     assert metrics["total"] == 1
     assert metrics["succeeded"] == 1
     assert metrics["completion_rate"] == 1.0
+
+
+def test_stale_running_postprocess_job_is_recovered(monkeypatch, tmp_path):
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+
+    from app.database import Base
+    import app.platform.workers.postprocess_jobs as jobs
+
+    engine = create_engine(f"sqlite:///{tmp_path / 'stale-jobs.db'}")
+    Base.metadata.create_all(engine)
+    session_factory = sessionmaker(bind=engine)
+    monkeypatch.setattr(jobs, "SessionLocal", session_factory)
+
+    ensure_postprocess_job("content-stale", "finish")
+    assert claim_postprocess_job("content-stale", "finish") is True
+
+    db = session_factory()
+    try:
+        job = db.query(PostprocessJob).one()
+        job.locked_at = utcnow_naive() - timedelta(minutes=15)
+        job.started_at = job.locked_at
+        db.commit()
+    finally:
+        db.close()
+
+    assert recover_stale_postprocess_jobs() == 1
+    assert due_postprocess_jobs() == [("content-stale", "finish")]

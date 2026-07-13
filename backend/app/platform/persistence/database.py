@@ -1,6 +1,9 @@
 """Database connection and session management."""
 
+import asyncio
 import uuid
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 
 from sqlalchemy import String, create_engine, event
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
@@ -26,6 +29,8 @@ class UUIDString(TypeDecorator):
 from app.platform.config.settings import get_settings
 
 settings = get_settings()
+
+_ASYNC_DB_CONCURRENCY = 8
 
 
 def _sync_engine_pool_kwargs(current_settings) -> dict[str, int | bool]:
@@ -55,12 +60,17 @@ engine = create_engine(
     **_sync_engine_pool_kwargs(settings),
 )
 
-# Asynchronous engine (for FastAPI endpoints).
-# SQLite + aiosqlite: SQLAlchemy's default async pool (``NullPool``-style
-# behaviour for sqlite) is appropriate — no TCP connection pool tuning needed.
+# Asynchronous engine (for FastAPI endpoints). Keep this pool bounded: every
+# aiosqlite connection owns a worker thread, while SQLite still serializes
+# writes. ``async_session_scope`` below adds an async admission gate so the
+# pool never reaches a synchronous checkout timeout under request bursts.
 async_engine = create_async_engine(
     settings.async_database_url,
     echo=settings.debug,
+    pool_size=_ASYNC_DB_CONCURRENCY,
+    max_overflow=0,
+    pool_timeout=30,
+    pool_pre_ping=True,
 )
 
 
@@ -95,6 +105,8 @@ AsyncSessionLocal = sessionmaker(
     expire_on_commit=False,
 )
 
+_async_db_slots = asyncio.Semaphore(_ASYNC_DB_CONCURRENCY)
+
 
 # Base class for models
 class Base(DeclarativeBase):
@@ -110,10 +122,26 @@ def get_db() -> Session:
         db.close()
 
 
-async def get_async_db() -> AsyncSession:
-    """Get asynchronous database session."""
-    async with AsyncSessionLocal() as session:
-        try:
+@asynccontextmanager
+async def async_session_scope() -> AsyncIterator[AsyncSession]:
+    """Open a bounded async SQLite session without exhausting the event loop.
+
+    ``aiosqlite`` creates one worker thread per physical connection. The
+    default SQLAlchemy pool allows five checked-out connections plus ten
+    overflow connections, which can create a burst of worker threads while
+    SQLite still serializes writes. Extra callers wait on an asyncio semaphore
+    instead of creating more connections or blocking the event loop in the
+    pool's timeout path.
+    """
+    await _async_db_slots.acquire()
+    try:
+        async with AsyncSessionLocal() as session:
             yield session
-        finally:
-            await session.close()
+    finally:
+        _async_db_slots.release()
+
+
+async def get_async_db() -> AsyncIterator[AsyncSession]:
+    """Get asynchronous database session."""
+    async with async_session_scope() as session:
+        yield session

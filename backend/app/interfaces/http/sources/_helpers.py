@@ -296,11 +296,11 @@ async def _background_probe_source(
     primary_url: str,
 ) -> None:
     """Update probe metadata after create — must not block the HTTP response."""
-    from app.database import AsyncSessionLocal
+    from app.database import async_session_scope
 
     cookies: Dict[str, str] = {}
     try:
-        async with AsyncSessionLocal() as db:
+        async with async_session_scope() as db:
             result = await db.execute(select(Source).filter(Source.id == source_id))
             source = result.scalar_one_or_none()
             if not source or not _source_is_visible(source):
@@ -309,7 +309,7 @@ async def _background_probe_source(
 
         probe_result, rss_urls, _ = await _probe_urls(urls, source_type, cookies=cookies)
 
-        async with AsyncSessionLocal() as db:
+        async with async_session_scope() as db:
             result = await db.execute(select(Source).filter(Source.id == source_id))
             source = result.scalar_one_or_none()
             if not source:
@@ -322,7 +322,7 @@ async def _background_probe_source(
     except Exception as exc:
         logger.warning("Background probe failed for source %s: %s", source_id, exc)
         try:
-            async with AsyncSessionLocal() as db:
+            async with async_session_scope() as db:
                 result = await db.execute(select(Source).filter(Source.id == source_id))
                 source = result.scalar_one_or_none()
                 if not source:

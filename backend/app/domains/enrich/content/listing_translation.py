@@ -138,11 +138,17 @@ async def _translate_listing_fields_impl(content_id: str) -> bool:
     from app.models import Content
 
     db = SessionLocal()
+    # Do not keep a sync SQLite connection checked out while waiting for the
+    # external translator. The ORM instance remains usable because expiration
+    # is disabled for this short-lived unit of work.
+    db.expire_on_commit = False
     changed = False
     try:
-        content = db.query(Content).filter(Content.id == content_id).first()
+        content = await asyncio.to_thread(lambda: db.query(Content).filter(Content.id == content_id).first())
         if content is None:
             return False
+
+        await asyncio.to_thread(db.commit)
 
         translator = Translator()
         target_language = _resolve_target_language()
@@ -191,7 +197,7 @@ async def _translate_listing_fields_impl(content_id: str) -> bool:
             summary=content.summary,
             translated_summary=content.translated_summary,
         )
-        db.commit()
+        await asyncio.to_thread(db.commit)
         logger.info(
             "Listing translation saved for %s (title=%s summary=%s)",
             content_id,
@@ -201,10 +207,10 @@ async def _translate_listing_fields_impl(content_id: str) -> bool:
         return True
     except Exception as exc:  # noqa: BLE001 - sidecar must not break ingest/digest
         logger.debug("Listing translation failed for %s: %s", content_id, exc)
-        db.rollback()
+        await asyncio.to_thread(db.rollback)
         return False
     finally:
-        db.close()
+        await asyncio.to_thread(db.close)
 
 
 def _resolve_target_language() -> str:

@@ -115,7 +115,9 @@ async def test_translate_listing_fields_async_persists_title_and_summary():
     assert ok is True
     assert content.translated_title == "突发新闻"
     assert content.translated_summary == "简短摘要"
-    db.commit.assert_called_once()
+    # One commit closes the read transaction before the LLM await; the second
+    # persists the translated fields without reserving a connection meanwhile.
+    assert db.commit.call_count == 2
 
 
 @pytest.mark.asyncio

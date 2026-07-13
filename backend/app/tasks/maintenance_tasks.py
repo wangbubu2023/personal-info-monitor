@@ -75,11 +75,11 @@ async def cleanup_error_logs():
 async def run_markdown_export(since_hours: int = 2):
     """Run incremental markdown export task."""
     from datetime import timedelta
-    from app.database import AsyncSessionLocal
+    from app.database import async_session_scope
     from app.platform.config.system_settings import get_system_settings_async
     from app.platform.export import MarkdownExporter
 
-    async with AsyncSessionLocal() as db:
+    async with async_session_scope() as db:
         try:
             settings = await get_system_settings_async(db)
             if not settings.get("markdown_export_enabled"):
@@ -88,10 +88,10 @@ async def run_markdown_export(since_hours: int = 2):
             export_dir = settings.get("markdown_export_dir")
             if not export_dir:
                 export_dir = "~/.pim/knowledge-base"
-                
+
             exporter = MarkdownExporter(export_dir)
             since = utcnow_naive() - timedelta(hours=since_hours)
-            
+
             count = await exporter.export_incremental(db, since)
             if count > 0:
                 logger.info(f"Exported {count} contents to Markdown at {export_dir}")
