@@ -5,6 +5,7 @@ import os
 import subprocess
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 from app.platform.runtime import upgrade
 from app.platform.runtime.upgrade_runner import LOG_FILE_NAME, STATUS_FILE_NAME
@@ -17,6 +18,24 @@ class _FakePopen:
         self.pid = 12345
 
 
+def test_configured_upgrade_args_skips_pull_for_detached_checkout(monkeypatch):
+    monkeypatch.setattr(upgrade, "get_settings", lambda: SimpleNamespace(pim_ui_upgrade_args=""))
+    monkeypatch.setattr(upgrade, "_checkout_is_detached", lambda: True)
+
+    assert upgrade.configured_upgrade_args() == ["--no-pull"]
+
+
+def test_configured_upgrade_args_preserves_explicit_override(monkeypatch):
+    monkeypatch.setattr(
+        upgrade,
+        "get_settings",
+        lambda: SimpleNamespace(pim_ui_upgrade_args="--no-pull --no-restart"),
+    )
+    monkeypatch.setattr(upgrade, "_checkout_is_detached", lambda: False)
+
+    assert upgrade.configured_upgrade_args() == ["--no-pull", "--no-restart"]
+
+
 def test_start_upgrade_launches_detached_runner(monkeypatch, tmp_path):
     calls = []
 
@@ -26,6 +45,7 @@ def test_start_upgrade_launches_detached_runner(monkeypatch, tmp_path):
 
     monkeypatch.setattr(upgrade.subprocess, "Popen", fake_popen)
     monkeypatch.setattr(upgrade, "_pid_alive", lambda _pid: True)
+    monkeypatch.setattr(upgrade, "_checkout_is_detached", lambda: False)
 
     status = upgrade.start_upgrade(
         data_dir=tmp_path,

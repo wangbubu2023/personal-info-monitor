@@ -72,6 +72,15 @@ async def test_stop_workers_is_idempotent():
 
 
 @pytest.mark.asyncio
+async def test_start_workers_rejects_zero_fetch_workers_with_fetch_handler():
+    from app.tasks.task_queue import BoundedTaskQueue
+
+    q = BoundedTaskQueue()
+    with pytest.raises(ValueError, match="fetch_workers must be at least 1"):
+        await q.start_workers(fetch_workers=0, fetch_handler=AsyncMock())
+
+
+@pytest.mark.asyncio
 async def test_process_worker_marks_success_and_failure():
     from app.tasks.task_queue import BoundedTaskQueue
 

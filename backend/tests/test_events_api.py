@@ -2,10 +2,11 @@ from datetime import date, datetime
 from uuid import uuid4
 
 import pytest
+from sqlalchemy import select
 
 from app.domains.enrich.hourly.repository import build_hourly_digest_event_briefing_items
 from app.domains.events.repository import stable_event_id
-from app.models import Content, ContentEvent, ContentEventMembership, ContentEventSnapshot, HourlyDigest, Source
+from app.models import Content, ContentEvent, ContentEventMembership, ContentEventSnapshot, HourlyDigest, Source, UserRule
 from app.models.source import SourceType
 
 
@@ -89,6 +90,82 @@ async def test_today_highlights_use_digest_event_items_not_timeline(client, db_s
     assert item["section"] == "need_to_know"
     assert item["independent_source_count"] == 2
     assert item["why_matters"] == "已有多个独立来源互相确认，优先级上升。"
+
+
+@pytest.mark.asyncio
+async def test_today_highlights_apply_active_user_rules(client, db_session):
+    source = Source(name="Rule Source", type=SourceType.WEBSITE, url="https://rules.example.com")
+    supporting_source = Source(name="Supporting Rule Source", type=SourceType.WEBSITE, url="https://supporting-rules.example.com")
+    contents = [
+        Content(
+            source=source,
+            title=f"Rule content {index}",
+            original_url=f"https://rules.example.com/{index}",
+            content_type="website",
+            lane="priority-topic" if index == 3 else "ordinary-topic",
+            fetched_at=datetime(2026, 7, 11, 9, index),
+        )
+        for index in range(4)
+    ]
+    supporting_content = Content(
+        source=supporting_source,
+        title="Supporting rule content",
+        original_url="https://supporting-rules.example.com/0",
+        content_type="website",
+        fetched_at=datetime(2026, 7, 11, 9, 30),
+    )
+    db_session.add_all([source, supporting_source, *contents, supporting_content])
+    await db_session.flush()
+    items = [
+        {
+            "event_key": f"event:rule:{index}",
+            "event_id": stable_event_id(f"event:rule:{index}"),
+            "section": "need_to_know",
+            "content_id": str(content.id),
+            "content_ids": [str(content.id)] + ([str(supporting_content.id)] if index == 0 else []),
+            "title": content.title,
+            "source_names": [source.name],
+            "importance_score": 90 - index * 10,
+            "corroboration_tier": "single_high",
+        }
+        for index, content in enumerate(contents)
+    ]
+    db_session.add(
+        HourlyDigest(
+            digest_date=date(2026, 7, 11),
+            hour=9,
+            title="9 时简报",
+            summary="Summary",
+            content_count=4,
+            sources=[source.name],
+            items_json=items,
+        )
+    )
+    db_session.add_all(
+        [
+            UserRule(scope_type="topic", scope_key="priority-topic", rule="highlight", status="active"),
+            UserRule(scope_type="source", scope_key=str(supporting_source.id), rule="highlight", status="active"),
+            UserRule(scope_type="content_type", scope_key="website", rule="mute", status="active"),
+        ]
+    )
+    await db_session.commit()
+
+    response = await client.get("/api/events/today-highlights", params={"date": "2026-07-11"})
+
+    assert response.status_code == 200
+    assert response.json()["items"] == []
+
+    muted_rule = await db_session.scalar(select(UserRule).where(UserRule.rule == "mute"))
+    muted_rule.status = "revoked"
+    await db_session.commit()
+
+    response = await client.get("/api/events/today-highlights", params={"date": "2026-07-11"})
+
+    assert response.status_code == 200
+    items = response.json()["items"]
+    assert len(items) == 4
+    assert items[0]["title"] == "Rule content 0"
+    assert items[0]["personal_rule"] == "highlight"
 
 
 @pytest.mark.asyncio
@@ -184,6 +261,16 @@ async def test_event_detail_returns_timeline_snapshots_and_feedback(client, db_s
     assert state_response.status_code == 200
     assert state_response.json()["saved"] is True
     assert state_response.json()["read_later"] is True
+
+
+@pytest.mark.asyncio
+async def test_event_feedback_rejects_invalid_content_id(client):
+    response = await client.post(
+        "/api/events/not-an-event/feedback",
+        json={"type": "event_wrong_merge", "content_id": "not-a-uuid"},
+    )
+
+    assert response.status_code == 422
 
 
 @pytest.mark.asyncio

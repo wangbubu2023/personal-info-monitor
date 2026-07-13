@@ -8,6 +8,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Optional
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -54,7 +55,7 @@ class Settings(BaseSettings):
     async_database_url: str = ""
 
     # Fetch concurrency
-    fetch_concurrency: int = 20  # Max parallel fetches
+    fetch_concurrency: int = Field(default=20, ge=1)  # Max parallel fetches
     # Business timezone for user-facing calendar dates (digest/dashboard/hourly/email budgets).
     user_timezone: str = "Asia/Shanghai"
     # Backward-compatible scheduler setting; scheduler defaults should match USER_TIMEZONE.

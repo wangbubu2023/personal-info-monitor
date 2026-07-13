@@ -116,715 +116,6 @@
         "title": "APIConfigUpdate",
         "type": "object"
       },
-      "AtomBackfillRequest": {
-        "additionalProperties": false,
-        "properties": {
-          "content_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Content Id"
-          },
-          "dry_run": {
-            "default": false,
-            "title": "Dry Run",
-            "type": "boolean"
-          },
-          "limit": {
-            "default": 500,
-            "maximum": 5000.0,
-            "minimum": 1.0,
-            "title": "Limit",
-            "type": "integer"
-          },
-          "since": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Since"
-          }
-        },
-        "title": "AtomBackfillRequest",
-        "type": "object"
-      },
-      "AtomBackfillResponse": {
-        "properties": {
-          "job_id": {
-            "title": "Job Id",
-            "type": "string"
-          },
-          "status": {
-            "title": "Status",
-            "type": "string"
-          }
-        },
-        "required": [
-          "job_id",
-          "status"
-        ],
-        "title": "AtomBackfillResponse",
-        "type": "object"
-      },
-      "AtomBackfillStatusResponse": {
-        "properties": {
-          "created_at": {
-            "title": "Created At",
-            "type": "string"
-          },
-          "errors": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Errors",
-            "type": "array"
-          },
-          "finished_at": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Finished At"
-          },
-          "job_id": {
-            "title": "Job Id",
-            "type": "string"
-          },
-          "processed": {
-            "title": "Processed",
-            "type": "integer"
-          },
-          "status": {
-            "title": "Status",
-            "type": "string"
-          },
-          "total": {
-            "title": "Total",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "job_id",
-          "status",
-          "processed",
-          "total",
-          "errors",
-          "created_at"
-        ],
-        "title": "AtomBackfillStatusResponse",
-        "type": "object"
-      },
-      "AtomCreate": {
-        "additionalProperties": false,
-        "properties": {
-          "atom_source": {
-            "minLength": 1,
-            "title": "Atom Source",
-            "type": "string"
-          },
-          "atom_type": {
-            "$ref": "#/components/schemas/AtomType"
-          },
-          "canonical_text": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Canonical Text"
-          },
-          "content_id": {
-            "title": "Content Id",
-            "type": "string"
-          },
-          "domain": {
-            "$ref": "#/components/schemas/Domain"
-          },
-          "extraction_run_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Extraction Run Id"
-          },
-          "fact_confidence": {
-            "maximum": 1.0,
-            "minimum": 0.0,
-            "title": "Fact Confidence",
-            "type": "number"
-          },
-          "payload": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/InfoAtomPayload"
-              },
-              {
-                "$ref": "#/components/schemas/OpinionAtomPayload"
-              },
-              {
-                "$ref": "#/components/schemas/DataAtomPayload"
-              }
-            ],
-            "title": "Payload"
-          },
-          "quality_flags": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Quality Flags",
-            "type": "array"
-          },
-          "quality_score": {
-            "anyOf": [
-              {
-                "maximum": 1.0,
-                "minimum": 0.0,
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Quality Score"
-          },
-          "source_credibility": {
-            "maximum": 1.0,
-            "minimum": 0.0,
-            "title": "Source Credibility",
-            "type": "number"
-          },
-          "source_sentence": {
-            "minLength": 1,
-            "title": "Source Sentence",
-            "type": "string"
-          },
-          "source_url": {
-            "title": "Source Url",
-            "type": "string"
-          },
-          "tags": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Tags",
-            "type": "array"
-          },
-          "verified": {
-            "default": false,
-            "title": "Verified",
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "content_id",
-          "source_url",
-          "source_sentence",
-          "domain",
-          "atom_source",
-          "source_credibility",
-          "fact_confidence",
-          "atom_type",
-          "payload"
-        ],
-        "title": "AtomCreate",
-        "type": "object"
-      },
-      "AtomListResponse": {
-        "properties": {
-          "items": {
-            "items": {
-              "$ref": "#/components/schemas/AtomRecord"
-            },
-            "title": "Items",
-            "type": "array"
-          },
-          "page": {
-            "title": "Page",
-            "type": "integer"
-          },
-          "page_size": {
-            "title": "Page Size",
-            "type": "integer"
-          },
-          "total": {
-            "title": "Total",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "items",
-          "total",
-          "page",
-          "page_size"
-        ],
-        "title": "AtomListResponse",
-        "type": "object"
-      },
-      "AtomQualityResponse": {
-        "additionalProperties": true,
-        "properties": {
-          "active_atoms": {
-            "title": "Active Atoms",
-            "type": "integer"
-          },
-          "archived_atoms": {
-            "title": "Archived Atoms",
-            "type": "integer"
-          },
-          "avg_atoms_per_content": {
-            "title": "Avg Atoms Per Content",
-            "type": "number"
-          },
-          "conflicted_atoms": {
-            "title": "Conflicted Atoms",
-            "type": "integer"
-          },
-          "fact_confidence_histogram": {
-            "additionalProperties": {
-              "type": "integer"
-            },
-            "title": "Fact Confidence Histogram",
-            "type": "object"
-          },
-          "max_atoms_per_content": {
-            "title": "Max Atoms Per Content",
-            "type": "integer"
-          },
-          "p95_atoms_per_content": {
-            "title": "P95 Atoms Per Content",
-            "type": "integer"
-          },
-          "p99_atoms_per_content": {
-            "title": "P99 Atoms Per Content",
-            "type": "integer"
-          },
-          "quality_flags_distribution": {
-            "additionalProperties": {
-              "type": "integer"
-            },
-            "title": "Quality Flags Distribution",
-            "type": "object"
-          },
-          "rejected_atoms": {
-            "title": "Rejected Atoms",
-            "type": "integer"
-          },
-          "rejected_by_reason": {
-            "additionalProperties": {
-              "type": "integer"
-            },
-            "title": "Rejected By Reason",
-            "type": "object"
-          },
-          "shadow_atoms": {
-            "title": "Shadow Atoms",
-            "type": "integer"
-          },
-          "short_sentence_rate": {
-            "title": "Short Sentence Rate",
-            "type": "number"
-          },
-          "superseded_atoms": {
-            "title": "Superseded Atoms",
-            "type": "integer"
-          },
-          "top_sources_by_atom_count": {
-            "additionalProperties": {
-              "type": "integer"
-            },
-            "title": "Top Sources By Atom Count",
-            "type": "object"
-          },
-          "total_atoms": {
-            "title": "Total Atoms",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "total_atoms",
-          "active_atoms",
-          "shadow_atoms",
-          "superseded_atoms",
-          "conflicted_atoms",
-          "archived_atoms",
-          "rejected_atoms",
-          "short_sentence_rate",
-          "avg_atoms_per_content",
-          "p95_atoms_per_content",
-          "p99_atoms_per_content",
-          "max_atoms_per_content",
-          "top_sources_by_atom_count",
-          "fact_confidence_histogram",
-          "quality_flags_distribution",
-          "rejected_by_reason"
-        ],
-        "title": "AtomQualityResponse",
-        "type": "object"
-      },
-      "AtomRecord": {
-        "properties": {
-          "atom_id": {
-            "title": "Atom Id",
-            "type": "string"
-          },
-          "atom_source": {
-            "title": "Atom Source",
-            "type": "string"
-          },
-          "atom_type": {
-            "$ref": "#/components/schemas/AtomType"
-          },
-          "canonical_text": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Canonical Text"
-          },
-          "content_id": {
-            "title": "Content Id",
-            "type": "string"
-          },
-          "created_at": {
-            "format": "date-time",
-            "title": "Created At",
-            "type": "string"
-          },
-          "domain": {
-            "$ref": "#/components/schemas/Domain"
-          },
-          "evidence_count": {
-            "default": 1,
-            "title": "Evidence Count",
-            "type": "integer"
-          },
-          "extraction_run_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Extraction Run Id"
-          },
-          "fact_confidence": {
-            "title": "Fact Confidence",
-            "type": "number"
-          },
-          "is_latest": {
-            "default": true,
-            "title": "Is Latest",
-            "type": "boolean"
-          },
-          "payload": {
-            "additionalProperties": true,
-            "title": "Payload",
-            "type": "object"
-          },
-          "quality_flags": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Quality Flags",
-            "type": "array"
-          },
-          "quality_score": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Quality Score"
-          },
-          "reconcile_group_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Reconcile Group Id"
-          },
-          "reconcile_reason": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Reconcile Reason"
-          },
-          "schema_version": {
-            "title": "Schema Version",
-            "type": "integer"
-          },
-          "source_credibility": {
-            "title": "Source Credibility",
-            "type": "number"
-          },
-          "source_sentence": {
-            "title": "Source Sentence",
-            "type": "string"
-          },
-          "source_url": {
-            "title": "Source Url",
-            "type": "string"
-          },
-          "status": {
-            "$ref": "#/components/schemas/AtomStatus",
-            "default": "active"
-          },
-          "superseded_by_atom_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Superseded By Atom Id"
-          },
-          "supersedes_atom_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Supersedes Atom Id"
-          },
-          "tags": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Tags",
-            "type": "array"
-          },
-          "updated_at": {
-            "format": "date-time",
-            "title": "Updated At",
-            "type": "string"
-          },
-          "verified": {
-            "title": "Verified",
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "atom_id",
-          "content_id",
-          "atom_type",
-          "domain",
-          "source_sentence",
-          "source_url",
-          "atom_source",
-          "payload",
-          "verified",
-          "source_credibility",
-          "fact_confidence",
-          "schema_version",
-          "created_at",
-          "updated_at"
-        ],
-        "title": "AtomRecord",
-        "type": "object"
-      },
-      "AtomStatsResponse": {
-        "properties": {
-          "by_domain": {
-            "additionalProperties": {
-              "type": "integer"
-            },
-            "title": "By Domain",
-            "type": "object"
-          },
-          "by_type": {
-            "additionalProperties": {
-              "type": "integer"
-            },
-            "title": "By Type",
-            "type": "object"
-          },
-          "total": {
-            "title": "Total",
-            "type": "integer"
-          },
-          "unverified_count": {
-            "title": "Unverified Count",
-            "type": "integer"
-          },
-          "verified_count": {
-            "title": "Verified Count",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "total",
-          "by_type",
-          "by_domain",
-          "verified_count",
-          "unverified_count"
-        ],
-        "title": "AtomStatsResponse",
-        "type": "object"
-      },
-      "AtomStatus": {
-        "enum": [
-          "active",
-          "shadow",
-          "superseded",
-          "conflicted",
-          "archived",
-          "rejected"
-        ],
-        "title": "AtomStatus",
-        "type": "string"
-      },
-      "AtomType": {
-        "enum": [
-          "信息",
-          "观点",
-          "数据"
-        ],
-        "title": "AtomType",
-        "type": "string"
-      },
-      "AtomUpdate": {
-        "additionalProperties": false,
-        "properties": {
-          "atom_source": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Atom Source"
-          },
-          "domain": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/Domain"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "fact_confidence": {
-            "anyOf": [
-              {
-                "maximum": 1.0,
-                "minimum": 0.0,
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Fact Confidence"
-          },
-          "payload": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/InfoAtomPayload"
-              },
-              {
-                "$ref": "#/components/schemas/OpinionAtomPayload"
-              },
-              {
-                "$ref": "#/components/schemas/DataAtomPayload"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Payload"
-          },
-          "source_credibility": {
-            "anyOf": [
-              {
-                "maximum": 1.0,
-                "minimum": 0.0,
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Source Credibility"
-          },
-          "verified": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Verified"
-          }
-        },
-        "title": "AtomUpdate",
-        "type": "object"
-      },
-      "AtomizeResponse": {
-        "properties": {
-          "content_id": {
-            "title": "Content Id",
-            "type": "string"
-          },
-          "ok": {
-            "title": "Ok",
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "content_id",
-          "ok"
-        ],
-        "title": "AtomizeResponse",
-        "type": "object"
-      },
       "AuthAssistantBundleImportRequest": {
         "properties": {
           "bind_matching_sources": {
@@ -1258,16 +549,6 @@
         "title": "BrowserSessionValidateRequest",
         "type": "object"
       },
-      "ChinaStance": {
-        "enum": [
-          "正面",
-          "中立",
-          "批评",
-          "不适用"
-        ],
-        "title": "ChinaStance",
-        "type": "string"
-      },
       "ContentListResponse": {
         "description": "Schema for paginated Content list response.",
         "properties": {
@@ -1576,105 +857,6 @@
         "title": "ContentUpdate",
         "type": "object"
       },
-      "DataAtomPayload": {
-        "additionalProperties": false,
-        "properties": {
-          "base_period": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Base Period"
-          },
-          "base_value": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Base Value"
-          },
-          "caliber": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Caliber"
-          },
-          "is_relative": {
-            "title": "Is Relative",
-            "type": "boolean"
-          },
-          "metric": {
-            "minLength": 1,
-            "title": "Metric",
-            "type": "string"
-          },
-          "period": {
-            "minLength": 1,
-            "title": "Period",
-            "type": "string"
-          },
-          "period_type": {
-            "$ref": "#/components/schemas/PeriodType"
-          },
-          "source_org": {
-            "minLength": 1,
-            "title": "Source Org",
-            "type": "string"
-          },
-          "source_type": {
-            "$ref": "#/components/schemas/DataSourceType"
-          },
-          "unit": {
-            "$ref": "#/components/schemas/Unit"
-          },
-          "validity": {
-            "$ref": "#/components/schemas/Validity"
-          },
-          "value": {
-            "title": "Value",
-            "type": "number"
-          }
-        },
-        "required": [
-          "source_org",
-          "source_type",
-          "metric",
-          "value",
-          "unit",
-          "period",
-          "period_type",
-          "is_relative",
-          "validity"
-        ],
-        "title": "DataAtomPayload",
-        "type": "object"
-      },
-      "DataSourceType": {
-        "enum": [
-          "一手/公司财报",
-          "一手/政府统计",
-          "一手/行业协会",
-          "二手/研究机构",
-          "二手/媒体整理",
-          "估算/模型预测",
-          "调研/问卷"
-        ],
-        "title": "DataSourceType",
-        "type": "string"
-      },
       "DigestCategory": {
         "description": "Schema for a category in the digest.",
         "properties": {
@@ -1851,23 +1033,6 @@
         "title": "DigestResponse",
         "type": "object"
       },
-      "Domain": {
-        "enum": [
-          "宏观经济",
-          "金融市场",
-          "科技",
-          "汽车",
-          "房地产",
-          "能源",
-          "消费",
-          "医疗健康",
-          "政策监管",
-          "国际关系",
-          "其他"
-        ],
-        "title": "Domain",
-        "type": "string"
-      },
       "EventDetailResponse": {
         "properties": {
           "current_conclusion": {
@@ -1894,6 +1059,16 @@
             "title": "Feedback",
             "type": "array"
           },
+          "has_updates": {
+            "default": false,
+            "title": "Has Updates",
+            "type": "boolean"
+          },
+          "hidden": {
+            "default": false,
+            "title": "Hidden",
+            "type": "boolean"
+          },
           "independent_source_count": {
             "default": 0,
             "title": "Independent Source Count",
@@ -1906,6 +1081,11 @@
             "title": "Independent Verification",
             "type": "array"
           },
+          "latest_version": {
+            "default": 0,
+            "title": "Latest Version",
+            "type": "integer"
+          },
           "primary_reports": {
             "items": {
               "$ref": "#/components/schemas/EventTimelineItem"
@@ -1913,12 +1093,22 @@
             "title": "Primary Reports",
             "type": "array"
           },
+          "read_later": {
+            "default": false,
+            "title": "Read Later",
+            "type": "boolean"
+          },
           "related_discussions": {
             "items": {
               "$ref": "#/components/schemas/EventEvidenceGroup"
             },
             "title": "Related Discussions",
             "type": "array"
+          },
+          "saved": {
+            "default": false,
+            "title": "Saved",
+            "type": "boolean"
           },
           "snapshots": {
             "items": {
@@ -1955,6 +1145,11 @@
               }
             ],
             "title": "Updated At"
+          },
+          "user_seen_version": {
+            "default": 0,
+            "title": "User Seen Version",
+            "type": "integer"
           },
           "why_matters": {
             "anyOf": [
@@ -2007,6 +1202,7 @@
           "content_id": {
             "anyOf": [
               {
+                "format": "uuid",
                 "type": "string"
               },
               {
@@ -2072,6 +1268,38 @@
         "title": "EventFeedbackItem",
         "type": "object"
       },
+      "EventReadStateResponse": {
+        "properties": {
+          "event_id": {
+            "title": "Event Id",
+            "type": "string"
+          },
+          "has_updates": {
+            "title": "Has Updates",
+            "type": "boolean"
+          },
+          "latest_version": {
+            "title": "Latest Version",
+            "type": "integer"
+          },
+          "state": {
+            "$ref": "#/components/schemas/PersonalItemStateResponse"
+          },
+          "user_seen_version": {
+            "title": "User Seen Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "event_id",
+          "latest_version",
+          "user_seen_version",
+          "has_updates",
+          "state"
+        ],
+        "title": "EventReadStateResponse",
+        "type": "object"
+      },
       "EventSnapshotItem": {
         "properties": {
           "created_at": {
@@ -2084,6 +1312,11 @@
               }
             ],
             "title": "Created At"
+          },
+          "is_seen": {
+            "default": false,
+            "title": "Is Seen",
+            "type": "boolean"
           },
           "summary": {
             "anyOf": [
@@ -2132,6 +1365,45 @@
           "title"
         ],
         "title": "EventSnapshotItem",
+        "type": "object"
+      },
+      "EventStateUpdate": {
+        "properties": {
+          "hidden": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hidden"
+          },
+          "read_later": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Read Later"
+          },
+          "saved": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Saved"
+          }
+        },
+        "title": "EventStateUpdate",
         "type": "object"
       },
       "EventTimelineItem": {
@@ -2649,111 +1921,6 @@
         ],
         "title": "HourlyDigestSummary",
         "type": "object"
-      },
-      "InfoAtomPayload": {
-        "additionalProperties": false,
-        "properties": {
-          "entities": {
-            "items": {
-              "type": "string"
-            },
-            "minItems": 1,
-            "title": "Entities",
-            "type": "array"
-          },
-          "how": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "How"
-          },
-          "result": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Result"
-          },
-          "validity": {
-            "$ref": "#/components/schemas/Validity"
-          },
-          "what": {
-            "minLength": 1,
-            "title": "What",
-            "type": "string"
-          },
-          "what_type": {
-            "$ref": "#/components/schemas/WhatType"
-          },
-          "when": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "When"
-          },
-          "where": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Where"
-          },
-          "who": {
-            "items": {
-              "$ref": "#/components/schemas/WhoEntry"
-            },
-            "minItems": 1,
-            "title": "Who",
-            "type": "array"
-          },
-          "why": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Why"
-          }
-        },
-        "required": [
-          "who",
-          "what_type",
-          "what",
-          "entities",
-          "validity"
-        ],
-        "title": "InfoAtomPayload",
-        "type": "object"
-      },
-      "Intensity": {
-        "enum": [
-          "温和",
-          "明确",
-          "强烈"
-        ],
-        "title": "Intensity",
-        "type": "string"
       },
       "KeywordBatchCreate": {
         "description": "Schema for batch-creating keywords with shared settings.",
@@ -3288,20 +2455,14 @@
         "title": "KeywordUpdate",
         "type": "object"
       },
-      "OpinionAtomPayload": {
-        "additionalProperties": false,
+      "ObservationAggregateResponse": {
         "properties": {
-          "china_stance": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/ChinaStance"
-              },
-              {
-                "type": "null"
-              }
-            ]
+          "confidence": {
+            "default": 0.0,
+            "title": "Confidence",
+            "type": "number"
           },
-          "context": {
+          "evidence_summary": {
             "anyOf": [
               {
                 "type": "string"
@@ -3310,54 +2471,69 @@
                 "type": "null"
               }
             ],
-            "title": "Context"
+            "title": "Evidence Summary"
           },
-          "intensity": {
-            "$ref": "#/components/schemas/Intensity"
+          "id": {
+            "title": "Id",
+            "type": "integer"
           },
-          "is_quote": {
-            "title": "Is Quote",
-            "type": "boolean"
+          "metadata": {
+            "additionalProperties": true,
+            "title": "Metadata",
+            "type": "object"
           },
-          "political_spectrum": {
+          "negative_evidence_count": {
+            "default": 0,
+            "title": "Negative Evidence Count",
+            "type": "integer"
+          },
+          "positive_evidence_count": {
+            "default": 0,
+            "title": "Positive Evidence Count",
+            "type": "integer"
+          },
+          "recent_activity_at": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/PoliticalSpectrum"
+                "type": "string"
               },
               {
                 "type": "null"
               }
-            ]
+            ],
+            "title": "Recent Activity At"
           },
-          "role": {
-            "$ref": "#/components/schemas/Role"
-          },
-          "say_what": {
-            "minLength": 1,
-            "title": "Say What",
+          "scope_key": {
+            "title": "Scope Key",
             "type": "string"
           },
-          "sentiment": {
-            "$ref": "#/components/schemas/Sentiment"
+          "scope_type": {
+            "title": "Scope Type",
+            "type": "string"
           },
-          "who": {
-            "items": {
-              "$ref": "#/components/schemas/WhoEntry"
-            },
-            "minItems": 1,
-            "title": "Who",
-            "type": "array"
+          "suggested_rule": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Suggested Rule"
+          },
+          "suggestion_status": {
+            "default": "none",
+            "title": "Suggestion Status",
+            "type": "string"
           }
         },
         "required": [
-          "who",
-          "role",
-          "say_what",
-          "is_quote",
-          "sentiment",
-          "intensity"
+          "id",
+          "scope_type",
+          "scope_key"
         ],
-        "title": "OpinionAtomPayload",
+        "title": "ObservationAggregateResponse",
         "type": "object"
       },
       "PairingClaimRequest": {
@@ -3466,29 +2642,65 @@
         "title": "PairingTokenResponse",
         "type": "object"
       },
-      "PeriodType": {
-        "enum": [
-          "日",
-          "周",
-          "月",
-          "季度",
-          "半年",
-          "全年",
-          "累计",
-          "截至某日"
+      "PersonalItemStateResponse": {
+        "properties": {
+          "hidden": {
+            "default": false,
+            "title": "Hidden",
+            "type": "boolean"
+          },
+          "last_seen_version": {
+            "default": 0,
+            "title": "Last Seen Version",
+            "type": "integer"
+          },
+          "read_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Read At"
+          },
+          "read_later": {
+            "default": false,
+            "title": "Read Later",
+            "type": "boolean"
+          },
+          "saved": {
+            "default": false,
+            "title": "Saved",
+            "type": "boolean"
+          },
+          "target_id": {
+            "title": "Target Id",
+            "type": "string"
+          },
+          "target_type": {
+            "title": "Target Type",
+            "type": "string"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          }
+        },
+        "required": [
+          "target_type",
+          "target_id"
         ],
-        "title": "PeriodType",
-        "type": "string"
-      },
-      "PoliticalSpectrum": {
-        "enum": [
-          "左",
-          "中",
-          "右",
-          "不适用"
-        ],
-        "title": "PoliticalSpectrum",
-        "type": "string"
+        "title": "PersonalItemStateResponse",
+        "type": "object"
       },
       "ProbeRequest": {
         "properties": {
@@ -3550,306 +2762,9 @@
         "title": "ProbeResponse",
         "type": "object"
       },
-      "RelationCreate": {
-        "additionalProperties": false,
+      "ReportStateUpdate": {
         "properties": {
-          "atom_a": {
-            "minLength": 1,
-            "title": "Atom A",
-            "type": "string"
-          },
-          "atom_b": {
-            "minLength": 1,
-            "title": "Atom B",
-            "type": "string"
-          },
-          "direction": {
-            "$ref": "#/components/schemas/RelationDirection"
-          },
-          "fact_confidence": {
-            "maximum": 1.0,
-            "minimum": 0.0,
-            "title": "Fact Confidence",
-            "type": "number"
-          },
-          "relation_type": {
-            "$ref": "#/components/schemas/RelationType"
-          },
-          "verified": {
-            "default": false,
-            "title": "Verified",
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "atom_a",
-          "atom_b",
-          "relation_type",
-          "direction",
-          "fact_confidence"
-        ],
-        "title": "RelationCreate",
-        "type": "object"
-      },
-      "RelationDirection": {
-        "enum": [
-          "A→B",
-          "B→A",
-          "双向"
-        ],
-        "title": "RelationDirection",
-        "type": "string"
-      },
-      "RelationListResponse": {
-        "properties": {
-          "items": {
-            "items": {
-              "$ref": "#/components/schemas/RelationRecord"
-            },
-            "title": "Items",
-            "type": "array"
-          },
-          "page": {
-            "default": 1,
-            "title": "Page",
-            "type": "integer"
-          },
-          "page_size": {
-            "default": 20,
-            "title": "Page Size",
-            "type": "integer"
-          },
-          "total": {
-            "default": 0,
-            "title": "Total",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "items"
-        ],
-        "title": "RelationListResponse",
-        "type": "object"
-      },
-      "RelationReconcileRequest": {
-        "additionalProperties": false,
-        "properties": {
-          "atom_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Atom Id"
-          },
-          "dry_run": {
-            "default": false,
-            "title": "Dry Run",
-            "type": "boolean"
-          },
-          "limit": {
-            "default": 1000,
-            "maximum": 5000.0,
-            "minimum": 1.0,
-            "title": "Limit",
-            "type": "integer"
-          },
-          "since": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Since"
-          }
-        },
-        "title": "RelationReconcileRequest",
-        "type": "object"
-      },
-      "RelationReconcileResponse": {
-        "properties": {
-          "job_id": {
-            "title": "Job Id",
-            "type": "string"
-          },
-          "status": {
-            "title": "Status",
-            "type": "string"
-          }
-        },
-        "required": [
-          "job_id",
-          "status"
-        ],
-        "title": "RelationReconcileResponse",
-        "type": "object"
-      },
-      "RelationReconcileStatusResponse": {
-        "properties": {
-          "created_at": {
-            "title": "Created At",
-            "type": "string"
-          },
-          "errors": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Errors",
-            "type": "array"
-          },
-          "finished_at": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Finished At"
-          },
-          "job_id": {
-            "title": "Job Id",
-            "type": "string"
-          },
-          "processed": {
-            "title": "Processed",
-            "type": "integer"
-          },
-          "relations_created": {
-            "title": "Relations Created",
-            "type": "integer"
-          },
-          "status": {
-            "title": "Status",
-            "type": "string"
-          },
-          "total": {
-            "title": "Total",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "job_id",
-          "status",
-          "processed",
-          "total",
-          "relations_created",
-          "errors",
-          "created_at"
-        ],
-        "title": "RelationReconcileStatusResponse",
-        "type": "object"
-      },
-      "RelationRecord": {
-        "properties": {
-          "atom_a": {
-            "title": "Atom A",
-            "type": "string"
-          },
-          "atom_b": {
-            "title": "Atom B",
-            "type": "string"
-          },
-          "created_at": {
-            "format": "date-time",
-            "title": "Created At",
-            "type": "string"
-          },
-          "direction": {
-            "$ref": "#/components/schemas/RelationDirection"
-          },
-          "fact_confidence": {
-            "title": "Fact Confidence",
-            "type": "number"
-          },
-          "rel_id": {
-            "title": "Rel Id",
-            "type": "string"
-          },
-          "relation_type": {
-            "$ref": "#/components/schemas/RelationType"
-          },
-          "updated_at": {
-            "format": "date-time",
-            "title": "Updated At",
-            "type": "string"
-          },
-          "verified": {
-            "title": "Verified",
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "rel_id",
-          "atom_a",
-          "atom_b",
-          "relation_type",
-          "direction",
-          "verified",
-          "fact_confidence",
-          "created_at",
-          "updated_at"
-        ],
-        "title": "RelationRecord",
-        "type": "object"
-      },
-      "RelationType": {
-        "enum": [
-          "因果",
-          "递进",
-          "转折",
-          "矛盾",
-          "印证",
-          "背景",
-          "并列"
-        ],
-        "title": "RelationType",
-        "type": "string"
-      },
-      "RelationUpdate": {
-        "additionalProperties": false,
-        "properties": {
-          "direction": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/RelationDirection"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "fact_confidence": {
-            "anyOf": [
-              {
-                "maximum": 1.0,
-                "minimum": 0.0,
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Fact Confidence"
-          },
-          "relation_type": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/RelationType"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "verified": {
+          "completed": {
             "anyOf": [
               {
                 "type": "boolean"
@@ -3858,27 +2773,44 @@
                 "type": "null"
               }
             ],
-            "title": "Verified"
+            "title": "Completed"
+          },
+          "hidden": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hidden"
+          },
+          "read_later": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Read Later"
+          },
+          "saved": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Saved"
           }
         },
-        "title": "RelationUpdate",
+        "title": "ReportStateUpdate",
         "type": "object"
-      },
-      "Role": {
-        "enum": [
-          "政府官员",
-          "企业CEO/高管",
-          "分析师",
-          "学者/研究员",
-          "律师",
-          "行业协会代表",
-          "投资人",
-          "记者/媒体",
-          "政治人物",
-          "其他"
-        ],
-        "title": "Role",
-        "type": "string"
       },
       "ScoreExplainResponse": {
         "properties": {
@@ -4189,15 +3121,6 @@
         "title": "ScoreLabContentSummary",
         "type": "object"
       },
-      "Sentiment": {
-        "enum": [
-          "正面",
-          "中性",
-          "负面"
-        ],
-        "title": "Sentiment",
-        "type": "string"
-      },
       "SourceBulkImport": {
         "description": "Schema for bulk importing sources.",
         "properties": {
@@ -4424,18 +3347,6 @@
         "title": "SourceUpdate",
         "type": "object"
       },
-      "SubjectType": {
-        "enum": [
-          "企业",
-          "政府机构",
-          "人物",
-          "机构",
-          "国家/地区",
-          "产品/品牌"
-        ],
-        "title": "SubjectType",
-        "type": "string"
-      },
       "TodayHighlightEvent": {
         "properties": {
           "confidence_score": {
@@ -4457,6 +3368,11 @@
             "title": "Event Key",
             "type": "string"
           },
+          "has_updates": {
+            "default": false,
+            "title": "Has Updates",
+            "type": "boolean"
+          },
           "importance_score": {
             "anyOf": [
               {
@@ -4472,6 +3388,27 @@
             "default": 0,
             "title": "Independent Source Count",
             "type": "integer"
+          },
+          "latest_version": {
+            "default": 0,
+            "title": "Latest Version",
+            "type": "integer"
+          },
+          "notification_requested": {
+            "default": false,
+            "title": "Notification Requested",
+            "type": "boolean"
+          },
+          "personal_rule": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Personal Rule"
           },
           "primary_content_id": {
             "anyOf": [
@@ -4528,6 +3465,11 @@
             ],
             "title": "Updated At"
           },
+          "user_seen_version": {
+            "default": 0,
+            "title": "User Seen Version",
+            "type": "integer"
+          },
           "what_changed": {
             "anyOf": [
               {
@@ -4579,31 +3521,171 @@
         "title": "TodayHighlightsResponse",
         "type": "object"
       },
-      "Unit": {
-        "enum": [
-          "亿元人民币",
-          "百万元人民币",
-          "亿美元",
-          "百万美元",
-          "亿欧元",
-          "亿港元",
-          "%（百分比）",
-          "pp（百分点）",
-          "倍",
-          "指数点",
-          "万辆",
-          "万台",
-          "万人",
-          "亿件",
-          "万吨",
-          "GW（吉瓦）",
-          "元/股",
-          "美元/桶",
-          "元/平方米",
-          "自定义"
+      "UserRuleCreate": {
+        "properties": {
+          "evidence_summary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evidence Summary"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "title": "Metadata",
+            "type": "object"
+          },
+          "rule": {
+            "title": "Rule",
+            "type": "string"
+          },
+          "scope_key": {
+            "title": "Scope Key",
+            "type": "string"
+          },
+          "scope_type": {
+            "title": "Scope Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "scope_type",
+          "scope_key",
+          "rule"
         ],
-        "title": "Unit",
-        "type": "string"
+        "title": "UserRuleCreate",
+        "type": "object"
+      },
+      "UserRuleResponse": {
+        "properties": {
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "created_by": {
+            "title": "Created By",
+            "type": "string"
+          },
+          "evidence_summary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evidence Summary"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "title": "Metadata",
+            "type": "object"
+          },
+          "rule": {
+            "title": "Rule",
+            "type": "string"
+          },
+          "scope_key": {
+            "title": "Scope Key",
+            "type": "string"
+          },
+          "scope_type": {
+            "title": "Scope Type",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          }
+        },
+        "required": [
+          "id",
+          "scope_type",
+          "scope_key",
+          "rule",
+          "status",
+          "created_by"
+        ],
+        "title": "UserRuleResponse",
+        "type": "object"
+      },
+      "UserRuleUpdate": {
+        "properties": {
+          "evidence_summary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evidence Summary"
+          },
+          "metadata": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Metadata"
+          },
+          "rule": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rule"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          }
+        },
+        "title": "UserRuleUpdate",
+        "type": "object"
       },
       "ValidationError": {
         "properties": {
@@ -4644,52 +3726,6 @@
         ],
         "title": "ValidationError",
         "type": "object"
-      },
-      "Validity": {
-        "enum": [
-          "即时",
-          "短期",
-          "中期",
-          "长期",
-          "永久"
-        ],
-        "title": "Validity",
-        "type": "string"
-      },
-      "WhatType": {
-        "enum": [
-          "人事",
-          "财务",
-          "产品",
-          "政策",
-          "市场",
-          "法律",
-          "合作",
-          "事故",
-          "外交",
-          "其他"
-        ],
-        "title": "WhatType",
-        "type": "string"
-      },
-      "WhoEntry": {
-        "additionalProperties": false,
-        "properties": {
-          "name": {
-            "minLength": 1,
-            "title": "Name",
-            "type": "string"
-          },
-          "type": {
-            "$ref": "#/components/schemas/SubjectType"
-          }
-        },
-        "required": [
-          "name",
-          "type"
-        ],
-        "title": "WhoEntry",
-        "type": "object"
       }
     },
     "securitySchemes": {
@@ -4707,1238 +3743,6 @@
   },
   "openapi": "3.1.0",
   "paths": {
-    "/api/atom-relations": {
-      "post": {
-        "operationId": "create_relation_api_atom_relations_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/RelationCreate"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RelationRecord"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "security": [
-          {
-            "APIKeyHeader": []
-          }
-        ],
-        "summary": "Create Relation",
-        "tags": [
-          "atoms"
-        ]
-      }
-    },
-    "/api/atom-relations/{rel_id}": {
-      "delete": {
-        "operationId": "delete_relation_api_atom_relations__rel_id__delete",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "rel_id",
-            "required": true,
-            "schema": {
-              "title": "Rel Id",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "204": {
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "security": [
-          {
-            "APIKeyHeader": []
-          }
-        ],
-        "summary": "Delete Relation",
-        "tags": [
-          "atoms"
-        ]
-      },
-      "patch": {
-        "operationId": "update_relation_api_atom_relations__rel_id__patch",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "rel_id",
-            "required": true,
-            "schema": {
-              "title": "Rel Id",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/RelationUpdate"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RelationRecord"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "security": [
-          {
-            "APIKeyHeader": []
-          }
-        ],
-        "summary": "Update Relation",
-        "tags": [
-          "atoms"
-        ]
-      }
-    },
-    "/api/atom-relations/{rel_id}/verify": {
-      "post": {
-        "operationId": "verify_relation_api_atom_relations__rel_id__verify_post",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "rel_id",
-            "required": true,
-            "schema": {
-              "title": "Rel Id",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RelationRecord"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "security": [
-          {
-            "APIKeyHeader": []
-          }
-        ],
-        "summary": "Verify Relation",
-        "tags": [
-          "atoms"
-        ]
-      }
-    },
-    "/api/atoms": {
-      "get": {
-        "operationId": "list_atoms_api_atoms_get",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "type",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Type"
-            }
-          },
-          {
-            "in": "query",
-            "name": "domain",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Domain"
-            }
-          },
-          {
-            "in": "query",
-            "name": "verified",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "boolean"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Verified"
-            }
-          },
-          {
-            "in": "query",
-            "name": "atom_source",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Atom Source"
-            }
-          },
-          {
-            "in": "query",
-            "name": "content_id",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Content Id"
-            }
-          },
-          {
-            "in": "query",
-            "name": "search",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Search"
-            }
-          },
-          {
-            "description": "Lifecycle status filter; pass 'all' to include shadow/superseded.",
-            "in": "query",
-            "name": "status",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "default": "active",
-              "description": "Lifecycle status filter; pass 'all' to include shadow/superseded.",
-              "title": "Status"
-            }
-          },
-          {
-            "in": "query",
-            "name": "page",
-            "required": false,
-            "schema": {
-              "default": 1,
-              "minimum": 1,
-              "title": "Page",
-              "type": "integer"
-            }
-          },
-          {
-            "in": "query",
-            "name": "page_size",
-            "required": false,
-            "schema": {
-              "default": 20,
-              "maximum": 100,
-              "minimum": 1,
-              "title": "Page Size",
-              "type": "integer"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AtomListResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "security": [
-          {
-            "APIKeyHeader": []
-          }
-        ],
-        "summary": "List Atoms",
-        "tags": [
-          "atoms"
-        ]
-      },
-      "post": {
-        "operationId": "create_atom_api_atoms_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/AtomCreate"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AtomRecord"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "security": [
-          {
-            "APIKeyHeader": []
-          }
-        ],
-        "summary": "Create Atom",
-        "tags": [
-          "atoms"
-        ]
-      }
-    },
-    "/api/atoms/backfill": {
-      "post": {
-        "operationId": "backfill_atoms_api_atoms_backfill_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/AtomBackfillRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "202": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AtomBackfillResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "security": [
-          {
-            "APIKeyHeader": []
-          }
-        ],
-        "summary": "Backfill Atoms",
-        "tags": [
-          "atoms"
-        ]
-      }
-    },
-    "/api/atoms/backfill/{job_id}": {
-      "get": {
-        "operationId": "backfill_status_api_atoms_backfill__job_id__get",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "job_id",
-            "required": true,
-            "schema": {
-              "title": "Job Id",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AtomBackfillStatusResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "security": [
-          {
-            "APIKeyHeader": []
-          }
-        ],
-        "summary": "Backfill Status",
-        "tags": [
-          "atoms"
-        ]
-      }
-    },
-    "/api/atoms/content/{content_id}/atomize": {
-      "post": {
-        "operationId": "atomize_one_content_api_atoms_content__content_id__atomize_post",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "content_id",
-            "required": true,
-            "schema": {
-              "title": "Content Id",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AtomizeResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "security": [
-          {
-            "APIKeyHeader": []
-          }
-        ],
-        "summary": "Atomize One Content",
-        "tags": [
-          "atoms"
-        ]
-      }
-    },
-    "/api/atoms/entities": {
-      "get": {
-        "operationId": "list_entities_api_atoms_entities_get",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "entity_type",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Entity Type"
-            }
-          },
-          {
-            "in": "query",
-            "name": "search",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Search"
-            }
-          },
-          {
-            "in": "query",
-            "name": "limit",
-            "required": false,
-            "schema": {
-              "default": 50,
-              "maximum": 200,
-              "minimum": 1,
-              "title": "Limit",
-              "type": "integer"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": true,
-                  "title": "Response List Entities Api Atoms Entities Get",
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "security": [
-          {
-            "APIKeyHeader": []
-          }
-        ],
-        "summary": "List Entities",
-        "tags": [
-          "atoms"
-        ]
-      }
-    },
-    "/api/atoms/entities/{entity_id}/atoms": {
-      "get": {
-        "operationId": "list_entity_atoms_api_atoms_entities__entity_id__atoms_get",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "entity_id",
-            "required": true,
-            "schema": {
-              "title": "Entity Id",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": true,
-                  "title": "Response List Entity Atoms Api Atoms Entities  Entity Id  Atoms Get",
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "security": [
-          {
-            "APIKeyHeader": []
-          }
-        ],
-        "summary": "List Entity Atoms",
-        "tags": [
-          "atoms"
-        ]
-      }
-    },
-    "/api/atoms/events": {
-      "get": {
-        "operationId": "list_event_clusters_api_atoms_events_get",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "domain",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Domain"
-            }
-          },
-          {
-            "in": "query",
-            "name": "limit",
-            "required": false,
-            "schema": {
-              "default": 50,
-              "maximum": 200,
-              "minimum": 1,
-              "title": "Limit",
-              "type": "integer"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": true,
-                  "title": "Response List Event Clusters Api Atoms Events Get",
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "security": [
-          {
-            "APIKeyHeader": []
-          }
-        ],
-        "summary": "List Event Clusters",
-        "tags": [
-          "atoms"
-        ]
-      }
-    },
-    "/api/atoms/events/{event_id}": {
-      "get": {
-        "operationId": "get_event_cluster_api_atoms_events__event_id__get",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "event_id",
-            "required": true,
-            "schema": {
-              "title": "Event Id",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Get Event Cluster Api Atoms Events  Event Id  Get",
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "security": [
-          {
-            "APIKeyHeader": []
-          }
-        ],
-        "summary": "Get Event Cluster",
-        "tags": [
-          "atoms"
-        ]
-      }
-    },
-    "/api/atoms/quality": {
-      "get": {
-        "operationId": "atom_quality_api_atoms_quality_get",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AtomQualityResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          }
-        },
-        "security": [
-          {
-            "APIKeyHeader": []
-          }
-        ],
-        "summary": "Atom Quality",
-        "tags": [
-          "atoms"
-        ]
-      }
-    },
-    "/api/atoms/relations": {
-      "get": {
-        "operationId": "list_relations_api_atoms_relations_get",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "atom_id",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Atom Id"
-            }
-          },
-          {
-            "in": "query",
-            "name": "verified",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "boolean"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Verified"
-            }
-          },
-          {
-            "in": "query",
-            "name": "page",
-            "required": false,
-            "schema": {
-              "default": 1,
-              "minimum": 1,
-              "title": "Page",
-              "type": "integer"
-            }
-          },
-          {
-            "in": "query",
-            "name": "page_size",
-            "required": false,
-            "schema": {
-              "default": 20,
-              "maximum": 100,
-              "minimum": 1,
-              "title": "Page Size",
-              "type": "integer"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RelationListResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "security": [
-          {
-            "APIKeyHeader": []
-          }
-        ],
-        "summary": "List Relations",
-        "tags": [
-          "atoms"
-        ]
-      }
-    },
-    "/api/atoms/relations/reconcile": {
-      "post": {
-        "operationId": "reconcile_relations_api_atoms_relations_reconcile_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/RelationReconcileRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "202": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RelationReconcileResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "security": [
-          {
-            "APIKeyHeader": []
-          }
-        ],
-        "summary": "Reconcile Relations",
-        "tags": [
-          "atoms"
-        ]
-      }
-    },
-    "/api/atoms/relations/reconcile/{job_id}": {
-      "get": {
-        "operationId": "reconcile_status_api_atoms_relations_reconcile__job_id__get",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "job_id",
-            "required": true,
-            "schema": {
-              "title": "Job Id",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RelationReconcileStatusResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "security": [
-          {
-            "APIKeyHeader": []
-          }
-        ],
-        "summary": "Reconcile Status",
-        "tags": [
-          "atoms"
-        ]
-      }
-    },
-    "/api/atoms/stats": {
-      "get": {
-        "operationId": "atom_stats_api_atoms_stats_get",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AtomStatsResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          }
-        },
-        "security": [
-          {
-            "APIKeyHeader": []
-          }
-        ],
-        "summary": "Atom Stats",
-        "tags": [
-          "atoms"
-        ]
-      }
-    },
-    "/api/atoms/{atom_id}": {
-      "get": {
-        "operationId": "get_atom_api_atoms__atom_id__get",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "atom_id",
-            "required": true,
-            "schema": {
-              "title": "Atom Id",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AtomRecord"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "security": [
-          {
-            "APIKeyHeader": []
-          }
-        ],
-        "summary": "Get Atom",
-        "tags": [
-          "atoms"
-        ]
-      },
-      "patch": {
-        "operationId": "update_atom_api_atoms__atom_id__patch",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "atom_id",
-            "required": true,
-            "schema": {
-              "title": "Atom Id",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/AtomUpdate"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AtomRecord"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "security": [
-          {
-            "APIKeyHeader": []
-          }
-        ],
-        "summary": "Update Atom",
-        "tags": [
-          "atoms"
-        ]
-      }
-    },
-    "/api/atoms/{atom_id}/relations": {
-      "get": {
-        "operationId": "list_atom_relations_api_atoms__atom_id__relations_get",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "atom_id",
-            "required": true,
-            "schema": {
-              "title": "Atom Id",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RelationListResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "security": [
-          {
-            "APIKeyHeader": []
-          }
-        ],
-        "summary": "List Atom Relations",
-        "tags": [
-          "atoms"
-        ]
-      }
-    },
-    "/api/atoms/{atom_id}/verify": {
-      "post": {
-        "operationId": "verify_atom_api_atoms__atom_id__verify_post",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "atom_id",
-            "required": true,
-            "schema": {
-              "title": "Atom Id",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AtomRecord"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "security": [
-          {
-            "APIKeyHeader": []
-          }
-        ],
-        "summary": "Verify Atom",
-        "tags": [
-          "atoms"
-        ]
-      }
-    },
     "/api/auth-assistant/auth-bundles/import": {
       "post": {
         "operationId": "import_auth_bundle_from_assistant_api_auth_assistant_auth_bundles_import_post",
@@ -7495,7 +5299,7 @@
     },
     "/api/contents/events/export-md": {
       "get": {
-        "description": "Download an event-like duplicate group as attribution-first Markdown.",
+        "description": "Download a persisted Event as attribution-first Markdown.",
         "operationId": "export_event_markdown_api_contents_events_export_md_get",
         "parameters": [
           {
@@ -8478,6 +6282,110 @@
         ]
       }
     },
+    "/api/events/{event_id}/seen": {
+      "post": {
+        "operationId": "mark_event_as_seen_api_events__event_id__seen_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "event_id",
+            "required": true,
+            "schema": {
+              "title": "Event Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PersonalItemStateResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Mark Event As Seen",
+        "tags": [
+          "events"
+        ]
+      }
+    },
+    "/api/events/{event_id}/state": {
+      "patch": {
+        "operationId": "patch_event_state_api_events__event_id__state_patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "event_id",
+            "required": true,
+            "schema": {
+              "title": "Event Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EventStateUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PersonalItemStateResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Patch Event State",
+        "tags": [
+          "events"
+        ]
+      }
+    },
     "/api/keywords": {
       "get": {
         "description": "List all keywords.\n\n不使用进程内 TTL 缓存：多 worker / 多进程下缓存无法跨进程失效，会导致 PATCH 已更新等价词\n但 GET 列表仍返回旧数据。",
@@ -8811,6 +6719,534 @@
         "summary": "Update Keyword",
         "tags": [
           "keywords"
+        ]
+      }
+    },
+    "/api/personal-monitor/events/{event_id}/read-state": {
+      "get": {
+        "operationId": "get_event_personal_read_state_api_personal_monitor_events__event_id__read_state_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "event_id",
+            "required": true,
+            "schema": {
+              "title": "Event Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventReadStateResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Get Event Personal Read State",
+        "tags": [
+          "personal-monitor"
+        ]
+      }
+    },
+    "/api/personal-monitor/observations/suggestions": {
+      "get": {
+        "operationId": "list_observation_suggestions_api_personal_monitor_observations_suggestions_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ObservationAggregateResponse"
+                  },
+                  "title": "Response List Observation Suggestions Api Personal Monitor Observations Suggestions Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "List Observation Suggestions",
+        "tags": [
+          "personal-monitor"
+        ]
+      }
+    },
+    "/api/personal-monitor/observations/{observation_id}/accept": {
+      "post": {
+        "operationId": "accept_observation_api_personal_monitor_observations__observation_id__accept_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "observation_id",
+            "required": true,
+            "schema": {
+              "title": "Observation Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserRuleResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Accept Observation",
+        "tags": [
+          "personal-monitor"
+        ]
+      }
+    },
+    "/api/personal-monitor/observations/{observation_id}/dismiss": {
+      "post": {
+        "operationId": "dismiss_observation_api_personal_monitor_observations__observation_id__dismiss_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "observation_id",
+            "required": true,
+            "schema": {
+              "title": "Observation Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ObservationAggregateResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Dismiss Observation",
+        "tags": [
+          "personal-monitor"
+        ]
+      }
+    },
+    "/api/personal-monitor/reports/{content_id}/state": {
+      "patch": {
+        "operationId": "patch_report_state_api_personal_monitor_reports__content_id__state_patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "content_id",
+            "required": true,
+            "schema": {
+              "title": "Content Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReportStateUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PersonalItemStateResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Patch Report State",
+        "tags": [
+          "personal-monitor"
+        ]
+      }
+    },
+    "/api/personal-monitor/rules": {
+      "get": {
+        "operationId": "list_user_rules_api_personal_monitor_rules_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "rule",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Rule"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/UserRuleResponse"
+                  },
+                  "title": "Response List User Rules Api Personal Monitor Rules Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "List User Rules",
+        "tags": [
+          "personal-monitor"
+        ]
+      },
+      "post": {
+        "operationId": "create_user_rule_api_personal_monitor_rules_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UserRuleCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserRuleResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Create User Rule",
+        "tags": [
+          "personal-monitor"
+        ]
+      }
+    },
+    "/api/personal-monitor/rules/{rule_id}": {
+      "delete": {
+        "operationId": "revoke_user_rule_api_personal_monitor_rules__rule_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "rule_id",
+            "required": true,
+            "schema": {
+              "title": "Rule Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserRuleResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Revoke User Rule",
+        "tags": [
+          "personal-monitor"
+        ]
+      },
+      "patch": {
+        "operationId": "update_user_rule_api_personal_monitor_rules__rule_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "rule_id",
+            "required": true,
+            "schema": {
+              "title": "Rule Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UserRuleUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserRuleResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Update User Rule",
+        "tags": [
+          "personal-monitor"
+        ]
+      }
+    },
+    "/api/personal-monitor/states/{target_type}/{target_id}": {
+      "get": {
+        "operationId": "get_personal_state_api_personal_monitor_states__target_type___target_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "target_type",
+            "required": true,
+            "schema": {
+              "title": "Target Type",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "target_id",
+            "required": true,
+            "schema": {
+              "title": "Target Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PersonalItemStateResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Get Personal State",
+        "tags": [
+          "personal-monitor"
         ]
       }
     },

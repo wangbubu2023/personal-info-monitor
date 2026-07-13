@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import Any, Optional
+from uuid import UUID
 
 from pydantic import BaseModel, Field
 
@@ -24,6 +25,8 @@ class TodayHighlightEvent(BaseModel):
     latest_version: int = 0
     user_seen_version: int = 0
     has_updates: bool = False
+    personal_rule: Optional[str] = None
+    notification_requested: bool = False
 
 
 class TodayHighlightsResponse(BaseModel):
@@ -55,7 +58,7 @@ class EventSnapshotItem(BaseModel):
 class EventFeedbackCreate(BaseModel):
     type: str
     note: Optional[str] = None
-    content_id: Optional[str] = None
+    content_id: Optional[UUID] = None
 
 
 class EventFeedbackItem(BaseModel):

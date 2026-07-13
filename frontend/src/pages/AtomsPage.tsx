@@ -187,7 +187,7 @@ const AtomsPage: React.FC = () => {
           <div>
             <p className="font-medium">原子库尚未启用</p>
             <p className="mt-2 text-amber-900/80">
-              可直接在前端开启；也可到「配置 → 智能引擎 → 原子化模型配置」调整模型与关联推断设置。
+              可直接在前端开启；也可到「配置 → 模型配置 → 原子化模型配置」调整模型与关联推断设置。
             </p>
           </div>
           <button

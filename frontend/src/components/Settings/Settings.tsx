@@ -1,6 +1,6 @@
 import React, { Suspense, lazy, useMemo, useCallback, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Cpu, Database, Tag as TagIcon, MessageSquareText, ShieldAlert, Gauge, Activity, Wrench, KeyRound } from 'lucide-react';
+import { Cpu, Database, Tag as TagIcon, ShieldAlert, Gauge, Activity, Wrench } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { KEYWORD_MONITORING_ENABLED, SCORE_LAB_BUILD_ENABLED } from '../../config/features';
 import PanelLoading from '../common/PanelLoading';
@@ -10,19 +10,22 @@ const SourceManager = lazy(() => import('../SourceList/SourceManager'));
 const FetchHealthTab = lazy(() => import('./FetchHealthTab'));
 const CredentialsTab = lazy(() => import('./CredentialsTab'));
 const AIModelTab = lazy(() => import('./AIModelTab'));
-const TaskPromptsTab = lazy(() => import('./TaskPromptsTab'));
 const MaintenanceTab = lazy(() => import('./MaintenanceTab'));
-const AuthAssistantTab = lazy(() => import('./AuthAssistantTab'));
 
 /**
  * URL keys we used to ship: `api-keys` (API key tab) and `browser-sessions`
  * (persistent browser sessions tab). Both have been folded into the new
- * unified `credentials` tab. Keep bookmarks / old deep links working by
- * rewriting the query param on mount.
+ * unified `credentials` tab. The Auth Assistant, standalone task prompts,
+ * and system-maintenance tabs were subsequently folded into their parent
+ * workflows as well. Keep bookmarks / old deep links working by rewriting
+ * the query param on mount.
  */
 const LEGACY_TAB_REDIRECTS: Record<string, string> = {
   'api-keys': 'credentials',
   'browser-sessions': 'credentials',
+  'auth-assistant': 'credentials',
+  'task-prompts': 'ai-model',
+  maintenance: 'system-upgrade',
 };
 
 const iconStroke = 1.5
@@ -39,7 +42,7 @@ const Settings: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
 
   const validTabKeys = useMemo(() => {
-    const keys: string[] = ['sources', 'fetch-health', 'credentials', 'auth-assistant', 'ai-model', 'task-prompts', 'maintenance'];
+    const keys: string[] = ['sources', 'fetch-health', 'credentials', 'ai-model', 'system-upgrade'];
     if (KEYWORD_MONITORING_ENABLED) keys.push('keywords');
     if (SCORE_LAB_BUILD_ENABLED) keys.push('score-lab');
     return keys;
@@ -74,42 +77,28 @@ const Settings: React.FC = () => {
       key: 'fetch-health',
       label: '抓取健康',
       icon: Activity,
-      description: '查看各信源的抓取成功率、失败诊断、冷却状态与 7 天画像。',
+      description: '查看抓取成功率、失败诊断、冷却状态与 7 天画像，并导出诊断包。',
       content: <FetchHealthTab />,
     },
     {
       key: 'credentials',
       label: '登录与凭据',
       icon: ShieldAlert,
-      description: '管理站点登录会话、YouTube / X 平台 API Key，以及旧版手动 Cookie。',
+      description: '集中管理网页登录态、Auth Assistant 与平台 API 凭据。',
       content: <CredentialsTab />,
     },
     {
-      key: 'auth-assistant',
-      label: 'Auth Assistant',
-      icon: KeyRound,
-      description: '连接本地 PIM Auth Assistant，上传和管理网页登录态。',
-      content: <AuthAssistantTab />,
-    },
-    {
       key: 'ai-model',
-      label: '智能引擎',
+      label: '模型配置',
       icon: Cpu,
-      description: '配置大模型接口与参数。',
+      description: '配置模型接入、生成参数，以及每小时简报的任务提示。',
       content: <AIModelTab />,
     },
     {
-      key: 'task-prompts',
-      label: '任务提示',
-      icon: MessageSquareText,
-      description: '后台任务使用的选稿说明与综述提示；当前含每小时简报。',
-      content: <TaskPromptsTab />,
-    },
-    {
-      key: 'maintenance',
-      label: '系统维护',
+      key: 'system-upgrade',
+      label: '系统升级',
       icon: Wrench,
-      description: '执行升级等本机运维动作，并查看最近一次操作日志。',
+      description: '检查版本、执行升级并查看最近一次升级日志。',
       content: <MaintenanceTab />,
     },
   ];

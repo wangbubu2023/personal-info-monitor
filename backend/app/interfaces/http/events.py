@@ -104,7 +104,7 @@ async def create_event_feedback(
     if body.content_id:
         content = (
             await db.execute(
-                select(Content).options(selectinload(Content.source)).where(Content.id == str(UUID(body.content_id)))
+                select(Content).options(selectinload(Content.source)).where(Content.id == str(body.content_id))
             )
         ).scalar_one_or_none()
     if content is None:

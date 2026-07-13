@@ -34,6 +34,7 @@ import {
 import { configsApi, type APIConfig, type AuthConfig } from '../../services/configs'
 import { formatLocalDateTime } from '../../utils/datetime'
 import { isXCookieProfile } from '../../utils/sourceAuth'
+import AuthAssistantTab from './AuthAssistantTab'
 import SettingsSection from './SettingsSection'
 
 const { Text, Paragraph } = Typography
@@ -605,8 +606,8 @@ const CredentialsTab: React.FC = () => {
   return (
     <div className="flex flex-col gap-5">
       <SettingsSection
-        title="站点登录会话"
-        description="用于需要网页登录态的站点，如纽约时报、WSJ、X 等。手动登录会创建真实浏览器 Profile；Auth Assistant 导入的是 Storage State，需用可访问文章 URL 校验正文后才会标记有效。"
+        title="网页登录会话"
+        description="用于需要网页登录态的站点，如纽约时报、WSJ、X 等。可直接在服务器创建浏览器 Profile，也可通过下方 Auth Assistant 从本地导入 Storage State。"
         actions={
           <Space>
             <Button size="small" onClick={() => refetchSessions()}>
@@ -642,8 +643,10 @@ const CredentialsTab: React.FC = () => {
         />
       </SettingsSection>
 
+      <AuthAssistantTab />
+
       <SettingsSection
-        title="平台 API Key"
+        title="平台 API 凭据"
         description="官方平台接口凭据。YouTube Data API 主要用于部分探测与元数据场景；X API 属付费/配额 fallback，日常 X 抓取优先使用浏览器登录态 Cookie，不会因配置了 Key 就自动调用。"
       >
         <div className="grid gap-4 xl:grid-cols-2">

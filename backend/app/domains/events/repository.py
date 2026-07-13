@@ -19,7 +19,7 @@ from sqlalchemy.orm import selectinload
 from sqlalchemy.orm.session import Session
 
 from app.domains.events.personal_state import get_event_read_state, get_or_create_item_state
-from app.models import Content, ContentEvent, ContentEventMembership, ContentEventSnapshot, HourlyDigest, ScoreFeedback
+from app.models import Content, ContentEvent, ContentEventMembership, ContentEventSnapshot, HourlyDigest, ScoreFeedback, UserRule
 from app.utils.datetime import to_iso_z, utcnow_naive
 
 
@@ -199,6 +199,72 @@ def event_row_to_card(row: ContentEvent, *, primary_content_id: str | None = Non
     }
 
 
+async def _apply_active_user_rules(db: AsyncSession, candidates: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Apply explicit monitor rules to event cards without changing global scores.
+
+    Natural interactions only create suggestions. Once a user accepts or creates
+    a rule, it affects their event highlights: ``mute`` hides matching cards,
+    ``quiet`` de-prioritises them, and ``highlight`` / ``notify`` promote them.
+    ``notify`` is exposed to the client so its delivery surface can decide how
+    to alert without altering the event's shared score.
+    """
+    if not candidates:
+        return []
+
+    rules_result = await db.execute(select(UserRule).where(UserRule.status == "active"))
+    rules = list(rules_result.scalars().all())
+    if not rules:
+        return candidates
+
+    content_ids = {
+        str(content_id)
+        for item in candidates
+        for content_id in item.get("content_ids") or [item.get("primary_content_id")]
+        if content_id
+    }
+    content_scopes: dict[str, set[tuple[str, str]]] = {}
+    if content_ids:
+        content_result = await db.execute(
+            select(Content.id, Content.source_id, Content.content_type, Content.lane, Content.metadata_).where(
+                Content.id.in_(content_ids)
+            )
+        )
+        for content_id, source_id, content_type, lane, metadata in content_result.all():
+            scopes: set[tuple[str, str]] = set()
+            if source_id:
+                scopes.add(("source", str(source_id)))
+            content_metadata = metadata if isinstance(metadata, dict) else {}
+            resolved_lane = str(lane or content_metadata.get("lane") or "").strip()
+            if resolved_lane:
+                scopes.add(("topic", resolved_lane))
+            if content_type:
+                scopes.add(("content_type", str(content_type)))
+            content_scopes[str(content_id)] = scopes
+
+    priority = {"quiet": -1, "highlight": 1, "notify": 2}
+    filtered: list[dict[str, Any]] = []
+    for item in candidates:
+        scopes = {
+            ("event", str(item.get("event_id") or "")),
+            ("event_type", str(item.get("corroboration_tier") or "")),
+        }
+        for content_id in item.get("content_ids") or [item.get("primary_content_id")]:
+            scopes.update(content_scopes.get(str(content_id), set()))
+        scopes.discard(("event", ""))
+        scopes.discard(("event_type", ""))
+
+        matching = [rule.rule for rule in rules if (rule.scope_type, rule.scope_key) in scopes]
+        if "mute" in matching:
+            continue
+        effective_rule = max(matching, key=lambda rule: priority.get(rule, 0), default=None)
+        if effective_rule:
+            item["personal_rule"] = effective_rule
+            item["notification_requested"] = effective_rule == "notify"
+        item["_rule_priority"] = priority.get(effective_rule or "", 0)
+        filtered.append(item)
+    return filtered
+
+
 async def list_today_highlights(db: AsyncSession, target_date: date, *, limit: int = 8) -> list[dict[str, Any]]:
     """Return 3-8 event cards for the Digest page; empty means hide the section."""
 
@@ -237,8 +303,15 @@ async def list_today_highlights(db: AsyncSession, target_date: date, *, limit: i
                 "importance_score": score,
                 "confidence_score": item.get("confidence_score"),
                 "primary_content_id": item.get("content_id"),
+                "content_ids": item.get("content_ids") or [item.get("content_id")],
+                "corroboration_tier": item.get("corroboration_tier"),
             }
-    ordered = sorted(candidates.values(), key=lambda item: float(item.get("importance_score") or 0.0), reverse=True)
+    rule_adjusted = await _apply_active_user_rules(db, list(candidates.values()))
+    ordered = sorted(
+        rule_adjusted,
+        key=lambda item: (int(item.get("_rule_priority") or 0), float(item.get("importance_score") or 0.0)),
+        reverse=True,
+    )
     qualified = [item for item in ordered if float(item.get("importance_score") or 0.0) >= 60]
     selected = qualified[: max(3, min(8, int(limit or 8)))] if len(qualified) >= 3 else []
     for item in selected:
@@ -246,6 +319,7 @@ async def list_today_highlights(db: AsyncSession, target_date: date, *, limit: i
         item["latest_version"] = read_state.latest_version
         item["user_seen_version"] = read_state.user_seen_version
         item["has_updates"] = read_state.has_updates
+        item.pop("_rule_priority", None)
     return selected
 
 

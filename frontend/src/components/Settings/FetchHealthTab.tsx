@@ -1,10 +1,11 @@
 import React from 'react'
-import { Table, Tag, Button, Tooltip, Alert, Empty } from 'antd'
+import { Table, Tag, Button, Tooltip, Alert, Empty, message } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { SyncOutlined } from '@ant-design/icons'
-import { HeartPulse } from 'lucide-react'
-import { useQuery } from '@tanstack/react-query'
+import { FileDown, HeartPulse } from 'lucide-react'
+import { useMutation, useQuery } from '@tanstack/react-query'
 import { sourcesApi } from '../../services/sources'
+import { systemApi } from '../../services/system'
 import { sourceKeys } from '../../services/queryKeys'
 import type { Source } from '../../types'
 import { formatLocalDateTime } from '../../utils/datetime'
@@ -51,6 +52,12 @@ const FetchHealthTab: React.FC = () => {
     queryKey: [...sourceKeys.all, 'fetch-health-all'],
     queryFn: () => sourcesApi.listAll(),
     refetchInterval: 30000,
+  })
+
+  const supportBundleMutation = useMutation({
+    mutationFn: systemApi.downloadSupportBundle,
+    onSuccess: () => message.success('诊断包已导出'),
+    onError: () => message.error('无法导出诊断包，请检查后端日志'),
   })
 
   const sources = React.useMemo(() => data ?? [], [data])
@@ -232,6 +239,37 @@ const FetchHealthTab: React.FC = () => {
           }
         />
       ) : null}
+
+      <SettingsSection
+        title="抓取诊断包"
+        description="导出抓取健康、失败摘要和最近日志尾部，便于排查问题；不会包含数据库、Cookie、runtime-secrets.json 或 API Key。"
+        actions={
+          <Button
+            type="primary"
+            size="small"
+            icon={<FileDown size={14} strokeWidth={1.6} />}
+            onClick={() => supportBundleMutation.mutate()}
+            loading={supportBundleMutation.isPending}
+          >
+            导出诊断包
+          </Button>
+        }
+      >
+        <div className="grid gap-3 text-[13px] text-[#586476] md:grid-cols-3">
+          <div>
+            <span className="text-[#7a8799]">格式</span>
+            <span className="ml-2 text-[#293859]">ZIP</span>
+          </div>
+          <div>
+            <span className="text-[#7a8799]">日志</span>
+            <span className="ml-2 text-[#293859]">最近尾部</span>
+          </div>
+          <div>
+            <span className="text-[#7a8799]">隐私</span>
+            <span className="ml-2 text-[#293859]">已脱敏</span>
+          </div>
+        </div>
+      </SettingsSection>
 
       <SettingsSection
         title="信源明细"

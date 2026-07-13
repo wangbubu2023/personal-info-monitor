@@ -69,7 +69,7 @@ const EventsPanel: React.FC<{ knowledgeEnabled: boolean }> = ({ knowledgeEnabled
 
       {!knowledgeEnabled && (
         <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-          知识层（事件聚类/实体）未开启，已有数据仍可浏览。可在「配置 → 智能引擎」开启 atoms_knowledge_enabled 后，新入库内容会自动聚类。
+          知识层（事件聚类/实体）未开启，已有数据仍可浏览。可在「配置 → 模型配置」开启 atoms_knowledge_enabled 后，新入库内容会自动聚类。
         </div>
       )}
 

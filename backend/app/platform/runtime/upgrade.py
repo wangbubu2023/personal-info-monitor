@@ -74,17 +74,44 @@ def _tail(path: Path, *, max_chars: int = 6000) -> str:
     return text[-max_chars:]
 
 
+def _checkout_is_detached() -> bool:
+    """Return whether the project root is a detached Git checkout.
+
+    A non-Git directory and an unexpected Git error are deliberately treated
+    as "not detached" here. The upgrade command will provide the authoritative
+    error for those cases; adding ``--no-pull`` would only obscure it.
+    """
+    try:
+        subprocess.check_output(
+            ["git", "symbolic-ref", "--short", "-q", "HEAD"],
+            cwd=str(_ROOT),
+            text=True,
+            stderr=subprocess.DEVNULL,
+        )
+        return False
+    except subprocess.CalledProcessError as exc:
+        # Git uses exit status 1 specifically for a detached HEAD. Other
+        # failures (for example, a directory that is not a checkout) should
+        # retain the normal CLI error rather than silently changing behavior.
+        return exc.returncode == 1
+    except OSError:
+        return False
+
+
 def configured_upgrade_args() -> list[str]:
-    """Return operator-configured fixed args for ``./pim upgrade``.
+    """Return effective fixed args for the UI-triggered ``./pim upgrade``.
 
     The browser cannot supply shell arguments. Operators who need systemd or a
     backend-only VPS can set PIM_UI_UPGRADE_ARGS in the service environment,
-    e.g. ``--server --systemd pim``.
+    e.g. ``--server --systemd pim``. When no override is supplied, a detached
+    checkout gets ``--no-pull`` automatically: it can refresh the current
+    checkout instead of failing because Git cannot fast-forward a detached
+    HEAD. A branch checkout keeps the historical pull-and-upgrade behavior.
     """
     raw = str(getattr(get_settings(), "pim_ui_upgrade_args", "") or "").strip()
-    if not raw:
-        return []
-    return shlex.split(raw)
+    if raw:
+        return shlex.split(raw)
+    return ["--no-pull"] if _checkout_is_detached() else []
 
 
 def get_upgrade_status(*, data_dir: Path | None = None) -> dict[str, Any]:

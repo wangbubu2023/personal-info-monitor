@@ -62,12 +62,12 @@ const TaskPromptsTab: React.FC = () => {
   const usingBuiltin = !storedPrompt.trim()
 
   if (isLoading) {
-    return <PanelLoading message="正在读取任务提示…" />
+    return <PanelLoading message="正在读取简报任务设置…" />
   }
 
   return (
     <SettingsSection
-      title="每小时简报"
+      title="每小时简报任务提示"
       description="配置选稿与综述任务使用的提示词。系统会从每个简报周期内新增入库内容中取分数排名前 20 的篇目作为候选。"
       className="max-w-[800px]"
     >

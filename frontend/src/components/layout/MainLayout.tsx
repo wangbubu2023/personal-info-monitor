@@ -80,7 +80,7 @@ const UpdateNotice: React.FC<UpdateNoticeProps> = ({ latestVersion, onOpenUpgrad
       </span>
       <div className="min-w-0 flex-1">
         <div className="text-[12px] font-semibold text-[#d9f3fb]">发现新版本 v{latestVersion}</div>
-        <div className="mt-1 text-[11px] leading-relaxed text-[#9eb0c4]">可以前往系统维护查看发布说明并执行升级。</div>
+        <div className="mt-1 text-[11px] leading-relaxed text-[#9eb0c4]">可以前往系统升级查看发布说明并执行升级。</div>
         <div className="mt-2 flex gap-2">
           <button
             type="button"

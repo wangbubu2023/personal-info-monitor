@@ -461,6 +461,17 @@ cd /path/to/personal-info-monitor
 ./pim upgrade --server --skip-playwright --no-pull --no-restart
 ```
 
+Web 端的“升级 PIM”按钮也会在 detached HEAD 下自动跳过 `git pull`，以便刷新当前
+checkout。若服务由 systemd、supervisord、容器平台或自定义守护脚本管理，请在
+`backend/.env` 明确设置下列参数，避免 Web 端升级改由 `./pim` 自行重启服务：
+
+```dotenv
+PIM_UI_UPGRADE_ARGS=--no-pull --no-restart
+```
+
+此模式不会切换代码版本，也不会立即加载新依赖；完成发布后请按你的外部进程管理流程
+重启服务。
+
 随后由 HEARTBEAT、cron 或平台心跳继续调用：
 
 ```bash

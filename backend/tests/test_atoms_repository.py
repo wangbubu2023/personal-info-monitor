@@ -136,7 +136,9 @@ def test_atomize_returns_false_when_flag_disabled(monkeypatch, seeded_content):
 
 
 def test_reader_returns_empty_when_flag_disabled(monkeypatch, sync_session_factory, seeded_content):
-    monkeypatch.delenv("ATOMS_ENABLED", raising=False)
+    # Pin the feature flag instead of relying on the DB fallback default: an
+    # operator may legitimately enable atoms in persistent system settings.
+    monkeypatch.setenv("ATOMS_ENABLED", "false")
     repo = SqlAtomRepository(sync_session_factory)
     repo.create_atom(_info_atom(seeded_content))
     reader = SqlAtomReader(sync_session_factory)

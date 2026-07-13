@@ -118,7 +118,7 @@ const AuthAssistantTab: React.FC = () => {
   return (
     <div className="flex flex-col gap-5">
       <SettingsSection
-        title="连接本地 PIM Auth Assistant"
+        title="Auth Assistant：从本地导入登录态"
         description="在 VPS 上打开这里生成一次性配对码，然后在本地 Auth Assistant 输入服务器地址和配对码。配对完成后，本地应用只能上传登录态，不能拿到 PIM 管理 API Key。"
         actions={
           <Button
@@ -221,7 +221,7 @@ const AuthAssistantTab: React.FC = () => {
       </SettingsSection>
 
       <SettingsSection
-        title="已连接设备"
+        title="已连接的 Auth Assistant"
         description="管理已经配对过的本地 Auth Assistant。移除设备会立即吊销它的上传令牌。"
         actions={
           <Button size="small" icon={<ReloadOutlined />} onClick={() => refetch()}>

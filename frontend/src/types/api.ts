@@ -4,332 +4,6 @@
  */
 
 export interface paths {
-    "/api/atom-relations": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Create Relation */
-        post: operations["create_relation_api_atom_relations_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/atom-relations/{rel_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        /** Delete Relation */
-        delete: operations["delete_relation_api_atom_relations__rel_id__delete"];
-        options?: never;
-        head?: never;
-        /** Update Relation */
-        patch: operations["update_relation_api_atom_relations__rel_id__patch"];
-        trace?: never;
-    };
-    "/api/atom-relations/{rel_id}/verify": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Verify Relation */
-        post: operations["verify_relation_api_atom_relations__rel_id__verify_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/atoms": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List Atoms */
-        get: operations["list_atoms_api_atoms_get"];
-        put?: never;
-        /** Create Atom */
-        post: operations["create_atom_api_atoms_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/atoms/backfill": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Backfill Atoms */
-        post: operations["backfill_atoms_api_atoms_backfill_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/atoms/backfill/{job_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Backfill Status */
-        get: operations["backfill_status_api_atoms_backfill__job_id__get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/atoms/content/{content_id}/atomize": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Atomize One Content */
-        post: operations["atomize_one_content_api_atoms_content__content_id__atomize_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/atoms/entities": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List Entities */
-        get: operations["list_entities_api_atoms_entities_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/atoms/entities/{entity_id}/atoms": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List Entity Atoms */
-        get: operations["list_entity_atoms_api_atoms_entities__entity_id__atoms_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/atoms/events": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List Event Clusters */
-        get: operations["list_event_clusters_api_atoms_events_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/atoms/events/{event_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Event Cluster */
-        get: operations["get_event_cluster_api_atoms_events__event_id__get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/atoms/quality": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Atom Quality */
-        get: operations["atom_quality_api_atoms_quality_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/atoms/relations": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List Relations */
-        get: operations["list_relations_api_atoms_relations_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/atoms/relations/reconcile": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Reconcile Relations */
-        post: operations["reconcile_relations_api_atoms_relations_reconcile_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/atoms/relations/reconcile/{job_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Reconcile Status */
-        get: operations["reconcile_status_api_atoms_relations_reconcile__job_id__get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/atoms/stats": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Atom Stats */
-        get: operations["atom_stats_api_atoms_stats_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/atoms/{atom_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Atom */
-        get: operations["get_atom_api_atoms__atom_id__get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        /** Update Atom */
-        patch: operations["update_atom_api_atoms__atom_id__patch"];
-        trace?: never;
-    };
-    "/api/atoms/{atom_id}/relations": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List Atom Relations */
-        get: operations["list_atom_relations_api_atoms__atom_id__relations_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/atoms/{atom_id}/verify": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Verify Atom */
-        post: operations["verify_atom_api_atoms__atom_id__verify_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/auth-assistant/auth-bundles/import": {
         parameters: {
             query?: never;
@@ -790,7 +464,7 @@ export interface paths {
         };
         /**
          * Export Event Markdown
-         * @description Download an event-like duplicate group as attribution-first Markdown.
+         * @description Download a persisted Event as attribution-first Markdown.
          */
         get: operations["export_event_markdown_api_contents_events_export_md_get"];
         put?: never;
@@ -1107,6 +781,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/events/{event_id}/seen": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Mark Event As Seen */
+        post: operations["mark_event_as_seen_api_events__event_id__seen_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/events/{event_id}/state": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Patch Event State */
+        patch: operations["patch_event_state_api_events__event_id__state_patch"];
+        trace?: never;
+    };
     "/api/keywords": {
         parameters: {
             query?: never;
@@ -1184,6 +892,144 @@ export interface paths {
          * @description Update a keyword.
          */
         patch: operations["update_keyword_api_keywords__keyword_id__patch"];
+        trace?: never;
+    };
+    "/api/personal-monitor/events/{event_id}/read-state": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Event Personal Read State */
+        get: operations["get_event_personal_read_state_api_personal_monitor_events__event_id__read_state_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/personal-monitor/observations/suggestions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Observation Suggestions */
+        get: operations["list_observation_suggestions_api_personal_monitor_observations_suggestions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/personal-monitor/observations/{observation_id}/accept": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Accept Observation */
+        post: operations["accept_observation_api_personal_monitor_observations__observation_id__accept_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/personal-monitor/observations/{observation_id}/dismiss": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Dismiss Observation */
+        post: operations["dismiss_observation_api_personal_monitor_observations__observation_id__dismiss_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/personal-monitor/reports/{content_id}/state": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Patch Report State */
+        patch: operations["patch_report_state_api_personal_monitor_reports__content_id__state_patch"];
+        trace?: never;
+    };
+    "/api/personal-monitor/rules": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List User Rules */
+        get: operations["list_user_rules_api_personal_monitor_rules_get"];
+        put?: never;
+        /** Create User Rule */
+        post: operations["create_user_rule_api_personal_monitor_rules_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/personal-monitor/rules/{rule_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Revoke User Rule */
+        delete: operations["revoke_user_rule_api_personal_monitor_rules__rule_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update User Rule */
+        patch: operations["update_user_rule_api_personal_monitor_rules__rule_id__patch"];
+        trace?: never;
+    };
+    "/api/personal-monitor/states/{target_type}/{target_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Personal State */
+        get: operations["get_personal_state_api_personal_monitor_states__target_type___target_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/score-lab/contents": {
@@ -1805,252 +1651,6 @@ export interface components {
             /** Name */
             name?: string | null;
         };
-        /** AtomBackfillRequest */
-        AtomBackfillRequest: {
-            /** Content Id */
-            content_id?: string | null;
-            /**
-             * Dry Run
-             * @default false
-             */
-            dry_run: boolean;
-            /**
-             * Limit
-             * @default 500
-             */
-            limit: number;
-            /** Since */
-            since?: string | null;
-        };
-        /** AtomBackfillResponse */
-        AtomBackfillResponse: {
-            /** Job Id */
-            job_id: string;
-            /** Status */
-            status: string;
-        };
-        /** AtomBackfillStatusResponse */
-        AtomBackfillStatusResponse: {
-            /** Created At */
-            created_at: string;
-            /** Errors */
-            errors: string[];
-            /** Finished At */
-            finished_at?: string | null;
-            /** Job Id */
-            job_id: string;
-            /** Processed */
-            processed: number;
-            /** Status */
-            status: string;
-            /** Total */
-            total: number;
-        };
-        /** AtomCreate */
-        AtomCreate: {
-            /** Atom Source */
-            atom_source: string;
-            atom_type: components["schemas"]["AtomType"];
-            /** Canonical Text */
-            canonical_text?: string | null;
-            /** Content Id */
-            content_id: string;
-            domain: components["schemas"]["Domain"];
-            /** Extraction Run Id */
-            extraction_run_id?: string | null;
-            /** Fact Confidence */
-            fact_confidence: number;
-            /** Payload */
-            payload: components["schemas"]["InfoAtomPayload"] | components["schemas"]["OpinionAtomPayload"] | components["schemas"]["DataAtomPayload"];
-            /** Quality Flags */
-            quality_flags?: string[];
-            /** Quality Score */
-            quality_score?: number | null;
-            /** Source Credibility */
-            source_credibility: number;
-            /** Source Sentence */
-            source_sentence: string;
-            /** Source Url */
-            source_url: string;
-            /** Tags */
-            tags?: string[];
-            /**
-             * Verified
-             * @default false
-             */
-            verified: boolean;
-        };
-        /** AtomListResponse */
-        AtomListResponse: {
-            /** Items */
-            items: components["schemas"]["AtomRecord"][];
-            /** Page */
-            page: number;
-            /** Page Size */
-            page_size: number;
-            /** Total */
-            total: number;
-        };
-        /** AtomQualityResponse */
-        AtomQualityResponse: {
-            /** Active Atoms */
-            active_atoms: number;
-            /** Archived Atoms */
-            archived_atoms: number;
-            /** Avg Atoms Per Content */
-            avg_atoms_per_content: number;
-            /** Conflicted Atoms */
-            conflicted_atoms: number;
-            /** Fact Confidence Histogram */
-            fact_confidence_histogram: {
-                [key: string]: number;
-            };
-            /** Max Atoms Per Content */
-            max_atoms_per_content: number;
-            /** P95 Atoms Per Content */
-            p95_atoms_per_content: number;
-            /** P99 Atoms Per Content */
-            p99_atoms_per_content: number;
-            /** Quality Flags Distribution */
-            quality_flags_distribution: {
-                [key: string]: number;
-            };
-            /** Rejected Atoms */
-            rejected_atoms: number;
-            /** Rejected By Reason */
-            rejected_by_reason: {
-                [key: string]: number;
-            };
-            /** Shadow Atoms */
-            shadow_atoms: number;
-            /** Short Sentence Rate */
-            short_sentence_rate: number;
-            /** Superseded Atoms */
-            superseded_atoms: number;
-            /** Top Sources By Atom Count */
-            top_sources_by_atom_count: {
-                [key: string]: number;
-            };
-            /** Total Atoms */
-            total_atoms: number;
-        } & {
-            [key: string]: unknown;
-        };
-        /** AtomRecord */
-        AtomRecord: {
-            /** Atom Id */
-            atom_id: string;
-            /** Atom Source */
-            atom_source: string;
-            atom_type: components["schemas"]["AtomType"];
-            /** Canonical Text */
-            canonical_text?: string | null;
-            /** Content Id */
-            content_id: string;
-            /**
-             * Created At
-             * Format: date-time
-             */
-            created_at: string;
-            domain: components["schemas"]["Domain"];
-            /**
-             * Evidence Count
-             * @default 1
-             */
-            evidence_count: number;
-            /** Extraction Run Id */
-            extraction_run_id?: string | null;
-            /** Fact Confidence */
-            fact_confidence: number;
-            /**
-             * Is Latest
-             * @default true
-             */
-            is_latest: boolean;
-            /** Payload */
-            payload: {
-                [key: string]: unknown;
-            };
-            /** Quality Flags */
-            quality_flags?: string[];
-            /** Quality Score */
-            quality_score?: number | null;
-            /** Reconcile Group Id */
-            reconcile_group_id?: string | null;
-            /** Reconcile Reason */
-            reconcile_reason?: string | null;
-            /** Schema Version */
-            schema_version: number;
-            /** Source Credibility */
-            source_credibility: number;
-            /** Source Sentence */
-            source_sentence: string;
-            /** Source Url */
-            source_url: string;
-            /** @default active */
-            status: components["schemas"]["AtomStatus"];
-            /** Superseded By Atom Id */
-            superseded_by_atom_id?: string | null;
-            /** Supersedes Atom Id */
-            supersedes_atom_id?: string | null;
-            /** Tags */
-            tags?: string[];
-            /**
-             * Updated At
-             * Format: date-time
-             */
-            updated_at: string;
-            /** Verified */
-            verified: boolean;
-        };
-        /** AtomStatsResponse */
-        AtomStatsResponse: {
-            /** By Domain */
-            by_domain: {
-                [key: string]: number;
-            };
-            /** By Type */
-            by_type: {
-                [key: string]: number;
-            };
-            /** Total */
-            total: number;
-            /** Unverified Count */
-            unverified_count: number;
-            /** Verified Count */
-            verified_count: number;
-        };
-        /**
-         * AtomStatus
-         * @enum {string}
-         */
-        AtomStatus: "active" | "shadow" | "superseded" | "conflicted" | "archived" | "rejected";
-        /**
-         * AtomType
-         * @enum {string}
-         */
-        AtomType: "信息" | "观点" | "数据";
-        /** AtomUpdate */
-        AtomUpdate: {
-            /** Atom Source */
-            atom_source?: string | null;
-            domain?: components["schemas"]["Domain"] | null;
-            /** Fact Confidence */
-            fact_confidence?: number | null;
-            /** Payload */
-            payload?: components["schemas"]["InfoAtomPayload"] | components["schemas"]["OpinionAtomPayload"] | components["schemas"]["DataAtomPayload"] | null;
-            /** Source Credibility */
-            source_credibility?: number | null;
-            /** Verified */
-            verified?: boolean | null;
-        };
-        /** AtomizeResponse */
-        AtomizeResponse: {
-            /** Content Id */
-            content_id: string;
-            /** Ok */
-            ok: boolean;
-        };
         /** AuthAssistantBundleImportRequest */
         AuthAssistantBundleImportRequest: {
             /**
@@ -2260,11 +1860,6 @@ export interface components {
             wait_ms: number;
         };
         /**
-         * ChinaStance
-         * @enum {string}
-         */
-        ChinaStance: "正面" | "中立" | "批评" | "不适用";
-        /**
          * ContentListResponse
          * @description Schema for paginated Content list response.
          */
@@ -2383,34 +1978,6 @@ export interface components {
             /** Title */
             title?: string | null;
         };
-        /** DataAtomPayload */
-        DataAtomPayload: {
-            /** Base Period */
-            base_period?: string | null;
-            /** Base Value */
-            base_value?: number | null;
-            /** Caliber */
-            caliber?: string | null;
-            /** Is Relative */
-            is_relative: boolean;
-            /** Metric */
-            metric: string;
-            /** Period */
-            period: string;
-            period_type: components["schemas"]["PeriodType"];
-            /** Source Org */
-            source_org: string;
-            source_type: components["schemas"]["DataSourceType"];
-            unit: components["schemas"]["Unit"];
-            validity: components["schemas"]["Validity"];
-            /** Value */
-            value: number;
-        };
-        /**
-         * DataSourceType
-         * @enum {string}
-         */
-        DataSourceType: "一手/公司财报" | "一手/政府统计" | "一手/行业协会" | "二手/研究机构" | "二手/媒体整理" | "估算/模型预测" | "调研/问卷";
         /**
          * DigestCategory
          * @description Schema for a category in the digest.
@@ -2499,11 +2066,6 @@ export interface components {
             /** Total Items */
             total_items: number;
         };
-        /**
-         * Domain
-         * @enum {string}
-         */
-        Domain: "宏观经济" | "金融市场" | "科技" | "汽车" | "房地产" | "能源" | "消费" | "医疗健康" | "政策监管" | "国际关系" | "其他";
         /** EventDetailResponse */
         EventDetailResponse: {
             /** Current Conclusion */
@@ -2519,16 +2081,41 @@ export interface components {
             /** Feedback */
             feedback?: components["schemas"]["EventFeedbackItem"][];
             /**
+             * Has Updates
+             * @default false
+             */
+            has_updates: boolean;
+            /**
+             * Hidden
+             * @default false
+             */
+            hidden: boolean;
+            /**
              * Independent Source Count
              * @default 0
              */
             independent_source_count: number;
             /** Independent Verification */
             independent_verification?: components["schemas"]["EventEvidenceGroup"][];
+            /**
+             * Latest Version
+             * @default 0
+             */
+            latest_version: number;
             /** Primary Reports */
             primary_reports?: components["schemas"]["EventTimelineItem"][];
+            /**
+             * Read Later
+             * @default false
+             */
+            read_later: boolean;
             /** Related Discussions */
             related_discussions?: components["schemas"]["EventEvidenceGroup"][];
+            /**
+             * Saved
+             * @default false
+             */
+            saved: boolean;
             /** Snapshots */
             snapshots?: components["schemas"]["EventSnapshotItem"][];
             /** Source Names */
@@ -2539,6 +2126,11 @@ export interface components {
             title: string;
             /** Updated At */
             updated_at?: string | null;
+            /**
+             * User Seen Version
+             * @default 0
+             */
+            user_seen_version: number;
             /** Why Matters */
             why_matters?: string | null;
         };
@@ -2569,10 +2161,27 @@ export interface components {
             /** Type */
             type: string;
         };
+        /** EventReadStateResponse */
+        EventReadStateResponse: {
+            /** Event Id */
+            event_id: string;
+            /** Has Updates */
+            has_updates: boolean;
+            /** Latest Version */
+            latest_version: number;
+            state: components["schemas"]["PersonalItemStateResponse"];
+            /** User Seen Version */
+            user_seen_version: number;
+        };
         /** EventSnapshotItem */
         EventSnapshotItem: {
             /** Created At */
             created_at?: string | null;
+            /**
+             * Is Seen
+             * @default false
+             */
+            is_seen: boolean;
             /** Summary */
             summary?: string | null;
             /** Title */
@@ -2583,6 +2192,15 @@ export interface components {
             what_changed?: string | null;
             /** Why Matters */
             why_matters?: string | null;
+        };
+        /** EventStateUpdate */
+        EventStateUpdate: {
+            /** Hidden */
+            hidden?: boolean | null;
+            /** Read Later */
+            read_later?: boolean | null;
+            /** Saved */
+            saved?: boolean | null;
         };
         /** EventTimelineItem */
         EventTimelineItem: {
@@ -2751,32 +2369,6 @@ export interface components {
             /** Title */
             title?: string | null;
         };
-        /** InfoAtomPayload */
-        InfoAtomPayload: {
-            /** Entities */
-            entities: string[];
-            /** How */
-            how?: string | null;
-            /** Result */
-            result?: string | null;
-            validity: components["schemas"]["Validity"];
-            /** What */
-            what: string;
-            what_type: components["schemas"]["WhatType"];
-            /** When */
-            when?: string | null;
-            /** Where */
-            where?: string | null;
-            /** Who */
-            who: components["schemas"]["WhoEntry"][];
-            /** Why */
-            why?: string | null;
-        };
-        /**
-         * Intensity
-         * @enum {string}
-         */
-        Intensity: "温和" | "明确" | "强烈";
         /**
          * KeywordBatchCreate
          * @description Schema for batch-creating keywords with shared settings.
@@ -3026,21 +2618,44 @@ export interface components {
             /** Notify Email */
             notify_email?: boolean | null;
         };
-        /** OpinionAtomPayload */
-        OpinionAtomPayload: {
-            china_stance?: components["schemas"]["ChinaStance"] | null;
-            /** Context */
-            context?: string | null;
-            intensity: components["schemas"]["Intensity"];
-            /** Is Quote */
-            is_quote: boolean;
-            political_spectrum?: components["schemas"]["PoliticalSpectrum"] | null;
-            role: components["schemas"]["Role"];
-            /** Say What */
-            say_what: string;
-            sentiment: components["schemas"]["Sentiment"];
-            /** Who */
-            who: components["schemas"]["WhoEntry"][];
+        /** ObservationAggregateResponse */
+        ObservationAggregateResponse: {
+            /**
+             * Confidence
+             * @default 0
+             */
+            confidence: number;
+            /** Evidence Summary */
+            evidence_summary?: string | null;
+            /** Id */
+            id: number;
+            /** Metadata */
+            metadata?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Negative Evidence Count
+             * @default 0
+             */
+            negative_evidence_count: number;
+            /**
+             * Positive Evidence Count
+             * @default 0
+             */
+            positive_evidence_count: number;
+            /** Recent Activity At */
+            recent_activity_at?: string | null;
+            /** Scope Key */
+            scope_key: string;
+            /** Scope Type */
+            scope_type: string;
+            /** Suggested Rule */
+            suggested_rule?: string | null;
+            /**
+             * Suggestion Status
+             * @default none
+             */
+            suggestion_status: string;
         };
         /** PairingClaimRequest */
         PairingClaimRequest: {
@@ -3090,16 +2705,37 @@ export interface components {
             /** Token Hint */
             token_hint: string;
         };
-        /**
-         * PeriodType
-         * @enum {string}
-         */
-        PeriodType: "日" | "周" | "月" | "季度" | "半年" | "全年" | "累计" | "截至某日";
-        /**
-         * PoliticalSpectrum
-         * @enum {string}
-         */
-        PoliticalSpectrum: "左" | "中" | "右" | "不适用";
+        /** PersonalItemStateResponse */
+        PersonalItemStateResponse: {
+            /**
+             * Hidden
+             * @default false
+             */
+            hidden: boolean;
+            /**
+             * Last Seen Version
+             * @default 0
+             */
+            last_seen_version: number;
+            /** Read At */
+            read_at?: string | null;
+            /**
+             * Read Later
+             * @default false
+             */
+            read_later: boolean;
+            /**
+             * Saved
+             * @default false
+             */
+            saved: boolean;
+            /** Target Id */
+            target_id: string;
+            /** Target Type */
+            target_type: string;
+            /** Updated At */
+            updated_at?: string | null;
+        };
         /** ProbeRequest */
         ProbeRequest: {
             /**
@@ -3132,134 +2768,17 @@ export interface components {
             /** Strategy */
             strategy: string;
         };
-        /** RelationCreate */
-        RelationCreate: {
-            /** Atom A */
-            atom_a: string;
-            /** Atom B */
-            atom_b: string;
-            direction: components["schemas"]["RelationDirection"];
-            /** Fact Confidence */
-            fact_confidence: number;
-            relation_type: components["schemas"]["RelationType"];
-            /**
-             * Verified
-             * @default false
-             */
-            verified: boolean;
+        /** ReportStateUpdate */
+        ReportStateUpdate: {
+            /** Completed */
+            completed?: boolean | null;
+            /** Hidden */
+            hidden?: boolean | null;
+            /** Read Later */
+            read_later?: boolean | null;
+            /** Saved */
+            saved?: boolean | null;
         };
-        /**
-         * RelationDirection
-         * @enum {string}
-         */
-        RelationDirection: "A→B" | "B→A" | "双向";
-        /** RelationListResponse */
-        RelationListResponse: {
-            /** Items */
-            items: components["schemas"]["RelationRecord"][];
-            /**
-             * Page
-             * @default 1
-             */
-            page: number;
-            /**
-             * Page Size
-             * @default 20
-             */
-            page_size: number;
-            /**
-             * Total
-             * @default 0
-             */
-            total: number;
-        };
-        /** RelationReconcileRequest */
-        RelationReconcileRequest: {
-            /** Atom Id */
-            atom_id?: string | null;
-            /**
-             * Dry Run
-             * @default false
-             */
-            dry_run: boolean;
-            /**
-             * Limit
-             * @default 1000
-             */
-            limit: number;
-            /** Since */
-            since?: string | null;
-        };
-        /** RelationReconcileResponse */
-        RelationReconcileResponse: {
-            /** Job Id */
-            job_id: string;
-            /** Status */
-            status: string;
-        };
-        /** RelationReconcileStatusResponse */
-        RelationReconcileStatusResponse: {
-            /** Created At */
-            created_at: string;
-            /** Errors */
-            errors: string[];
-            /** Finished At */
-            finished_at?: string | null;
-            /** Job Id */
-            job_id: string;
-            /** Processed */
-            processed: number;
-            /** Relations Created */
-            relations_created: number;
-            /** Status */
-            status: string;
-            /** Total */
-            total: number;
-        };
-        /** RelationRecord */
-        RelationRecord: {
-            /** Atom A */
-            atom_a: string;
-            /** Atom B */
-            atom_b: string;
-            /**
-             * Created At
-             * Format: date-time
-             */
-            created_at: string;
-            direction: components["schemas"]["RelationDirection"];
-            /** Fact Confidence */
-            fact_confidence: number;
-            /** Rel Id */
-            rel_id: string;
-            relation_type: components["schemas"]["RelationType"];
-            /**
-             * Updated At
-             * Format: date-time
-             */
-            updated_at: string;
-            /** Verified */
-            verified: boolean;
-        };
-        /**
-         * RelationType
-         * @enum {string}
-         */
-        RelationType: "因果" | "递进" | "转折" | "矛盾" | "印证" | "背景" | "并列";
-        /** RelationUpdate */
-        RelationUpdate: {
-            direction?: components["schemas"]["RelationDirection"] | null;
-            /** Fact Confidence */
-            fact_confidence?: number | null;
-            relation_type?: components["schemas"]["RelationType"] | null;
-            /** Verified */
-            verified?: boolean | null;
-        };
-        /**
-         * Role
-         * @enum {string}
-         */
-        Role: "政府官员" | "企业CEO/高管" | "分析师" | "学者/研究员" | "律师" | "行业协会代表" | "投资人" | "记者/媒体" | "政治人物" | "其他";
         /** ScoreExplainResponse */
         ScoreExplainResponse: {
             /** Explain */
@@ -3365,11 +2884,6 @@ export interface components {
             title: string;
         };
         /**
-         * Sentiment
-         * @enum {string}
-         */
-        Sentiment: "正面" | "中性" | "负面";
-        /**
          * SourceBulkImport
          * @description Schema for bulk importing sources.
          */
@@ -3445,11 +2959,6 @@ export interface components {
             /** Use Keyword Filter */
             use_keyword_filter?: boolean | null;
         };
-        /**
-         * SubjectType
-         * @enum {string}
-         */
-        SubjectType: "企业" | "政府机构" | "人物" | "机构" | "国家/地区" | "产品/品牌";
         /** TodayHighlightEvent */
         TodayHighlightEvent: {
             /** Confidence Score */
@@ -3458,6 +2967,11 @@ export interface components {
             event_id: string;
             /** Event Key */
             event_key: string;
+            /**
+             * Has Updates
+             * @default false
+             */
+            has_updates: boolean;
             /** Importance Score */
             importance_score?: number | null;
             /**
@@ -3465,6 +2979,18 @@ export interface components {
              * @default 0
              */
             independent_source_count: number;
+            /**
+             * Latest Version
+             * @default 0
+             */
+            latest_version: number;
+            /**
+             * Notification Requested
+             * @default false
+             */
+            notification_requested: boolean;
+            /** Personal Rule */
+            personal_rule?: string | null;
             /** Primary Content Id */
             primary_content_id?: string | null;
             /** Section */
@@ -3477,6 +3003,11 @@ export interface components {
             title: string;
             /** Updated At */
             updated_at?: string | null;
+            /**
+             * User Seen Version
+             * @default 0
+             */
+            user_seen_version: number;
             /** What Changed */
             what_changed?: string | null;
             /** Why Matters */
@@ -3489,11 +3020,59 @@ export interface components {
             /** Items */
             items?: components["schemas"]["TodayHighlightEvent"][];
         };
-        /**
-         * Unit
-         * @enum {string}
-         */
-        Unit: "亿元人民币" | "百万元人民币" | "亿美元" | "百万美元" | "亿欧元" | "亿港元" | "%（百分比）" | "pp（百分点）" | "倍" | "指数点" | "万辆" | "万台" | "万人" | "亿件" | "万吨" | "GW（吉瓦）" | "元/股" | "美元/桶" | "元/平方米" | "自定义";
+        /** UserRuleCreate */
+        UserRuleCreate: {
+            /** Evidence Summary */
+            evidence_summary?: string | null;
+            /** Metadata */
+            metadata?: {
+                [key: string]: unknown;
+            };
+            /** Rule */
+            rule: string;
+            /** Scope Key */
+            scope_key: string;
+            /** Scope Type */
+            scope_type: string;
+        };
+        /** UserRuleResponse */
+        UserRuleResponse: {
+            /** Created At */
+            created_at?: string | null;
+            /** Created By */
+            created_by: string;
+            /** Evidence Summary */
+            evidence_summary?: string | null;
+            /** Id */
+            id: string;
+            /** Metadata */
+            metadata?: {
+                [key: string]: unknown;
+            };
+            /** Rule */
+            rule: string;
+            /** Scope Key */
+            scope_key: string;
+            /** Scope Type */
+            scope_type: string;
+            /** Status */
+            status: string;
+            /** Updated At */
+            updated_at?: string | null;
+        };
+        /** UserRuleUpdate */
+        UserRuleUpdate: {
+            /** Evidence Summary */
+            evidence_summary?: string | null;
+            /** Metadata */
+            metadata?: {
+                [key: string]: unknown;
+            } | null;
+            /** Rule */
+            rule?: string | null;
+            /** Status */
+            status?: string | null;
+        };
         /** ValidationError */
         ValidationError: {
             /** Context */
@@ -3507,22 +3086,6 @@ export interface components {
             /** Error Type */
             type: string;
         };
-        /**
-         * Validity
-         * @enum {string}
-         */
-        Validity: "即时" | "短期" | "中期" | "长期" | "永久";
-        /**
-         * WhatType
-         * @enum {string}
-         */
-        WhatType: "人事" | "财务" | "产品" | "政策" | "市场" | "法律" | "合作" | "事故" | "外交" | "其他";
-        /** WhoEntry */
-        WhoEntry: {
-            /** Name */
-            name: string;
-            type: components["schemas"]["SubjectType"];
-        };
     };
     responses: never;
     parameters: never;
@@ -3532,703 +3095,6 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
-    create_relation_api_atom_relations_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["RelationCreate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["RelationRecord"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    delete_relation_api_atom_relations__rel_id__delete: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                rel_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    update_relation_api_atom_relations__rel_id__patch: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                rel_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["RelationUpdate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["RelationRecord"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    verify_relation_api_atom_relations__rel_id__verify_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                rel_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["RelationRecord"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    list_atoms_api_atoms_get: {
-        parameters: {
-            query?: {
-                type?: string | null;
-                domain?: string | null;
-                verified?: boolean | null;
-                atom_source?: string | null;
-                content_id?: string | null;
-                search?: string | null;
-                /** @description Lifecycle status filter; pass 'all' to include shadow/superseded. */
-                status?: string | null;
-                page?: number;
-                page_size?: number;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AtomListResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    create_atom_api_atoms_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["AtomCreate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AtomRecord"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    backfill_atoms_api_atoms_backfill_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["AtomBackfillRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            202: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AtomBackfillResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    backfill_status_api_atoms_backfill__job_id__get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                job_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AtomBackfillStatusResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    atomize_one_content_api_atoms_content__content_id__atomize_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                content_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AtomizeResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    list_entities_api_atoms_entities_get: {
-        parameters: {
-            query?: {
-                entity_type?: string | null;
-                search?: string | null;
-                limit?: number;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    list_entity_atoms_api_atoms_entities__entity_id__atoms_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                entity_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    list_event_clusters_api_atoms_events_get: {
-        parameters: {
-            query?: {
-                domain?: string | null;
-                limit?: number;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_event_cluster_api_atoms_events__event_id__get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                event_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    atom_quality_api_atoms_quality_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AtomQualityResponse"];
-                };
-            };
-        };
-    };
-    list_relations_api_atoms_relations_get: {
-        parameters: {
-            query?: {
-                atom_id?: string | null;
-                verified?: boolean | null;
-                page?: number;
-                page_size?: number;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["RelationListResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    reconcile_relations_api_atoms_relations_reconcile_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["RelationReconcileRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            202: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["RelationReconcileResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    reconcile_status_api_atoms_relations_reconcile__job_id__get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                job_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["RelationReconcileStatusResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    atom_stats_api_atoms_stats_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AtomStatsResponse"];
-                };
-            };
-        };
-    };
-    get_atom_api_atoms__atom_id__get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                atom_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AtomRecord"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    update_atom_api_atoms__atom_id__patch: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                atom_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["AtomUpdate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AtomRecord"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    list_atom_relations_api_atoms__atom_id__relations_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                atom_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["RelationListResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    verify_atom_api_atoms__atom_id__verify_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                atom_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AtomRecord"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     import_auth_bundle_from_assistant_api_auth_assistant_auth_bundles_import_post: {
         parameters: {
             query?: never;
@@ -5691,6 +4557,72 @@ export interface operations {
             };
         };
     };
+    mark_event_as_seen_api_events__event_id__seen_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PersonalItemStateResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_event_state_api_events__event_id__state_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EventStateUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PersonalItemStateResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_keywords_api_keywords_get: {
         parameters: {
             query?: {
@@ -5905,6 +4837,328 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["KeywordResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_event_personal_read_state_api_personal_monitor_events__event_id__read_state_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventReadStateResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_observation_suggestions_api_personal_monitor_observations_suggestions_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ObservationAggregateResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    accept_observation_api_personal_monitor_observations__observation_id__accept_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                observation_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserRuleResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    dismiss_observation_api_personal_monitor_observations__observation_id__dismiss_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                observation_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ObservationAggregateResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_report_state_api_personal_monitor_reports__content_id__state_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                content_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReportStateUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PersonalItemStateResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_user_rules_api_personal_monitor_rules_get: {
+        parameters: {
+            query?: {
+                status?: string | null;
+                rule?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserRuleResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_user_rule_api_personal_monitor_rules_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UserRuleCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserRuleResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    revoke_user_rule_api_personal_monitor_rules__rule_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                rule_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserRuleResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_user_rule_api_personal_monitor_rules__rule_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                rule_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UserRuleUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserRuleResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_personal_state_api_personal_monitor_states__target_type___target_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                target_type: string;
+                target_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PersonalItemStateResponse"];
                 };
             };
             /** @description Validation Error */

@@ -86,6 +86,14 @@ def claim_postprocess_job(content_id: str, job_id: str | None = None) -> bool:
             stale_before = now - timedelta(seconds=POSTPROCESS_STALE_AFTER_SECONDS)
             if not locked_at or locked_at > stale_before:
                 return False
+            if int(job.attempts or 0) >= int(job.max_attempts or 3):
+                job.status = "dead"
+                job.locked_at = None
+                job.finished_at = now
+                job.last_error = (job.last_error or "")[:3900] + " [stale job exhausted retry limit]"
+                job.updated_at = now
+                db.commit()
+                return False
             logger.warning(
                 "Reclaiming stale postprocess job %s (locked_at=%s, attempts=%s)",
                 key,

@@ -137,6 +137,8 @@ class BoundedTaskQueue:
         the queue but performs no work — useful for unit tests that
         only need the queue surface, not real fetch / finish behaviour.
         """
+        if fetch_handler is not None and fetch_workers < 1:
+            raise ValueError("fetch_workers must be at least 1 when a fetch handler is configured")
         self._fetch_handler = fetch_handler
         self._process_handler = process_handler
         for _ in range(fetch_workers):

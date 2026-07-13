@@ -5,6 +5,7 @@ import sqlite3
 from pathlib import Path
 
 import pytest
+from pydantic import ValidationError
 
 
 def test_sqlite_connections_use_normal_synchronous(tmp_path):
@@ -30,6 +31,13 @@ def test_sync_pool_scales_with_fetch_concurrency():
     assert options["max_overflow"] == 10
     assert options["pool_timeout"] == 30
     assert options["pool_pre_ping"] is True
+
+
+def test_fetch_concurrency_must_be_positive():
+    from app.platform.config.settings import Settings
+
+    with pytest.raises(ValidationError, match="greater than or equal to 1"):
+        Settings(_env_file=None, fetch_concurrency=0)
 
 
 def test_async_sqlite_pool_is_bounded():

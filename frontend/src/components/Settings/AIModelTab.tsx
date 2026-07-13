@@ -17,6 +17,7 @@ import SectionNote from '../ui/SectionNote'
 import PanelLoading from '../common/PanelLoading'
 import OllamaCtxSlider, { snapOllamaNumCtx } from './OllamaCtxSlider'
 import SettingsSection from './SettingsSection'
+import TaskPromptsTab from './TaskPromptsTab'
 
 const { Option } = Select
 
@@ -513,6 +514,8 @@ const AIModelTab: React.FC = () => {
         </Form.Item>
       </Form>
       </SettingsSection>
+
+      <TaskPromptsTab />
     </div>
   )
 }

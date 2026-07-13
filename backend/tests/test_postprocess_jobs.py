@@ -88,3 +88,37 @@ def test_stale_running_postprocess_job_is_recovered(monkeypatch, tmp_path):
 
     assert recover_stale_postprocess_jobs() == 1
     assert due_postprocess_jobs() == [("content-stale", "finish")]
+
+
+def test_stale_running_job_at_retry_cap_is_not_reclaimed(monkeypatch, tmp_path):
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+
+    from app.database import Base
+    import app.platform.workers.postprocess_jobs as jobs
+
+    engine = create_engine(f"sqlite:///{tmp_path / 'retry-cap.db'}")
+    Base.metadata.create_all(engine)
+    session_factory = sessionmaker(bind=engine)
+    monkeypatch.setattr(jobs, "SessionLocal", session_factory)
+
+    ensure_postprocess_job("content-capped", "finish")
+    db = session_factory()
+    try:
+        job = db.query(PostprocessJob).one()
+        job.status = "running"
+        job.attempts = job.max_attempts
+        job.locked_at = utcnow_naive() - timedelta(minutes=15)
+        job.started_at = job.locked_at
+        db.commit()
+    finally:
+        db.close()
+
+    assert claim_postprocess_job("content-capped", "finish") is False
+    db = session_factory()
+    try:
+        job = db.query(PostprocessJob).one()
+        assert job.status == "dead"
+        assert job.attempts == job.max_attempts
+    finally:
+        db.close()
