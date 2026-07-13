@@ -2145,7 +2145,7 @@ dependencies = [
 
 [[package]]
 name = "pim-auth-assistant-tauri"
-version = "1.6.0"
+version = "1.6.1"
 dependencies = [
  "serde",
  "serde_json",
