@@ -2,9 +2,16 @@
 
 > 本地优先的个人资讯监控系统。PIM 把 RSS、网站、X、YouTube、Podcast 等来源统一抓取、去重、评分、摘要和归档，并提供 Web UI、桌面端、`pimctl` CLI 与远程部署运维能力。
 
-当前版本：**1.6.3**
+当前版本：**1.6.4**
 
 > 分支提示：`main` 暂时冻结原子库产品入口；原子库相关能力保留在 `dev` 分支继续探索，详见 [`docs/ATOM_FREEZE_MAIN.md`](docs/ATOM_FREEZE_MAIN.md)。
+
+## 1.6.4 重点
+
+- **依赖安全修复**：升级 `click` 与 `soupsieve`，消除后端安全扫描报告的已知漏洞。
+- **诊断降级更精确**：支持包只捕获数据库、调度器和文件系统的预期异常，避免意外编程错误被静默吞掉，并恢复代码质量门禁。
+- **CI 门禁可重复**：固定死代码扫描器版本，并同步审计后的死代码与大文件基线，避免上游规则漂移或陈旧预算随机阻断发布。
+- **延续抓取稳定性修复**：完整包含 v1.6.3 的资讯列表索引、20 路活动抓取并发和批量后处理优化。
 
 ## 1.6.3 重点
 
@@ -116,8 +123,8 @@ cd personal-info-monitor
 
 - 资讯流：搜索、筛选、查看正文与摘要。
 - 信源管理：添加 RSS、网站、X、YouTube、Podcast，查看抓取健康状态。
-- 设置：抓取、凭据、Auth Assistant、智能引擎、任务提示词、维护升级。
-- 系统维护：备份、升级、支持包、GitHub Release 更新检查。
+- 设置：抓取健康、登录与凭据（含 Auth Assistant）、模型配置（含任务提示）、系统升级。
+- 系统升级：备份、升级与 GitHub Release 更新检查；诊断包位于抓取健康。
 
 ## Auth Assistant
 
@@ -316,10 +323,10 @@ cd backend
 然后提交、打 tag，并创建 GitHub Release。Web 更新检查依赖 GitHub Releases 的 `latest` 端点，仅推 tag 不会触发“发现新版本”提示。
 
 ```bash
-git commit -m "release: 1.6.3"
-git tag -a v1.6.3 -m "Release 1.6.3"
-git push origin main v1.6.3
-gh release create v1.6.3 --title "v1.6.3" --notes-file /tmp/pim-release-notes.md
+git commit -m "release: 1.6.4"
+git tag -a v1.6.4 -m "Release 1.6.4"
+git push origin main v1.6.4
+gh release create v1.6.4 --title "v1.6.4" --notes-file /tmp/pim-release-notes.md
 ```
 
 发布 GitHub Release 后，`Release Auth Assistant for macOS` workflow 会构建 arm64 DMG、使用

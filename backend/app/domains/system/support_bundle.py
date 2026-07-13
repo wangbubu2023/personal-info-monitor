@@ -15,6 +15,7 @@ from typing import Any
 from urllib.parse import urlsplit, urlunsplit
 
 from sqlalchemy import desc, func, text
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
@@ -117,7 +118,7 @@ def _health_snapshot(db: Session) -> dict[str, Any]:
     try:
         db.execute(text("SELECT 1")).scalar()
         checks["database"] = "ok"
-    except Exception as exc:  # noqa: BLE001 - bundle should degrade to structured output
+    except SQLAlchemyError as exc:
         checks["database"] = "error"
         details["database_error"] = _safe_text(exc, limit=300)
 
@@ -126,7 +127,7 @@ def _health_snapshot(db: Session) -> dict[str, Any]:
 
         checks["scheduler"] = "ok" if getattr(scheduler, "running", False) else "error"
         details["scheduled_jobs"] = len(scheduler.get_jobs())
-    except Exception as exc:  # noqa: BLE001
+    except (RuntimeError, SQLAlchemyError) as exc:
         checks["scheduler"] = "error"
         details["scheduler_error"] = _safe_text(exc, limit=300)
 
@@ -135,7 +136,7 @@ def _health_snapshot(db: Session) -> dict[str, Any]:
         free = usage.f_bavail * usage.f_frsize
         checks["disk"] = "ok" if free >= 100 * 1024 * 1024 else "error"
         details["disk_free_bytes"] = free
-    except Exception as exc:  # noqa: BLE001
+    except OSError as exc:
         checks["disk"] = "error"
         details["disk_error"] = _safe_text(exc, limit=300)
 
@@ -159,7 +160,7 @@ def _metrics_snapshot() -> dict[str, Any]:
             "running": bool(getattr(scheduler, "running", False)),
             "job_count": len(scheduler.get_jobs()),
         }
-    except Exception as exc:  # noqa: BLE001
+    except (RuntimeError, SQLAlchemyError) as exc:
         payload["scheduler"] = {"error": _safe_text(exc, limit=300)}
     return payload
 
@@ -215,7 +216,7 @@ def _source_summary(db: Session) -> dict[str, Any]:
             "disabled_or_cooling_sources": [_serialize_source(source) for source in disabled_or_cooling],
             "session_unhealthy_sources": [_serialize_source(source) for source in session_unhealthy],
         }
-    except Exception as exc:  # noqa: BLE001 - bundle should still be exportable on broken DBs
+    except SQLAlchemyError as exc:
         db.rollback()
         return {
             "counts": {"total": 0, "enabled": 0, "disabled": 0, "with_last_error": 0},
@@ -278,7 +279,7 @@ def _recent_fetches(db: Session) -> list[dict[str, Any]]:
             }
             for log, name, source_type in rows
         ]
-    except Exception as exc:  # noqa: BLE001
+    except SQLAlchemyError as exc:
         db.rollback()
         return [{"error": _safe_text(exc, limit=500)}]
 
@@ -298,7 +299,7 @@ def _browser_sessions(db: Session) -> list[dict[str, Any]]:
             }
             for session in rows
         ]
-    except Exception as exc:  # noqa: BLE001
+    except SQLAlchemyError as exc:
         db.rollback()
         return [{"error": _safe_text(exc, limit=500)}]
 
@@ -318,7 +319,7 @@ def _read_log_tail(path: Path) -> str:
             size = handle.tell()
             handle.seek(max(0, size - _LOG_TAIL_BYTES))
             text = handle.read().decode("utf-8", errors="replace")
-    except Exception as exc:  # noqa: BLE001
+    except OSError as exc:
         return f"Unable to read {path}: {_safe_text(exc, limit=300)}\n"
     lines = text.splitlines()[-_MAX_LOG_LINES:]
     return "\n".join(_safe_text(line, limit=2000) or "" for line in lines) + "\n"
