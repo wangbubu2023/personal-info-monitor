@@ -3,6 +3,6 @@
     "backend/app/domains/fetch/collectors/website.py": 1466,
     "cli/pimctl/app.py": 1520,
     "pim": 1688,
-    "frontend/src/components/settings/CredentialsTab.tsx": 975
+    "frontend/src/components/Settings/CredentialsTab.tsx": 975
   }
 }
