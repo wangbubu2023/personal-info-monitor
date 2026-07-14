@@ -479,14 +479,14 @@ def _build_frontend():
         print("  Frontend not found, skipping build.")
         return
     print("Installing frontend dependencies ...")
-    subprocess.check_call(["npm", "install"], cwd=str(FRONTEND))
+    subprocess.check_call(["npm", "ci"], cwd=str(FRONTEND))
     print("Building frontend ...")
     subprocess.check_call(["npm", "run", "build"], cwd=str(FRONTEND))
 
 
 # Files/dirs whose mtime rules whether `frontend/dist` is considered out of date.
 # Node modules and the dist itself are intentionally excluded: the former is
-# managed by `npm install`, the latter is the build output we're comparing against.
+# managed by `npm ci`, the latter is the build output we're comparing against.
 _FRONTEND_STALE_INPUTS = (
     "src",
     "public",
@@ -557,7 +557,7 @@ def _ensure_frontend_built(rebuild: bool) -> bool:
     print(f"  Frontend needs rebuild: {reason}")
     if not (FRONTEND / "node_modules").exists():
         print("  Installing frontend dependencies (first run) ...")
-        subprocess.check_call(["npm", "install"], cwd=str(FRONTEND))
+        subprocess.check_call(["npm", "ci"], cwd=str(FRONTEND))
     print("  Building frontend ...")
     subprocess.check_call(["npm", "run", "build"], cwd=str(FRONTEND))
     return True

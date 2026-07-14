@@ -66,6 +66,55 @@ def test_upgrade_handles_symbolic_ref_failure_as_detached_checkout(monkeypatch):
     pim._ensure_git_ready(no_pull=True)
 
 
+def test_build_frontend_uses_clean_install(monkeypatch, tmp_path):
+    pim = _load_pim_cli()
+    frontend = tmp_path / "frontend"
+    frontend.mkdir()
+    (frontend / "package.json").write_text("{}")
+    calls = []
+
+    monkeypatch.setattr(pim, "FRONTEND", frontend)
+    monkeypatch.setattr(
+        pim.subprocess,
+        "check_call",
+        lambda cmd, **kwargs: calls.append((cmd, kwargs)),
+    )
+
+    pim._build_frontend()
+
+    assert calls == [
+        (["npm", "ci"], {"cwd": str(frontend)}),
+        (["npm", "run", "build"], {"cwd": str(frontend)}),
+    ]
+
+
+def test_upgrade_first_frontend_build_uses_clean_install(monkeypatch, tmp_path):
+    pim = _load_pim_cli()
+    frontend = tmp_path / "frontend"
+    frontend.mkdir()
+    (frontend / "package.json").write_text("{}")
+    calls = []
+
+    monkeypatch.setattr(pim, "FRONTEND", frontend)
+    monkeypatch.setattr(
+        pim.shutil,
+        "which",
+        lambda name: "/usr/bin/npm" if name == "npm" else None,
+    )
+    monkeypatch.setattr(pim, "_frontend_dist_stale", lambda: (True, "dist/index.html missing"))
+    monkeypatch.setattr(
+        pim.subprocess,
+        "check_call",
+        lambda cmd, **kwargs: calls.append((cmd, kwargs)),
+    )
+
+    assert pim._ensure_frontend_built(rebuild=False) is True
+    assert calls == [
+        (["npm", "ci"], {"cwd": str(frontend)}),
+        (["npm", "run", "build"], {"cwd": str(frontend)}),
+    ]
+
+
 def test_pid_file_recovers_legacy_location(monkeypatch, tmp_path):
     pim = _load_pim_cli()
     pid_file = tmp_path / "run" / "pim.pid"
