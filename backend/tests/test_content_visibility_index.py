@@ -18,7 +18,9 @@ def test_visible_content_query_uses_duplicate_group_expression_index(tmp_path):
     engine = create_engine(f"sqlite:///{tmp_path / 'visibility.db'}")
     Base.metadata.create_all(engine)
     statement = select(func.count(Content.id)).where(visible_content_clause())
-    compiled = statement.compile(engine, compile_kwargs={"literal_binds": True})
+    compiled = statement.compile(engine, compile_kwargs={"render_postcompile": True})
+    sql = str(compiled)
+    parameters = tuple(compiled.params[name] for name in compiled.positiontup or ())
 
     with engine.connect() as connection:
         index_sql = connection.execute(
@@ -27,7 +29,10 @@ def test_visible_content_query_uses_duplicate_group_expression_index(tmp_path):
                 "WHERE type='index' AND name='ix_contents_dup_group_id'"
             )
         ).scalar_one()
-        plan = connection.exec_driver_sql(f"EXPLAIN QUERY PLAN {compiled}").all()
+        plan = connection.exec_driver_sql(f"EXPLAIN QUERY PLAN {sql}", parameters).all()
 
     assert "json_extract(metadata, '$.duplicate_group_id')" in index_sql
+    assert sql.count("json_extract(contents.metadata, '$.duplicate_group_id')") == 2
+    assert "json_extract(contents_1.metadata, '$.duplicate_group_id')" in sql
+    assert "$.duplicate_group_id" not in parameters
     assert any("ix_contents_dup_group_id" in str(row[-1]) for row in plan), plan

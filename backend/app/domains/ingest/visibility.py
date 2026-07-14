@@ -5,6 +5,7 @@ from __future__ import annotations
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import aliased
 
+from app.domains.ingest.metadata_sql import duplicate_group_id_expression
 from app.models import Content
 
 
@@ -18,8 +19,8 @@ def visible_content_clause(content_model=Content, *, include_archived: bool = Fa
     remains only for older rows that have not been reprocessed.
     """
     other = aliased(Content)
-    group_id = func.json_extract(content_model.metadata_, "$.duplicate_group_id")
-    other_group_id = func.json_extract(other.metadata_, "$.duplicate_group_id")
+    group_id = duplicate_group_id_expression(content_model.metadata_)
+    other_group_id = duplicate_group_id_expression(other.metadata_)
     earlier_same_group = (
         select(other.id)
         .where(
