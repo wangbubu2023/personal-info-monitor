@@ -1,6 +1,6 @@
 [package]
 name = "personal-info-monitor-tauri"
-version = "1.6.4"
+version = "1.6.5"
 description = "Personal Info Monitor desktop shell"
 authors = ["Personal Info Monitor"]
 edition = "2021"

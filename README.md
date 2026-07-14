@@ -2,9 +2,15 @@
 
 > 本地优先的个人资讯监控系统。PIM 把 RSS、网站、X、YouTube、Podcast 等来源统一抓取、去重、评分、摘要和归档，并提供 Web UI、桌面端、`pimctl` CLI 与远程部署运维能力。
 
-当前版本：**1.6.4**
+当前版本：**1.6.5**
 
 > 分支提示：`main` 暂时冻结原子库产品入口；原子库相关能力保留在 `dev` 分支继续探索，详见 [`docs/ATOM_FREEZE_MAIN.md`](docs/ATOM_FREEZE_MAIN.md)。
+
+## 1.6.5 重点
+
+- **修复生产列表卡死**：将 `duplicate_group_id` JSON path 以内联 SQL 常量生成，使 SQLAlchemy 参数化查询能够真正命中 `ix_contents_dup_group_id` 表达式索引。
+- **统一重复组索引查询**：资讯可见性和抓取去重成员查询共用同一索引表达式，避免抓取流水线再次退化为 JSON 全表扫描。
+- **回归测试覆盖真实 ORM SQL**：直接以参数化编译结果运行 `EXPLAIN QUERY PLAN`，防止 `literal_binds` 掩盖 SQLite 表达式索引失效。
 
 ## 1.6.4 重点
 
@@ -323,10 +329,10 @@ cd backend
 然后提交、打 tag，并创建 GitHub Release。Web 更新检查依赖 GitHub Releases 的 `latest` 端点，仅推 tag 不会触发“发现新版本”提示。
 
 ```bash
-git commit -m "release: 1.6.4"
-git tag -a v1.6.4 -m "Release 1.6.4"
-git push origin main v1.6.4
-gh release create v1.6.4 --title "v1.6.4" --notes-file /tmp/pim-release-notes.md
+git commit -m "release: 1.6.5"
+git tag -a v1.6.5 -m "Release 1.6.5"
+git push origin main v1.6.5
+gh release create v1.6.5 --title "v1.6.5" --notes-file /tmp/pim-release-notes.md
 ```
 
 发布 GitHub Release 后，`Release Auth Assistant for macOS` workflow 会构建 arm64 DMG、使用
