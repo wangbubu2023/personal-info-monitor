@@ -15,6 +15,15 @@ from app.domains.enrich.content.listing_translation import (
     _scheduled_ids,
     _scheduled_tasks,
 )
+from app.platform.llm.policy import AiFeatureState
+
+
+_READY_TRANSLATION_STATE = AiFeatureState(
+    enabled=True,
+    runtime_ready=True,
+    effective=True,
+    reason="ready",
+)
 
 
 def test_listing_translation_enabled_requires_product_switches():
@@ -124,6 +133,9 @@ async def test_translate_listing_fields_async_persists_title_and_summary():
         "app.domains.enrich.content.listing_translation.listing_translation_enabled",
         return_value=True,
     ), patch(
+        "app.platform.llm.policy.resolve_translation_state",
+        new=AsyncMock(return_value=_READY_TRANSLATION_STATE),
+    ), patch(
         "app.domains.enrich.content.listing_translation._is_valid_title_translation",
         side_effect=lambda _orig, cand: bool(cand),
     ), patch(
@@ -168,6 +180,9 @@ async def test_schedule_listing_translation_backfill_enqueues_bounded_job():
     with patch(
         "app.domains.enrich.content.listing_translation.listing_translation_enabled",
         return_value=True,
+    ), patch(
+        "app.platform.llm.policy.resolve_translation_state",
+        new=AsyncMock(return_value=_READY_TRANSLATION_STATE),
     ), patch(
         "app.tasks.task_queue.task_queue.enqueue_listing_translation",
         new=AsyncMock(return_value=True),

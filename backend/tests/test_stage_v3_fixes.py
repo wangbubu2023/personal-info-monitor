@@ -1,6 +1,9 @@
+from unittest.mock import AsyncMock
+
 import pytest
 
 from app.platform.llm import translator as translator_module
+from app.platform.llm.policy import AiFeatureState
 from app.platform.llm.translator import Translator
 
 
@@ -16,6 +19,17 @@ async def test_translator_ollama_cloud_fallback_uses_runtime_openai_settings(mon
         return "ok"
 
     monkeypatch.setattr(translator_module, "get_translation_settings", lambda: {"provider": "ollama"})
+    monkeypatch.setattr(
+        "app.platform.llm.policy.resolve_translation_state",
+        AsyncMock(
+            return_value=AiFeatureState(
+                enabled=True,
+                runtime_ready=True,
+                effective=True,
+                reason="ready",
+            )
+        ),
+    )
     monkeypatch.setattr(translator_module, "is_translation_cloud_fallback_enabled", lambda: True)
     monkeypatch.setattr(translator_module, "get_translation_fallback_model_settings", lambda: {})
     monkeypatch.setattr(
