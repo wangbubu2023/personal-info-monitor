@@ -5,30 +5,30 @@ test.beforeEach(async ({ page }) => {
   await mockApi(page)
 })
 
-test('首页展示、搜索与手动抓取流程可用', async ({ page }) => {
-  await page.goto('/')
+test('资讯列表展示、搜索与手动抓取流程可用', async ({ page }) => {
+  await page.goto('/timeline')
 
   await expect(page.getByTestId('dashboard-page')).toBeVisible()
-  await expect(page.getByTestId('dashboard-title')).toContainText('资讯中心')
+  await expect(page.getByTestId('dashboard-title')).toContainText('全部动态')
   await expect(page.getByText('WSJ：美股科技板块再次走强')).toBeVisible()
 
   await page.getByTestId('dashboard-fetch-all-btn').click()
   await expect(page.getByText('Task triggered for 3 sources')).toBeVisible()
 
-  await page.goto('/?search=economist')
+  await page.goto('/timeline?search=economist')
 
-  await expect(page).toHaveURL(/\/\?search=economist/)
+  await expect(page).toHaveURL(/\/timeline\?search=economist/)
   await expect(page.getByText('搜索结果')).toBeVisible()
   await expect(page.getByText(/共 1 条/)).toBeVisible()
   await expect(page.getByText(/economist/)).toBeVisible()
 
   await page.getByRole('button', { name: '返回全部' }).click()
-  await expect(page).toHaveURL('/')
+  await expect(page).toHaveURL('/timeline')
   await expect(page.getByTestId('dashboard-page')).toBeVisible()
 })
 
-test('从首页点击标题可打开阅读页', async ({ page }) => {
-  await page.goto('/')
+test('从资讯列表点击标题可打开阅读页', async ({ page }) => {
+  await page.goto('/timeline')
 
   await page.getByTestId('dashboard-title-link-content-1').click()
 
