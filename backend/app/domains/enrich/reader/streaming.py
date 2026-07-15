@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domains.enrich.reader.shared import _is_valid_translation_text, _split_for_reader
 from app.models import Content
-from app.config import get_settings
+from app.platform.llm.policy import resolve_translation_state
 from app.platform.llm.translator import Translator
 from app.domains.enrich.reader.translation import (
     persist_reader_translation_cache,
@@ -130,8 +130,8 @@ async def emit_reader_translation(
         )
         return
 
-    settings = get_settings()
-    if not settings.ai_processing_enabled or not settings.enrich_translate_enabled:
+    state = await resolve_translation_state(automatic=False)
+    if not state.effective:
         yield json_line(
             {
                 "type": "done",
@@ -139,10 +139,7 @@ async def emit_reader_translation(
                 "paragraphs_streamed": 0,
                 "translated": False,
                 "translation_cached": False,
-                "message": (
-                    "翻译功能未启用。请在 backend/.env 中设置 "
-                    "AI_PROCESSING_ENABLED=true 与 ENRICH_TRANSLATE_ENABLED=true 后重启服务。"
-                ),
+                "message": f"翻译功能当前不可用：{state.reason}",
             }
         )
         return

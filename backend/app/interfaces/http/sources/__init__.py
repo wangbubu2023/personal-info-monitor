@@ -13,7 +13,7 @@ from ._helpers import (  # noqa: F401 – re-exported for backward-compat
     serialize_source,
 )
 
-from .query import router as query_router, list_sources, export_sources, get_source
+from .query import router as query_router, list_sources, export_sources, get_paid_source_matrix, get_source
 from .mutation import router as mutation_router, create_source, update_source, delete_source
 from .probe import router as probe_router
 from .fetch_import import router as fetch_import_router
@@ -31,6 +31,7 @@ router.include_router(dry_run_router)        # /{id}/dry-run
 # query sub-router: register "" routes directly, delegate the rest via include_router
 router.add_api_route("", list_sources, methods=["GET"])
 router.add_api_route("/export", export_sources, methods=["GET"])
+router.add_api_route("/paid-matrix", get_paid_source_matrix, methods=["GET"])
 router.add_api_route("/{source_id}", get_source, methods=["GET"])
 
 # mutation sub-router: register "" route directly, delegate the rest via include_router

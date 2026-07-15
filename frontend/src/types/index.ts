@@ -313,6 +313,24 @@ export interface FallbackModelPick {
   model: string
 }
 
+export interface AiFeatureState {
+  enabled: boolean
+  runtime_ready: boolean
+  effective: boolean
+  reason: string
+}
+
+export interface AiPolicyStatus {
+  global_ai: AiFeatureState
+  writing: AiFeatureState
+  auto_summary: AiFeatureState
+  auto_listing_translation: AiFeatureState
+  reader_translation: AiFeatureState
+  subjective_scoring: AiFeatureState
+  hard_disabled: boolean
+  paused: boolean
+}
+
 export interface SystemSettings {
   ai_model: WritingAIModelConfig
   translation_model?: AIModelConfig & {
@@ -331,6 +349,11 @@ export interface SystemSettings {
   title_translation_enabled?: boolean
   auto_translate_language: string
   summarization_enabled: boolean
+  auto_summary_enabled?: boolean
+  auto_listing_translation_enabled?: boolean
+  ai_subjective_scoring_enabled?: boolean
+  ai_processing_paused?: boolean
+  ai_policy?: AiPolicyStatus
   translation_fallback_enabled?: boolean
   translation_fallback?: FallbackModelPick
   summarization_fallback_enabled?: boolean
@@ -373,6 +396,10 @@ export interface AIModelTabFormValues {
   score_max_tokens: number
   score_ollama_num_ctx?: number
   score_ollama_no_think?: boolean
+  auto_summary_enabled?: boolean
+  auto_listing_translation_enabled?: boolean
+  ai_subjective_scoring_enabled?: boolean
+  ai_processing_paused?: boolean
   translation_fallback_enabled: boolean
   trans_fallback_provider: string
   trans_fallback_model: string

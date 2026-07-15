@@ -141,9 +141,9 @@ cd backend
 
 - 当前代码库不使用 Celery/Redis 作为主运行时（APScheduler + 内置有界 TaskQueue）。
 - 运行时锁优先使用数据库表（`app/platform/locks/`），单进程内存锁只作为降级兜底。
-- LLM 调用通过 `ENRICH_SUMMARY_ENABLED` / `ENRICH_TRANSLATE_ENABLED` 显式控制；
-  `AI_PROCESSING_ENABLED` 作为 master kill switch 保留，但只在全局停用 LLM
-  时使用。
+- LLM 产品开关与全局暂停由持久化 system settings 控制；
+  `PIM_AI_HARD_DISABLE=true` 是部署级紧急停机开关。旧版
+  `AI_PROCESSING_ENABLED` / `ENRICH_*` 只参与首次升级默认值迁移。
 - 新闻原子库（Schema v2）默认关闭：`ATOMS_ENABLED=true` 启用提取与 `/atoms` API；`ATOMS_RELATIONS_ENABLED` 控制跨文关系（P2）
   显式开启；开启后也只是 `finish_content` 旁路的 best-effort 写入，
   永远不阻塞 ingest 主链。

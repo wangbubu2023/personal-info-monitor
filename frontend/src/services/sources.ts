@@ -26,6 +26,28 @@ export interface SourceListParams {
 
 export type PaginatedSourceResponse = PaginatedResponse<Source>
 
+export interface PaidSourceMatrixItem {
+  source_id: string
+  source_name: string
+  source_type: string
+  host: string
+  discovery: string
+  body_path: string
+  validation_url: string
+  last_success_at?: string | null
+  success_rate_7d?: number | null
+  failure_code?: string | null
+  recovery_action: string
+  session_status?: string | null
+  session_mode?: string | null
+}
+
+export interface PaidSourceMatrixResponse {
+  items: PaidSourceMatrixItem[]
+  total: number
+  generated_at?: string | null
+}
+
 /**
  * Paginated source list. Prefer this or {@link sourcesApi.list} for UI; use {@link sourcesApi.listAll} only when the full catalog is required.
  */
@@ -60,6 +82,11 @@ export const sourcesApi = {
    * Load every source by paging through the API. Avoid for main list UIs — use {@link sourcesApi.list} or {@link listSources}.
    * Still appropriate when a caller truly needs the full in-memory list (e.g. bulk workflows that enumerate all sources).
    */
+  getPaidMatrix: async (): Promise<PaidSourceMatrixResponse> => {
+    const response = await api.get('/sources/paid-matrix')
+    return response.data
+  },
+
   listAll: async (params?: Omit<ListSourcesParams, 'page' | 'page_size'>): Promise<Source[]> => {
     const items: Source[] = []
     let page = 1

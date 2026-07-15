@@ -37,13 +37,18 @@ async def process_content(content_id: str, regenerate_summary: bool = False, ret
 
 
 async def _process_content_async(content_id: str, regenerate_summary: bool, retranslate: bool):
-    from app.config import get_settings
     from app.database import SessionLocal
     from app.models import Content
     from app.domains.ingest.content_processor import ContentProcessor
+    from app.platform.llm.policy import resolve_translation_state, resolve_writing_state
 
-    if (regenerate_summary or retranslate) and not get_settings().ai_processing_enabled:
-        logger.info("AI processing disabled; skip manual reprocess for %s", content_id)
+    if regenerate_summary and not (await resolve_writing_state()).effective:
+        logger.info("AI writing unavailable; skip manual summary reprocess for %s", content_id)
+        regenerate_summary = False
+    if retranslate and not (await resolve_translation_state(automatic=False)).effective:
+        logger.info("AI translation unavailable; skip manual translation reprocess for %s", content_id)
+        retranslate = False
+    if not regenerate_summary and not retranslate:
         return
 
     db = SessionLocal()

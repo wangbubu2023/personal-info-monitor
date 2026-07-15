@@ -511,9 +511,13 @@ class ModelProviderClient:
         no_think: Optional[bool] = None,
         num_ctx: Optional[int] = None,
     ) -> str:
-        settings = get_settings()
-        if not settings.ai_processing_enabled:
-            logger.info("AI processing disabled (ai_processing_enabled=false); skipping LLM call")
+        from app.platform.llm.policy import ai_hard_disabled, ai_processing_paused
+
+        if ai_hard_disabled():
+            logger.info("AI processing hard-disabled; skipping LLM call")
+            return ""
+        if ai_processing_paused():
+            logger.info("AI processing paused by system settings; skipping LLM call")
             return ""
         mt = max_tokens if max_tokens is not None else runtime.max_tokens
         rough = len(prompt) // 4 + len(system_prompt or "") // 4 + int(mt or 500)

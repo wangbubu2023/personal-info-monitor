@@ -16,6 +16,7 @@ from app.platform.config.system_settings import (
     get_system_settings_for_response,
     update_system_settings_async,
 )
+from app.platform.llm.policy import resolve_ai_policy_status
 from app.features import atoms_product_enabled
 from app.interfaces.http.configs_common_auth import decrypt_api_credentials
 from app.utils.model_catalog import load_model_providers, sanitize_provider_api_base
@@ -47,7 +48,9 @@ def _provider_passes_access_gate(provider: dict, configured_platforms: set) -> b
 async def get_system_settings(db: AsyncSession = Depends(get_async_db)):
     """Get system settings from persistent storage."""
     settings = await get_system_settings_async(db)
-    return get_system_settings_for_response(settings)
+    response = get_system_settings_for_response(settings)
+    response["ai_policy"] = (await resolve_ai_policy_status(settings)).to_dict()
+    return response
 
 
 @router.patch("/settings")
@@ -63,7 +66,9 @@ async def update_system_settings(
             if key not in {"atom_model", "atoms_enabled", "atoms_relations_enabled"}
         }
     updated = await update_system_settings_async(db, settings_data)
-    return get_system_settings_for_response(updated)
+    response = get_system_settings_for_response(updated)
+    response["ai_policy"] = (await resolve_ai_policy_status(updated)).to_dict()
+    return response
 
 
 @router.get("/ai-models/available")

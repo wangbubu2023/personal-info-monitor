@@ -17,14 +17,9 @@ _MIN_BODY_CHARS = 120
 
 
 def pipeline_summary_enabled() -> bool:
-    from app.config import get_settings
+    from app.platform.llm.policy import product_ai_flag_enabled
 
-    settings = get_settings()
-    return bool(
-        settings.ai_processing_enabled
-        and settings.enrich_summary_enabled
-        and settings.enrich_auto_on_ingest
-    )
+    return product_ai_flag_enabled("auto_summary_enabled", True)
 
 
 async def apply_pipeline_summary(content: Any) -> bool:
@@ -33,6 +28,17 @@ async def apply_pipeline_summary(content: Any) -> bool:
     Returns True when a new LLM summary was written.
     """
     if not pipeline_summary_enabled():
+        return False
+
+    from app.platform.llm.policy import resolve_auto_summary_state
+
+    state = await resolve_auto_summary_state()
+    if not state.effective:
+        logger.debug(
+            "Pipeline summary skipped for %s: %s",
+            getattr(content, "id", ""),
+            state.reason,
+        )
         return False
 
     body = strip_html_tags(getattr(content, "full_content", None) or "").strip()

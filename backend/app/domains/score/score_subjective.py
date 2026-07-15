@@ -6,8 +6,6 @@ import re
 from dataclasses import dataclass
 from typing import Any, Protocol
 
-from app.features import feature_enabled
-
 FIXED_BASELINE_SUBJECTIVE_SCORE = 5.0
 
 _SCORE_RE = re.compile(r"\b([1-9]|10)\b")
@@ -49,7 +47,7 @@ class FixedBaselineSubjectiveScorer:
 
 
 class LlmSubjectiveScorer:
-    """Score relevance via LLM. Requires PIM_SCORE_LLM_SUBJECTIVE=true and score_model configured."""
+    """Score relevance via LLM when the product-level subjective scoring switch is enabled."""
 
     _SYSTEM = (
         "你是新闻重要性评估助手。根据标题和摘要，给出对个人信息监控用途的主观重要性分数（1-10整数）和一句不超过30字的理由。"
@@ -92,6 +90,8 @@ class LlmSubjectiveScorer:
             return ""
 
     def _parse(self, raw: str) -> SubjectiveScoreResult:
+        if not (raw or "").strip():
+            return SubjectiveScoreResult(score=FIXED_BASELINE_SUBJECTIVE_SCORE, source="fixed_baseline")
         score = FIXED_BASELINE_SUBJECTIVE_SCORE
         rationale: str | None = None
         for line in (raw or "").splitlines():
@@ -110,8 +110,14 @@ class LlmSubjectiveScorer:
         )
 
 
-def get_subjective_scorer() -> SubjectiveScorer:
-    if feature_enabled("PIM_SCORE_LLM_SUBJECTIVE"):
+async def subjective_scoring_effective() -> bool:
+    from app.platform.llm.policy import resolve_subjective_scoring_state
+
+    return (await resolve_subjective_scoring_state()).effective
+
+
+async def get_subjective_scorer() -> SubjectiveScorer:
+    if await subjective_scoring_effective():
         return LlmSubjectiveScorer()
     return FixedBaselineSubjectiveScorer()
 
@@ -128,6 +134,6 @@ def resolve_subjective_score(content: Any, *, lane: str) -> SubjectiveScoreResul
 
 
 async def score_subjective_async(content: Any, *, lane: str) -> SubjectiveScoreResult:
-    """Async path — calls LLM when PIM_SCORE_LLM_SUBJECTIVE=true, else fixed baseline."""
-    scorer = get_subjective_scorer()
+    """Async path — calls LLM when product policy is effective, else fixed baseline."""
+    scorer = await get_subjective_scorer()
     return await scorer.score(content, lane=lane)

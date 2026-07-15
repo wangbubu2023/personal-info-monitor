@@ -73,8 +73,8 @@ sources → fetch → ingest → summarize → score → [atoms] → enrich
 - `FETCH_*` → fetch
 - `ATOMS_ENABLED` → 新闻原子库开关，默认 `false`
 - `ATOMS_RELATIONS_ENABLED` → 跨文关系推断（P2），依赖 `ATOMS_ENABLED`
-- `ENRICH_AUTO_ON_INGEST` → 入库流水线是否运行 LLM 摘要阶段（默认 `false`）
-- `ENRICH_SUMMARY_ENABLED` / `ENRICH_TRANSLATE_ENABLED` → enrich 细粒度控制
-- `AI_PROCESSING_ENABLED` → LLM 全局 kill switch
+- system settings 中的 AI 产品开关 → 自动摘要、列表翻译、主观评分与全局暂停
+- `PIM_AI_HARD_DISABLE` → 部署级 LLM 紧急停机开关
+- `AI_PROCESSING_ENABLED` / `ENRICH_*` → 仅用于旧安装首次升级默认值迁移
 
 校验：`backend/scripts/check_domain_imports.py --phase=7` 会在 CI 中静态强制依赖方向。

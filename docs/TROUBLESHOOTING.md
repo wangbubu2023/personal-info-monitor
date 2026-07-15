@@ -38,7 +38,7 @@
 - 确认 `backend/.env` 中 `ATOMS_ENABLED=true` 并已重启服务
 - `pimctl atoms stats --json` 查看总量
 - P0 阶段需手工 `POST /api/atoms` 或 CLI 录入；自动 LLM 提取在 P1
-- 自动提取依赖 `AI_PROCESSING_ENABLED=true` 且系统设置中配置了 `ai_model`
+- 自动提取依赖系统设置中启用 Atoms、配置可用模型，且未开启 AI 全局暂停或 `PIM_AI_HARD_DISABLE`
 - 历史回填：`pimctl atoms backfill --limit 200 --since 2026-01-01`
 
 ## 跨文关系无数据 / 误判

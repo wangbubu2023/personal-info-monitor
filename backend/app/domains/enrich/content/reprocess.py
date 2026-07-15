@@ -54,7 +54,7 @@ async def reprocess_content(
     """
     if regenerate_summary and content.full_content:
         active_summarizer = summarizer or Summarizer()
-        content.summary = await active_summarizer.summarize(content.full_content)
+        content.summary = await active_summarizer.summarize(content.full_content, automatic=False)
 
     if retranslate:
         active_translator = translator or Translator()

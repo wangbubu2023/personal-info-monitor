@@ -31,19 +31,17 @@ _scheduled_tasks: set[asyncio.Task[None]] = set()
 
 def listing_translation_enabled() -> bool:
     """Whether automatic listing translation should run."""
-    from app.config import get_settings
     from app.platform.config.system_settings import get_system_settings_sync
-
-    settings = get_settings()
-    if not settings.ai_processing_enabled or not settings.enrich_translate_enabled:
-        return False
+    from app.platform.llm.policy import ai_hard_disabled, ai_processing_paused
 
     sys_settings = get_system_settings_sync() or {}
+    if ai_hard_disabled() or ai_processing_paused(sys_settings):
+        return False
     if not sys_settings.get("translation_enabled", True):
         return False
     if not sys_settings.get("title_translation_enabled", True):
         return False
-    return True
+    return bool(sys_settings.get("auto_listing_translation_enabled", True))
 
 
 def content_needs_listing_translation(
@@ -126,6 +124,14 @@ async def enqueue_listing_translation_job(
     """
     if not await asyncio.to_thread(listing_translation_enabled):
         return False
+
+    from app.platform.llm.policy import resolve_translation_state
+
+    state = await resolve_translation_state(automatic=True)
+    if not state.effective:
+        logger.debug("Listing translation enqueue skipped for %s: %s", content_id, state.reason)
+        return False
+
     if title is not None and not await asyncio.to_thread(
         content_needs_listing_translation,
         title=title,
@@ -151,6 +157,13 @@ async def run_listing_translation_job(content_id: str) -> bool:
 async def translate_listing_fields_async(content_id: str) -> bool:
     """Populate ``translated_title`` / ``translated_summary`` for one Content row."""
     if not listing_translation_enabled():
+        return False
+
+    from app.platform.llm.policy import resolve_translation_state
+
+    state = await resolve_translation_state(automatic=True)
+    if not state.effective:
+        logger.debug("Listing translation skipped for %s: %s", content_id, state.reason)
         return False
 
     from app.background import get_llm_semaphore
@@ -260,7 +273,7 @@ async def _translate_with_timeout(
 ) -> Optional[str]:
     try:
         return await asyncio.wait_for(
-            translator.translate(text, target_language),
+            translator.translate(text, target_language, automatic=True),
             timeout=timeout_seconds,
         )
     except (TimeoutError, asyncio.TimeoutError):

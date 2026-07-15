@@ -146,7 +146,8 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   }
 
   const navItems = [
-    { to: '/', label: '资讯', icon: Newspaper },
+    { to: '/', label: '今日重点', icon: Newspaper },
+    { to: '/timeline', label: '全部动态', icon: Clock },
     { to: '/digest', label: '简报', icon: Clock },
     ...(scoreLabEnabled ? [{ to: '/score-lab', label: '评分', icon: Gauge }] : []),
     { to: '/settings', label: '配置', icon: SlidersHorizontal },
@@ -154,6 +155,7 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 
   const isNavActive = (path: string) => {
     if (path === '/') return location.pathname === '/'
+    if (path === '/timeline') return location.pathname === '/timeline'
     if (path === '/settings')
       return location.pathname === '/settings' || location.pathname === '/sources'
     if (path === '/score-lab') return location.pathname === '/score-lab'

@@ -785,8 +785,8 @@ pimctl settings set --key <key> --value <value> [--json]
 ```
 
 ```bash
-# 开启 AI 处理
-pimctl settings set --key ai_processing_enabled --value true --json
+# 暂停所有 AI 处理（恢复时设为 false）
+pimctl settings set --key ai_processing_paused --value true --json
 
 # 修改最大源数量
 pimctl settings set --key max_sources --value 100 --json

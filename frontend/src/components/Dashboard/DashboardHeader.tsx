@@ -36,8 +36,8 @@ const DashboardHeader: React.FC<DashboardHeaderProps> = ({
     {/* 标题区与日期/抓取同一行，纵向与整块标题（中英）居中对齐 */}
     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
       <PageHeroTitle
-        titleZh="资讯中心"
-        titleEn="Information Center"
+        titleZh="全部动态"
+        titleEn="Full Timeline"
         data-testid="dashboard-title"
       />
       <div className="flex shrink-0 flex-wrap items-center gap-2 sm:justify-end">

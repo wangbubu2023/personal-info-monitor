@@ -122,30 +122,21 @@ class Settings(BaseSettings):
     #: Per-IP limit for ``GET /local-token`` (bootstrap); 0 = disabled
     local_token_rate_limit_per_minute: int = 30
 
-    # Master kill switch for outbound LLM calls (summaries, translation, digest
-    # selection, etc.). The legacy ``AI_PROCESSING_ENABLED`` env name is still
-    # accepted but now serves only as the *master* gate; new deployments configure
-    # the per-feature ``ENRICH_*`` toggles below and leave this flag at its
-    # ``False`` default. Phase 7 of the modular refactor cleaned the
-    # "AI_PROCESSING_ENABLED is the only switch" narrative out of the docs and
-    # runtime paths — the flag is no longer slated for removal.
+    # Legacy bootstrap input retained for first-upgrade migration only. Runtime
+    # policy is stored in system_settings; use PIM_AI_HARD_DISABLE for an
+    # environment-level emergency stop.
     ai_processing_enabled: bool = False
+    # Deployment-level emergency stop for all new outbound AI calls. Product-level
+    # feature toggles live in system_settings and are resolved by app.platform.llm.policy.
+    pim_ai_hard_disable: bool = False
     #: Rough daily cap on *estimated* LLM tokens (prompt + max output). ``0`` = unlimited.
     ai_daily_token_budget: int = 0
     #: Rough monthly cap on *estimated* LLM tokens (prompt + max output). ``0`` = unlimited.
     ai_monthly_token_budget: int = 0
     cloud_fallback_enabled: bool = True
 
-    # Phase 4 step 8 introduces the ``ENRICH_*`` family — per-feature toggles for the
-    # post-ingest enrichment pipeline. Defaults match historical behavior:
-    #
-    # * ``enrich_auto_on_ingest`` — whether the ingest finalizer should enqueue an
-    #   automatic summary/translate pass for every freshly-inserted Content row.
-    #   Default ``False`` matches current production (the auto-enrich pipeline
-    #   does not yet exist; Phase 4/5 will wire it up).
-    # * ``enrich_summary_enabled`` — gate for :class:`Summarizer` text generation.
-    # * ``enrich_translate_enabled`` — gate for :class:`Translator` LLM calls.
-    #   New installs keep outbound LLM calls off until the operator opts in.
+    # Legacy ENRICH_* bootstrap inputs retained so existing installations can seed
+    # the equivalent product settings during their first upgrade.
     enrich_auto_on_ingest: bool = False
     enrich_summary_enabled: bool = False
     enrich_translate_enabled: bool = False
@@ -162,20 +153,16 @@ class Settings(BaseSettings):
         # Expand ~ but leave filesystem bootstrap to explicit runtime entrypoints.
         self.data_dir = os.path.expanduser(self.data_dir)
 
-        # Soft-deprecation notice for the legacy ``AI_PROCESSING_ENABLED`` env name.
-        # The flag still functions as the master kill switch (see field docstring
-        # above), so we no longer threaten removal — we just nudge operators toward
-        # the ENRICH_* family for fine-grained control. The single-emit guard
-        # prevents warning spam inside ``get_settings.cache_clear()`` loops.
+        # Soft-deprecation notice for the legacy bootstrap input. The single-emit
+        # guard prevents warning spam inside ``get_settings.cache_clear()`` loops.
         if (
             os.environ.get("AI_PROCESSING_ENABLED") is not None
             and not os.environ.get("_PIM_AI_DEPRECATION_LOGGED")
         ):
             warnings.warn(
-                "AI_PROCESSING_ENABLED is the legacy master kill switch; per-feature "
-                "gates moved to ENRICH_AUTO_ON_INGEST / ENRICH_SUMMARY_ENABLED / "
-                "ENRICH_TRANSLATE_ENABLED. The master flag is still honored; "
-                "prefer the ENRICH_* family for fine-grained control "
+                "AI_PROCESSING_ENABLED is a legacy first-upgrade bootstrap input; "
+                "runtime feature gates moved to system settings. Use "
+                "PIM_AI_HARD_DISABLE=true for an environment-level emergency stop "
                 "(see backend/.env.example).",
                 DeprecationWarning,
                 stacklevel=2,

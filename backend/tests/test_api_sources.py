@@ -11,7 +11,9 @@ from app.api.sources import _helpers as sources_helpers
 from app.domains.fetch.session_health import SessionHealth, record_session_health
 from app.domains.sources.status import set_last_fetch_outcome
 from app.features import PODCAST_DISABLED_DETAIL
-from app.models import Content, Source
+from app.models import BrowserSession, Content, Source
+from app.models.browser_session import BrowserSessionMode, BrowserSessionStatus
+from app.models.source_fetch_log import SourceFetchLog
 from app.models.source import SourceType
 
 
@@ -116,6 +118,54 @@ def test_serialize_source_prefers_structured_last_fetch_outcome():
     assert payload["metadata"]["last_fetch_outcome"]["code"] == "http_429"
     assert payload["fetch_status"] == "error"
     assert payload["fetch_status_message"] == "rate limited"
+
+
+@pytest.mark.asyncio
+async def test_paid_source_matrix_reports_slo_fields(client, db_session):
+    source = Source(
+        name="Example Paid",
+        type=SourceType.WEBSITE,
+        url="https://example.com/news",
+        fetch_interval=60,
+        enabled=True,
+        auth_required=True,
+        session_health_status="error",
+        session_health_reason="expired",
+        metadata_={"paid_source": {"validation_url": "https://example.com/paid/story", "discovery": "RSS + 网站"}},
+    )
+    session = BrowserSession(
+        site_url="https://example.com",
+        site_host="example.com",
+        profile_name="example-paid",
+        session_mode=BrowserSessionMode.PERSISTENT_PROFILE.value,
+        status=BrowserSessionStatus.ACTIVE,
+    )
+    db_session.add_all([source, session])
+    await db_session.flush()
+    db_session.add(
+        SourceFetchLog(
+            source_id=str(source.id),
+            outcome="success",
+            saved_count=1,
+            fulltext_ok=1,
+            fulltext_total=1,
+        )
+    )
+    await db_session.commit()
+
+    response = await client.get("/api/sources/paid-matrix")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["total"] == 1
+    item = body["items"][0]
+    assert item["source_name"] == "Example Paid"
+    assert item["discovery"] == "RSS + 网站"
+    assert item["body_path"] == "VPS persistent profile"
+    assert item["validation_url"] == "https://example.com/paid/story"
+    assert item["success_rate_7d"] == 1.0
+    assert item["failure_code"] == "expired"
+    assert "重新登录" in item["recovery_action"]
 
 
 @pytest.mark.asyncio

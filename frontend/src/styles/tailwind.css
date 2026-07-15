@@ -27,15 +27,17 @@ body {
   min-height: 100vh;
 }
 
-/* 链接基础样式 */
-a {
-  color: var(--color-primary);
-  text-decoration: none;
-  transition: color var(--transition-fast);
-}
+/* 链接基础样式放在 base layer，允许组件级 utility 覆盖颜色。 */
+@layer base {
+  a {
+    color: var(--color-primary);
+    text-decoration: none;
+    transition: color var(--transition-fast);
+  }
 
-a:hover {
-  color: var(--color-primary-hover);
+  a:hover {
+    color: var(--color-primary-hover);
+  }
 }
 
 /* 自定义滚动条 */

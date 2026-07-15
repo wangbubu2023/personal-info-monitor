@@ -227,7 +227,7 @@ flowchart LR
 | `ProbeService` | `app/domains/sources/probe/service.py` | 通过注册表分派到具体策略，检测信源可达性与推荐抓取方式；`app/services/probe_service.py` 仅保留兼容 shim |
 | `fetch_source` / `run_fetch_pipeline` | `app/tasks/fetch_tasks.py` + `app/domains/fetch/coordinator.py` + `app/domains/fetch/collector_stage.py` | 单 source 的抓取入口：调 CollectorStage、入库、更新 source 状态；`app/pipeline/coordinator.py` 仅保留兼容 alias |
 | `finish_content` | `app/domains/ingest/finish.py` | ingest → enrich → atoms → notify 的唯一汇合点 |
-| `Summarizer` / `Translator` | `app/platform/llm/{summarizer,translator}.py` | 受 `ENRICH_SUMMARY_ENABLED` / `ENRICH_TRANSLATE_ENABLED` 双开关控制的 LLM 调用 |
+| `Summarizer` / `Translator` | `app/platform/llm/{summarizer,translator}.py` | 受统一 AI policy（产品开关、全局暂停、部署硬停机）控制的 LLM 调用 |
 | `RankingService` | `app/domains/score/ranking.py` | 日报排序、时间衰减、去重；`app/services/ranking_service.py` 仅保留兼容 shim |
 | `DigestService` | `app/domains/enrich/digest.py` | 日报/周报生成；`app/services/digest_service.py` 仅保留兼容 shim |
 | `DoctorService` | `app/domains/system/doctor.py` | 系统体检与告警判定；`app/services/doctor_service.py` 仅保留兼容 shim |
@@ -344,9 +344,8 @@ CI 会在每次构建时重新运行 `uv export` 并 `diff` 生成结果与提�
   在 CI 中静态强制。
 - `domains/enrich` 通过 `domains/contracts/atoms.AtomReader` 协议读取
   atoms，永远不直接依赖 `domains/atoms/*` 的实现。
-- `ATOMS_ENABLED` / `ENRICH_AUTO_ON_INGEST` / `ENRICH_SUMMARY_ENABLED`
-  / `ENRICH_TRANSLATE_ENABLED` 四个开关默认值确保系统在不配置 LLM 的
-  情况下也能正常完成 ingest 主链。
+- Atoms 构建开关与 system settings 中的 AI 产品策略确保系统在不配置
+  LLM 的情况下也能正常完成 ingest 主链。
 
 ## 10. 进一步阅读
 

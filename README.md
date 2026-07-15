@@ -88,7 +88,7 @@ cd personal-info-monitor
 - `~/.pim/data/runtime-secrets.json`
 - `~/.pim/data/pim.db`
 
-新安装默认关闭 outbound LLM。配置模型后，再打开 `AI_PROCESSING_ENABLED` 与需要的 `ENRICH_*` 开关。
+新安装未配置模型时不会发起 outbound LLM。配置模型后，在「设置 → AI 模型」控制自动摘要、列表翻译和主观评分；部署级紧急停机使用 `PIM_AI_HARD_DISABLE=true`。
 
 ## 常用运行方式
 
@@ -205,10 +205,7 @@ X 抓取优先使用浏览器登录态 Cookie 的 GraphQL 路径，然后才尝�
 | `DATA_DIR` | `~/.pim/data` | SQLite、日志、浏览器会话目录 |
 | `PIM_PUBLIC_URL` | 空 | VPS / 反向代理公网地址 |
 | `FETCH_CONCURRENCY` | `20` | 并发抓取上限；同步 DB 连接池会自动至少按该值配置，并额外保留 10 个 overflow 连接 |
-| `AI_PROCESSING_ENABLED` | `false` | LLM 总开关 |
-| `ENRICH_AUTO_ON_INGEST` | `false` | 入库后自动摘要/翻译 |
-| `ENRICH_SUMMARY_ENABLED` | `false` | 允许生成摘要 |
-| `ENRICH_TRANSLATE_ENABLED` | `false` | 允许生成翻译 |
+| `PIM_AI_HARD_DISABLE` | `false` | 部署级 LLM 紧急停机开关；产品功能开关在 Web 设置中管理 |
 | `ATOMS_ENABLED` | `false` | 结构化事件层；`main` 分支暂时强制冻结，`dev` 分支可继续探索 |
 | `OPENAI_API_KEY` | 空 | 云端模型凭据 |
 | `RSSHUB_URL` | `https://rsshub.app` | RSSHub 实例 |

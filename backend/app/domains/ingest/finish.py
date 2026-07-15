@@ -45,7 +45,7 @@ async def _finish_content_async(content_id: str) -> None:
     from app.domains.ingest.quality_metadata import merge_content_quality_metadata
     from app.domains.ingest.summary_clean import apply_summary_cleaning
     from app.domains.score.content_columns import sync_content_score_columns
-    from app.domains.score.scoring import merge_baseline_scoring_metadata
+    from app.domains.score.scoring import merge_rule_scoring_metadata_async
     from app.models import Content, Keyword, Source
     from app.domains.ingest.content_processor import ContentProcessor
     from app.domains.ingest.keywords.matcher import KeywordMatcher
@@ -134,7 +134,7 @@ async def _finish_content_async(content_id: str) -> None:
             )
 
             # Stage 5: score (original title/summary only)
-            meta = merge_baseline_scoring_metadata(
+            meta = await merge_rule_scoring_metadata_async(
                 meta,
                 title=content.title or "",
                 summary=content.summary,

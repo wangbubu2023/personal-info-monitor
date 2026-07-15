@@ -3,6 +3,7 @@ import copy
 from app.platform.config.system_settings import (
     DEFAULT_SYSTEM_SETTINGS,
     HOURLY_DIGEST_DEFAULT_PROMPT,
+    _apply_legacy_ai_product_defaults,
     _apply_patch,
     _settings_for_storage,
     effective_hourly_digest_prompt,
@@ -117,6 +118,57 @@ def test_settings_for_storage_drops_catalog_default_endpoints_only():
     assert stored["translation_model"]["api_base"] == "https://proxy.example.com/minimax/v1"
     assert "api_base" not in stored["atom_model"]
     assert stored["score_model"]["api_base"] == "http://localhost:11434"
+
+
+def test_apply_patch_ai_product_bools_coerced():
+    current = copy.deepcopy(DEFAULT_SYSTEM_SETTINGS)
+    updated = _apply_patch(
+        current,
+        {
+            "auto_summary_enabled": "false",
+            "auto_listing_translation_enabled": "true",
+            "ai_subjective_scoring_enabled": "1",
+            "ai_processing_paused": "yes",
+        },
+    )
+
+    assert updated["auto_summary_enabled"] is False
+    assert updated["auto_listing_translation_enabled"] is True
+    assert updated["ai_subjective_scoring_enabled"] is True
+    assert updated["ai_processing_paused"] is True
+
+
+def test_legacy_ai_product_defaults_existing_row_are_conservative(monkeypatch):
+    for name in (
+        "AI_PROCESSING_ENABLED",
+        "ENRICH_AUTO_ON_INGEST",
+        "ENRICH_SUMMARY_ENABLED",
+        "ENRICH_TRANSLATE_ENABLED",
+        "PIM_SCORE_LLM_SUBJECTIVE",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    merged = copy.deepcopy(DEFAULT_SYSTEM_SETTINGS)
+
+    _apply_legacy_ai_product_defaults(merged, {}, existing_row=True)
+
+    assert merged["auto_summary_enabled"] is False
+    assert merged["auto_listing_translation_enabled"] is False
+    assert merged["ai_subjective_scoring_enabled"] is False
+
+
+def test_legacy_ai_product_defaults_use_legacy_env(monkeypatch):
+    monkeypatch.setenv("AI_PROCESSING_ENABLED", "true")
+    monkeypatch.setenv("ENRICH_AUTO_ON_INGEST", "true")
+    monkeypatch.setenv("ENRICH_SUMMARY_ENABLED", "true")
+    monkeypatch.setenv("ENRICH_TRANSLATE_ENABLED", "false")
+    monkeypatch.setenv("PIM_SCORE_LLM_SUBJECTIVE", "true")
+    merged = copy.deepcopy(DEFAULT_SYSTEM_SETTINGS)
+
+    _apply_legacy_ai_product_defaults(merged, {}, existing_row=True)
+
+    assert merged["auto_summary_enabled"] is True
+    assert merged["auto_listing_translation_enabled"] is False
+    assert merged["ai_subjective_scoring_enabled"] is True
 
 
 def test_apply_patch_fallback_bools_coerced():

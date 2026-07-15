@@ -5,6 +5,7 @@ import MainLayout from './components/layout/MainLayout'
 import Spotlight from './components/common/Spotlight'
 import { SCORE_LAB_BUILD_ENABLED } from './config/features'
 
+const TodayHighlightsPage = lazy(() => import('./pages/TodayHighlightsPage'))
 const HomePage = lazy(() => import('./pages/HomePage'))
 const DigestPage = lazy(() => import('./pages/DigestPage'))
 const SettingsPage = lazy(() => import('./pages/SettingsPage'))
@@ -42,7 +43,8 @@ const App: React.FC = () => {
           </div>
         }>
           <Routes>
-            <Route path="/" element={<HomePage />} />
+            <Route path="/" element={<TodayHighlightsPage />} />
+            <Route path="/timeline" element={<HomePage />} />
             <Route path="/digest" element={<DigestPage />} />
             <Route path="/reader/:id" element={<ReaderPage />} />
             <Route path="/events/:eventId" element={<EventDetailPage />} />

@@ -22,6 +22,7 @@ from __future__ import annotations
 import asyncio
 
 from app.ai.provider import ModelProviderClient, get_runtime_from_system_settings
+from app.platform.llm.policy import resolve_writing_state
 from app.domains.enrich.hourly.repository import (
     build_hourly_digest_event_briefing_items,
     build_hourly_digest_event_items,
@@ -84,14 +85,17 @@ async def generate_previous_hour_digest() -> None:
         db.close()
         return
 
-    runtime = await get_runtime_from_system_settings(
-        setting_key="ai_model",
-        default_provider="ollama",
-        default_model="",
-        default_api_base="http://localhost:11434",
-        default_temperature=0.2,
-        default_max_tokens=2400,
-    )
+    writing_state = await resolve_writing_state()
+    runtime = None
+    if writing_state.effective:
+        runtime = await get_runtime_from_system_settings(
+            setting_key="ai_model",
+            default_provider="ollama",
+            default_model="",
+            default_api_base="http://localhost:11434",
+            default_temperature=0.2,
+            default_max_tokens=2400,
+        )
 
     model_client = ModelProviderClient()
     limits = get_digest_limits()
@@ -129,7 +133,7 @@ async def generate_previous_hour_digest() -> None:
             fallback_body = build_hourly_briefing_digest(
                 ctx["title"],
                 event_items,
-                reason="当前未配置可用 AI 模型或 Ollama 未安装指定模型，已生成简版简报。请到「设置 → AI 模型」检查 provider/model/API Key 配置。",
+                reason=f"当前 AI 写作不可用（{writing_state.reason}），已生成规则简版简报。请到「设置 → AI 模型」检查模型配置或功能状态。",
             )
 
             def _save_fallback_without_runtime():

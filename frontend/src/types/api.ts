@@ -1167,6 +1167,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/sources/paid-matrix": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Paid Source Matrix
+         * @description Return the paid-source SLO matrix used by ops/product.
+         *
+         *     Sources enter the matrix when they require auth, bind an auth config, have
+         *     session health, or explicitly set metadata.paid_source.enabled. It is a
+         *     read-side view over existing source/session/fetch health state; the actual
+         *     canary fetches continue to be recorded by the fetch pipeline.
+         */
+        get: operations["get_paid_source_matrix_api_sources_paid_matrix_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/sources/probe": {
         parameters: {
             query?: never;
@@ -5410,6 +5435,26 @@ export interface operations {
         };
     };
     trigger_fetch_all_api_sources_fetch_all_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    get_paid_source_matrix_api_sources_paid_matrix_get: {
         parameters: {
             query?: never;
             header?: never;

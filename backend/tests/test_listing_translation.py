@@ -17,17 +17,25 @@ from app.domains.enrich.content.listing_translation import (
 )
 
 
-def test_listing_translation_enabled_requires_flags():
-    with patch("app.config.get_settings") as mock_settings:
-        mock_settings.return_value = MagicMock(ai_processing_enabled=True, enrich_translate_enabled=True)
-        with patch(
-            "app.platform.config.system_settings.get_system_settings_sync",
-            return_value={"translation_enabled": True, "title_translation_enabled": True},
-        ):
-            assert listing_translation_enabled() is True
+def test_listing_translation_enabled_requires_product_switches():
+    with patch(
+        "app.platform.config.system_settings.get_system_settings_sync",
+        return_value={
+            "translation_enabled": True,
+            "title_translation_enabled": True,
+            "auto_listing_translation_enabled": True,
+        },
+    ):
+        assert listing_translation_enabled() is True
 
-    with patch("app.config.get_settings") as mock_settings:
-        mock_settings.return_value = MagicMock(ai_processing_enabled=False, enrich_translate_enabled=True)
+    with patch(
+        "app.platform.config.system_settings.get_system_settings_sync",
+        return_value={
+            "translation_enabled": True,
+            "title_translation_enabled": True,
+            "auto_listing_translation_enabled": False,
+        },
+    ):
         assert listing_translation_enabled() is False
 
 

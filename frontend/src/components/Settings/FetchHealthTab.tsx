@@ -1,5 +1,5 @@
 import React from 'react'
-import { Table, Tag, Button, Tooltip, Alert, Empty, message } from 'antd'
+import { Table, Tag, Button, Tooltip, Alert, Empty, message, Typography } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { SyncOutlined } from '@ant-design/icons'
 import { FileDown, HeartPulse } from 'lucide-react'
@@ -51,6 +51,12 @@ const FetchHealthTab: React.FC = () => {
   const { data, isLoading, isError, refetch, isFetching } = useQuery({
     queryKey: [...sourceKeys.all, 'fetch-health-all'],
     queryFn: () => sourcesApi.listAll(),
+    refetchInterval: 30000,
+  })
+
+  const { data: paidMatrix, isLoading: paidMatrixLoading, refetch: refetchPaidMatrix } = useQuery({
+    queryKey: [...sourceKeys.all, 'paid-source-matrix'],
+    queryFn: () => sourcesApi.getPaidMatrix(),
     refetchInterval: 30000,
   })
 
@@ -268,6 +274,80 @@ const FetchHealthTab: React.FC = () => {
             <span className="text-[#7a8799]">隐私</span>
             <span className="ml-2 text-[#293859]">已脱敏</span>
           </div>
+        </div>
+      </SettingsSection>
+
+      <SettingsSection
+        title="付费源 Matrix"
+        description="按站点跟踪发现方式、正文路径、验收 URL、最近成功、7 日成功率、失败码与恢复动作。"
+        actions={
+          <Button size="small" onClick={() => refetchPaidMatrix()}>
+            刷新
+          </Button>
+        }
+        contentClassName="pt-0"
+      >
+        <div className="min-w-0 overflow-x-auto">
+          <Table
+            rowKey="source_id"
+            loading={paidMatrixLoading}
+            dataSource={paidMatrix?.items ?? []}
+            size="middle"
+            scroll={{ x: 1280 }}
+            pagination={{ pageSize: 10, showSizeChanger: true, showTotal: (t) => `共 ${t} 个付费源` }}
+            locale={{ emptyText: <Empty description="暂无需要登录或已标记为付费的信源" image={Empty.PRESENTED_IMAGE_SIMPLE} /> }}
+            columns={[
+              {
+                title: '站点',
+                key: 'source_name',
+                width: 180,
+                render: (_, record) => (
+                  <div className="min-w-0">
+                    <div className="truncate font-medium text-[#293859]">{record.source_name}</div>
+                    <div className="truncate text-[12px] text-[#8a96a5]">{record.host}</div>
+                  </div>
+                ),
+              },
+              { title: '发现方式', dataIndex: 'discovery', key: 'discovery', width: 120 },
+              { title: '正文路径', dataIndex: 'body_path', key: 'body_path', width: 160 },
+              {
+                title: '验收 URL',
+                dataIndex: 'validation_url',
+                key: 'validation_url',
+                width: 240,
+                render: (url: string) => <Typography.Text copyable ellipsis className="!max-w-[220px] !text-[12px]">{url}</Typography.Text>,
+              },
+              {
+                title: '最近成功',
+                dataIndex: 'last_success_at',
+                key: 'last_success_at',
+                width: 150,
+                render: (time: string | null) => (time ? formatLocalDateTime(time, 'zh-CN') : '—'),
+              },
+              {
+                title: '7 日成功率',
+                dataIndex: 'success_rate_7d',
+                key: 'success_rate_7d',
+                width: 110,
+                align: 'right' as const,
+                render: (rate: number | null) => formatRate(rate),
+              },
+              {
+                title: '失败码',
+                dataIndex: 'failure_code',
+                key: 'failure_code',
+                width: 130,
+                render: (code: string | null) => (code ? <Tag color="red">{failureCodeLabel(code)}</Tag> : <span className="text-[#8a96a5]">—</span>),
+              },
+              {
+                title: '会话',
+                key: 'session',
+                width: 130,
+                render: (_, record) => record.session_status ? <Tag>{record.session_status}</Tag> : <span className="text-[#8a96a5]">—</span>,
+              },
+              { title: '恢复动作', dataIndex: 'recovery_action', key: 'recovery_action', width: 220 },
+            ]}
+          />
         </div>
       </SettingsSection>
 

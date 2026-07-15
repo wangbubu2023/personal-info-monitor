@@ -125,7 +125,9 @@ class Summarizer:
         self,
         text: str,
         max_length: int = 300,
-        language: str = "zh-CN"
+        language: str = "zh-CN",
+        *,
+        automatic: bool = True,
     ) -> str:
         """
         Generate a summary of the given text.
@@ -141,8 +143,10 @@ class Summarizer:
         if not text or len(text.strip()) < 50:
             return text
 
-        _settings = get_settings()
-        if not _settings.ai_processing_enabled or not _settings.enrich_summary_enabled:
+        from app.platform.llm.policy import resolve_auto_summary_state, resolve_writing_state
+
+        state = await resolve_auto_summary_state() if automatic else await resolve_writing_state()
+        if not state.effective:
             return text[:max_length] + "..." if len(text) > max_length else text
 
         runtime_settings = self._get_runtime_settings()

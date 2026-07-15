@@ -7804,6 +7804,31 @@
         ]
       }
     },
+    "/api/sources/paid-matrix": {
+      "get": {
+        "description": "Return the paid-source SLO matrix used by ops/product.\n\nSources enter the matrix when they require auth, bind an auth config, have\nsession health, or explicitly set metadata.paid_source.enabled. It is a\nread-side view over existing source/session/fetch health state; the actual\ncanary fetches continue to be recorded by the fetch pipeline.",
+        "operationId": "get_paid_source_matrix_api_sources_paid_matrix_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Get Paid Source Matrix",
+        "tags": [
+          "sources"
+        ]
+      }
+    },
     "/api/sources/probe": {
       "post": {
         "operationId": "probe_url_api_sources_probe_post",

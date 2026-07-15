@@ -64,7 +64,7 @@ describe('DigestView today highlights', () => {
   it('renders today highlights on digest page without changing timeline cards', async () => {
     renderDigestView()
 
-    expect(await screen.findByTestId('today-highlights')).toBeTruthy()
+    expect(await screen.findByTestId('digest-today-brief-overview')).toBeTruthy()
     expect(screen.getByText('今日重点')).toBeTruthy()
     expect(screen.getByTestId('today-highlight-update-badge')).toBeTruthy()
     expect(screen.getByRole('link', { name: /模型公司发布新版路线图/ }).getAttribute('href')).toBe('/events/event-1')

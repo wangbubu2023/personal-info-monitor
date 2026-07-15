@@ -226,15 +226,10 @@ def build_lifespan(
                 active_fetches,
                 settings.fetch_concurrency,
             )
-        _enrich_flags = (
-            f"auto_on_ingest={settings.enrich_auto_on_ingest}, "
-            f"summary={settings.enrich_summary_enabled}, "
-            f"translate={settings.enrich_translate_enabled}"
-        )
         print(
-            "  AI processing: "
-            f"{'enabled' if settings.ai_processing_enabled else 'disabled'} "
-            f"(enrich: {_enrich_flags})"
+            "  AI deployment hard-disable: "
+            f"{'enabled' if settings.pim_ai_hard_disable else 'disabled'} "
+            "(product policy: Settings -> AI models)"
         )
         print("  Bootstrap URL (web auto-provision): run `./pim bootstrap-url` to print")
         print()

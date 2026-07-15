@@ -316,6 +316,14 @@ class TestExtractorHelpers:
 
 class TestSummarizer:
 
+    @pytest.fixture(autouse=True)
+    def _allow_summary_policy(self, monkeypatch):
+        async def _ready(*args, **kwargs):
+            return MagicMock(effective=True, reason="ready")
+
+        monkeypatch.setattr("app.platform.llm.policy.resolve_auto_summary_state", _ready)
+        monkeypatch.setattr("app.platform.llm.policy.resolve_writing_state", _ready)
+
     def _make_summarizer(self):
         with patch("app.platform.llm.summarizer.get_settings") as mock_settings:
             mock_settings.return_value = MagicMock(openai_api_key="test-key")
@@ -605,6 +613,13 @@ class TestSummarizer:
 # ---------------------------------------------------------------------------
 
 class TestTranslator:
+
+    @pytest.fixture(autouse=True)
+    def _allow_translation_policy(self, monkeypatch):
+        async def _ready(*args, **kwargs):
+            return MagicMock(effective=True, reason="ready")
+
+        monkeypatch.setattr("app.platform.llm.policy.resolve_translation_state", _ready)
 
     def _make_translator(self):
         with patch("app.platform.llm.translator.get_settings") as mock_settings, \

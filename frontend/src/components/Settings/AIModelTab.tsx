@@ -9,6 +9,7 @@ import {
   message,
   InputNumber,
   Slider,
+  Tag,
 } from 'antd'
 import { configsApi } from '../../services/configs'
 import type { AIModelTabFormValues } from '../../types'
@@ -20,6 +21,17 @@ import SettingsSection from './SettingsSection'
 import TaskPromptsTab from './TaskPromptsTab'
 
 const { Option } = Select
+
+const AI_POLICY_REASON_LABELS: Record<string, string> = {
+  ready: '模型就绪',
+  disabled: '已关闭',
+  waiting_model_config: '等待配置模型',
+  model_unavailable: '模型不可访问',
+  paused: '已被全局暂停',
+  hard_disabled: '已被部署策略禁用',
+}
+
+const policyReasonText = (reason?: string) => AI_POLICY_REASON_LABELS[reason || ''] || reason || '未知'
 
 const FormGroupHeading: React.FC<{ children: React.ReactNode; first?: boolean }> = ({
   children,
@@ -87,6 +99,16 @@ const AIModelTab: React.FC = () => {
       <code className="text-[13px]">{base || '—'}</code>
     </SectionNote>
   )
+  const renderPolicyStatus = (label: string, state?: { enabled: boolean; effective: boolean; reason: string }) => {
+    const color = state?.effective ? 'success' : state?.reason === 'disabled' ? 'default' : 'warning'
+    const enabledText = state?.enabled ? '已启用' : '已关闭'
+    return (
+      <div className="flex items-center justify-between rounded-xl border border-[#e5eaf2] bg-[#fbfcff] px-3 py-2 text-[13px]">
+        <span className="font-medium text-[#2c3a50]">{label}</span>
+        <Tag color={color}>{enabledText} · {policyReasonText(state?.reason)}</Tag>
+      </div>
+    )
+  }
 
   React.useEffect(() => {
     if (!settings) return
@@ -110,6 +132,10 @@ const AIModelTab: React.FC = () => {
         settings.translation_fallback_enabled ?? settings.translation_cloud_fallback_enabled ?? false,
       summarization_fallback_enabled:
         settings.summarization_fallback_enabled ?? settings.summarization_cloud_fallback_enabled ?? false,
+      auto_summary_enabled: settings.auto_summary_enabled ?? true,
+      auto_listing_translation_enabled: settings.auto_listing_translation_enabled ?? true,
+      ai_subjective_scoring_enabled: settings.ai_subjective_scoring_enabled ?? false,
+      ai_processing_paused: settings.ai_processing_paused ?? false,
       trans_fallback_provider: settings.translation_fallback?.provider,
       trans_fallback_model: settings.translation_fallback?.model,
       sum_fallback_provider: settings.summarization_fallback?.provider,
@@ -231,6 +257,10 @@ const AIModelTab: React.FC = () => {
             }
           : {}),
       },
+      auto_summary_enabled: values.auto_summary_enabled === true,
+      auto_listing_translation_enabled: values.auto_listing_translation_enabled === true,
+      ai_subjective_scoring_enabled: values.ai_subjective_scoring_enabled === true,
+      ai_processing_paused: values.ai_processing_paused === true,
       translation_fallback_enabled: translationFallbackEnabled === true,
       translation_fallback: {
         provider: values.trans_fallback_provider,
@@ -508,6 +538,56 @@ const AIModelTab: React.FC = () => {
             </Form.Item>
           </>
         ) : null}
+
+        <FormGroupHeading>功能状态与开关</FormGroupHeading>
+
+        <SectionNote style={{ marginBottom: 16 }}>
+          模型配置只决定系统可调用什么模型；下面的开关决定哪些自动能力允许运行。用户主动点击阅读器翻译不受“自动翻译标题和摘要”开关影响。
+        </SectionNote>
+
+        <div className="mb-4 grid gap-2">
+          {renderPolicyStatus('写作模型通道', settings?.ai_policy?.writing)}
+          {renderPolicyStatus('自动生成 AI 摘要', settings?.ai_policy?.auto_summary)}
+          {renderPolicyStatus('自动翻译标题和摘要', settings?.ai_policy?.auto_listing_translation)}
+          {renderPolicyStatus('阅读器按需翻译', settings?.ai_policy?.reader_translation)}
+          {renderPolicyStatus('AI 主观评分', settings?.ai_policy?.subjective_scoring)}
+        </div>
+
+        <Form.Item
+          name="auto_summary_enabled"
+          label="自动生成 AI 摘要"
+          valuePropName="checked"
+          extra="默认开启。只处理新入库且通过验收的内容；模型不可用时保留抽取式摘要。"
+        >
+          <Switch checkedChildren="开启" unCheckedChildren="关闭" />
+        </Form.Item>
+
+        <Form.Item
+          name="auto_listing_translation_enabled"
+          label="自动翻译标题和摘要"
+          valuePropName="checked"
+          extra="默认开启。只控制后台列表翻译，不影响阅读器里用户主动点击翻译。"
+        >
+          <Switch checkedChildren="开启" unCheckedChildren="关闭" />
+        </Form.Item>
+
+        <Form.Item
+          name="ai_subjective_scoring_enabled"
+          label="启用 AI 主观评分"
+          valuePropName="checked"
+          extra="默认关闭。第一阶段只影子记录 subjective_meta，不改变最终分数和排序。"
+        >
+          <Switch checkedChildren="开启" unCheckedChildren="关闭" />
+        </Form.Item>
+
+        <Form.Item
+          name="ai_processing_paused"
+          label="暂停所有 AI 处理"
+          valuePropName="checked"
+          extra="高级开关：开启后阻止新的 AI 摘要、翻译、简报增强和主观评分调用；已落库内容不删除。"
+        >
+          <Switch checkedChildren="暂停" unCheckedChildren="运行" />
+        </Form.Item>
 
         <Form.Item>
           <Button type="primary" htmlType="submit" loading={updateMutation.isPending}>保存设置</Button>

@@ -24,7 +24,11 @@ async def test_apply_pipeline_summary_writes_llm_summary():
     content.full_content = "OpenAI is preparing for an IPO according to sources. " * 10
     content.metadata_ = {}
 
-    with patch("app.domains.enrich.content.summarize.pipeline_summary_enabled", return_value=True):
+    with patch("app.domains.enrich.content.summarize.pipeline_summary_enabled", return_value=True), patch(
+        "app.platform.llm.policy.resolve_auto_summary_state",
+        new_callable=AsyncMock,
+        return_value=MagicMock(effective=True),
+    ):
         with patch(
             "app.platform.llm.summarizer.Summarizer.summarize",
             new_callable=AsyncMock,

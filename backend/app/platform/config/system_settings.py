@@ -46,6 +46,39 @@ def _env_bool_default(name: str, default: bool = False) -> bool:
     return default
 
 
+def _apply_legacy_ai_product_defaults(
+    merged: Dict[str, Any],
+    payload: Dict[str, Any],
+    *,
+    existing_row: bool,
+) -> None:
+    """Initialize new product AI switches from legacy env on first upgrade.
+
+    New installs default low-risk automatic summary/listing translation to on.
+    Existing persisted settings that predate these keys should stay conservative
+    unless the old env flags explicitly enabled the corresponding path.
+    """
+
+    legacy_default = False if existing_row else True
+    ai_enabled = _env_bool_default("AI_PROCESSING_ENABLED", legacy_default)
+    if "auto_summary_enabled" not in payload:
+        merged["auto_summary_enabled"] = bool(
+            ai_enabled
+            and _env_bool_default("ENRICH_AUTO_ON_INGEST", legacy_default)
+            and _env_bool_default("ENRICH_SUMMARY_ENABLED", legacy_default)
+        )
+    if "auto_listing_translation_enabled" not in payload:
+        merged["auto_listing_translation_enabled"] = bool(
+            ai_enabled and _env_bool_default("ENRICH_TRANSLATE_ENABLED", legacy_default)
+        )
+    if "ai_subjective_scoring_enabled" not in payload:
+        merged["ai_subjective_scoring_enabled"] = bool(
+            ai_enabled and _env_bool_default("PIM_SCORE_LLM_SUBJECTIVE", False)
+        )
+    if "ai_processing_paused" not in payload:
+        merged["ai_processing_paused"] = False
+
+
 DEFAULT_SYSTEM_SETTINGS: Dict[str, Any] = {
     "ai_model": {
         "provider": "ollama",
@@ -85,6 +118,10 @@ DEFAULT_SYSTEM_SETTINGS: Dict[str, Any] = {
     "title_translation_enabled": True,
     "auto_translate_language": "zh-CN",
     "summarization_enabled": True,
+    "auto_summary_enabled": True,
+    "auto_listing_translation_enabled": True,
+    "ai_subjective_scoring_enabled": False,
+    "ai_processing_paused": False,
     "translation_fallback_enabled": False,
     "translation_fallback": {"provider": "openai", "model": "gpt-4o-mini"},
     "summarization_fallback_enabled": False,
@@ -109,6 +146,10 @@ _SETTINGS_BOOL_KEYS = (
     "translation_enabled",
     "title_translation_enabled",
     "summarization_enabled",
+    "auto_summary_enabled",
+    "auto_listing_translation_enabled",
+    "ai_subjective_scoring_enabled",
+    "ai_processing_paused",
     "translation_fallback_enabled",
     "summarization_fallback_enabled",
     "email_notifications_enabled",
@@ -473,8 +514,10 @@ def get_system_settings_sync(force_refresh: bool = False) -> Dict[str, Any]:
 
     payload: Dict[str, Any] = {}
     db = SessionLocal()
+    existing_row = False
     try:
         row = db.query(SystemSetting).filter(SystemSetting.key == SYSTEM_SETTINGS_KEY).first()
+        existing_row = row is not None
         payload = _coerce_persisted_settings(row.value if row else {})
     except Exception as e:
         logger.warning(f"Load system settings (sync) failed, using defaults: {e}")
@@ -482,6 +525,7 @@ def get_system_settings_sync(force_refresh: bool = False) -> Dict[str, Any]:
         db.close()
 
     merged = _merge_dict(DEFAULT_SYSTEM_SETTINGS, payload)
+    _apply_legacy_ai_product_defaults(merged, payload, existing_row=existing_row)
     _normalize_fallback_settings(merged)
     _normalize_model_blocks(merged)
     _cache_set(merged)
@@ -496,14 +540,17 @@ async def get_system_settings_async(db: AsyncSession, force_refresh: bool = Fals
             return cached
 
     payload: Dict[str, Any] = {}
+    existing_row = False
     try:
         result = await db.execute(select(SystemSetting).filter(SystemSetting.key == SYSTEM_SETTINGS_KEY))
         row = result.scalar_one_or_none()
+        existing_row = row is not None
         payload = _coerce_persisted_settings(row.value if row else {})
     except Exception as e:
         logger.warning(f"Load system settings (async) failed, using defaults: {e}")
 
     merged = _merge_dict(DEFAULT_SYSTEM_SETTINGS, payload)
+    _apply_legacy_ai_product_defaults(merged, payload, existing_row=existing_row)
     _normalize_fallback_settings(merged)
     _normalize_model_blocks(merged)
     _cache_set(merged)
@@ -519,6 +566,10 @@ async def update_system_settings_async(db: AsyncSession, patch: Dict[str, Any]) 
     # 避免新旧键并存时持久化层长期保留 legacy，导致前端 ?? 读到旧 false
     for legacy in _LEGACY_BOOL_KEYS:
         merged.pop(legacy, None)
+
+    from app.platform.llm.policy import invalidate_ai_policy_cache
+
+    invalidate_ai_policy_cache()
 
     result = await db.execute(select(SystemSetting).filter(SystemSetting.key == SYSTEM_SETTINGS_KEY))
     row = result.scalar_one_or_none()

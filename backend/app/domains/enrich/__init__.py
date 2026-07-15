@@ -78,16 +78,11 @@ Phase progress:
   ``tests/test_processors.py``, and ``translator_module`` references
   in ``tests/test_stage_{a,v3}_fixes.py`` were rebound to the
   canonical module.
-* Phase 4 step 8 introduced the ``ENRICH_*`` family of feature toggles
-  in :mod:`app.config` (``ENRICH_AUTO_ON_INGEST`` /
-  ``ENRICH_SUMMARY_ENABLED`` / ``ENRICH_TRANSLATE_ENABLED``).
-  ``Summarizer.summarize_text`` now AND-gates on
-  ``enrich_summary_enabled``; ``Translator._translate_with_openai`` and
-  ``Translator.translate_text`` AND-gate on
-  ``enrich_translate_enabled``; ``ai_processing_enabled`` is preserved
-  as a master kill switch (and emits a ``DeprecationWarning`` once per
-  process when set explicitly). The startup banner in :mod:`app.main`
-  prints the new flags; ``backend/.env.example`` documents them; the
+* Legacy ``AI_PROCESSING_ENABLED`` / ``ENRICH_*`` environment values are
+  consumed only when first migrating product defaults. Runtime gates now
+  resolve through :mod:`app.platform.llm.policy`; ``PIM_AI_HARD_DISABLE``
+  is the deployment-level emergency stop. The startup banner and
+  ``backend/.env.example`` document this split; the
   frontend's :mod:`HOURLY_DIGEST_DEFAULT_PROMPT` in
   ``frontend/src/config/taskPromptDefaults.ts`` was resynced to match
   the backend's "本次简报窗口内" wording in

@@ -289,6 +289,10 @@ class SystemSettings(BaseModel):
     translation_enabled: bool = True
     auto_translate_language: str = "zh-CN"
     summarization_enabled: bool = True
+    auto_summary_enabled: bool = True
+    auto_listing_translation_enabled: bool = True
+    ai_subjective_scoring_enabled: bool = False
+    ai_processing_paused: bool = False
     translation_fallback_enabled: bool = False
     translation_fallback: FallbackModelPick = Field(default_factory=FallbackModelPick)
     summarization_fallback_enabled: bool = False
@@ -309,6 +313,11 @@ class SystemSettingsResponse(BaseModel):
     translation_enabled: bool
     auto_translate_language: str
     summarization_enabled: bool
+    auto_summary_enabled: bool
+    auto_listing_translation_enabled: bool
+    ai_subjective_scoring_enabled: bool
+    ai_processing_paused: bool
+    ai_policy: Dict[str, Any] = Field(default_factory=dict)
     translation_fallback_enabled: bool
     translation_fallback: FallbackModelPick
     summarization_fallback_enabled: bool
