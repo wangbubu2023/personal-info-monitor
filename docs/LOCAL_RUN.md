@@ -81,7 +81,7 @@ uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
 > ```
 >
 > `requirements.txt` 由 `pyproject.toml` + `uv.lock` 自动导出，**请勿手改**。
-> 需要新增/升级依赖时：改 `pyproject.toml` → `uv lock` → `uv export --no-hashes --no-dev --no-emit-project --format requirements.txt -o requirements.txt`。
+> 需要新增/升级依赖时：改 `pyproject.toml` → `uv lock` → `uv export --no-hashes --no-dev --no-emit-project --format requirements.txt > requirements.txt`。
 
 ### 2. 前端
 

@@ -323,7 +323,7 @@ CI 会在每次构建时重新运行 `uv export` 并 `diff` 生成结果与提�
 
 1. 改 `pyproject.toml` 里的 `dependencies` 或 `[project.optional-dependencies].dev`。
 2. `cd backend && uv lock`。
-3. `uv export --no-hashes --no-dev --no-emit-project --format requirements.txt -o requirements.txt`。
+3. `uv export --no-hashes --no-dev --no-emit-project --format requirements.txt > requirements.txt`。
 4. 必要时同步生成 `requirements-dev.txt`（`--extra dev`）。
 5. 一起提交。
 
