@@ -2,9 +2,15 @@
 
 > 本地优先的个人资讯监控系统。PIM 把 RSS、网站、X、YouTube、Podcast 等来源统一抓取、去重、评分、摘要和归档，并提供 Web UI、桌面端、`pimctl` CLI 与远程部署运维能力。
 
-当前版本：**1.6.6**
+当前版本：**1.6.7**
 
 > 分支提示：`main` 暂时冻结原子库产品入口；原子库相关能力保留在 `dev` 分支继续探索，详见 [`docs/ATOM_FREEZE_MAIN.md`](docs/ATOM_FREEZE_MAIN.md)。
+
+## 1.6.7 重点
+
+- **依赖安全修复**：将 `httplib2` 升级到 0.32.0，消除 `PYSEC-2026-3444` 安全告警。
+- **恢复前端 E2E 门禁**：端到端测试跟进资讯列表迁移到 `/timeline` 后的路由与页面标题。
+- **校准死代码基线**：记录动态 Pydantic/配置字段产生的新增误报，保持质量门禁可重复。
 
 ## 1.6.6 重点
 
@@ -332,10 +338,10 @@ cd backend
 然后提交、打 tag，并创建 GitHub Release。Web 更新检查依赖 GitHub Releases 的 `latest` 端点，仅推 tag 不会触发“发现新版本”提示。
 
 ```bash
-git commit -m "release: 1.6.6"
-git tag -a v1.6.6 -m "Release 1.6.6"
-git push origin main v1.6.6
-gh release create v1.6.6 --title "v1.6.6" --notes-file /tmp/pim-release-notes.md
+git commit -m "release: 1.6.7"
+git tag -a v1.6.7 -m "Release 1.6.7"
+git push origin main v1.6.7
+gh release create v1.6.7 --title "v1.6.7" --notes-file /tmp/pim-release-notes.md
 ```
 
 发布 GitHub Release 后，`Release Auth Assistant for macOS` workflow 会构建 arm64 DMG、使用
