@@ -2,9 +2,15 @@
 
 > 本地优先的个人资讯监控系统。PIM 把 RSS、网站、X、YouTube、Podcast 等来源统一抓取、去重、评分、摘要和归档，并提供 Web UI、桌面端、`pimctl` CLI 与远程部署运维能力。
 
-当前版本：**1.6.5**
+当前版本：**1.6.6**
 
 > 分支提示：`main` 暂时冻结原子库产品入口；原子库相关能力保留在 `dev` 分支继续探索，详见 [`docs/ATOM_FREEZE_MAIN.md`](docs/ATOM_FREEZE_MAIN.md)。
+
+## 1.6.6 重点
+
+- **统一 AI 产品策略**：集中管理摘要、翻译和主观评分的启停与运行状态，并正确识别主模型和 fallback，支持部署级硬停以及评分 shadow 模式。
+- **新增今日重点**：提供独立的每日重点入口、阅读时长与高置信事件概览，同时在简报中保持一致的重点展示体验。
+- **付费来源健康矩阵**：新增站点级全文命中率、登录会话和抓取状态汇总，帮助快速定位订阅来源的认证或正文提取问题。
 
 ## 1.6.5 重点
 
@@ -326,10 +332,10 @@ cd backend
 然后提交、打 tag，并创建 GitHub Release。Web 更新检查依赖 GitHub Releases 的 `latest` 端点，仅推 tag 不会触发“发现新版本”提示。
 
 ```bash
-git commit -m "release: 1.6.5"
-git tag -a v1.6.5 -m "Release 1.6.5"
-git push origin main v1.6.5
-gh release create v1.6.5 --title "v1.6.5" --notes-file /tmp/pim-release-notes.md
+git commit -m "release: 1.6.6"
+git tag -a v1.6.6 -m "Release 1.6.6"
+git push origin main v1.6.6
+gh release create v1.6.6 --title "v1.6.6" --notes-file /tmp/pim-release-notes.md
 ```
 
 发布 GitHub Release 后，`Release Auth Assistant for macOS` workflow 会构建 arm64 DMG、使用

@@ -1608,7 +1608,7 @@ wheels = [
 
 [[package]]
 name = "personal-info-monitor-backend"
-version = "1.6.5"
+version = "1.6.6"
 source = { editable = "." }
 dependencies = [
     { name = "aiohttp" },
