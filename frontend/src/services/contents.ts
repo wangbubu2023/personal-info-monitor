@@ -199,11 +199,6 @@ export const contentsApi = {
     return response.data
   },
 
-  // Mark as read
-  markAsRead: async (id: string): Promise<void> => {
-    await api.post(`/contents/${id}/read`)
-  },
-
   /** Set favorite explicitly (idempotent). Pass desired state after reading current item. */
   setFavorite: async (id: string, favorited: boolean): Promise<{ favorited: boolean }> => {
     const response = await api.patch(`/contents/${id}/favorite`, { favorited })

@@ -51,23 +51,21 @@ describe('readerFlow', () => {
     saveReaderMetricsBaseline()
 
     recordReaderInteraction('keyboard', 'navigate')
-    recordReaderInteraction('keyboard', 'mark_read')
     recordReaderInteraction('click', 'read_later')
     recordReaderInteraction('keyboard', 'hide')
 
     const comparison = compareReaderMetrics()
-    expect(comparison.delta.keyboard).toBe(3)
+    expect(comparison.delta.keyboard).toBe(2)
     expect(comparison.delta.clicks).toBe(1)
-    expect(comparison.delta.markedRead).toBe(1)
     expect(comparison.delta.readLater).toBe(1)
     expect(comparison.delta.hidden).toBe(1)
-    expect(comparison.keyboardShare).toBeCloseTo(3 / 4)
+    expect(comparison.keyboardShare).toBeCloseTo(2 / 3)
   })
 
   it('tolerates metrics persisted before the hidden field existed', () => {
     window.localStorage.setItem(
       'pim.reader.interactionMetrics.v1',
-      JSON.stringify({ keyboard: 2, clicks: 1, opened: 1, markedRead: 1, readLater: 0 }),
+      JSON.stringify({ keyboard: 2, clicks: 1, opened: 1, readLater: 0 }),
     )
 
     const next = recordReaderInteraction('keyboard', 'hide')

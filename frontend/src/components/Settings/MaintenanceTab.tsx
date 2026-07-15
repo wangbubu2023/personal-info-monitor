@@ -32,7 +32,8 @@ const MaintenanceTab: React.FC = () => {
   })
 
   const startMutation = useMutation({
-    mutationFn: systemApi.startUpgrade,
+    mutationFn: () =>
+      systemApi.startUpgrade(updateCheck?.latest_version || updateCheck?.latest_tag || undefined),
     onSuccess: (next) => {
       queryClient.setQueryData(['system-upgrade-status'], next)
       message.success(next.status === 'running' ? '升级已开始' : '升级状态已刷新')

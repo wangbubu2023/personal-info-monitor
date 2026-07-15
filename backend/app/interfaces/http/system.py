@@ -131,11 +131,11 @@ def get_upgrade_status() -> Dict[str, Any]:
 
 
 @router.post("/upgrade")
-def start_upgrade() -> Dict[str, Any]:
-    """Start a detached ``./pim upgrade`` runner if one is not already active."""
+def start_upgrade(target_version: str | None = None) -> Dict[str, Any]:
+    """Start an upgrade runner and optionally verify its target version."""
     from app.platform.runtime.upgrade import start_upgrade as launch_upgrade
 
-    return launch_upgrade()
+    return launch_upgrade(expected_version=target_version)
 
 
 @router.get("/doctor")

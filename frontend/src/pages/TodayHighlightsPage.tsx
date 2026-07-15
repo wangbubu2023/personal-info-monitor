@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { DatePicker, Empty, Spin } from 'antd'
 import dayjs from 'dayjs'
-import { Calendar, Clock, Layers3, Newspaper, RefreshCw, Sparkles } from 'lucide-react'
+import { Calendar, Layers3, Newspaper, RefreshCw, Sparkles } from 'lucide-react'
 import PageHeroTitle from '../components/common/PageHeroTitle'
 import { digestApi } from '../services/digest'
 import { formatLocalDateTime } from '../utils/datetime'
@@ -21,7 +21,6 @@ const TodayHighlightsPage: React.FC = () => {
 
   const items = data?.items ?? []
   const eventCount = items.length
-  const estimatedReadingMinutes = Math.max(1, Math.ceil(eventCount * 1.5))
 
   return (
     <div className="min-h-screen bg-[#f5f9fc] pb-20" data-testid="today-highlights-page">
@@ -61,11 +60,6 @@ const TodayHighlightsPage: React.FC = () => {
               <span className="text-[12px] text-[#5f6f82]">重点事件</span>
               <span className="text-[14px] font-semibold tabular-nums text-[#2c3a50]">{eventCount}</span>
             </div>
-            <div className="flex items-center gap-2 rounded-lg border border-[rgba(88,100,118,0.08)] bg-white/90 px-2.5 py-1.5 shadow-sm">
-              <Clock className="h-3.5 w-3.5 shrink-0 text-[#3a9eb8]" strokeWidth={iconStroke} />
-              <span className="text-[12px] text-[#5f6f82]">预计阅读</span>
-              <span className="text-[14px] font-semibold tabular-nums text-[#2c3a50]">{eventCount ? `${estimatedReadingMinutes} 分钟` : '—'}</span>
-            </div>
             <Link
               to="/timeline"
               className="inline-flex items-center gap-1.5 rounded-lg border border-[rgba(88,100,118,0.08)] bg-white/90 px-2.5 py-1.5 text-[12px] font-medium text-[#5f6f82] shadow-sm transition-colors hover:text-[#49A8C9]"
@@ -96,9 +90,6 @@ const TodayHighlightsPage: React.FC = () => {
                     {eventItem.section === 'brewing' ? '酝酿中' : '必看'}
                   </span>
                   <span className="flex items-center gap-1.5">
-                    {eventItem.has_updates ? (
-                      <span className="rounded-full bg-[#fff7ed] px-1.5 py-0.5 text-[10px] text-[#b45309]">有更新</span>
-                    ) : null}
                     {typeof eventItem.importance_score === 'number' ? <span>{Math.round(eventItem.importance_score)}分</span> : null}
                   </span>
                 </div>

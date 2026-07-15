@@ -153,6 +153,7 @@ def start_upgrade(
     python_executable: str | None = None,
     runner_path: Path | None = None,
     upgrade_args: list[str] | None = None,
+    expected_version: str | None = None,
 ) -> dict[str, Any]:
     data_root = data_dir or _data_dir()
     project_root = root or _ROOT
@@ -171,9 +172,10 @@ def start_upgrade(
             str(project_root),
             "--data-dir",
             str(data_root),
-            "--",
-            *args,
         ]
+        if expected_version:
+            command.extend(["--expected-version", expected_version])
+        command.extend(["--", *args])
         proc = subprocess.Popen(
             command,
             cwd=str(project_root),
@@ -193,6 +195,7 @@ def start_upgrade(
             "log_path": str(_log_path(data_root)),
             "message": "Upgrade started",
             "configured_args": args,
+            "expected_version": expected_version,
             "log_tail": "",
         }
         _atomic_write_json(_status_path(data_root), status)

@@ -808,7 +808,7 @@ def cmd_upgrade():
     else:
         print("Service was not running before upgrade; leaving it stopped.")
 
-    print("\nUpgrade complete.")
+    print("\nRefresh complete. Code was not updated (--no-pull)." if no_pull else "\nUpgrade complete.")
 
 
 def _read_api_key():

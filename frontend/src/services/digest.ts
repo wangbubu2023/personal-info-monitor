@@ -7,7 +7,6 @@ export interface DigestParams {
   date_to?: string
   sort?: 'time_desc' | 'score_desc'
   keyword_ids?: string[]
-  unread_only?: boolean
   source_types?: string[]
 }
 

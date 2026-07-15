@@ -43,6 +43,9 @@ export interface UpgradeStatus {
   log_tail: string
   message: string
   configured_args?: string[]
+  expected_version?: string | null
+  initial_version?: string | null
+  result_version?: string | null
 }
 
 export interface UpdateCheckStatus {
@@ -80,8 +83,10 @@ export const systemApi = {
     return response.data
   },
 
-  startUpgrade: async (): Promise<UpgradeStatus> => {
-    const response = await api.post<UpgradeStatus>('/system/upgrade')
+  startUpgrade: async (targetVersion?: string): Promise<UpgradeStatus> => {
+    const response = await api.post<UpgradeStatus>('/system/upgrade', null, {
+      params: targetVersion ? { target_version: targetVersion } : undefined,
+    })
     return response.data
   },
 

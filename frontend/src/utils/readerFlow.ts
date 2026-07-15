@@ -17,7 +17,6 @@ export interface ReaderInteractionMetrics {
   keyboard: number
   clicks: number
   opened: number
-  markedRead: number
   readLater: number
   hidden: number
   lastEventAt?: string
@@ -34,7 +33,6 @@ const EMPTY_METRICS: ReaderInteractionMetrics = {
   keyboard: 0,
   clicks: 0,
   opened: 0,
-  markedRead: 0,
   readLater: 0,
   hidden: 0,
 }
@@ -97,7 +95,6 @@ export function compareReaderMetrics(): ReaderInteractionComparison {
     keyboard: current.keyboard - baseline.keyboard,
     clicks: current.clicks - baseline.clicks,
     opened: current.opened - baseline.opened,
-    markedRead: current.markedRead - baseline.markedRead,
     readLater: current.readLater - baseline.readLater,
     hidden: current.hidden - baseline.hidden,
     lastEventAt: current.lastEventAt,
@@ -113,13 +110,12 @@ export function compareReaderMetrics(): ReaderInteractionComparison {
 
 export function recordReaderInteraction(
   channel: 'keyboard' | 'click',
-  action: 'open' | 'mark_read' | 'read_later' | 'like' | 'hide' | 'navigate' | 'export',
+  action: 'open' | 'read_later' | 'like' | 'hide' | 'navigate' | 'export',
 ): ReaderInteractionMetrics {
   const next = { ...readReaderMetrics(), lastEventAt: new Date().toISOString() }
   if (channel === 'keyboard') next.keyboard += 1
   else next.clicks += 1
   if (action === 'open') next.opened += 1
-  if (action === 'mark_read') next.markedRead += 1
   if (action === 'read_later' || action === 'like') next.readLater += 1
   if (action === 'hide') next.hidden += 1
   writeJson(METRICS_KEY, next)

@@ -10,12 +10,13 @@ import {
   Bookmark,
   ShieldCheck,
   Languages,
-  CheckCircle2,
   ChevronLeft,
   ChevronRight,
   EyeOff,
   Download,
+  MoreHorizontal,
 } from 'lucide-react';
+import { Dropdown } from 'antd';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useReader } from '../hooks/useReader';
 import SectionNote from '../components/ui/SectionNote';
@@ -157,7 +158,7 @@ const ReaderPage: React.FC = () => {
       })
     : '/';
 
-  const { data, loading, error, displayTitle, displayBlocks, markAsRead, setLiked, hide, stream } = useReader(id, translateRequested);
+  const { data, loading, error, displayTitle, displayBlocks, setLiked, hide, stream } = useReader(id, translateRequested);
   const layout = useMemo(
     () => getReaderLayoutProfile(data?.original_url, data?.source_name),
     [data?.original_url, data?.source_name],
@@ -188,12 +189,6 @@ const ReaderPage: React.FC = () => {
     previousItem,
     translateRequested,
   ]);
-
-  const markCurrentAsRead = useCallback(async (channel: 'keyboard' | 'click') => {
-    if (!id || data?.read_status) return;
-    recordReaderInteraction(channel, 'mark_read');
-    await markAsRead();
-  }, [data?.read_status, id, markAsRead]);
 
   const toggleLiked = useCallback(async (channel: 'keyboard' | 'click') => {
     if (!id || !data) return;
@@ -233,9 +228,6 @@ const ReaderPage: React.FC = () => {
       } else if (key === 'k') {
         event.preventDefault();
         navigateToNeighbor(-1, 'keyboard');
-      } else if (key === 'r') {
-        event.preventDefault();
-        void markCurrentAsRead('keyboard');
       } else if (key === 'l') {
         event.preventDefault();
         void toggleLiked('keyboard');
@@ -247,7 +239,7 @@ const ReaderPage: React.FC = () => {
 
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [data, hideCurrent, markCurrentAsRead, navigateToNeighbor, toggleLiked]);
+  }, [data, hideCurrent, navigateToNeighbor, toggleLiked]);
 
   if (loading) return <PageLoading />;
 
@@ -275,7 +267,7 @@ const ReaderPage: React.FC = () => {
     <div className="min-h-screen bg-[#f5f9fc] pb-36" data-testid="reader-page">
       <div className="sticky top-0 z-40 border-b border-[rgba(88,100,118,0.1)] bg-[#f5f9fc]/92 backdrop-blur-xl">
         <div className="mx-auto max-w-3xl px-5 py-5 sm:px-10">
-          <div className="flex flex-wrap items-center justify-between gap-4">
+          <div className="flex items-center justify-between gap-4">
             <Link
               to={backHref}
               className="flex items-center gap-2 text-[12px] font-semibold uppercase tracking-[0.16em] text-[#586476] hover:text-[#293859] transition-colors"
@@ -283,12 +275,12 @@ const ReaderPage: React.FC = () => {
               <ArrowLeft size={14} /> 返回
             </Link>
 
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex shrink-0 items-center rounded-xl border border-[rgba(88,100,118,0.16)] bg-white/65 p-1 shadow-sm">
               <button
                 type="button"
                 disabled={!previousItem}
                 onClick={() => navigateToNeighbor(-1, 'click')}
-                className="flex h-9 items-center justify-center gap-1.5 rounded-xl border border-[rgba(88,100,118,0.18)] bg-white/60 px-2 text-[#586476] transition-all hover:bg-white hover:text-[#293859] disabled:cursor-not-allowed disabled:opacity-35"
+                className="flex h-8 items-center justify-center gap-1.5 rounded-lg px-2 text-[#586476] transition-all hover:bg-white hover:text-[#293859] disabled:cursor-not-allowed disabled:opacity-35"
                 aria-label="上一篇（K）"
               >
                 <ChevronLeft size={16} />
@@ -298,74 +290,12 @@ const ReaderPage: React.FC = () => {
                 type="button"
                 disabled={!nextItem}
                 onClick={() => navigateToNeighbor(1, 'click')}
-                className="flex h-9 items-center justify-center gap-1.5 rounded-xl border border-[rgba(88,100,118,0.18)] bg-white/60 px-2 text-[#586476] transition-all hover:bg-white hover:text-[#293859] disabled:cursor-not-allowed disabled:opacity-35"
+                className="flex h-8 items-center justify-center gap-1.5 rounded-lg px-2 text-[#586476] transition-all hover:bg-white hover:text-[#293859] disabled:cursor-not-allowed disabled:opacity-35"
                 aria-label="下一篇（J）"
               >
                 <ChevronRight size={16} />
                 <ShortcutHint>J</ShortcutHint>
               </button>
-              <button
-                type="button"
-                onClick={() => void markCurrentAsRead('click')}
-                disabled={!!data.read_status}
-                className={`flex items-center gap-2 rounded-xl border px-3.5 py-2 text-[12px] font-semibold transition-all ${
-                  data.read_status
-                    ? 'border-[#7a7358]/20 bg-[#f4f0e6] text-[#7a7358]'
-                    : 'border-[rgba(88,100,118,0.18)] bg-white/60 text-[#586476] hover:bg-white hover:text-[#293859]'
-                }`}
-              >
-                <CheckCircle2 size={14} /> {data.read_status ? '已读' : '标为已读'} <ShortcutHint>R</ShortcutHint>
-              </button>
-              <button
-                type="button"
-                onClick={() => void toggleLiked('click')}
-                className={`flex items-center gap-2 rounded-xl border px-3.5 py-2 text-[12px] font-semibold transition-all ${
-                  data.favorited
-                    ? 'border-[#49A8C9]/35 bg-[#49A8C9] text-white shadow-md shadow-[#49A8C9]/20'
-                    : 'border-[rgba(88,100,118,0.18)] bg-white/60 text-[#586476] hover:bg-white hover:text-[#293859]'
-                }`}
-              >
-                <Bookmark size={14} /> {data.favorited ? '已喜欢' : '喜欢'} <ShortcutHint>L</ShortcutHint>
-              </button>
-              <button
-                type="button"
-                onClick={() => void hideCurrent('click')}
-                className="flex items-center gap-2 rounded-xl border border-[rgba(88,100,118,0.18)] bg-white/60 px-3.5 py-2 text-[12px] font-semibold text-[#586476] transition-all hover:border-rose-300/60 hover:bg-white hover:text-rose-500"
-                aria-label="不感兴趣"
-                title="隐藏并记为负反馈（H）"
-              >
-                <EyeOff size={14} /> 不感兴趣 <ShortcutHint>H</ShortcutHint>
-              </button>
-              <button
-                type="button"
-                onClick={() => void exportMarkdown()}
-                className="flex items-center gap-2 rounded-xl border border-[rgba(88,100,118,0.18)] bg-white/60 px-3.5 py-2 text-[12px] font-semibold text-[#586476] transition-all hover:bg-white hover:text-[#293859]"
-                title="导出标题、摘要、来源、PIM 链接、原文链接和归因；默认不包含完整正文"
-              >
-                <Download size={14} /> 导出 Markdown
-              </button>
-              {safeHttpUrl(data.original_url) ? (
-                <a
-                  href={safeHttpUrl(data.original_url)}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center gap-2 rounded-xl border border-[rgba(88,100,118,0.18)] bg-white/70 px-3.5 py-2 text-[12px] font-semibold text-[#586476] shadow-sm transition-all hover:border-[#49A8C9]/40 hover:bg-white hover:text-[#293859]"
-                >
-                  <ExternalLink size={14} /> 原文链接
-                </a>
-              ) : null}
-
-              <Link
-                to={readerTogglePath}
-                className={`flex items-center gap-2 rounded-xl border px-4 py-2 text-[12px] font-semibold transition-all ${
-                  translateRequested
-                    ? 'border-[#49A8C9]/35 bg-[#49A8C9] text-white shadow-md shadow-[#49A8C9]/25'
-                    : 'border-[rgba(88,100,118,0.18)] bg-white/60 text-[#586476] hover:bg-white hover:text-[#293859]'
-                }`}
-              >
-                {translateRequested ? <Globe size={14} /> : <Languages size={14} />}
-                {translateRequested ? '查看原文' : '翻译阅读'}
-              </Link>
             </div>
           </div>
         </div>
@@ -409,7 +339,7 @@ const ReaderPage: React.FC = () => {
               {displayTitle || '无标题'}
             </h1>
 
-            <div className="flex flex-wrap items-center gap-x-8 gap-y-3 border-b border-[rgba(88,100,118,0.14)] pb-9 text-[13px] font-medium text-[#586476]">
+            <div className="flex flex-wrap items-center gap-x-8 gap-y-3 text-[13px] font-medium text-[#586476]">
               {data.source_id ? (
                 <Link
                   to={buildDashboardSourcePath(data.source_id, data.source_name)}
@@ -427,6 +357,69 @@ const ReaderPage: React.FC = () => {
                 <FileText size={14} /> 编号 #{id?.slice(0, 8)}
               </div>
               <div className="flex items-center gap-1.5">发布 {data.publish_time || '—'}</div>
+            </div>
+
+            <div className="flex flex-wrap items-center justify-between gap-3 border-y border-[rgba(88,100,118,0.12)] py-4">
+              <div className="flex flex-wrap items-center gap-2">
+                <Link
+                  to={readerTogglePath}
+                  className={`flex items-center gap-2 rounded-xl border px-3.5 py-2 text-[12px] font-semibold transition-all ${
+                    translateRequested
+                      ? 'border-[#49A8C9]/35 bg-[#49A8C9] text-white shadow-sm shadow-[#49A8C9]/20'
+                      : 'border-[#49A8C9]/25 bg-[#49A8C9]/8 text-[#3a8da9] hover:bg-[#49A8C9]/12'
+                  }`}
+                >
+                  {translateRequested ? <Globe size={14} /> : <Languages size={14} />}
+                  {translateRequested ? '查看原文' : '翻译阅读'}
+                </Link>
+                {safeHttpUrl(data.original_url) ? (
+                  <a
+                    href={safeHttpUrl(data.original_url)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-2 rounded-xl border border-[rgba(88,100,118,0.16)] bg-white/70 px-3.5 py-2 text-[12px] font-semibold text-[#586476] transition-all hover:border-[#49A8C9]/35 hover:bg-white hover:text-[#293859]"
+                  >
+                    <ExternalLink size={14} /> 原文链接
+                  </a>
+                ) : null}
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => void toggleLiked('click')}
+                  className={`flex items-center gap-2 rounded-xl border px-3.5 py-2 text-[12px] font-semibold transition-all ${
+                    data.favorited
+                      ? 'border-[#49A8C9]/35 bg-[#49A8C9] text-white shadow-sm shadow-[#49A8C9]/20'
+                      : 'border-[rgba(88,100,118,0.16)] bg-white/70 text-[#586476] hover:bg-white hover:text-[#293859]'
+                  }`}
+                >
+                  <Bookmark size={14} /> {data.favorited ? '已喜欢' : '喜欢'} <ShortcutHint>L</ShortcutHint>
+                </button>
+                <Dropdown
+                  trigger={['click']}
+                  placement="bottomRight"
+                  menu={{
+                    items: [
+                      { key: 'export', icon: <Download size={14} />, label: '导出 Markdown' },
+                      { type: 'divider' },
+                      { key: 'hide', danger: true, icon: <EyeOff size={14} />, label: '不感兴趣' },
+                    ],
+                    onClick: ({ key }) => {
+                      if (key === 'export') void exportMarkdown();
+                      if (key === 'hide') void hideCurrent('click');
+                    },
+                  }}
+                >
+                  <button
+                    type="button"
+                    className="flex items-center gap-2 rounded-xl border border-[rgba(88,100,118,0.16)] bg-white/70 px-3.5 py-2 text-[12px] font-semibold text-[#586476] transition-all hover:bg-white hover:text-[#293859]"
+                    aria-label="更多操作"
+                  >
+                    <MoreHorizontal size={15} /> 更多
+                  </button>
+                </Dropdown>
+              </div>
             </div>
           </header>
 

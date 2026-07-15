@@ -47,12 +47,6 @@ export const useReader = (id: string | undefined, translateRequested: boolean) =
     }
   }, [id]);
 
-  const markAsRead = useCallback(async () => {
-    if (!id) return;
-    await contentsApi.markAsRead(id);
-    setData((prev) => prev ? { ...prev, read_status: true } : prev);
-  }, [id]);
-
   const setLiked = useCallback(async (favorited: boolean) => {
     if (!id) return;
     const result = await contentsApi.setFavorite(id, favorited);
@@ -143,7 +137,6 @@ export const useReader = (id: string | undefined, translateRequested: boolean) =
     displayTitle,
     displayParagraphs,
     displayBlocks,
-    markAsRead,
     setLiked,
     hide,
     stream: {

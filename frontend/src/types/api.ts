@@ -1517,7 +1517,7 @@ export interface paths {
         put?: never;
         /**
          * Start Upgrade
-         * @description Start a detached ``./pim upgrade`` runner if one is not already active.
+         * @description Start an upgrade runner and optionally verify its target version.
          */
         post: operations["start_upgrade_api_system_upgrade_post"];
         delete?: never;
@@ -5981,7 +5981,9 @@ export interface operations {
     };
     start_upgrade_api_system_upgrade_post: {
         parameters: {
-            query?: never;
+            query?: {
+                target_version?: string | null;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -5997,6 +5999,15 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

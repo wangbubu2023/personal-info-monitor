@@ -103,8 +103,6 @@ const renderQualityBadges = (item: DigestItem) => {
   );
 };
 
-const estimateReadingMinutes = (count: number, minutesPerItem = 1.5) => Math.max(1, Math.ceil(Math.max(1, count) * minutesPerItem));
-
 const DigestView: React.FC = () => {
   const [selectedDate, setSelectedDate] = useState(dayjs());
   const [selectedHour, setSelectedHour] = useState<number | null>(null);
@@ -116,11 +114,6 @@ const DigestView: React.FC = () => {
     queryFn: () => digestApi.getHourlyDigests(selectedDateString),
   });
 
-  const { data: todayHighlights, isLoading: highlightsLoading } = useQuery({
-    queryKey: ['today-highlights', selectedDateString],
-    queryFn: () => digestApi.getTodayHighlights(selectedDateString),
-  });
-
   const { data: digestDetail, isLoading: detailLoading } = useQuery<HourlyDigestDetail | null>({
     queryKey: ['hourly-digest-detail', selectedDateString, selectedHour],
     queryFn: () => {
@@ -130,7 +123,7 @@ const DigestView: React.FC = () => {
     enabled: selectedHour !== null,
   });
 
-  const topEventTitles = todayHighlights?.items?.slice(0, 3).map((item) => item.title) ?? [];
+  const materialCount = hourlyDigests?.reduce((total, digest) => total + digest.content_count, 0) ?? 0;
   const selectedEventCount = digestDetail?.event_items?.length ?? 0;
   const selectedMaterialCount = digestDetail?.items?.length ?? digestDetail?.content_count ?? 0;
 
@@ -165,20 +158,13 @@ const DigestView: React.FC = () => {
           <div className="flex flex-wrap items-center gap-2 sm:gap-3">
             <div className="flex items-center gap-2 rounded-lg border border-[rgba(88,100,118,0.08)] bg-white/90 px-2.5 py-1.5 shadow-sm">
               <BarChart3 className="h-3.5 w-3.5 shrink-0 text-[#3a9eb8]" strokeWidth={1.5} />
-              <span className="text-[12px] text-[#5f6f82]">可选简报</span>
+              <span className="text-[12px] text-[#5f6f82]">时段简报</span>
               <span className="text-[14px] font-semibold tabular-nums text-[#2c3a50]">{hourlyDigests?.length || 0}</span>
             </div>
             <div className="flex items-center gap-2 rounded-lg border border-[rgba(88,100,118,0.08)] bg-white/90 px-2.5 py-1.5 shadow-sm">
-              <Layers3 className="h-3.5 w-3.5 shrink-0 text-[#8C866A]" strokeWidth={1.5} />
-              <span className="text-[12px] text-[#5f6f82]">今日看点</span>
-              <span className="text-[14px] font-semibold tabular-nums text-[#2c3a50]">{todayHighlights?.items?.length || 0}</span>
-            </div>
-            <div className="flex items-center gap-2 rounded-lg border border-[rgba(88,100,118,0.08)] bg-white/90 px-2.5 py-1.5 shadow-sm">
-              <Clock className="h-3.5 w-3.5 shrink-0 text-[#6d684f]" strokeWidth={1.5} />
-              <span className="text-[12px] text-[#5f6f82]">预计阅读</span>
-              <span className="text-[14px] font-semibold tabular-nums text-[#2c3a50]">
-                {todayHighlights?.items?.length ? `${estimateReadingMinutes(todayHighlights.items.length)} 分钟` : '—'}
-              </span>
+              <FileText className="h-3.5 w-3.5 shrink-0 text-[#8C866A]" strokeWidth={1.5} />
+              <span className="text-[12px] text-[#5f6f82]">收录素材</span>
+              <span className="text-[14px] font-semibold tabular-nums text-[#2c3a50]">{materialCount}</span>
             </div>
           </div>
         </div>
@@ -201,81 +187,13 @@ const DigestView: React.FC = () => {
                 </div>
               ) : hourlyDigests && hourlyDigests.length > 0 ? (
                 <>
-                  {highlightsLoading ? null : topEventTitles.length ? (
-                    <section
-                      className="mb-5 rounded-3xl border border-[#8C866A]/18 bg-white/90 p-5 shadow-[0_18px_50px_-22px_rgba(41,56,89,0.22)] sm:p-6"
-                      data-testid="digest-today-brief-overview"
-                    >
-                      <div className="mb-5 rounded-2xl border border-[#49A8C9]/12 bg-[#eef4f8]/75 p-4">
-                        <div className="mb-2 flex items-center justify-between gap-3">
-                          <h2 className="flex items-center gap-2 text-[16px] font-semibold tracking-tight text-[#293859]">
-                            <Zap size={16} className="text-[#49A8C9]" strokeWidth={1.75} />
-                            今日看点
-                          </h2>
-                          <span className="rounded-full border border-[#49A8C9]/18 bg-white/80 px-2.5 py-1 text-[12px] font-semibold text-[#3a8da9]">
-                            {todayHighlights?.items?.length || 0} 个事件 · 约 {estimateReadingMinutes(todayHighlights?.items?.length || 0)} 分钟
-                          </span>
-                        </div>
-                        <div className="grid gap-2 md:grid-cols-3">
-                          {topEventTitles.map((title, idx) => (
-                            <div key={`${idx}-${title}`} className="rounded-xl bg-white/80 px-3 py-2 text-[13px] font-medium leading-snug text-[#293859]">
-                              {idx + 1}. {title}
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                      <div className="mb-4 flex items-center justify-between gap-3">
-                        <div>
-                          <h2 className="flex items-center gap-2 text-[18px] font-semibold tracking-tight text-[#293859]">
-                            <Layers3 size={18} className="text-[#8C866A]" strokeWidth={1.75} />
-                            今日重点
-                          </h2>
-                          <p className="mt-1 text-[12px] text-[#5f6f82]">
-                            事件级卡片只在简报页展示；资讯页卡继续保留完整 timeline。
-                          </p>
-                        </div>
-                        <span className="rounded-full border border-[#49A8C9]/18 bg-[#49A8C9]/8 px-2.5 py-1 text-[12px] font-semibold text-[#3a8da9]">
-                          {todayHighlights?.items?.length || 0} 个事件
-                        </span>
-                      </div>
-                      <div className="grid gap-3 lg:grid-cols-3">
-                        {(todayHighlights?.items ?? []).map((eventItem) => (
-                          <Link
-                            key={eventItem.event_id}
-                            to={`/events/${eventItem.event_id}`}
-                            className="group rounded-2xl border border-[rgba(88,100,118,0.12)] bg-[#fbfdff] p-4 transition-all hover:border-[#49A8C9]/28 hover:bg-white hover:shadow-[0_12px_32px_-22px_rgba(41,56,89,0.25)]"
-                          >
-                            <div className="mb-2 flex items-center justify-between gap-2 text-[11px] font-semibold uppercase tracking-wide text-[#8C866A]">
-                              <span>{eventItem.section === 'brewing' ? '酝酿中' : '必看'}</span>
-                              <span className="flex items-center gap-1.5">
-                                {eventItem.has_updates ? (
-                                  <span className="rounded-full bg-[#fff7ed] px-1.5 py-0.5 text-[10px] text-[#b45309]" data-testid="today-highlight-update-badge">有更新</span>
-                                ) : null}
-                                {typeof eventItem.importance_score === 'number' ? <span>{Math.round(eventItem.importance_score)}分</span> : null}
-                              </span>
-                            </div>
-                            <h3 className="line-clamp-2 text-[15px] font-semibold leading-snug text-[#293859] group-hover:text-[#49A8C9]">
-                              {eventItem.title}
-                            </h3>
-                            {eventItem.why_matters ? (
-                              <p className="mt-2 line-clamp-2 text-[12px] leading-relaxed text-[#5f6f82]">
-                                {eventItem.why_matters}
-                              </p>
-                            ) : null}
-                            {eventItem.what_changed ? (
-                              <p className="mt-2 line-clamp-2 text-[12px] leading-relaxed text-[#7a7358]">
-                                <span className="font-semibold">变化</span> {eventItem.what_changed}
-                              </p>
-                            ) : null}
-                            <div className="mt-3 flex flex-wrap items-center gap-2 text-[11px] text-[#5f6f82]">
-                              <span>{eventItem.independent_source_count || eventItem.source_names.length} 个独立来源</span>
-                              {eventItem.updated_at ? <span>{formatLocalDateTime(eventItem.updated_at)}</span> : null}
-                            </div>
-                          </Link>
-                        ))}
-                      </div>
-                    </section>
-                  ) : null}
+                  <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+                    <div>
+                      <h2 className="text-[18px] font-semibold tracking-tight text-[#293859]">时段简报</h2>
+                      <p className="mt-1 text-[12px] text-[#5f6f82]">按小时回看 AI 整理的阶段摘要与入选素材。</p>
+                    </div>
+                    <span className="text-[12px] font-medium text-[#5f6f82]">共 {hourlyDigests.length} 期</span>
+                  </div>
                   {hourlyDigests.map((digest) => (
                   <button
                     key={digest.hour}
@@ -353,7 +271,7 @@ const DigestView: React.FC = () => {
                       {digestDetail.title || `${selectedHour}:00 简报`}
                     </h2>
 
-                    <div className="grid grid-cols-2 gap-5 rounded-2xl border border-[rgba(88,100,118,0.08)] border-l-[3px] border-l-[#8C866A]/40 bg-[#eef4f8]/80 p-5 sm:gap-6 md:grid-cols-5">
+                    <div className="grid grid-cols-2 gap-5 rounded-2xl border border-[rgba(88,100,118,0.08)] border-l-[3px] border-l-[#8C866A]/40 bg-[#eef4f8]/80 p-5 sm:gap-6 md:grid-cols-4">
                       <div className="space-y-1.5">
                         <div className="text-[12px] font-semibold text-[#5f6f82] sm:text-[13px]">生成时间</div>
                         <div className="text-[15px] font-semibold tabular-nums text-[#293859] sm:text-base">
@@ -368,10 +286,6 @@ const DigestView: React.FC = () => {
                       <div className="space-y-1.5">
                         <div className="text-[12px] font-semibold text-[#5f6f82] sm:text-[13px]">事件数</div>
                         <div className="text-[15px] font-semibold text-[#293859] sm:text-base">{selectedEventCount || selectedMaterialCount} 个</div>
-                      </div>
-                      <div className="space-y-1.5">
-                        <div className="text-[12px] font-semibold text-[#5f6f82] sm:text-[13px]">预计阅读</div>
-                        <div className="text-[15px] font-semibold text-[#293859] sm:text-base">约 {estimateReadingMinutes(selectedEventCount || selectedMaterialCount)} 分钟</div>
                       </div>
                       <div className="space-y-1.5">
                         <div className="text-[12px] font-semibold text-[#5f6f82] sm:text-[13px]">输入素材</div>

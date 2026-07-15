@@ -24,7 +24,6 @@ function renderReaderPage() {
 }
 
 describe('ReaderPage', () => {
-  const markAsRead = vi.fn()
   const setLiked = vi.fn()
   const hide = vi.fn()
 
@@ -71,7 +70,6 @@ describe('ReaderPage', () => {
         succeeded: false,
         hint: null,
       },
-      markAsRead,
       setLiked,
       hide,
     })
@@ -109,9 +107,6 @@ describe('ReaderPage', () => {
     const user = userEvent.setup()
     renderReaderPage()
 
-    await user.keyboard('r')
-    expect(markAsRead).toHaveBeenCalledTimes(1)
-
     await user.keyboard('l')
     expect(setLiked).toHaveBeenCalledWith(true)
 
@@ -128,7 +123,7 @@ describe('ReaderPage', () => {
   it('shows toolbar shortcut hints', () => {
     renderReaderPage()
 
-    for (const key of ['K', 'J', 'R', 'L', 'H']) {
+    for (const key of ['K', 'J', 'L']) {
       expect(screen.getByText(key)).toBeTruthy()
     }
   })
@@ -137,7 +132,8 @@ describe('ReaderPage', () => {
     const user = userEvent.setup()
     renderReaderPage()
 
-    await user.click(screen.getByRole('button', { name: '不感兴趣' }))
+    await user.click(screen.getByRole('button', { name: '更多操作' }))
+    await user.click(await screen.findByText('不感兴趣'))
     expect(hide).toHaveBeenCalledTimes(1)
   })
 })

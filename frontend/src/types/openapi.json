@@ -8551,8 +8551,26 @@
         ]
       },
       "post": {
-        "description": "Start a detached ``./pim upgrade`` runner if one is not already active.",
+        "description": "Start an upgrade runner and optionally verify its target version.",
         "operationId": "start_upgrade_api_system_upgrade_post",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "target_version",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Target Version"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -8565,6 +8583,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
         "security": [

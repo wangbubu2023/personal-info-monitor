@@ -5,7 +5,6 @@ import {
   ExternalLink,
   Clock,
   Tag,
-  CheckCircle2,
   FileText,
   Gauge,
   Star,
@@ -76,19 +75,17 @@ const DashboardItemCard: React.FC<DashboardItemCardProps> = ({
   const fulltextLabel = getDigestItemFulltextStatusLabel(item);
   const recommendationReason = getDigestItemRecommendationReason(item);
   const queryClient = useQueryClient();
-  const [readStatus, setReadStatus] = useState(Boolean(item.read_status));
   const [favorited, setFavorited] = useState(Boolean(item.favorited));
   const [hidden, setHidden] = useState(false);
-  const [pendingAction, setPendingAction] = useState<'read' | 'like' | 'hide' | null>(null);
+  const [pendingAction, setPendingAction] = useState<'like' | 'hide' | null>(null);
 
   const hasKeywords =
     KEYWORD_MONITORING_ENABLED && item.keyword_matches && item.keyword_matches.length > 0;
 
   useEffect(() => {
-    setReadStatus(Boolean(item.read_status));
     setFavorited(Boolean(item.favorited));
     setHidden(false);
-  }, [item.favorited, item.id, item.read_status]);
+  }, [item.favorited, item.id]);
 
   const refreshDashboardData = async () => {
     await Promise.all([
@@ -96,22 +93,6 @@ const DashboardItemCard: React.FC<DashboardItemCardProps> = ({
       queryClient.invalidateQueries({ queryKey: ['dashboard-contents'] }),
       queryClient.invalidateQueries({ queryKey: ['digest'] }),
     ]);
-  };
-
-  const markReadFromList = async () => {
-    if (readStatus || pendingAction) return;
-    setPendingAction('read');
-    setReadStatus(true);
-    try {
-      await contentsApi.markAsRead(item.id);
-      await refreshDashboardData();
-    } catch (error) {
-      setReadStatus(false);
-      // Keep the card usable if the backend rejects the update.
-      console.error('Failed to mark content as read', error);
-    } finally {
-      setPendingAction(null);
-    }
   };
 
   const toggleLikeFromList = async () => {
@@ -158,10 +139,6 @@ const DashboardItemCard: React.FC<DashboardItemCardProps> = ({
           : 'border-[rgba(88,100,118,0.1)]'
       }`}
     >
-      {!readStatus && (
-        <div className="absolute left-0 top-0 h-full w-1 bg-[#49A8C9]" />
-      )}
-
       <div className="flex flex-col gap-3">
         <div className="flex flex-wrap items-center justify-between gap-2 text-[12px]">
           <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
@@ -218,21 +195,13 @@ const DashboardItemCard: React.FC<DashboardItemCardProps> = ({
               <ExternalLink size={10} className="shrink-0 opacity-70" aria-hidden />
             </a>
           </div>
-          {readStatus && (
-            <span className="flex items-center gap-1 text-[#8a96a5]">
-              <CheckCircle2 size={12} />
-              已读
-            </span>
-          )}
         </div>
 
         <h2 className="text-[17px] font-semibold leading-snug tracking-tight sm:text-[18px]">
           <Link
             to={buildReaderPath(item.id, readerOpts)}
             data-testid={`dashboard-title-link-${item.id}`}
-            className={`transition-colors hover:text-[#49A8C9] ${
-              readStatus ? 'text-[#5f6f82]' : 'text-[#2c3a50]'
-            }`}
+            className="text-[#2c3a50] transition-colors hover:text-[#49A8C9]"
           >
             {item.translated_title || item.title}
           </Link>
@@ -266,19 +235,6 @@ const DashboardItemCard: React.FC<DashboardItemCardProps> = ({
         ) : null}
 
         <div className="flex flex-wrap items-center gap-2 pt-0.5">
-          <button
-            type="button"
-            onClick={() => void markReadFromList()}
-            disabled={readStatus || pendingAction !== null}
-            className={`inline-flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-[12px] font-semibold transition-all ${
-              readStatus
-                ? 'cursor-default border-[#8a96a5]/18 bg-[#eef1f4] text-[#8a96a5]'
-                : 'border-[rgba(88,100,118,0.14)] bg-white/70 text-[#5f6f82] hover:border-[#49A8C9]/30 hover:bg-white hover:text-[#2c3a50]'
-            } disabled:opacity-60`}
-          >
-            <CheckCircle2 size={13} />
-            {readStatus ? '已读' : '标为已读'}
-          </button>
           <button
             type="button"
             onClick={() => void toggleLikeFromList()}

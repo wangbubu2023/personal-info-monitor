@@ -1,10 +1,10 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import type { DigestItem } from '../../types';
 import type { CategoryTab } from './dashboardTypes';
 import DashboardItemCard from './DashboardItemCard';
-import { ChevronDown, ChevronRight, Loader2, SearchX } from 'lucide-react';
+import { Loader2, SearchX } from 'lucide-react';
 import { buildReaderPath } from './dashboardUtils';
 import { recordReaderInteraction, saveReaderSequence } from '../../utils/readerFlow';
 
@@ -25,13 +25,7 @@ const DashboardDigestList: React.FC<DashboardDigestListProps> = ({
 }) => {
   const navigate = useNavigate();
   const [focusedIndex, setFocusedIndex] = useState(0);
-  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
-
-  const groups = useMemo(() => buildDigestGroups(items), [items]);
-  const visibleItems = useMemo(
-    () => groups.flatMap((group) => (group.collapsed && !expandedGroups[group.key] ? [] : group.items)),
-    [groups, expandedGroups],
-  );
+  const visibleItems = items;
 
   useEffect(() => {
     saveReaderSequence(items);
@@ -93,44 +87,13 @@ const DashboardDigestList: React.FC<DashboardDigestListProps> = ({
         </motion.div>
       ) : items.length > 0 ? (
         <motion.div key="content" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-4">
-          {groups.map((group) => (
-            <React.Fragment key={group.key}>
-              {group.collapsed && !expandedGroups[group.key] ? (
-                <button
-                  type="button"
-                  className="flex w-full items-center justify-between rounded-xl border border-[rgba(88,100,118,0.1)] bg-[#f7fafc] px-4 py-3 text-left text-[13px] text-[#5f6f82] transition-colors hover:border-[#49A8C9]/22 hover:bg-white"
-                  onClick={() => setExpandedGroups((prev) => ({ ...prev, [group.key]: true }))}
-                >
-                  <span className="min-w-0 truncate">
-                    已读事件簇 · {group.items.length} 条 · {group.items[0]?.translated_title || group.items[0]?.title}
-                  </span>
-                  <ChevronRight size={16} className="shrink-0 text-[#49A8C9]" />
-                </button>
-              ) : (
-                <>
-                  {group.collapsed ? (
-                    <button
-                      type="button"
-                      className="flex w-full items-center gap-2 px-1 text-left text-[12px] font-medium text-[#8a96a5] hover:text-[#586476]"
-                      onClick={() => setExpandedGroups((prev) => ({ ...prev, [group.key]: false }))}
-                    >
-                      <ChevronDown size={14} /> 已展开事件簇
-                    </button>
-                  ) : null}
-                  {group.items.map((item) => {
-                    const visibleIndex = visibleItems.findIndex((visible) => visible.id === item.id);
-                    return (
-                      <DashboardItemCard
-                        key={item.id}
-                        item={item}
-                        activeTab={activeTab}
-                        focused={visibleIndex === focusedIndex}
-                      />
-                    );
-                  })}
-                </>
-              )}
-            </React.Fragment>
+          {items.map((item, index) => (
+            <DashboardItemCard
+              key={item.id}
+              item={item}
+              activeTab={activeTab}
+              focused={index === focusedIndex}
+            />
           ))}
         </motion.div>
       ) : (
@@ -156,32 +119,5 @@ const DashboardDigestList: React.FC<DashboardDigestListProps> = ({
   </div>
   );
 };
-
-function eventGroupKey(item: DigestItem): string {
-  const metadata = item.metadata || {};
-  const eventId = metadata.event_id;
-  return eventId ? `event:${String(eventId)}` : `item:${item.id}`;
-}
-
-function buildDigestGroups(items: DigestItem[]) {
-  const byKey = new Map<string, DigestItem[]>();
-  const order: string[] = [];
-  for (const item of items) {
-    const key = eventGroupKey(item);
-    if (!byKey.has(key)) {
-      byKey.set(key, []);
-      order.push(key);
-    }
-    byKey.get(key)?.push(item);
-  }
-  return order.map((key) => {
-    const groupItems = byKey.get(key) || [];
-    return {
-      key,
-      items: groupItems,
-      collapsed: groupItems.length > 1 && groupItems.every((item) => item.read_status),
-    };
-  });
-}
 
 export default DashboardDigestList;

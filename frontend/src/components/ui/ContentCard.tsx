@@ -16,11 +16,9 @@ interface ContentCardProps {
   sourceName: string
   sourceType: SourceType
   publishTime?: string
-  isRead?: boolean
   isFavorited?: boolean
   keywords?: Array<{ id: string; keyword: string; color?: string }>
   onFavoriteToggle?: (id: string) => void
-  onMarkAsRead?: (id: string) => void
 }
 
 const ContentCard: React.FC<ContentCardProps> = ({
@@ -33,11 +31,9 @@ const ContentCard: React.FC<ContentCardProps> = ({
   sourceName,
   sourceType,
   publishTime,
-  isRead = false,
   isFavorited = false,
   keywords = [],
   onFavoriteToggle,
-  onMarkAsRead,
 }) => {
   const displayTitle = translatedTitle || title
   const displaySummary = translatedSummary || summary
@@ -51,18 +47,11 @@ const ContentCard: React.FC<ContentCardProps> = ({
     })
   }
 
-  const handleClick = () => {
-    if (!isRead && onMarkAsRead) {
-      onMarkAsRead(id)
-    }
-  }
-
   return (
     <div 
       className={`
         bg-white rounded-xl overflow-hidden border border-[var(--color-border-light)]
         transition-all duration-200 hover:shadow-lg hover:border-[var(--color-border)]
-        ${isRead ? 'opacity-75' : ''}
       `}
     >
       {/* Card Header - Source Icon Area */}
@@ -86,15 +75,6 @@ const ContentCard: React.FC<ContentCardProps> = ({
         >
           {isFavorited ? <StarFilled /> : <StarOutlined />}
         </button>
-
-        {/* Read Status */}
-        {isRead && (
-          <div className="absolute top-3 left-3">
-            <span className="text-xs bg-gray-200 text-gray-600 px-2 py-1 rounded-full">
-              已读
-            </span>
-          </div>
-        )}
       </div>
 
       {/* Card Content */}
@@ -117,7 +97,6 @@ const ContentCard: React.FC<ContentCardProps> = ({
           href={url}
           target="_blank"
           rel="noopener noreferrer"
-          onClick={handleClick}
           className="block group"
         >
           <h3 className="font-semibold text-lg text-[var(--color-text)] mb-2 line-clamp-2 group-hover:text-[var(--color-primary)] transition-colors">

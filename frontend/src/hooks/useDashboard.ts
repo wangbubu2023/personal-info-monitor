@@ -17,8 +17,6 @@ import type { Content } from '../types';
 
 const DASHBOARD_TAB_KEYS = new Set(DASHBOARD_CATEGORIES.map((c) => c.key));
 
-export type DashboardViewMode = 'timeline' | 'inbox';
-
 export const useDashboard = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const searchQuery = searchParams.get('search') || '';
@@ -26,7 +24,6 @@ export const useDashboard = () => {
   const selectedSourceName = searchParams.get('source') || '';
   const [selectedRange, setSelectedRange] = useState<[Dayjs, Dayjs]>([dayjs(), dayjs()]);
   const [sortMode, setSortMode] = useState<DashboardSortMode>('time_desc');
-  const [viewMode, setViewMode] = useState<DashboardViewMode>('timeline');
   const queryClient = useQueryClient();
 
   /** 与 URL `?tab=` 同步，刷新后保留资讯分类 tab */
@@ -74,13 +71,11 @@ export const useDashboard = () => {
       selectedRange[0].format('YYYY-MM-DD'),
       selectedRange[1].format('YYYY-MM-DD'),
       sortMode,
-      viewMode,
     ],
     queryFn: () => digestApi.getDigest({
       date_from: selectedRange[0].format('YYYY-MM-DD'),
       date_to: selectedRange[1].format('YYYY-MM-DD'),
       sort: sortMode,
-      unread_only: viewMode === 'inbox',
     }),
   });
 
@@ -119,8 +114,6 @@ export const useDashboard = () => {
     setSelectedRange,
     sortMode,
     setSortMode,
-    viewMode,
-    setViewMode,
     activeTab,
     setActiveTab,
     stats,

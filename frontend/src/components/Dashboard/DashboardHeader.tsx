@@ -1,10 +1,9 @@
 import React from 'react';
 import { DatePicker, Segmented } from 'antd';
-import { RefreshCw, Calendar, Inbox, TrendingUp, ArrowDownWideNarrow } from 'lucide-react';
+import { RefreshCw, Calendar, TrendingUp, ArrowDownWideNarrow } from 'lucide-react';
 import type { Dayjs } from 'dayjs';
 import type { DashboardStats } from '../../types';
 import PageHeroTitle from '../common/PageHeroTitle';
-import type { DashboardViewMode } from '../../hooks/useDashboard';
 import type { DashboardSortMode } from './dashboardUtils';
 
 const iconStroke = 1.5
@@ -15,8 +14,6 @@ interface DashboardHeaderProps {
   onRangeChange: (range: [Dayjs, Dayjs]) => void;
   sortMode: DashboardSortMode;
   onSortModeChange: (mode: DashboardSortMode) => void;
-  viewMode: DashboardViewMode;
-  onViewModeChange: (mode: DashboardViewMode) => void;
   onFetchAll: () => void;
   isFetching: boolean;
 }
@@ -27,8 +24,6 @@ const DashboardHeader: React.FC<DashboardHeaderProps> = ({
   onRangeChange,
   sortMode,
   onSortModeChange,
-  viewMode,
-  onViewModeChange,
   onFetchAll,
   isFetching,
 }) => (
@@ -52,19 +47,6 @@ const DashboardHeader: React.FC<DashboardHeaderProps> = ({
             size="small"
             className="!w-[220px] !min-w-0 !border-none !bg-transparent !shadow-none !text-[13px] !text-[#4a5a6e] hover:!text-[#2c3a50] focus:!text-[#2c3a50] sm:!w-[250px]"
             suffixIcon={null}
-          />
-        </div>
-
-        <div className="flex items-center gap-1.5 rounded-lg border border-[rgba(88,100,118,0.1)] bg-white/95 px-2 py-1.5 shadow-sm">
-          <Inbox size={15} className="ml-0.5 shrink-0 text-[#5f6f82]" strokeWidth={iconStroke} />
-          <Segmented
-            size="small"
-            value={viewMode}
-            onChange={(value) => onViewModeChange(value as DashboardViewMode)}
-            options={[
-              { label: '全部动态', value: 'timeline' },
-              { label: '未读收件箱', value: 'inbox' },
-            ]}
           />
         </div>
 
@@ -103,11 +85,6 @@ const DashboardHeader: React.FC<DashboardHeaderProps> = ({
         <TrendingUp className="h-3.5 w-3.5 shrink-0 text-[#3a9eb8]" strokeWidth={iconStroke} />
         <span className="text-[12px] text-[#5f6f82]">收录</span>
         <span className="text-[14px] font-semibold tabular-nums text-[#2c3a50]">{stats?.today_total ?? 0}</span>
-      </div>
-      <div className="flex items-center gap-2 rounded-lg border border-[rgba(88,100,118,0.08)] bg-white/90 px-2.5 py-1.5 shadow-sm">
-        <Inbox className="h-3.5 w-3.5 shrink-0 text-[#6d684f]" strokeWidth={iconStroke} />
-        <span className="text-[12px] text-[#5f6f82]">待读</span>
-        <span className="text-[14px] font-semibold tabular-nums text-[#2c3a50]">{stats?.unread_count ?? 0}</span>
       </div>
     </div>
   </div>
