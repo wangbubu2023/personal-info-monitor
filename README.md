@@ -2,9 +2,16 @@
 
 > 本地优先的个人资讯监控系统。PIM 把 RSS、网站、X、YouTube、Podcast 等来源统一抓取、去重、评分、摘要和归档，并提供 Web UI、桌面端、`pimctl` CLI 与远程部署运维能力。
 
-当前版本：**1.6.7**
+当前版本：**1.6.8**
 
 > 分支提示：`main` 暂时冻结原子库产品入口；原子库相关能力保留在 `dev` 分支继续探索，详见 [`docs/ATOM_FREEZE_MAIN.md`](docs/ATOM_FREEZE_MAIN.md)。
+
+## 1.6.8 重点
+
+- **今日重点只保留必看事件**：统一按事件分、增量性和置信度判定，移除“酝酿中”卡片，并允许只有一条必看事件时正常展示。
+- **单篇事件门槛一致**：必看事件分线调整为 70，使极高价值、高置信的单篇报道可以入选，同时拦截未达到必看条件的普通单源线索。
+- **事件名称独立于文章标题**：为事件生成更短、更中性的名称，去除早报、快讯和情绪化标题框架，同时保留原文章标题供阅读页使用。
+- **升级与阅读体验修复**：包含升级流程加固和阅读界面精简，提升服务器升级可靠性与正文阅读聚焦度。
 
 ## 1.6.7 重点
 
@@ -338,10 +345,10 @@ cd backend
 然后提交、打 tag，并创建 GitHub Release。Web 更新检查依赖 GitHub Releases 的 `latest` 端点，仅推 tag 不会触发“发现新版本”提示。
 
 ```bash
-git commit -m "release: 1.6.7"
-git tag -a v1.6.7 -m "Release 1.6.7"
-git push origin main v1.6.7
-gh release create v1.6.7 --title "v1.6.7" --notes-file /tmp/pim-release-notes.md
+git commit -m "release: 1.6.8"
+git tag -a v1.6.8 -m "Release 1.6.8"
+git push origin main v1.6.8
+gh release create v1.6.8 --title "v1.6.8" --notes-file /tmp/pim-release-notes.md
 ```
 
 发布 GitHub Release 后，`Release Auth Assistant for macOS` workflow 会构建 arm64 DMG、使用
