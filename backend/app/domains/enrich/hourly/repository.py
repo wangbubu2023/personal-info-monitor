@@ -23,6 +23,7 @@ from app.domains.enrich.hourly.text_utils import (
     get_digest_window_hours,
     local_to_utc_naive,
 )
+from app.domains.events.presentation import classify_event_section, event_name_from_cluster
 from app.utils.datetime import user_timezone
 from app.utils.datetime import to_iso_z
 from app.utils.logger import get_logger
@@ -272,14 +273,6 @@ def _cluster_incremental_score(cluster: dict, previous: dict | None) -> float:
     return round(_clamp(base), 1)
 
 
-def _event_section(importance: float, incremental: float, confidence: float, cluster: dict) -> str:
-    if importance >= 72 and incremental >= 45 and confidence >= 55:
-        return "need_to_know"
-    if incremental >= 45 or cluster.get("corroboration_tier") in {"single_low", "single_high"}:
-        return "brewing"
-    return "later"
-
-
 def _why_matters(cluster: dict, primary: dict) -> str:
     lane = str(primary.get("lane") or "").strip()
     indep = int(cluster.get("independent_source_count") or 0)
@@ -322,7 +315,12 @@ def build_hourly_digest_event_briefing_items(
         importance = round(_clamp(_safe_float(cluster.get("event_score", cluster.get("score")))), 1)
         incremental = _cluster_incremental_score(cluster, previous)
         confidence = _cluster_confidence(items)
-        section = _event_section(importance, incremental, confidence, cluster)
+        section = classify_event_section(
+            importance=importance,
+            incremental=incremental,
+            confidence=confidence,
+            corroboration_tier=cluster.get("corroboration_tier"),
+        )
         source_names: list[str] = []
         source_keys: list[str] = []
         content_ids: list[str] = []
@@ -337,7 +335,8 @@ def build_hourly_digest_event_briefing_items(
             if item_cid and item_cid not in content_ids:
                 content_ids.append(item_cid)
         cid = str(primary.get("content_id") or "").strip()
-        title = str(primary.get("translated_title") or primary.get("title") or cluster.get("topic") or "").strip()
+        article_title = str(primary.get("translated_title") or primary.get("title") or "").strip()
+        title = event_name_from_cluster(primary, cluster)
         summary = str(primary.get("translated_summary") or primary.get("summary") or "").strip()
         if len(summary) > 300:
             summary = f"{summary[:297]}..."
@@ -355,6 +354,7 @@ def build_hourly_digest_event_briefing_items(
                 "content_id": cid,
                 "content_ids": content_ids,
                 "title": title or "未命名事件",
+                "article_title": article_title or None,
                 "summary": summary or None,
                 "what_happened": summary or "本小时出现新的相关信号。",
                 "why_matters": why_matters,

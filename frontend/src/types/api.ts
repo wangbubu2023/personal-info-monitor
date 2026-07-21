@@ -2286,6 +2286,8 @@ export interface components {
          * @description Structured event card stored with an hourly digest.
          */
         HourlyDigestEventItem: {
+            /** Article Title */
+            article_title?: string | null;
             /** Confidence Score */
             confidence_score?: number | null;
             /**

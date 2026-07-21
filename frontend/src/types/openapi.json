@@ -1583,6 +1583,17 @@
       "HourlyDigestEventItem": {
         "description": "Structured event card stored with an hourly digest.",
         "properties": {
+          "article_title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Article Title"
+          },
           "confidence_score": {
             "anyOf": [
               {

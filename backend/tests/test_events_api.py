@@ -25,7 +25,7 @@ async def test_today_highlights_use_digest_event_items_not_timeline(client, db_s
             {
                 "event_key": event_key,
                 "event_id": event_id,
-                "section": "need_to_know",
+                "section": "brewing",
                 "content_id": str(uuid4()),
                 "content_ids": [str(uuid4()), str(uuid4())],
                 "title": "监管发布模型新规",
@@ -36,6 +36,7 @@ async def test_today_highlights_use_digest_event_items_not_timeline(client, db_s
                 "source_names": ["Official", "Analyst"],
                 "fetched_at": "2026-07-11T09:10:00Z",
                 "importance_score": 88,
+                "incremental_score": 72,
                 "confidence_score": 91,
                 "independent_source_count": 2,
             },
@@ -49,6 +50,8 @@ async def test_today_highlights_use_digest_event_items_not_timeline(client, db_s
                 "source_names": ["Industry", "Analyst"],
                 "fetched_at": "2026-07-11T09:05:00Z",
                 "importance_score": 72,
+                "incremental_score": 40,
+                "confidence_score": 91,
                 "independent_source_count": 2,
             },
             {
@@ -61,6 +64,8 @@ async def test_today_highlights_use_digest_event_items_not_timeline(client, db_s
                 "source_names": ["Company", "Media"],
                 "fetched_at": "2026-07-11T09:01:00Z",
                 "importance_score": 68,
+                "incremental_score": 72,
+                "confidence_score": 91,
                 "independent_source_count": 2,
             },
             {
@@ -84,8 +89,8 @@ async def test_today_highlights_use_digest_event_items_not_timeline(client, db_s
     payload = response.json()
     assert payload["date"] == "2026-07-11"
     assert [item["event_id"] for item in payload["items"]][:1] == [event_id]
-    assert len(payload["items"]) == 3
-    assert all(item["section"] != "later" for item in payload["items"])
+    assert len(payload["items"]) == 1
+    assert all(item["section"] == "need_to_know" for item in payload["items"])
     item = payload["items"][0]
     assert item["section"] == "need_to_know"
     assert item["independent_source_count"] == 2
@@ -125,7 +130,9 @@ async def test_today_highlights_apply_active_user_rules(client, db_session):
             "content_ids": [str(content.id)] + ([str(supporting_content.id)] if index == 0 else []),
             "title": content.title,
             "source_names": [source.name],
-            "importance_score": 90 - index * 10,
+            "importance_score": 95 - index * 5,
+            "incremental_score": 72,
+            "confidence_score": 90,
             "corroboration_tier": "single_high",
         }
         for index, content in enumerate(contents)
@@ -355,7 +362,7 @@ def test_build_event_briefing_items_separates_event_from_duplicate_group():
 
 
 @pytest.mark.asyncio
-async def test_today_highlights_hide_when_fewer_than_three_qualified_events(client, db_session):
+async def test_today_highlights_show_even_when_only_one_event_qualifies(client, db_session):
     digest = HourlyDigest(
         digest_date=date(2026, 7, 11),
         hour=9,
@@ -374,6 +381,8 @@ async def test_today_highlights_hide_when_fewer_than_three_qualified_events(clie
                 "source_names": ["Official"],
                 "fetched_at": "2026-07-11T09:10:00Z",
                 "importance_score": 90,
+                "incremental_score": 72,
+                "confidence_score": 90,
             }
         ],
     )
@@ -383,4 +392,5 @@ async def test_today_highlights_hide_when_fewer_than_three_qualified_events(clie
     response = await client.get("/api/events/today-highlights", params={"date": "2026-07-11"})
 
     assert response.status_code == 200
-    assert response.json()["items"] == []
+    assert len(response.json()["items"]) == 1
+    assert response.json()["items"][0]["section"] == "need_to_know"

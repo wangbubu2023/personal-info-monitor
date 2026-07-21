@@ -19,6 +19,7 @@ from sqlalchemy.orm import selectinload
 from sqlalchemy.orm.session import Session
 
 from app.domains.events.personal_state import get_event_read_state, get_or_create_item_state
+from app.domains.events.presentation import event_name_from_cluster, is_need_to_know_event, simplify_event_name
 from app.models import Content, ContentEvent, ContentEventMembership, ContentEventSnapshot, HourlyDigest, ScoreFeedback, UserRule
 from app.utils.datetime import to_iso_z, utcnow_naive
 
@@ -55,7 +56,7 @@ def _event_times(items: Iterable[dict[str, Any]]) -> tuple[datetime | None, date
 
 
 def _snapshot_text(primary: dict[str, Any], cluster: dict[str, Any]) -> tuple[str, str | None, str | None, str | None]:
-    title = str(primary.get("translated_title") or primary.get("title") or cluster.get("topic") or "未命名事件").strip()
+    title = event_name_from_cluster(primary, cluster)
     summary = str(primary.get("translated_summary") or primary.get("summary") or "").strip() or None
     why = None
     if int(cluster.get("independent_source_count") or 0) >= 2:
@@ -278,22 +279,27 @@ async def list_today_highlights(db: AsyncSession, target_date: date, *, limit: i
         for item in digest.items_json or []:
             if not isinstance(item, dict):
                 continue
-            section = str(item.get("section") or "").strip()
-            if section not in {"need_to_know", "brewing"}:
-                continue
             event_id = str(item.get("event_id") or "").strip()
             if not event_id:
                 continue
             event_key = str(item.get("event_key") or "").strip()
             score = float(item.get("importance_score") or item.get("score") or 0.0)
+            incremental = float(item.get("incremental_score") or 0.0)
+            confidence = float(item.get("confidence_score") or 0.0)
+            if not is_need_to_know_event(
+                importance=score,
+                incremental=incremental,
+                confidence=confidence,
+            ):
+                continue
             existing = candidates.get(event_id)
             if existing and float(existing.get("importance_score") or 0.0) >= score:
                 continue
             candidates[event_id] = {
                 "event_id": event_id,
                 "event_key": event_key,
-                "section": section,
-                "title": item.get("title") or "未命名事件",
+                "section": "need_to_know",
+                "title": simplify_event_name(str(item.get("title") or "未命名事件")),
                 "summary": item.get("summary") or item.get("what_happened"),
                 "why_matters": item.get("why_matters"),
                 "what_changed": item.get("new_signal") or item.get("what_happened"),
@@ -312,8 +318,7 @@ async def list_today_highlights(db: AsyncSession, target_date: date, *, limit: i
         key=lambda item: (int(item.get("_rule_priority") or 0), float(item.get("importance_score") or 0.0)),
         reverse=True,
     )
-    qualified = [item for item in ordered if float(item.get("importance_score") or 0.0) >= 60]
-    selected = qualified[: max(3, min(8, int(limit or 8)))] if len(qualified) >= 3 else []
+    selected = ordered[: min(8, int(limit or 8))]
     for item in selected:
         read_state = await get_event_read_state(db, str(item.get("event_id") or ""))
         item["latest_version"] = read_state.latest_version

@@ -86,6 +86,7 @@ class HourlyDigestEventItem(BaseModel):
     content_id: UUID
     content_ids: List[UUID] = Field(default_factory=list)
     title: str
+    article_title: Optional[str] = None
     summary: Optional[str] = None
     what_happened: Optional[str] = None
     why_matters: Optional[str] = None

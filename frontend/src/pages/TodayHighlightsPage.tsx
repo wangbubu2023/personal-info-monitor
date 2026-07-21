@@ -87,7 +87,7 @@ const TodayHighlightsPage: React.FC = () => {
                 <div className="mb-3 flex items-center justify-between gap-3 text-[11px] font-semibold uppercase tracking-wide text-[#8C866A]">
                   <span className="inline-flex items-center gap-1.5">
                     <Sparkles size={12} strokeWidth={iconStroke} />
-                    {eventItem.section === 'brewing' ? '酝酿中' : '必看'}
+                    必看
                   </span>
                   <span className="flex items-center gap-1.5">
                     {typeof eventItem.importance_score === 'number' ? <span>{Math.round(eventItem.importance_score)}分</span> : null}
@@ -117,7 +117,7 @@ const TodayHighlightsPage: React.FC = () => {
           </div>
         ) : (
           <div className="rounded-3xl border border-[rgba(88,100,118,0.1)] bg-white/92 py-20 shadow-[0_18px_50px_-24px_rgba(41,56,89,0.16)]">
-            <Empty description="今日暂无足够高置信度重点事件。你仍可在全部动态查看 RSS、X 和网站信息流。" />
+            <Empty description="今日暂无达到必看标准的事件。你仍可在全部动态查看 RSS、X 和网站信息流。" />
             <div className="mt-5 flex justify-center">
               <Link
                 to="/timeline"

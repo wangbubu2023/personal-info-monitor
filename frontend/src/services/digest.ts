@@ -55,6 +55,7 @@ export interface HourlyDigestEventItem {
   content_id: string
   content_ids?: string[]
   title: string
+  article_title?: string | null
   summary?: string | null
   what_happened?: string | null
   why_matters?: string | null
