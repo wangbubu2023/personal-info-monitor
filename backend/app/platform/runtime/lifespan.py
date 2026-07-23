@@ -222,7 +222,9 @@ def build_lifespan(
         trigger_startup_jobs()
 
         from app.tasks.task_queue import task_queue
+        from app.platform.persistence.write_queue import write_queue
 
+        await write_queue.start()
         active_fetches = effective_fetch_concurrency(settings)
         await task_queue.start_workers(
             fetch_workers=active_fetches,
@@ -294,8 +296,15 @@ def build_lifespan(
                 with suppress(asyncio.CancelledError):
                     await event_loop_lag_task
 
+            scheduler.pause()
+            shutdown_summary = await task_queue.stop_workers(
+                grace_timeout=float(settings.shutdown_grace_seconds)
+            )
+            write_drained = await write_queue.drain(
+                timeout=float(settings.shutdown_grace_seconds)
+            )
             scheduler.shutdown(wait=False)
-            await task_queue.stop_workers()
+            logger.info("Shutdown summary: %s write_queue_drained=%s", shutdown_summary, write_drained)
 
             # Release the shared Playwright/Chromium process before dropping the DB
             # engine so we never leak a Chromium child on graceful reload.

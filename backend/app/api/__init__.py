@@ -23,6 +23,7 @@ _CANONICAL_PACKAGE = "app.interfaces.http"
 
 _MODULE_NAMES: tuple[str, ...] = (
     "",  # the package itself (app.api → app.interfaces.http)
+    ".ai_governance",
     ".configs",
     ".configs_api_auth",
     ".configs_browser",
@@ -42,6 +43,7 @@ _MODULE_NAMES: tuple[str, ...] = (
     ".digest",
     ".events",
     ".keywords",
+    ".reliability",
     ".score_lab",
     ".sources",
     ".sources._helpers",

@@ -73,6 +73,14 @@ export interface AIModelProvider {
   availability_message?: string
 }
 
+export interface AiPolicyMigration {
+  migration_version: number
+  migrated_at?: string
+  source_legacy_keys_present: string[]
+  resolved_product_settings: Record<string, boolean>
+  warnings_emitted: string[]
+}
+
 export const configsApi = {
   // API Keys
   listAPIKeys: async (): Promise<APIConfig[]> => {
@@ -128,6 +136,11 @@ export const configsApi = {
 
   updateSettings: async (data: Partial<SystemSettings>): Promise<SystemSettings> => {
     const response = await api.patch('/configs/settings', data)
+    return response.data
+  },
+
+  getAiMigration: async (): Promise<AiPolicyMigration | null> => {
+    const response = await api.get('/configs/ai-migration')
     return response.data
   },
 

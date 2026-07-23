@@ -53,6 +53,16 @@ class AiBudgetReservation:
     reason: str = "ok"
 
 
+@dataclass(frozen=True)
+class AiBudgetStatus:
+    available: bool
+    daily_used: int
+    monthly_used: int
+    daily_cap: int
+    monthly_cap: int
+    reason: str = "ok"
+
+
 def current_budget_caps() -> AiBudgetCaps:
     settings = get_settings()
     return AiBudgetCaps(
@@ -118,6 +128,35 @@ def reserve_ai_token_budget(estimated_tokens: int, *, caps: AiBudgetCaps | None 
     except (RuntimeError, SQLAlchemyError) as exc:
         logger.warning("Persistent AI token budget unavailable; falling back to process-local accounting: %s", exc)
         return _reserve_fallback(est, budget_caps)
+
+
+def get_ai_budget_status(*, caps: AiBudgetCaps | None = None) -> AiBudgetStatus:
+    """Read budget availability without reserving or mutating usage."""
+
+    budget_caps = caps or current_budget_caps()
+    if not budget_caps.enabled:
+        return AiBudgetStatus(True, 0, 0, budget_caps.daily, budget_caps.monthly)
+    db = SessionLocal()
+    try:
+        row = db.query(SystemSetting).filter(SystemSetting.key == AI_USAGE_BUDGET_KEY).first()
+        usage = _coerce_usage(row.value if row else {})
+        daily_used = int(usage["daily_used_tokens"])
+        monthly_used = int(usage["monthly_used_tokens"])
+    except (RuntimeError, SQLAlchemyError):
+        with _fallback_lock:
+            daily_used = _fallback_daily_total
+            monthly_used = _fallback_monthly_total
+    finally:
+        db.close()
+    reason = _budget_denial_reason(daily_used + 1, monthly_used + 1, budget_caps)
+    return AiBudgetStatus(
+        available=reason is None,
+        daily_used=daily_used,
+        monthly_used=monthly_used,
+        daily_cap=budget_caps.daily,
+        monthly_cap=budget_caps.monthly,
+        reason="budget_exhausted" if reason else "ok",
+    )
 
 
 def _reserve_persistent(est: int, caps: AiBudgetCaps) -> AiBudgetReservation:
@@ -210,6 +249,8 @@ __all__ = [
     "AI_USAGE_BUDGET_KEY",
     "AiBudgetCaps",
     "AiBudgetReservation",
+    "AiBudgetStatus",
     "current_budget_caps",
+    "get_ai_budget_status",
     "reserve_ai_token_budget",
 ]

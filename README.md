@@ -107,7 +107,7 @@ cd personal-info-monitor
 - `~/.pim/data/runtime-secrets.json`
 - `~/.pim/data/pim.db`
 
-新安装未配置模型时不会发起 outbound LLM。配置模型后，在「设置 → AI 模型」控制自动摘要、列表翻译和主观评分；部署级紧急停机使用 `PIM_AI_HARD_DISABLE=true`。
+新安装未配置模型时不会发起 outbound LLM。配置模型后，在「设置 → AI 模型」控制自动摘要、列表翻译、主观评分和全局暂停；页面会区分模型已配置、运行时就绪、预算耗尽和 Provider 失败。部署级紧急停机使用 `PIM_AI_HARD_DISABLE=true`。
 
 ## 常用运行方式
 
@@ -225,6 +225,7 @@ X 抓取优先使用浏览器登录态 Cookie 的 GraphQL 路径，然后才尝�
 | `PIM_PUBLIC_URL` | 空 | VPS / 反向代理公网地址 |
 | `FETCH_CONCURRENCY` | `20` | 并发抓取上限；同步 DB 连接池会自动至少按该值配置，并额外保留 10 个 overflow 连接 |
 | `PIM_AI_HARD_DISABLE` | `false` | 部署级 LLM 紧急停机开关；产品功能开关在 Web 设置中管理 |
+| `AI_DAILY_TOKEN_BUDGET` / `AI_MONTHLY_TOKEN_BUDGET` | `0` | 持久化的 LLM Token 预算；`0` 不限制 |
 | `ATOMS_ENABLED` | `false` | 结构化事件层；`main` 分支暂时强制冻结，`dev` 分支可继续探索 |
 | `OPENAI_API_KEY` | 空 | 云端模型凭据 |
 | `RSSHUB_URL` | `https://rsshub.app` | RSSHub 实例 |
@@ -233,6 +234,10 @@ X 抓取优先使用浏览器登录态 Cookie 的 GraphQL 路径，然后才尝�
 | `PIM_UPDATE_CHECK_GITHUB_TOKEN` | 空 | 可选 GitHub token，避免共享出口 IP 的匿名 API 限流 |
 | `API_RATE_LIMIT_PER_MINUTE` | `120` | API 限速，`0` 关闭 |
 | `PIM_BROWSER_BACKEND` | `patchright` | 浏览器后端，可设为 `playwright` |
+
+旧版 `AI_PROCESSING_ENABLED`、`ENRICH_*` 和 `PIM_SCORE_LLM_SUBJECTIVE`
+只在首次升级时事务化迁移一次。迁移后以 `system_settings` 为唯一产品控制面，
+环境变量变化不会覆盖用户选择。
 | `PIM_PLAYWRIGHT_CHANNEL` | `none` | 可设为 `chrome` 使用系统 Chrome |
 
 默认 CORS 覆盖 `localhost:3000`、`127.0.0.1:3000`、`tauri.localhost` 和 Tauri 开发端口。

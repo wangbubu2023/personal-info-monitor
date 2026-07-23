@@ -228,13 +228,15 @@ flowchart LR
 | `fetch_source` / `run_fetch_pipeline` | `app/tasks/fetch_tasks.py` + `app/domains/fetch/coordinator.py` + `app/domains/fetch/collector_stage.py` | 单 source 的抓取入口：调 CollectorStage、入库、更新 source 状态；`app/pipeline/coordinator.py` 仅保留兼容 alias |
 | `finish_content` | `app/domains/ingest/finish.py` | ingest → enrich → atoms → notify 的唯一汇合点 |
 | `Summarizer` / `Translator` | `app/platform/llm/{summarizer,translator}.py` | 受统一 AI policy（产品开关、全局暂停、部署硬停机）控制的 LLM 调用 |
+| `AI policy resolver` | `app/platform/llm/policy.py` | 统一解析 enabled/configured/ready/effective、预算和 Provider 阻断原因 |
+| `Subjective score cache` | `app/domains/score/score_subjective.py` + `ai_subjective_score_cache` | 合格新内容的零权重 Shadow 评分、幂等缓存、并发与成本审计 |
 | `RankingService` | `app/domains/score/ranking.py` | 日报排序、时间衰减、去重；`app/services/ranking_service.py` 仅保留兼容 shim |
 | `DigestService` | `app/domains/enrich/digest.py` | 日报/周报生成；`app/services/digest_service.py` 仅保留兼容 shim |
 | `DoctorService` | `app/domains/system/doctor.py` | 系统体检与告警判定；`app/services/doctor_service.py` 仅保留兼容 shim |
 | `MonitorService` | `app/domains/sources/monitoring.py` | source 状态、暂停/恢复与健康统计；`app/services/monitor_service.py` 仅保留兼容 shim |
 | Hourly Digest | `app/domains/enrich/hourly/*.py` | 3 小时窗口候选选择 / LLM 合成 / 存储 |
 | Reader | `app/domains/enrich/reader/*.py` | 正文拉取 / 标题翻译 / NDJSON 流式翻译 |
-| `SystemSettings` | `app/platform/config/system_settings.py` | 运行时开关和限额（rate limits、并发、翻译等） |
+| `SystemSettings` | `app/platform/config/system_settings.py` | AI 产品开关与全局暂停的唯一控制面；负责旧 env 一次性迁移 |
 | `TaskQueue` | `app/platform/workers/queue.py` | 基于 asyncio 的有界工作队列，防止抓取任务打爆进程 |
 | `BrowserPool` | `app/platform/browser/pool.py` | 共享的 Playwright/Chromium 生命周期管理 |
 | `runtime_lock` | `app/platform/locks/` | 后端进程级与 DB 表级运行时锁 |

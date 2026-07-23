@@ -143,7 +143,10 @@ cd backend
 - 运行时锁优先使用数据库表（`app/platform/locks/`），单进程内存锁只作为降级兜底。
 - LLM 产品开关与全局暂停由持久化 system settings 控制；
   `PIM_AI_HARD_DISABLE=true` 是部署级紧急停机开关。旧版
-  `AI_PROCESSING_ENABLED` / `ENRICH_*` 只参与首次升级默认值迁移。
+  `AI_PROCESSING_ENABLED` / `ENRICH_*` / `PIM_SCORE_LLM_SUBJECTIVE`
+  只参与一次性事务迁移，迁移状态保存在 `ai_policy_migration_state`。
+- 主观评分是零权重 Shadow：输入资格、800 字正文上限、并发 2、Token 预算和
+  `input_hash + model_version + prompt_version` 缓存均在 Provider 调用前执行。
 - 新闻原子库（Schema v2）默认关闭：`ATOMS_ENABLED=true` 启用提取与 `/atoms` API；`ATOMS_RELATIONS_ENABLED` 控制跨文关系（P2）
   显式开启；开启后也只是 `finish_content` 旁路的 best-effort 写入，
   永远不阻塞 ingest 主链。

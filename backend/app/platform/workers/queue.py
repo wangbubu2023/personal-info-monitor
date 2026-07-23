@@ -16,6 +16,7 @@ RQ / Celery / Arq use.
 import asyncio
 import logging
 import os
+from dataclasses import dataclass
 from datetime import datetime
 from logging.handlers import RotatingFileHandler
 from typing import Awaitable, Callable, Optional
@@ -35,6 +36,15 @@ LISTING_TRANSLATION_JOB_ID = "listing-translation"
 logger = get_logger(__name__)
 
 _dlq_logger: logging.Logger | None = None
+
+
+@dataclass(frozen=True)
+class ShutdownSummary:
+    duration_ms: int
+    completed: int
+    abandoned: int
+    cancelled: int
+    timed_out: bool
 
 
 def _dropped_task_logger() -> logging.Logger:
@@ -70,6 +80,21 @@ class BoundedTaskQueue:
         self._workers: list[asyncio.Task] = []
         self._fetch_handler: Optional[FetchHandler] = None
         self._process_handler: Optional[ProcessHandler] = None
+        self._accepting = True
+        self._stopping = False
+        self._completed_during_shutdown = 0
+        self._abandoned_during_shutdown = 0
+        self._cancelled_during_shutdown = 0
+        self._in_flight: dict[asyncio.Task, tuple[str, tuple]] = {}
+        self._last_shutdown_summary: ShutdownSummary | None = None
+
+    @property
+    def accepting(self) -> bool:
+        return self._accepting and not self._stopping
+
+    @property
+    def last_shutdown_summary(self) -> ShutdownSummary | None:
+        return self._last_shutdown_summary
 
     def _record_dropped_task(self, task_type: str, item_id: str, details: str = ""):
         """Record dropped task to a rotating DLQ log under ``data_dir``."""
@@ -118,6 +143,16 @@ class BoundedTaskQueue:
             return result
         if not_before is not None and not_before > utcnow_naive():
             return result
+        if not self.accepting:
+            return FetchDispatchResult(
+                source_id=result.source_id,
+                fetch_kind=result.fetch_kind,
+                job_id=result.job_id,
+                business_key=result.business_key,
+                persisted=True,
+                state=result.state,
+                reason="dispatcher_stopping",
+            )
         enqueued = await self.enqueue_existing_fetch(result.job_id, str(source_id), manual_trigger)
         return FetchDispatchResult(
             source_id=result.source_id,
@@ -136,6 +171,8 @@ class BoundedTaskQueue:
         """Cache an already-durable pending FetchJob without creating another row."""
         from app.platform.workers.fetch_jobs import mark_fetch_job_enqueued
 
+        if not self.accepting:
+            return False
         try:
             self._fetch_queue.put_nowait((job_id, source_id, manual_trigger))
             await asyncio.to_thread(mark_fetch_job_enqueued, job_id)
@@ -160,6 +197,8 @@ class BoundedTaskQueue:
         from app.platform.workers.postprocess_jobs import ensure_postprocess_job
 
         await asyncio.to_thread(ensure_postprocess_job, content_id, job_id)
+        if not self.accepting:
+            return False
         try:
             self._process_queue.put_nowait((content_id, job_id))
             return True
@@ -199,6 +238,8 @@ class BoundedTaskQueue:
             ensure_postprocess_jobs,
             [(content_id, job_id) for content_id in unique_ids],
         )
+        if not self.accepting:
+            return 0
 
         enqueued = 0
         for content_id in unique_ids:
@@ -243,6 +284,8 @@ class BoundedTaskQueue:
         """
         if fetch_handler is not None and fetch_workers < 1:
             raise ValueError("fetch_workers must be at least 1 when a fetch handler is configured")
+        self._accepting = True
+        self._stopping = False
         self._fetch_handler = fetch_handler
         self._process_handler = process_handler
         for _ in range(fetch_workers):
@@ -252,34 +295,137 @@ class BoundedTaskQueue:
         logger.info("BoundedTaskQueue started: %d fetch workers, %d process workers",
                     fetch_workers, process_workers)
 
-    async def stop_workers(self) -> None:
-        """Drain queues and cancel workers. Call from app lifespan shutdown."""
-        for w in self._workers:
-            w.cancel()
+    async def stop_workers(self, grace_timeout: float | None = None) -> ShutdownSummary:
+        """Stop leasing, drain queued/in-flight work, then fence timed-out jobs."""
+        loop = asyncio.get_running_loop()
+        started = loop.time()
+        self._accepting = False
+        self._stopping = True
+        self._completed_during_shutdown = 0
+        self._abandoned_during_shutdown = 0
+        self._cancelled_during_shutdown = 0
+        if grace_timeout is None:
+            from app.platform.config.settings import get_settings
+
+            grace_timeout = float(get_settings().shutdown_grace_seconds)
+        timed_out = False
+        try:
+            await asyncio.wait_for(
+                asyncio.gather(self._fetch_queue.join(), self._process_queue.join()),
+                timeout=max(0.1, float(grace_timeout)),
+            )
+        except asyncio.TimeoutError:
+            timed_out = True
+        for worker in self._workers:
+            worker.cancel()
         if self._workers:
             await asyncio.gather(*self._workers, return_exceptions=True)
         self._workers.clear()
-        logger.info("BoundedTaskQueue stopped")
+        self._stopping = False
+        summary = ShutdownSummary(
+            duration_ms=int((loop.time() - started) * 1000),
+            completed=self._completed_during_shutdown,
+            abandoned=self._abandoned_during_shutdown,
+            cancelled=self._cancelled_during_shutdown,
+            timed_out=timed_out,
+        )
+        self._last_shutdown_summary = summary
+        logger.info(
+            "BoundedTaskQueue stopped duration_ms=%d completed=%d abandoned=%d cancelled=%d timed_out=%s",
+            summary.duration_ms,
+            summary.completed,
+            summary.abandoned,
+            summary.cancelled,
+            summary.timed_out,
+        )
+        return summary
+
+    async def _heartbeat(
+        self,
+        callback,
+        args: tuple,
+        *,
+        done: asyncio.Event,
+        interval: float,
+    ) -> None:
+        while not done.is_set():
+            try:
+                await asyncio.wait_for(done.wait(), timeout=interval)
+            except asyncio.TimeoutError:
+                alive = await asyncio.to_thread(callback, *args)
+                if not alive:
+                    logger.warning("Job heartbeat lost CAS ownership")
+                    return
 
     async def _fetch_worker(self) -> None:
         from app.platform.workers.fetch_jobs import (
             claim_fetch_job,
+            heartbeat_fetch_job,
+            mark_fetch_job_abandoned,
             mark_fetch_job_failed,
             mark_fetch_job_succeeded,
+            take_claimed_fetch_lease,
         )
 
         while True:
+            fetch_job_id = source_id = None
+            lease = None
+            current = None
+            done = None
+            heartbeat_task = None
             try:
                 fetch_job_id, source_id, manual_trigger = await self._fetch_queue.get()
+                current = asyncio.current_task()
+                if current is not None:
+                    self._in_flight[current] = ("fetch", (fetch_job_id, source_id))
                 try:
                     claimed = await asyncio.to_thread(claim_fetch_job, fetch_job_id)
                     if not claimed:
                         continue
+                    lease = take_claimed_fetch_lease(fetch_job_id)
+                    from app.platform.config.settings import get_settings
+
+                    settings = get_settings()
+                    done = asyncio.Event()
+                    heartbeat_task = None
+                    if lease is not None:
+                        heartbeat_task = asyncio.create_task(
+                            self._heartbeat(
+                                heartbeat_fetch_job,
+                                (fetch_job_id, lease.owner, lease.token),
+                                done=done,
+                                interval=float(settings.job_heartbeat_seconds),
+                            )
+                        )
                     if self._fetch_handler is not None:
-                        await self._fetch_handler(source_id, manual_trigger, fetch_job_id)
-                    await asyncio.to_thread(mark_fetch_job_succeeded, fetch_job_id)
+                        await asyncio.wait_for(
+                            self._fetch_handler(source_id, manual_trigger, fetch_job_id),
+                            timeout=float(settings.fetch_stage_timeout_seconds),
+                        )
+                    done.set()
+                    if heartbeat_task is not None:
+                        await heartbeat_task
+                    kwargs = {"owner": lease.owner, "token": lease.token} if lease is not None else {}
+                    committed = await asyncio.to_thread(mark_fetch_job_succeeded, fetch_job_id, **kwargs)
+                    if not committed:
+                        logger.warning("Fetch completion rejected by CAS job_id=%s", fetch_job_id)
+                    elif self._stopping:
+                        self._completed_during_shutdown += 1
+                except asyncio.CancelledError:
+                    if lease is not None:
+                        abandoned = await asyncio.to_thread(
+                            mark_fetch_job_abandoned,
+                            fetch_job_id,
+                            owner=lease.owner,
+                            token=lease.token,
+                            reason="shutdown_grace_expired",
+                        )
+                        self._abandoned_during_shutdown += int(abandoned)
+                    self._cancelled_during_shutdown += 1
+                    raise
                 except Exception as exc:
-                    status = await asyncio.to_thread(mark_fetch_job_failed, fetch_job_id, exc)
+                    kwargs = {"owner": lease.owner, "token": lease.token} if lease is not None else {}
+                    status = await asyncio.to_thread(mark_fetch_job_failed, fetch_job_id, exc, **kwargs)
                     logger.exception(
                         "fetch worker error for source_id=%s job_id=%s status=%s",
                         source_id,
@@ -287,7 +433,13 @@ class BoundedTaskQueue:
                         status,
                     )
                 finally:
+                    if done is not None:
+                        done.set()
+                    if heartbeat_task is not None:
+                        heartbeat_task.cancel()
                     self._fetch_queue.task_done()
+                    if current is not None:
+                        self._in_flight.pop(current, None)
                     # Explicitly hand control back to request handlers before
                     # this worker immediately claims another queued source.
                     await asyncio.sleep(0)
@@ -297,25 +449,86 @@ class BoundedTaskQueue:
     async def _process_worker(self) -> None:
         from app.platform.workers.postprocess_jobs import (
             claim_postprocess_job,
+            heartbeat_postprocess_job,
+            mark_postprocess_job_abandoned,
             mark_postprocess_job_failed,
             mark_postprocess_job_succeeded,
+            take_claimed_postprocess_lease,
         )
 
         while True:
+            content_id = job_id = None
+            lease = None
+            current = None
+            done = None
+            heartbeat_task = None
             try:
                 content_id, job_id = await self._process_queue.get()
+                current = asyncio.current_task()
+                if current is not None:
+                    self._in_flight[current] = ("postprocess", (content_id, job_id))
                 try:
                     claimed = await asyncio.to_thread(claim_postprocess_job, content_id, job_id)
                     if not claimed:
                         continue
+                    lease = take_claimed_postprocess_lease(content_id, job_id)
+                    from app.platform.config.settings import get_settings
+
+                    settings = get_settings()
+                    done = asyncio.Event()
+                    heartbeat_task = None
+                    if lease is not None:
+                        heartbeat_task = asyncio.create_task(
+                            self._heartbeat(
+                                heartbeat_postprocess_job,
+                                (content_id, job_id, lease.owner, lease.token),
+                                done=done,
+                                interval=float(settings.job_heartbeat_seconds),
+                            )
+                        )
                     if self._process_handler is not None:
-                        await self._process_handler(content_id, job_id)
-                    await asyncio.to_thread(mark_postprocess_job_succeeded, content_id, job_id)
+                        await asyncio.wait_for(
+                            self._process_handler(content_id, job_id),
+                            timeout=float(settings.postprocess_stage_timeout_seconds),
+                        )
+                    done.set()
+                    if heartbeat_task is not None:
+                        await heartbeat_task
+                    kwargs = {"owner": lease.owner, "token": lease.token} if lease is not None else {}
+                    committed = await asyncio.to_thread(
+                        mark_postprocess_job_succeeded, content_id, job_id, **kwargs
+                    )
+                    if not committed:
+                        logger.warning("Postprocess completion rejected by CAS content_id=%s", content_id)
+                    elif self._stopping:
+                        self._completed_during_shutdown += 1
+                except asyncio.CancelledError:
+                    if lease is not None:
+                        abandoned = await asyncio.to_thread(
+                            mark_postprocess_job_abandoned,
+                            content_id,
+                            job_id,
+                            owner=lease.owner,
+                            token=lease.token,
+                            reason="shutdown_grace_expired",
+                        )
+                        self._abandoned_during_shutdown += int(abandoned)
+                    self._cancelled_during_shutdown += 1
+                    raise
                 except Exception as exc:
-                    status = await asyncio.to_thread(mark_postprocess_job_failed, content_id, job_id, exc)
+                    kwargs = {"owner": lease.owner, "token": lease.token} if lease is not None else {}
+                    status = await asyncio.to_thread(
+                        mark_postprocess_job_failed, content_id, job_id, exc, **kwargs
+                    )
                     logger.exception("process worker error for content_id=%s status=%s", content_id, status)
                 finally:
+                    if done is not None:
+                        done.set()
+                    if heartbeat_task is not None:
+                        heartbeat_task.cancel()
                     self._process_queue.task_done()
+                    if current is not None:
+                        self._in_flight.pop(current, None)
             except asyncio.CancelledError:
                 break
 

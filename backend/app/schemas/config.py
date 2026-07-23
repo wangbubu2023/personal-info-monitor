@@ -286,9 +286,7 @@ class SystemSettings(BaseModel):
     translation_model: Optional[TranslationModelConfig] = None
     atom_model: Optional[AtomModelConfig] = None
     score_model: Optional[AtomModelConfig] = None
-    translation_enabled: bool = True
     auto_translate_language: str = "zh-CN"
-    summarization_enabled: bool = True
     auto_summary_enabled: bool = True
     auto_listing_translation_enabled: bool = True
     ai_subjective_scoring_enabled: bool = False
@@ -310,9 +308,7 @@ class SystemSettingsResponse(BaseModel):
     translation_model: Optional[TranslationModelConfigResponse] = None
     atom_model: Optional[AtomModelConfigResponse] = None
     score_model: Optional[AtomModelConfigResponse] = None
-    translation_enabled: bool
     auto_translate_language: str
-    summarization_enabled: bool
     auto_summary_enabled: bool
     auto_listing_translation_enabled: bool
     ai_subjective_scoring_enabled: bool

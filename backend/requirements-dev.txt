@@ -106,10 +106,11 @@ htmldate==1.9.4
     # via trafilatura
 httpcore==1.0.9
     # via httpx
-httplib2==0.31.2
+httplib2==0.32.0
     # via
     #   google-api-python-client
     #   google-auth-httplib2
+    #   personal-info-monitor-backend
 httptools==0.7.1
     # via uvicorn
 httpx==0.28.1
@@ -187,6 +188,10 @@ protobuf==7.34.1
     #   google-api-core
     #   googleapis-common-protos
     #   proto-plus
+psycopg==3.3.4
+    # via personal-info-monitor-backend
+psycopg-binary==3.3.4 ; implementation_name != 'pypy'
+    # via psycopg
 pyasn1==0.6.3
     # via pyasn1-modules
 pyasn1-modules==0.4.2
@@ -299,6 +304,7 @@ typing-extensions==4.15.0
     #   beautifulsoup4
     #   fastapi
     #   openai
+    #   psycopg
     #   pydantic
     #   pydantic-core
     #   pyee
@@ -312,7 +318,9 @@ typing-inspection==0.4.2
     #   pydantic
     #   pydantic-settings
 tzdata==2026.1 ; sys_platform == 'win32'
-    # via tzlocal
+    # via
+    #   psycopg
+    #   tzlocal
 tzlocal==5.3.1
     # via
     #   apscheduler

@@ -11,7 +11,20 @@ external operator scripts) migrate one at a time.
 
 from fastapi import APIRouter, Depends
 
-from app.interfaces.http import configs, contents, dashboard, digest, events, keywords, personal_monitor, score_lab, sources, system
+from app.interfaces.http import (
+    ai_governance,
+    configs,
+    contents,
+    dashboard,
+    digest,
+    events,
+    keywords,
+    personal_monitor,
+    reliability,
+    score_lab,
+    sources,
+    system,
+)
 from app.platform.auth import verify_api_key
 from app.features import ATOMS_PRODUCT_ENABLED, KEYWORD_MONITORING_ENABLED
 
@@ -21,6 +34,8 @@ if ATOMS_PRODUCT_ENABLED:
 api_router = APIRouter(dependencies=[Depends(verify_api_key)])
 
 api_router.include_router(system.router, prefix="/system", tags=["system"])
+api_router.include_router(ai_governance.router, prefix="/ai", tags=["ai-governance"])
+api_router.include_router(reliability.router, prefix="/system/reliability", tags=["reliability"])
 api_router.include_router(sources.router, prefix="/sources", tags=["sources"])
 api_router.include_router(contents.router, prefix="/contents", tags=["contents"])
 if KEYWORD_MONITORING_ENABLED:

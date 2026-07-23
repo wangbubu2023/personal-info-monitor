@@ -161,6 +161,29 @@ async def _do_fetch(source_id: str, manual_trigger: bool, job_id: str | None = N
                 )
                 await task_queue.enqueue_ingest_finish(content_id, job_id=candidate_job_id)
 
+        if job_id:
+            from app.platform.persistence.lineage import add_lineage_edge
+
+            await asyncio.to_thread(
+                add_lineage_edge,
+                from_type="source",
+                from_id=str(source_id),
+                to_type="fetch_job",
+                to_id=str(job_id),
+                relation="scheduled_fetch",
+                trace_id=str(job_id),
+            )
+            for content_id in new_ids:
+                await asyncio.to_thread(
+                    add_lineage_edge,
+                    from_type="fetch_job",
+                    from_id=str(job_id),
+                    to_type="content",
+                    to_id=str(content_id),
+                    relation="persisted",
+                    trace_id=str(job_id),
+                )
+
         return result
 
     except Exception as exc:

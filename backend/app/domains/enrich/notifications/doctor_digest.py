@@ -81,7 +81,14 @@ async def send_doctor_digest_email() -> bool:
 
     sent_any = False
     for recipient in recipients:
-        if await send_email(recipient, subject, html_body):
+        if await send_email(
+            recipient,
+            subject,
+            html_body,
+            idempotency_key=f"doctor-digest:{recipient}:{subject}",
+            aggregate_type="doctor_report",
+            aggregate_id=subject,
+        ):
             sent_any = True
     if sent_any:
         logger.info("Sent doctor digest (overall=%s) to %d recipient(s)", overall, len(recipients))

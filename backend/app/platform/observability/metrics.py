@@ -309,10 +309,94 @@ class StorageMetrics:
             self._purge(time.time())
 
 
+class WindowedReliabilityMetrics:
+    """Bounded reliability events for 5m/1h/24h/7d operational views."""
+
+    _WINDOWS = {"5m": 300, "1h": 3600, "24h": 86400, "7d": 604800}
+
+    def __init__(self) -> None:
+        self._lock = Lock()
+        self._events: deque[tuple[float, str, float]] = deque()
+
+    def record(self, name: str, value: float = 1.0) -> None:
+        now = time.time()
+        with self._lock:
+            self._events.append((now, str(name), float(value)))
+            self._purge(now)
+
+    def _purge(self, now: float) -> None:
+        cutoff = now - self._WINDOWS["7d"]
+        while self._events and self._events[0][0] < cutoff:
+            self._events.popleft()
+
+    @staticmethod
+    def _percentile(values: list[float], percentile: float) -> float:
+        if not values:
+            return 0.0
+        ordered = sorted(values)
+        index = min(len(ordered) - 1, max(0, int((len(ordered) - 1) * percentile)))
+        return round(ordered[index], 3)
+
+    def snapshot(self) -> dict[str, dict[str, object]]:
+        now = time.time()
+        with self._lock:
+            self._purge(now)
+            result: dict[str, dict[str, object]] = {}
+            for window, seconds in self._WINDOWS.items():
+                grouped: dict[str, list[float]] = defaultdict(list)
+                for timestamp, name, value in self._events:
+                    if timestamp >= now - seconds:
+                        grouped[name].append(value)
+                result[window] = {
+                    name: {
+                        "count": len(values),
+                        "sum": round(sum(values), 3),
+                        "p50": self._percentile(values, 0.50),
+                        "p95": self._percentile(values, 0.95),
+                        "p99": self._percentile(values, 0.99),
+                    }
+                    for name, values in sorted(grouped.items())
+                }
+            return result
+
+    def prometheus_snapshot(self) -> str:
+        lines = [
+            "# HELP pim_reliability_window_count Reliability events in a rolling window.",
+            "# TYPE pim_reliability_window_count gauge",
+        ]
+        for window, events in self.snapshot().items():
+            for name, values in events.items():
+                lines.append(
+                    f'pim_reliability_window_count{{window="{window}",event="{_escape_prometheus_label(name)}"}} '
+                    f'{values["count"]}'
+                )
+                lines.append(
+                    f'pim_reliability_window_p95{{window="{window}",event="{_escape_prometheus_label(name)}"}} '
+                    f'{values["p95"]}'
+                )
+        return "\n".join(lines) + "\n"
+
+    def to_persisted_dict(self) -> Dict[str, Any]:
+        with self._lock:
+            self._purge(time.time())
+            return {"events": list(self._events)}
+
+    def restore_from_dict(self, data: Dict[str, Any]) -> None:
+        if not isinstance(data, dict):
+            return
+        with self._lock:
+            self._events = deque(
+                (float(timestamp), str(name), float(value))
+                for timestamp, name, value in (data.get("events") or [])
+            )
+            self._purge(time.time())
+
+
 request_metrics = RequestMetrics()
 source_metrics = SourceMetrics()
 task_queue_metrics = TaskQueueMetrics()
 storage_metrics = StorageMetrics()
+reliability_metrics = WindowedReliabilityMetrics()
 
 
 # ---------------------------------------------------------------------------
@@ -343,11 +427,12 @@ def persist_metrics(path: Optional[str | os.PathLike[str]] = None) -> Optional[P
         target = _resolve_persist_path(path)
         target.parent.mkdir(parents=True, exist_ok=True)
         payload = {
-            "version": 2,
+            "version": 3,
             "request": request_metrics.to_persisted_dict(),
             "source": source_metrics.to_persisted_dict(),
             "task_queue": task_queue_metrics.to_persisted_dict(),
             "storage": storage_metrics.to_persisted_dict(),
+            "reliability": reliability_metrics.to_persisted_dict(),
         }
         tmp = target.with_suffix(".tmp")
         tmp.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
@@ -371,6 +456,7 @@ def restore_metrics(path: Optional[str | os.PathLike[str]] = None) -> bool:
         source_metrics.restore_from_dict(data.get("source") or {})
         task_queue_metrics.restore_from_dict(data.get("task_queue") or {})
         storage_metrics.restore_from_dict(data.get("storage") or {})
+        reliability_metrics.restore_from_dict(data.get("reliability") or {})
         return True
     except Exception:  # noqa: BLE001 - observability best-effort
         return False

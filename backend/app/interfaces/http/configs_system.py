@@ -14,6 +14,7 @@ from app.models.auth_config import APIConfig, AuthStatus
 from app.platform.config.system_settings import (
     get_system_settings_async,
     get_system_settings_for_response,
+    get_ai_policy_migration_state,
     update_system_settings_async,
 )
 from app.platform.llm.policy import resolve_ai_policy_status
@@ -69,6 +70,16 @@ async def update_system_settings(
     response = get_system_settings_for_response(updated)
     response["ai_policy"] = (await resolve_ai_policy_status(updated)).to_dict()
     return response
+
+
+@router.get("/ai-migration")
+async def get_ai_migration(db: AsyncSession = Depends(get_async_db)):
+    """Return the persisted one-time legacy policy migration audit."""
+
+    # Loading settings is the migration trigger for installations upgraded
+    # before this endpoint existed.
+    await get_system_settings_async(db, force_refresh=True)
+    return await get_ai_policy_migration_state(db)
 
 
 @router.get("/ai-models/available")

@@ -3,7 +3,6 @@
 import json
 import os
 import secrets
-import warnings
 from functools import lru_cache
 from pathlib import Path
 from typing import Optional
@@ -79,6 +78,15 @@ class Settings(BaseSettings):
     scheduler_timezone: str = "Asia/Shanghai"
     event_loop_slow_callback_seconds: float = 1.0
     event_loop_lag_probe_interval_seconds: float = 1.0
+    job_lease_seconds: int = Field(default=120, ge=10, le=3600)
+    job_heartbeat_seconds: int = Field(default=30, ge=2, le=600)
+    fetch_stage_timeout_seconds: int = Field(default=900, ge=10, le=7200)
+    postprocess_stage_timeout_seconds: int = Field(default=600, ge=10, le=7200)
+    shutdown_grace_seconds: int = Field(default=30, ge=1, le=600)
+    diagnostic_buffer_max: int = Field(default=2000, ge=10, le=100000)
+    diagnostic_batch_size: int = Field(default=100, ge=1, le=10000)
+    diagnostic_rotate_bytes: int = Field(default=10 * 1024 * 1024, ge=65536)
+    diagnostic_disk_limit_bytes: int = Field(default=100 * 1024 * 1024, ge=65536)
     pim_ui_upgrade_args: str = ""
     pim_update_check_repo: str = "wangbubu2023/personal-info-monitor"
     pim_update_check_github_token: str = ""
@@ -122,10 +130,6 @@ class Settings(BaseSettings):
     #: Per-IP limit for ``GET /local-token`` (bootstrap); 0 = disabled
     local_token_rate_limit_per_minute: int = 30
 
-    # Legacy bootstrap input retained for first-upgrade migration only. Runtime
-    # policy is stored in system_settings; use PIM_AI_HARD_DISABLE for an
-    # environment-level emergency stop.
-    ai_processing_enabled: bool = False
     # Deployment-level emergency stop for all new outbound AI calls. Product-level
     # feature toggles live in system_settings and are resolved by app.platform.llm.policy.
     pim_ai_hard_disable: bool = False
@@ -134,12 +138,6 @@ class Settings(BaseSettings):
     #: Rough monthly cap on *estimated* LLM tokens (prompt + max output). ``0`` = unlimited.
     ai_monthly_token_budget: int = 0
     cloud_fallback_enabled: bool = True
-
-    # Legacy ENRICH_* bootstrap inputs retained so existing installations can seed
-    # the equivalent product settings during their first upgrade.
-    enrich_auto_on_ingest: bool = False
-    enrich_summary_enabled: bool = False
-    enrich_translate_enabled: bool = False
 
     #: After this many consecutive fetch *errors*, auto-disable the source (``0`` = never).
     fetch_error_disable_threshold: int = 12
@@ -152,22 +150,6 @@ class Settings(BaseSettings):
 
         # Expand ~ but leave filesystem bootstrap to explicit runtime entrypoints.
         self.data_dir = os.path.expanduser(self.data_dir)
-
-        # Soft-deprecation notice for the legacy bootstrap input. The single-emit
-        # guard prevents warning spam inside ``get_settings.cache_clear()`` loops.
-        if (
-            os.environ.get("AI_PROCESSING_ENABLED") is not None
-            and not os.environ.get("_PIM_AI_DEPRECATION_LOGGED")
-        ):
-            warnings.warn(
-                "AI_PROCESSING_ENABLED is a legacy first-upgrade bootstrap input; "
-                "runtime feature gates moved to system settings. Use "
-                "PIM_AI_HARD_DISABLE=true for an environment-level emergency stop "
-                "(see backend/.env.example).",
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            os.environ["_PIM_AI_DEPRECATION_LOGGED"] = "1"
 
         # Default SQLite paths if not explicitly set
         db_path = os.path.join(self.data_dir, "pim.db")

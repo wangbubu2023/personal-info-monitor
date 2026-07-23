@@ -75,6 +75,9 @@ sources → fetch → ingest → summarize → score → [atoms] → enrich
 - `ATOMS_RELATIONS_ENABLED` → 跨文关系推断（P2），依赖 `ATOMS_ENABLED`
 - system settings 中的 AI 产品开关 → 自动摘要、列表翻译、主观评分与全局暂停
 - `PIM_AI_HARD_DISABLE` → 部署级 LLM 紧急停机开关
-- `AI_PROCESSING_ENABLED` / `ENRICH_*` → 仅用于旧安装首次升级默认值迁移
+- `AI_PROCESSING_ENABLED` / `ENRICH_*` / `PIM_SCORE_LLM_SUBJECTIVE` →
+  仅用于旧安装一次性持久化迁移（移除目标 v2.0），禁止运行时读取
+- `translation_enabled` / `title_translation_enabled` / `summarization_enabled` →
+  已退出 schema 和执行路径；自动能力只读取对应的三个产品开关
 
 校验：`backend/scripts/check_domain_imports.py --phase=7` 会在 CI 中静态强制依赖方向。

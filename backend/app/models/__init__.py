@@ -27,6 +27,16 @@ from app.models.atom_event import (
 from app.models.content_event import ContentEvent, ContentEventMembership, ContentEventSnapshot
 from app.models.personal_monitor import InteractionEvent, ObservationAggregate, PersonalItemState, UserRule
 from app.models.score_feedback import ScoreFeedback
+from app.models.reliable_execution import (
+    EventAlias,
+    EventMembershipV1,
+    EventOperation,
+    LineageEdge,
+    NotificationDelivery,
+    OutboxEvent,
+    SchedulerRun,
+)
+from app.models.ai_governance import AiPolicyMigrationState, AiSubjectiveScoreCache
 
 __all__ = [
     "Source",
@@ -68,4 +78,13 @@ __all__ = [
     "PersonalItemState",
     "UserRule",
     "ScoreFeedback",
+    "SchedulerRun",
+    "OutboxEvent",
+    "NotificationDelivery",
+    "LineageEdge",
+    "EventAlias",
+    "EventOperation",
+    "EventMembershipV1",
+    "AiPolicyMigrationState",
+    "AiSubjectiveScoreCache",
 ]

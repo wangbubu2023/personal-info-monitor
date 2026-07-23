@@ -216,7 +216,14 @@ class TestSendKeywordAlert:
                 return_value=True,
             ) as mock_send:
                 await send_keyword_alert("content-id", "AI", "Test Title")
-                mock_send.assert_called_once_with("user@example.com", "关键词匹配：AI", "<html>alert</html>")
+                mock_send.assert_called_once_with(
+                    "user@example.com",
+                    "关键词匹配：AI",
+                    "<html>alert</html>",
+                    idempotency_key="keyword:content-id:AI:user@example.com",
+                    aggregate_type="content",
+                    aggregate_id="content-id",
+                )
 
     @pytest.mark.asyncio
     async def test_empty_tasks(self):

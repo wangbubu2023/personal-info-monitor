@@ -347,7 +347,14 @@ async def send_weekly_health_report_email() -> bool:
 
     sent_any = False
     for recipient in recipients:
-        if await send_email(recipient, subject, html_body):
+        if await send_email(
+            recipient,
+            subject,
+            html_body,
+            idempotency_key=f"weekly-report:{recipient}:{subject}",
+            aggregate_type="weekly_report",
+            aggregate_id=subject,
+        ):
             sent_any = True
     if sent_any:
         logger.info("Sent weekly health report to %d recipient(s)", len(recipients))

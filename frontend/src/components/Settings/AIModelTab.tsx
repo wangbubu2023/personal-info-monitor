@@ -27,6 +27,11 @@ const AI_POLICY_REASON_LABELS: Record<string, string> = {
   disabled: '已关闭',
   waiting_model_config: '等待配置模型',
   model_unavailable: '模型不可访问',
+  budget_exhausted: '预算已耗尽',
+  credentials_invalid: '凭据无效',
+  provider_unreachable: 'Provider 不可达',
+  rate_limited: 'Provider 限流',
+  circuit_open: '熔断器已打开',
   paused: '已被全局暂停',
   hard_disabled: '已被部署策略禁用',
 }
@@ -56,6 +61,11 @@ const AIModelTab: React.FC = () => {
   const { data: modelsData } = useQuery({
     queryKey: ['available-models'],
     queryFn: configsApi.getAvailableModels,
+  })
+
+  const { data: migration } = useQuery({
+    queryKey: ['ai-policy-migration'],
+    queryFn: configsApi.getAiMigration,
   })
 
   const updateMutation = useMutation({
@@ -99,13 +109,25 @@ const AIModelTab: React.FC = () => {
       <code className="text-[13px]">{base || '—'}</code>
     </SectionNote>
   )
-  const renderPolicyStatus = (label: string, state?: { enabled: boolean; effective: boolean; reason: string }) => {
+  const renderPolicyStatus = (
+    label: string,
+    state?: {
+      enabled: boolean
+      runtime_configured: boolean
+      runtime_ready: boolean
+      effective: boolean
+      reason: string
+    },
+  ) => {
     const color = state?.effective ? 'success' : state?.reason === 'disabled' ? 'default' : 'warning'
     const enabledText = state?.enabled ? '已启用' : '已关闭'
     return (
       <div className="flex items-center justify-between rounded-xl border border-[#e5eaf2] bg-[#fbfcff] px-3 py-2 text-[13px]">
         <span className="font-medium text-[#2c3a50]">{label}</span>
-        <Tag color={color}>{enabledText} · {policyReasonText(state?.reason)}</Tag>
+        <Tag color={color}>
+          {enabledText} · 配置{state?.runtime_configured ? '完成' : '缺失'} ·
+          {state?.runtime_ready ? '运行时就绪' : '运行时未就绪'} · {policyReasonText(state?.reason)}
+        </Tag>
       </div>
     )
   }
@@ -516,7 +538,7 @@ const AIModelTab: React.FC = () => {
         </Form.Item>
 
         <Form.Item name="score_max_tokens" label="Max Tokens">
-          <InputNumber min={32} max={2000} step={32} style={{ width: '100%' }} />
+          <InputNumber min={32} max={150} step={16} style={{ width: '100%' }} />
         </Form.Item>
 
         {selectedScoreProvider === 'ollama' ? (
@@ -544,6 +566,13 @@ const AIModelTab: React.FC = () => {
         <SectionNote style={{ marginBottom: 16 }}>
           模型配置只决定系统可调用什么模型；下面的开关决定哪些自动能力允许运行。用户主动点击阅读器翻译不受“自动翻译标题和摘要”开关影响。
         </SectionNote>
+
+        {migration ? (
+          <SectionNote style={{ marginBottom: 16 }}>
+            旧版 AI 环境开关已完成一次性迁移（版本 {migration.migration_version}
+            {migration.migrated_at ? `，${migration.migrated_at}` : ''}）；后续环境变量变化不会改写这里的产品开关。
+          </SectionNote>
+        ) : null}
 
         <div className="mb-4 grid gap-2">
           {renderPolicyStatus('写作模型通道', settings?.ai_policy?.writing)}
@@ -575,7 +604,7 @@ const AIModelTab: React.FC = () => {
           name="ai_subjective_scoring_enabled"
           label="启用 AI 主观评分"
           valuePropName="checked"
-          extra="默认关闭。第一阶段只影子记录 subjective_meta，不改变最终分数和排序。"
+          extra="默认关闭。每条合格新内容至多调用一次；实际费用取决于所选 Provider。当前只影子记录 subjective_meta，权重为 0，不改变最终分数和排序。"
         >
           <Switch checkedChildren="开启" unCheckedChildren="关闭" />
         </Form.Item>

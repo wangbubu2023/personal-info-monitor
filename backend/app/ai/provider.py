@@ -511,7 +511,12 @@ class ModelProviderClient:
         no_think: Optional[bool] = None,
         num_ctx: Optional[int] = None,
     ) -> str:
-        from app.platform.llm.policy import ai_hard_disabled, ai_processing_paused
+        from app.platform.llm.policy import (
+            ai_hard_disabled,
+            ai_processing_paused,
+            record_ai_runtime_failure,
+            record_ai_runtime_success,
+        )
 
         if ai_hard_disabled():
             logger.info("AI processing hard-disabled; skipping LLM call")
@@ -522,27 +527,35 @@ class ModelProviderClient:
         mt = max_tokens if max_tokens is not None else runtime.max_tokens
         rough = len(prompt) // 4 + len(system_prompt or "") // 4 + int(mt or 500)
         if not _reserve_ai_token_budget(rough):
+            record_ai_runtime_failure(runtime, "budget_exhausted")
             return ""
 
         provider = runtime.provider
-        if provider == "ollama":
-            return await self._generate_with_ollama(
-                runtime,
-                prompt=prompt,
-                system_prompt=system_prompt,
-                temperature=temperature,
-                timeout_seconds=timeout_seconds,
-                no_think=runtime.ollama_no_think if no_think is None else no_think,
-                num_ctx=runtime.ollama_num_ctx if num_ctx is None else num_ctx,
-                num_predict=mt,
-            )
-        return await self._generate_with_openai_compatible(
-            runtime,
-            prompt=prompt,
-            system_prompt=system_prompt,
-            temperature=temperature,
-            max_tokens=max_tokens,
-        )
+        try:
+            if provider == "ollama":
+                result = await self._generate_with_ollama(
+                    runtime,
+                    prompt=prompt,
+                    system_prompt=system_prompt,
+                    temperature=temperature,
+                    timeout_seconds=timeout_seconds,
+                    no_think=runtime.ollama_no_think if no_think is None else no_think,
+                    num_ctx=runtime.ollama_num_ctx if num_ctx is None else num_ctx,
+                    num_predict=mt,
+                )
+            else:
+                result = await self._generate_with_openai_compatible(
+                    runtime,
+                    prompt=prompt,
+                    system_prompt=system_prompt,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                )
+        except Exception as exc:
+            record_ai_runtime_failure(runtime, _provider_failure_reason(exc))
+            raise
+        record_ai_runtime_success(runtime)
+        return result
 
     async def _generate_with_ollama(
         self,
@@ -598,3 +611,19 @@ class ModelProviderClient:
         )
         content = (resp.choices[0].message.content or "").strip()
         return content
+
+
+def _provider_failure_reason(exc: BaseException) -> str:
+    """Map provider/library failures to stable policy reason codes."""
+
+    status_code = getattr(exc, "status_code", None)
+    text = f"{exc.__class__.__name__}: {exc}".lower()
+    if status_code == 429 or "429" in text:
+        return "rate_limited"
+    if status_code in {401, 403} or "401" in text or "403" in text:
+        return "credentials_invalid"
+    if "circuit" in text and "open" in text:
+        return "circuit_open"
+    if "timeout" in text or "connect" in text or "network" in text:
+        return "provider_unreachable"
+    return "provider_unreachable"

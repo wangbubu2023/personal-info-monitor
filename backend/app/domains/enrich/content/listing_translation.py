@@ -32,16 +32,14 @@ _scheduled_tasks: set[asyncio.Task[None]] = set()
 def listing_translation_enabled() -> bool:
     """Whether automatic listing translation should run."""
     from app.platform.config.system_settings import get_system_settings_sync
-    from app.platform.llm.policy import ai_hard_disabled, ai_processing_paused
+    from app.platform.llm.policy import product_ai_flag_enabled
 
     sys_settings = get_system_settings_sync() or {}
-    if ai_hard_disabled() or ai_processing_paused(sys_settings):
-        return False
-    if not sys_settings.get("translation_enabled", True):
-        return False
-    if not sys_settings.get("title_translation_enabled", True):
-        return False
-    return bool(sys_settings.get("auto_listing_translation_enabled", True))
+    return product_ai_flag_enabled(
+        "auto_listing_translation_enabled",
+        True,
+        settings=sys_settings,
+    )
 
 
 def content_needs_listing_translation(

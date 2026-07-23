@@ -127,7 +127,14 @@ async def send_session_health_alert(source_id: str) -> bool:
     tasks = await asyncio.to_thread(_build_session_alert_payload, source_id)
     sent_any = False
     for recipient, subject, body in tasks:
-        if await send_email(recipient, subject, body):
+        if await send_email(
+            recipient,
+            subject,
+            body,
+            idempotency_key=f"session-alert:{source_id}:{recipient}:{subject}",
+            aggregate_type="source",
+            aggregate_id=source_id,
+        ):
             sent_any = True
     return sent_any
 

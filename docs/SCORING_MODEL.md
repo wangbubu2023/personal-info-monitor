@@ -55,10 +55,10 @@ metadata 可追溯字段：
 | reach 影响面 | 25% | 规则；S-tier 实体无 sector 关键词时给 6.5（major_entity 子桶） |
 | authority 信源权威 | 25% | 规则 |
 | depth 信息深度 | 20% | 规则 |
-| subjective 主观 | 0%（LLM 预留，暂停用） | `PIM_SCORE_LLM_SUBJECTIVE=true` 时接入 `LlmSubjectiveScorer` |
+| subjective 主观 | 0%（Shadow） | 设置页 `ai_subjective_scoring_enabled` 开启后接入 `LlmSubjectiveScorer` |
 
 `final_score` 与 `article_score` 相同（兼容旧 UI）。  
-`scoring_method` 为 `"rule"`（纯规则）或 `"rule+llm"`（启用 LLM 主观分后）。
+`scoring_method` 为 `"rule"`（纯规则）或 `"rule+llm-shadow"`（命中 LLM Shadow）。
 
 **入选阈值（默认）**
 
@@ -215,24 +215,23 @@ cd backend && .venv/bin/python -m pytest tests/test_score_v2_rules.py -q
 
 ## 4. 启用 LLM 主观分
 
-环境变量（默认关闭）：
-
-```bash
-PIM_SCORE_LLM_SUBJECTIVE=true
-```
-
-同时需在系统设置页面配置 `score_model`（provider / model / api_base），或依赖 `DEFAULT_SYSTEM_SETTINGS` 中的 ollama 默认值。
+在「设置 → AI 模型」配置 `score_model` 并开启「AI 主观评分」。旧环境变量
+`PIM_SCORE_LLM_SUBJECTIVE` 只参与一次性升级迁移，不是运行时开关。
 
 实现入口：`score_subjective.py`
 
 - `resolve_subjective_score()` — finish 同步路径，永远返回 fixed_baseline（LLM 为纯异步）
-- `score_subjective_async()` — 异步路径，标志位开启时调用 `LlmSubjectiveScorer`
-- `LlmSubjectiveScorer` — 传标题 + 摘要给 LLM，输出 1–10 整数分和不超过 30 字 rationale
-- `merge_rule_scoring_metadata_async()` — 标志位开启且 LLM 返回 `source=llm` 时，用新 subjective 值重跑 `calculate_article_score`，写入 `scoring_method=rule+llm`
+- `score_subjective_async()` — 先校验 fetch acceptance、正文状态和 URL 标题，再解析统一 policy
+- `LlmSubjectiveScorer` — 只发送标题、可靠摘要和最多 800 字正文补充；`max_tokens ≤ 150`
+- `ai_subjective_score_cache` — 按 input hash、provider/model version、prompt version 幂等复用，缓存命中不重复调用或占预算
+- `merge_rule_scoring_metadata_async()` — 仅写入 Shadow metadata 和 `scoring_method=rule+llm-shadow`
 
-启用后 metadata 中 `subjective_meta.source` 为 `llm`，并填充 `rationale`；`scoring_method` 变为 `rule+llm`。
+启用且调用成功后，metadata 中 `subjective_meta.source` 为 `llm`，并填充
+模型、Prompt、输入范围、Token/成本和 `rationale`；`scoring_method` 变为
+`rule+llm-shadow`。
 
-**注意：** subjective 权重当前为 0%，启用 LLM 主观分后建议同步在 `ScoringConfig` 将其调为 15–20%，并相应下调其余维度权重。
+**注意：** subjective 权重固定为 0%。本阶段禁止因开启 Shadow 改变
+`article_score`、`final_score`、`selection_status` 或排序；调整权重必须另立 PRD。
 
 ---
 
@@ -306,7 +305,7 @@ cd backend
 
 - 不通稿 / 转载去重（多源可能高估）
 - 无 personal_fit、freshness 维
-- subjective 权重归零；LLM scorer 已实现，等待 score_model 配置后启用（见 §4）
+- subjective 权重归零；LLM scorer 仅处理合格 saved/实质 updated，并受持久缓存、并发 2 和预算约束（见 §4）
 - lane / salience 为关键词规则，复杂语义需 LLM 主观分或后续 entity 库
 
 ---

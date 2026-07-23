@@ -2,25 +2,55 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+from datetime import datetime
 from datetime import timedelta
+import os
+from threading import Lock
+import uuid
 
-from sqlalchemy import or_
+from sqlalchemy import and_, or_
 
 from app.models.postprocess_job import PostprocessJob
 from app.platform.observability.failure_classifier import classify_exception
 from app.platform.observability.logger import get_logger
+from app.platform.observability.metrics import reliability_metrics
 from app.platform.persistence.database import SessionLocal
 from app.utils.datetime import utcnow_naive
 
 logger = get_logger(__name__)
 
 _TERMINAL_STATUSES = {"succeeded"}
-_ACTIVE_STATUSES = {"pending", "running"}
+_ACTIVE_STATUSES = {"pending", "leased", "running", "retry_wait"}
 POSTPROCESS_STALE_AFTER_SECONDS = 10 * 60
 
 
+@dataclass(frozen=True)
+class PostprocessLease:
+    content_id: str
+    job_id: str | None
+    owner: str
+    token: str
+    expires_at: datetime
+
+
+_claimed_leases: dict[str, PostprocessLease] = {}
+_claimed_leases_lock = Lock()
+
+
+def _pipeline_identity(job_id: str | None) -> tuple[str, str]:
+    raw = str(job_id or "v1")
+    if raw == "listing-translation":
+        return "listing_translation", "v1"
+    if raw.startswith("finish:"):
+        parts = raw.split(":", 2)
+        return "finish", parts[1] if len(parts) > 1 and parts[1] else "v1"
+    return "finish", raw
+
+
 def postprocess_idempotency_key(content_id: str, job_id: str | None = None) -> str:
-    return f"{content_id}:{job_id or 'finish'}"
+    stage, version = _pipeline_identity(job_id)
+    return f"{content_id}:{stage}:{version}"
 
 
 def ensure_postprocess_job(content_id: str, job_id: str | None = None) -> None:
@@ -60,6 +90,7 @@ def ensure_postprocess_jobs(jobs: list[tuple[str, str | None]]) -> int:
         existing_by_key = {job.idempotency_key: job for job in existing}
         changed = 0
         for key, (content_id, job_id) in normalized.items():
+            stage, version = _pipeline_identity(job_id)
             job = existing_by_key.get(key)
             if job is None:
                 db.add(
@@ -67,6 +98,8 @@ def ensure_postprocess_jobs(jobs: list[tuple[str, str | None]]) -> int:
                         idempotency_key=key,
                         content_id=content_id,
                         job_id=job_id,
+                        pipeline_stage=stage,
+                        pipeline_version=version,
                         status="pending",
                         attempts=0,
                         max_attempts=3,
@@ -83,6 +116,10 @@ def ensure_postprocess_jobs(jobs: list[tuple[str, str | None]]) -> int:
             job.attempts = 0
             job.run_after = now
             job.locked_at = None
+            job.locked_by = None
+            job.lease_token = None
+            job.lease_expires_at = None
+            job.heartbeat_at = None
             job.started_at = None
             job.finished_at = None
             job.last_error = None
@@ -90,23 +127,36 @@ def ensure_postprocess_jobs(jobs: list[tuple[str, str | None]]) -> int:
             changed += 1
         if changed:
             db.commit()
+            reliability_metrics.record("postprocess_accepted", changed)
         return changed
     finally:
         db.close()
 
 
-def claim_postprocess_job(content_id: str, job_id: str | None = None) -> bool:
-    """Mark a due durable job running. Return False for stale duplicate cache entries."""
+def acquire_postprocess_job(
+    content_id: str,
+    job_id: str | None = None,
+    *,
+    owner: str | None = None,
+    lease_seconds: int = 120,
+) -> PostprocessLease | None:
+    """Acquire or reclaim a due postprocess job with an owner/token fence."""
     key = postprocess_idempotency_key(content_id, job_id)
     now = utcnow_naive()
+    worker = owner or f"{os.getpid()}:{uuid.uuid4().hex[:12]}"
+    token = uuid.uuid4().hex
+    expires = now + timedelta(seconds=max(5, int(lease_seconds)))
     db = SessionLocal()
     try:
         job = db.query(PostprocessJob).filter(PostprocessJob.idempotency_key == key).first()
         if job is None:
+            stage, version = _pipeline_identity(job_id)
             job = PostprocessJob(
                 idempotency_key=key,
                 content_id=str(content_id),
                 job_id=job_id,
+                pipeline_stage=stage,
+                pipeline_version=version,
                 status="pending",
                 attempts=0,
                 max_attempts=3,
@@ -117,20 +167,27 @@ def claim_postprocess_job(content_id: str, job_id: str | None = None) -> bool:
             db.add(job)
             db.flush()
         if job.status in _TERMINAL_STATUSES:
-            return False
-        if job.status == "running":
+            return None
+        if job.status in {"leased", "running"}:
             locked_at = job.locked_at or job.started_at
-            stale_before = now - timedelta(seconds=POSTPROCESS_STALE_AFTER_SECONDS)
-            if not locked_at or locked_at > stale_before:
-                return False
+            if job.lease_expires_at is not None:
+                if job.lease_expires_at > now:
+                    return None
+            else:
+                stale_before = now - timedelta(seconds=POSTPROCESS_STALE_AFTER_SECONDS)
+                if not locked_at or locked_at > stale_before:
+                    return None
             if int(job.attempts or 0) >= int(job.max_attempts or 3):
                 job.status = "dead"
                 job.locked_at = None
+                job.locked_by = None
+                job.lease_token = None
+                job.lease_expires_at = None
                 job.finished_at = now
                 job.last_error = (job.last_error or "")[:3900] + " [stale job exhausted retry limit]"
                 job.updated_at = now
                 db.commit()
-                return False
+                return None
             logger.warning(
                 "Reclaiming stale postprocess job %s (locked_at=%s, attempts=%s)",
                 key,
@@ -143,17 +200,88 @@ def claim_postprocess_job(content_id: str, job_id: str | None = None) -> bool:
             job.finished_at = None
             job.run_after = now
         if job.run_after and job.run_after > now:
-            return False
+            return None
         job.status = "running"
         job.attempts = int(job.attempts or 0) + 1
         job.locked_at = now
+        job.locked_by = worker
+        job.lease_token = token
+        job.lease_expires_at = expires
+        job.heartbeat_at = now
         job.started_at = now
         job.finished_at = None
         job.updated_at = now
+        queue_age_ms = max(0.0, (now - job.created_at).total_seconds() * 1000) if job.created_at else 0.0
         db.commit()
-        return True
+        reliability_metrics.record("postprocess_leased")
+        reliability_metrics.record("postprocess_queue_age_ms", queue_age_ms)
+        return PostprocessLease(str(content_id), job_id, worker, token, expires)
     finally:
         db.close()
+
+
+def claim_postprocess_job(content_id: str, job_id: str | None = None) -> bool:
+    """Backward-compatible claim surface; new workers use the lease object."""
+    lease = acquire_postprocess_job(content_id, job_id, owner=f"worker:{os.getpid()}")
+    if lease is None:
+        return False
+    key = postprocess_idempotency_key(content_id, job_id)
+    with _claimed_leases_lock:
+        _claimed_leases[key] = lease
+    return True
+
+
+def take_claimed_postprocess_lease(content_id: str, job_id: str | None) -> PostprocessLease | None:
+    key = postprocess_idempotency_key(content_id, job_id)
+    with _claimed_leases_lock:
+        return _claimed_leases.pop(key, None)
+
+
+def heartbeat_postprocess_job(
+    content_id: str,
+    job_id: str | None,
+    owner: str,
+    token: str,
+    *,
+    lease_seconds: int = 120,
+) -> bool:
+    key = postprocess_idempotency_key(content_id, job_id)
+    now = utcnow_naive()
+    db = SessionLocal()
+    try:
+        changed = (
+            db.query(PostprocessJob)
+            .filter(
+                PostprocessJob.idempotency_key == key,
+                PostprocessJob.status == "running",
+                PostprocessJob.locked_by == owner,
+                PostprocessJob.lease_token == token,
+            )
+            .update(
+                {
+                    PostprocessJob.heartbeat_at: now,
+                    PostprocessJob.lease_expires_at: now + timedelta(seconds=max(5, int(lease_seconds))),
+                    PostprocessJob.updated_at: now,
+                },
+                synchronize_session=False,
+            )
+        )
+        if changed:
+            db.commit()
+        else:
+            db.rollback()
+        if changed != 1:
+            reliability_metrics.record("postprocess_heartbeat_miss")
+        return changed == 1
+    finally:
+        db.close()
+
+
+def _lease_filter(key: str, owner: str | None, token: str | None):
+    clauses = [PostprocessJob.idempotency_key == key]
+    if owner is not None or token is not None:
+        clauses.extend([PostprocessJob.locked_by == owner, PostprocessJob.lease_token == token])
+    return clauses
 
 
 def recover_stale_postprocess_jobs(*, stale_after_seconds: int = POSTPROCESS_STALE_AFTER_SECONDS) -> int:
@@ -173,6 +301,7 @@ def recover_stale_postprocess_jobs(*, stale_after_seconds: int = POSTPROCESS_STA
             .filter(
                 PostprocessJob.status == "running",
                 or_(
+                    PostprocessJob.lease_expires_at <= now,
                     PostprocessJob.locked_at <= stale_before,
                     PostprocessJob.locked_at.is_(None),
                     PostprocessJob.started_at <= stale_before,
@@ -191,6 +320,9 @@ def recover_stale_postprocess_jobs(*, stale_after_seconds: int = POSTPROCESS_STA
                 job.run_after = now
                 job.finished_at = None
             job.locked_at = None
+            job.locked_by = None
+            job.lease_token = None
+            job.lease_expires_at = None
             job.started_at = None
             job.last_error = (job.last_error or "")[:3900] + " [recovered stale running job]"
             job.updated_at = now
@@ -202,36 +334,83 @@ def recover_stale_postprocess_jobs(*, stale_after_seconds: int = POSTPROCESS_STA
         db.close()
 
 
-def mark_postprocess_job_succeeded(content_id: str, job_id: str | None = None) -> None:
+def mark_postprocess_job_succeeded(
+    content_id: str,
+    job_id: str | None = None,
+    *,
+    owner: str | None = None,
+    token: str | None = None,
+) -> bool:
     key = postprocess_idempotency_key(content_id, job_id)
     now = utcnow_naive()
     db = SessionLocal()
     try:
-        job = db.query(PostprocessJob).filter(PostprocessJob.idempotency_key == key).first()
+        job = db.query(PostprocessJob).filter(*_lease_filter(key, owner, token)).first()
         if job is None:
-            return
+            return False
         job.status = "succeeded"
         job.finished_at = now
         job.locked_at = None
+        job.locked_by = None
+        job.lease_token = None
+        job.lease_expires_at = None
         job.last_error = None
         job.failure_code = None
         job.failure_severity = None
         job.failure_retryable = None
         job.updated_at = now
         db.commit()
+        reliability_metrics.record("postprocess_succeeded")
+        return True
     finally:
         db.close()
 
 
-def mark_postprocess_job_failed(content_id: str, job_id: str | None, error: BaseException) -> str:
+def mark_postprocess_job_abandoned(
+    content_id: str,
+    job_id: str | None,
+    *,
+    owner: str,
+    token: str,
+    reason: str,
+) -> bool:
+    key = postprocess_idempotency_key(content_id, job_id)
+    now = utcnow_naive()
+    db = SessionLocal()
+    try:
+        job = db.query(PostprocessJob).filter(*_lease_filter(key, owner, token)).first()
+        if job is None:
+            return False
+        job.status = "abandoned"
+        job.abandoned_reason = str(reason)[:4000]
+        job.finished_at = now
+        job.locked_at = None
+        job.locked_by = None
+        job.lease_token = None
+        job.lease_expires_at = None
+        job.updated_at = now
+        db.commit()
+        return True
+    finally:
+        db.close()
+
+
+def mark_postprocess_job_failed(
+    content_id: str,
+    job_id: str | None,
+    error: BaseException,
+    *,
+    owner: str | None = None,
+    token: str | None = None,
+) -> str:
     """Persist failure and return the resulting status: ``pending`` or ``dead``."""
     key = postprocess_idempotency_key(content_id, job_id)
     now = utcnow_naive()
     db = SessionLocal()
     try:
-        job = db.query(PostprocessJob).filter(PostprocessJob.idempotency_key == key).first()
+        job = db.query(PostprocessJob).filter(*_lease_filter(key, owner, token)).first()
         if job is None:
-            return "dead"
+            return "cas_conflict"
         attempts = int(job.attempts or 0)
         max_attempts = int(job.max_attempts or 3)
         failure = classify_exception(error)
@@ -241,16 +420,20 @@ def mark_postprocess_job_failed(content_id: str, job_id: str | None, error: Base
         job.failure_severity = failure.severity
         job.failure_retryable = failure.retryable
         job.locked_at = None
+        job.locked_by = None
+        job.lease_token = None
+        job.lease_expires_at = None
         job.finished_at = now
         if not failure.retryable or attempts >= max_attempts:
             job.status = "dead"
         else:
             delay_seconds = min(3600, 60 * (2 ** max(0, attempts - 1)))
-            job.status = "pending"
+            job.status = "retry_wait"
             job.run_after = now + timedelta(seconds=delay_seconds)
         job.updated_at = now
         db.commit()
-        return str(job.status)
+        reliability_metrics.record("postprocess_retry" if job.status == "retry_wait" else "postprocess_dead")
+        return "pending" if job.status == "retry_wait" else str(job.status)
     finally:
         db.close()
 
@@ -263,10 +446,10 @@ def due_postprocess_jobs(*, limit: int = 50) -> list[tuple[str, str | None]]:
         rows = (
             db.query(PostprocessJob)
             .filter(
-                PostprocessJob.status == "pending",
+                PostprocessJob.status.in_(["pending", "retry_wait", "abandoned"]),
                 or_(PostprocessJob.run_after.is_(None), PostprocessJob.run_after <= now),
             )
-            .order_by(PostprocessJob.run_after.asc(), PostprocessJob.created_at.asc())
+            .order_by(PostprocessJob.priority.asc(), PostprocessJob.run_after.asc(), PostprocessJob.created_at.asc())
             .limit(max(1, int(limit or 1)))
             .all()
         )

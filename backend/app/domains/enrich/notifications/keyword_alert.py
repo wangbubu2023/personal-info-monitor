@@ -87,4 +87,11 @@ async def send_keyword_alert(content_id: str, keyword: str, title: str):
         return
 
     for recipient, subject, html_body in tasks:
-        await send_email(recipient, subject, html_body)
+        await send_email(
+            recipient,
+            subject,
+            html_body,
+            idempotency_key=f"keyword:{content_id}:{keyword}:{recipient}",
+            aggregate_type="content",
+            aggregate_id=content_id,
+        )

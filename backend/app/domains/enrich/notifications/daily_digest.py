@@ -159,10 +159,25 @@ async def send_daily_digest_emails():
                 )
 
                 html_body = render_digest_email(digest, schedule.template)
+                digest_id = f"daily:{today.isoformat()}:{schedule.id}"
+                from app.platform.persistence.lineage import add_lineage_edge
+
+                for category in (digest.get("categories") or {}).values():
+                    for item in category.get("items") or []:
+                        content_id = item.get("id")
+                        if content_id:
+                            add_lineage_edge(
+                                from_type="content",
+                                from_id=str(content_id),
+                                to_type="digest",
+                                to_id=digest_id,
+                                relation="included_in",
+                                session=db,
+                            )
 
                 for recipient in schedule.recipients or []:
                     subject = schedule.subject_template.format(date=today.isoformat())
-                    tasks.append((recipient, subject, html_body))
+                    tasks.append((recipient, subject, html_body, digest_id))
 
                 schedule.last_sent_at = utcnow_naive()
 
@@ -174,8 +189,17 @@ async def send_daily_digest_emails():
     email_tasks = await asyncio.to_thread(_build_and_send)
 
     sent = 0
-    for recipient, subject, html_body in email_tasks:
-        if await send_email(recipient, subject, html_body):
+    for task in email_tasks:
+        recipient, subject, html_body = task[:3]
+        digest_id = task[3] if len(task) > 3 else f"daily:{subject}"
+        if await send_email(
+            recipient,
+            subject,
+            html_body,
+            idempotency_key=f"daily-digest:{recipient}:{subject}",
+            aggregate_type="digest",
+            aggregate_id=digest_id,
+        ):
             sent += 1
 
     logger.info(f"Sent {sent} digest emails")

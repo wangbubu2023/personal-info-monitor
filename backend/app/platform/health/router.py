@@ -30,6 +30,18 @@ async def livez() -> dict[str, str]:
     return {"status": "ok"}
 
 
+@health_router.get("/readyz")
+async def readyz() -> JSONResponse:
+    """Readiness is removed before shutdown starts leasing new work."""
+    from app.platform.workers.queue import task_queue
+
+    ready = task_queue.accepting
+    return JSONResponse(
+        status_code=200 if ready else 503,
+        content={"status": "ready" if ready else "draining"},
+    )
+
+
 @health_router.get("/health", dependencies=[Depends(verify_api_key)])
 async def health_check() -> JSONResponse:
     """Detailed health check endpoint for authenticated operators."""

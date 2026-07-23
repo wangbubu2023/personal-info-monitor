@@ -15,6 +15,20 @@ jobs:
   backend:
     name: Backend Tests
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: pim
+          POSTGRES_PASSWORD: pim
+          POSTGRES_DB: pim_contract
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U pim -d pim_contract"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - uses: actions/checkout@v4
 
@@ -66,6 +80,8 @@ jobs:
             || { echo "::error::requirements.txt is out of sync with pyproject.toml. Run 'uv lock && uv export --no-hashes --no-dev --no-emit-project --format requirements.txt > requirements.txt' and commit."; exit 1; }
 
       - name: Run pytest with coverage
+        env:
+          PIM_TEST_POSTGRES_URL: postgresql+psycopg://pim:pim@127.0.0.1:5432/pim_contract
         run: cd backend && ./.venv/bin/pytest -q --cov=app --cov-fail-under=70
 
   frontend:

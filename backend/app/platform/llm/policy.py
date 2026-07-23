@@ -12,6 +12,7 @@ import json
 import threading
 import time
 from dataclasses import asdict, dataclass
+from datetime import datetime, timezone
 from typing import Any, Awaitable, Callable
 
 from app.ai.provider import ModelRuntime, get_runtime_from_system_settings
@@ -22,8 +23,10 @@ from app.platform.observability.logger import get_logger
 logger = get_logger(__name__)
 
 _RUNTIME_CACHE_TTL_SECONDS = 20.0
+_RUNTIME_FAILURE_TTL_SECONDS = 60.0
 _runtime_cache_lock = threading.Lock()
-_runtime_cache: dict[str, tuple[float, bool]] = {}
+_runtime_cache: dict[str, tuple[float, bool, str, float]] = {}
+_runtime_failures: dict[str, tuple[float, str]] = {}
 
 
 @dataclass(frozen=True)
@@ -34,6 +37,9 @@ class AiFeatureState:
     runtime_ready: bool
     effective: bool
     reason: str
+    runtime_configured: bool = False
+    checked_at: str = ""
+    cache_age: float = 0.0
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -70,6 +76,45 @@ def invalidate_ai_policy_cache() -> None:
 
     with _runtime_cache_lock:
         _runtime_cache.clear()
+
+
+def _runtime_identity(runtime: ModelRuntime) -> str:
+    return f"{getattr(runtime, 'provider', 'unknown')}:{getattr(runtime, 'model', 'unknown')}"
+
+
+def record_ai_runtime_failure(runtime: ModelRuntime, reason: str) -> None:
+    """Expose a recent provider failure to policy/UI without another paid call."""
+
+    with _runtime_cache_lock:
+        _runtime_failures[_runtime_identity(runtime)] = (
+            time.time() + _RUNTIME_FAILURE_TTL_SECONDS,
+            reason,
+        )
+        _runtime_cache.clear()
+
+
+def record_ai_runtime_success(runtime: ModelRuntime) -> None:
+    with _runtime_cache_lock:
+        _runtime_failures.pop(_runtime_identity(runtime), None)
+
+
+def _recent_runtime_failure(runtime: ModelRuntime) -> str | None:
+    now = time.time()
+    with _runtime_cache_lock:
+        row = _runtime_failures.get(_runtime_identity(runtime))
+        if row is None:
+            return None
+        deadline, reason = row
+        if deadline <= now:
+            _runtime_failures.pop(_runtime_identity(runtime), None)
+            return None
+        return reason
+
+
+def get_recent_ai_runtime_failure(runtime: ModelRuntime) -> str | None:
+    """Public read-only accessor used to stamp fallback metadata."""
+
+    return _recent_runtime_failure(runtime)
 
 
 def _bool_setting(settings: dict[str, Any], key: str, default: bool) -> bool:
@@ -124,21 +169,29 @@ def _model_configured(settings: dict[str, Any], setting_key: str) -> bool:
     return bool(model)
 
 
-def _runtime_cache_get(cache_key: str) -> bool | None:
+def _runtime_cache_get(cache_key: str) -> tuple[bool, str, float, float] | None:
     with _runtime_cache_lock:
         row = _runtime_cache.get(cache_key)
         if not row:
             return None
-        deadline, ready = row
-        if time.time() > deadline:
+        deadline, ready, reason, checked_at = row
+        now = time.time()
+        if now > deadline:
             _runtime_cache.pop(cache_key, None)
             return None
-        return ready
+        return ready, reason, checked_at, max(0.0, now - checked_at)
 
 
-def _runtime_cache_set(cache_key: str, ready: bool) -> None:
+def _runtime_cache_set(cache_key: str, ready: bool, reason: str) -> tuple[bool, str, float, float]:
+    checked_at = time.time()
     with _runtime_cache_lock:
-        _runtime_cache[cache_key] = (time.time() + _RUNTIME_CACHE_TTL_SECONDS, ready)
+        _runtime_cache[cache_key] = (
+            checked_at + _RUNTIME_CACHE_TTL_SECONDS,
+            ready,
+            reason,
+            checked_at,
+        )
+    return ready, reason, checked_at, 0.0
 
 
 async def _runtime_ready(
@@ -146,22 +199,47 @@ async def _runtime_ready(
     cache_namespace: str,
     setting_keys: tuple[str, ...],
     resolver: Callable[[], Awaitable[ModelRuntime | None]],
-) -> bool:
+) -> tuple[bool, str, float, float]:
     cache_key = f"{cache_namespace}:{_model_snapshot(settings, setting_keys)}"
     cached = _runtime_cache_get(cache_key)
     if cached is not None:
         return cached
     try:
-        ready = await resolver() is not None
+        runtime = await resolver()
+        ready = runtime is not None
+        reason = _recent_runtime_failure(runtime) if runtime is not None else None
+        if reason:
+            ready = False
+        reason = reason or ("ready" if ready else "model_unavailable")
     except (OSError, RuntimeError, TypeError, ValueError) as exc:
         logger.debug("AI runtime check failed for %s: %s", cache_namespace, exc)
         ready = False
-    _runtime_cache_set(cache_key, ready)
-    return ready
+        reason = "provider_unreachable"
+    return _runtime_cache_set(cache_key, ready, reason)
 
 
-def _blocked_state(*, enabled: bool, runtime_ready: bool = False, reason: str) -> AiFeatureState:
-    return AiFeatureState(enabled=enabled, runtime_ready=runtime_ready, effective=False, reason=reason)
+def _iso_time(timestamp: float | None = None) -> str:
+    return datetime.fromtimestamp(timestamp or time.time(), tz=timezone.utc).isoformat()
+
+
+def _blocked_state(
+    *,
+    enabled: bool,
+    runtime_configured: bool = False,
+    runtime_ready: bool = False,
+    reason: str,
+    checked_at: float | None = None,
+    cache_age: float = 0.0,
+) -> AiFeatureState:
+    return AiFeatureState(
+        enabled=enabled,
+        runtime_configured=runtime_configured,
+        runtime_ready=runtime_ready,
+        effective=False,
+        reason=reason,
+        checked_at=_iso_time(checked_at),
+        cache_age=round(cache_age, 3),
+    )
 
 
 def _global_block(settings: dict[str, Any]) -> str | None:
@@ -186,12 +264,50 @@ async def _resolve_model_feature_state(
     if not enabled:
         return _blocked_state(enabled=False, reason="disabled")
 
-    ready = await _runtime_ready(settings, cache_namespace, setting_keys, resolver)
+    configured = any(_model_configured(settings, setting_key) for setting_key in setting_keys)
+    from app.utils.ai_budget import get_ai_budget_status
+
+    budget = get_ai_budget_status()
+    if not budget.available:
+        return _blocked_state(
+            enabled=True,
+            runtime_configured=configured,
+            reason="budget_exhausted",
+        )
+
+    ready, runtime_reason, checked_at, cache_age = await _runtime_ready(
+        settings,
+        cache_namespace,
+        setting_keys,
+        resolver,
+    )
     if ready:
-        return AiFeatureState(enabled=True, runtime_ready=True, effective=True, reason="ready")
-    if not any(_model_configured(settings, setting_key) for setting_key in setting_keys):
-        return _blocked_state(enabled=True, runtime_ready=False, reason="waiting_model_config")
-    return _blocked_state(enabled=True, runtime_ready=False, reason="model_unavailable")
+        return AiFeatureState(
+            enabled=True,
+            runtime_configured=configured,
+            runtime_ready=True,
+            effective=True,
+            reason="ready",
+            checked_at=_iso_time(checked_at),
+            cache_age=round(cache_age, 3),
+        )
+    if not configured:
+        return _blocked_state(
+            enabled=True,
+            runtime_configured=False,
+            runtime_ready=False,
+            reason="waiting_model_config",
+            checked_at=checked_at,
+            cache_age=cache_age,
+        )
+    return _blocked_state(
+        enabled=True,
+        runtime_configured=True,
+        runtime_ready=False,
+        reason=runtime_reason,
+        checked_at=checked_at,
+        cache_age=cache_age,
+    )
 
 
 async def _resolve_primary_or_fallback_runtime(
@@ -228,7 +344,25 @@ def resolve_global_ai_state(settings: dict[str, Any] | None = None) -> AiFeature
         return _blocked_state(enabled=True, runtime_ready=True, reason="hard_disabled")
     if ai_processing_paused(runtime_settings):
         return _blocked_state(enabled=True, runtime_ready=True, reason="paused")
-    return AiFeatureState(enabled=True, runtime_ready=True, effective=True, reason="ready")
+    from app.utils.ai_budget import get_ai_budget_status
+
+    budget = get_ai_budget_status()
+    if not budget.available:
+        return _blocked_state(
+            enabled=True,
+            runtime_configured=True,
+            runtime_ready=True,
+            reason="budget_exhausted",
+        )
+    return AiFeatureState(
+        enabled=True,
+        runtime_configured=True,
+        runtime_ready=True,
+        effective=True,
+        reason="ready",
+        checked_at=_iso_time(),
+        cache_age=0.0,
+    )
 
 
 async def resolve_writing_state(settings: dict[str, Any] | None = None) -> AiFeatureState:
@@ -332,10 +466,15 @@ async def resolve_ai_policy_status(settings: dict[str, Any] | None = None) -> Ai
     )
 
 
-def product_ai_flag_enabled(key: str, default: bool) -> bool:
+def product_ai_flag_enabled(
+    key: str,
+    default: bool,
+    *,
+    settings: dict[str, Any] | None = None,
+) -> bool:
     """Synchronous product-flag helper for cheap preflight checks."""
 
-    settings = get_system_settings_sync() or {}
-    if _global_block(settings):
+    runtime_settings = settings if isinstance(settings, dict) else (get_system_settings_sync() or {})
+    if _global_block(runtime_settings):
         return False
-    return _bool_setting(settings, key, default)
+    return _bool_setting(runtime_settings, key, default)

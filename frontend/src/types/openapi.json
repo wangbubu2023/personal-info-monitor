@@ -3769,6 +3769,122 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/ai/subjective-scoring/cache/{content_id}": {
+      "get": {
+        "operationId": "get_subjective_scoring_cache_api_ai_subjective_scoring_cache__content_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "content_id",
+            "required": true,
+            "schema": {
+              "title": "Content Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Get Subjective Scoring Cache",
+        "tags": [
+          "ai-governance"
+        ]
+      }
+    },
+    "/api/ai/subjective-scoring/metrics": {
+      "get": {
+        "operationId": "get_subjective_scoring_metrics_api_ai_subjective_scoring_metrics_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Get Subjective Scoring Metrics",
+        "tags": [
+          "ai-governance"
+        ]
+      }
+    },
+    "/api/ai/subjective-scoring/reprocess": {
+      "post": {
+        "description": "Explicit, bounded, dry-run-first backfill surface.",
+        "operationId": "reprocess_subjective_scoring_api_ai_subjective_scoring_reprocess_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": true,
+                "title": "Payload",
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Reprocess Subjective Scoring",
+        "tags": [
+          "ai-governance"
+        ]
+      }
+    },
     "/api/auth-assistant/auth-bundles/import": {
       "post": {
         "operationId": "import_auth_bundle_from_assistant_api_auth_assistant_auth_bundles_import_post",
@@ -4048,6 +4164,31 @@
         "summary": "Create Pairing Token",
         "tags": [
           "auth-assistant"
+        ]
+      }
+    },
+    "/api/configs/ai-migration": {
+      "get": {
+        "description": "Return the persisted one-time legacy policy migration audit.",
+        "operationId": "get_ai_migration_api_configs_ai_migration_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Get Ai Migration",
+        "tags": [
+          "configs"
         ]
       }
     },
@@ -8363,6 +8504,393 @@
         ]
       }
     },
+    "/api/system/reliability/jobs": {
+      "get": {
+        "operationId": "list_jobs_api_system_reliability_jobs_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "state",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "State"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response List Jobs Api System Reliability Jobs Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "List Jobs",
+        "tags": [
+          "reliability"
+        ]
+      }
+    },
+    "/api/system/reliability/lineage/{object_type}/{object_id}": {
+      "get": {
+        "operationId": "get_lineage_api_system_reliability_lineage__object_type___object_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "object_type",
+            "required": true,
+            "schema": {
+              "title": "Object Type",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "object_id",
+            "required": true,
+            "schema": {
+              "title": "Object Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "direction",
+            "required": false,
+            "schema": {
+              "default": "upstream",
+              "pattern": "^(upstream|downstream)$",
+              "title": "Direction",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "max_hops",
+            "required": false,
+            "schema": {
+              "default": 3,
+              "maximum": 10,
+              "minimum": 1,
+              "title": "Max Hops",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Lineage Api System Reliability Lineage  Object Type   Object Id  Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Get Lineage",
+        "tags": [
+          "reliability"
+        ]
+      }
+    },
+    "/api/system/reliability/outbox": {
+      "get": {
+        "operationId": "list_outbox_api_system_reliability_outbox_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "state",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "State"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response List Outbox Api System Reliability Outbox Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "List Outbox",
+        "tags": [
+          "reliability"
+        ]
+      }
+    },
+    "/api/system/reliability/outbox/{event_id}/cancel": {
+      "post": {
+        "operationId": "cancel_outbox_api_system_reliability_outbox__event_id__cancel_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "event_id",
+            "required": true,
+            "schema": {
+              "title": "Event Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Cancel Outbox Api System Reliability Outbox  Event Id  Cancel Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Cancel Outbox",
+        "tags": [
+          "reliability"
+        ]
+      }
+    },
+    "/api/system/reliability/outbox/{event_id}/retry": {
+      "post": {
+        "operationId": "retry_outbox_api_system_reliability_outbox__event_id__retry_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "event_id",
+            "required": true,
+            "schema": {
+              "title": "Event Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Retry Outbox Api System Reliability Outbox  Event Id  Retry Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Retry Outbox",
+        "tags": [
+          "reliability"
+        ]
+      }
+    },
+    "/api/system/reliability/scheduler-runs": {
+      "get": {
+        "operationId": "list_scheduler_runs_api_system_reliability_scheduler_runs_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "state",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "State"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response List Scheduler Runs Api System Reliability Scheduler Runs Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "List Scheduler Runs",
+        "tags": [
+          "reliability"
+        ]
+      }
+    },
     "/api/system/score-vocab/reload": {
       "post": {
         "description": "Reload YAML-backed score vocabulary without restarting PIM.",
@@ -8837,6 +9365,26 @@
           }
         ],
         "summary": "Prometheus Metrics"
+      }
+    },
+    "/readyz": {
+      "get": {
+        "description": "Readiness is removed before shutdown starts leasing new work.",
+        "operationId": "readyz_readyz_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Readyz",
+        "tags": [
+          "health"
+        ]
       }
     }
   }

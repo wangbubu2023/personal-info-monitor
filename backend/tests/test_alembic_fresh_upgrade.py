@@ -76,7 +76,7 @@ def test_fresh_sqlite_database_can_upgrade_to_head(tmp_path):
     finally:
         conn.close()
 
-    assert revision == ("20260722_0033",)
+    assert revision == ("20260723_0035",)
     assert "ix_content_created_at" in indexes
     assert "ix_score_feedback_content_id" in indexes
     assert "ix_score_feedback_event_type" in indexes

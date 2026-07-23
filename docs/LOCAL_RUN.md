@@ -118,10 +118,14 @@ uvicorn app.main:app --host 127.0.0.1 --port 8000
 | `PIM_PUBLIC_URL` | 公网部署时的浏览器访问地址，用于 `./pim bootstrap-url` |
 | `FETCH_CONCURRENCY` | 抓取并发；同步 DB 连接池会自动按该值扩容，并额外保留 10 个连接 |
 | `PIM_AI_HARD_DISABLE` | 部署级 LLM 紧急停机开关（默认 false）；产品开关在 Web 设置中管理 |
+| `AI_DAILY_TOKEN_BUDGET` / `AI_MONTHLY_TOKEN_BUDGET` | AI Token 日/月预算（默认 0，不限制）；使用量持久化到 SQLite |
 | `OPENAI_API_KEY` | 可选，云端模型 Key |
 | `RSSHUB_URL` | 可选，RSSHub 地址 |
 
 模板文件：`backend/.env.example`
+
+从旧版本升级时，五个旧 AI 环境开关只读取一次并持久化到
+`system_settings`；日志会给出 v2.0 移除提示。迁移后不要再用 env 调整产品开关。
 
 ## 测试
 

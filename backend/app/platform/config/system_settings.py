@@ -4,6 +4,7 @@ import copy
 import os
 import threading
 import time
+import warnings
 from typing import Any, Dict
 
 from sqlalchemy import select
@@ -11,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.platform.persistence.database import SessionLocal
 from app.models.system_setting import SystemSetting
+from app.models.ai_governance import AiPolicyMigrationState
 from app.platform.observability.logger import get_logger
 from app.utils.model_catalog import provider_default_api_base, sanitize_provider_api_base
 
@@ -28,6 +30,19 @@ HOURLY_DIGEST_DEFAULT_PROMPT = """【定位】这是「每小时快报」，不�
 【约束】不要编造素材中没有的信息。不要把重复事件反复写成新事件；如果只有标题、正文不完整或低质量单源，要降低确定性表述。素材中的 Markdown 本地链接（形式为 [可见文案](/reader/内容ID)）必须原样使用，禁止改成外站链接。"""
 
 SYSTEM_SETTINGS_KEY = "global"
+AI_POLICY_MIGRATION_VERSION = 1
+_RETIRED_AI_FIELDS = (
+    "translation_enabled",
+    "title_translation_enabled",
+    "summarization_enabled",
+)
+_LEGACY_AI_ENV_KEYS = (
+    "AI_PROCESSING_ENABLED",
+    "ENRICH_AUTO_ON_INGEST",
+    "ENRICH_SUMMARY_ENABLED",
+    "ENRICH_TRANSLATE_ENABLED",
+    "PIM_SCORE_LLM_SUBJECTIVE",
+)
 _CACHE_TTL_SECONDS = 30
 _cache_lock = threading.Lock()
 _cache_value: Dict[str, Any] | None = None
@@ -114,10 +129,7 @@ DEFAULT_SYSTEM_SETTINGS: Dict[str, Any] = {
         "ollama_num_ctx": 2048,
         "ollama_no_think": True,
     },
-    "translation_enabled": True,
-    "title_translation_enabled": True,
     "auto_translate_language": "zh-CN",
-    "summarization_enabled": True,
     "auto_summary_enabled": True,
     "auto_listing_translation_enabled": True,
     "ai_subjective_scoring_enabled": False,
@@ -143,9 +155,6 @@ DEFAULT_SYSTEM_SETTINGS: Dict[str, Any] = {
 }
 
 _SETTINGS_BOOL_KEYS = (
-    "translation_enabled",
-    "title_translation_enabled",
-    "summarization_enabled",
     "auto_summary_enabled",
     "auto_listing_translation_enabled",
     "ai_subjective_scoring_enabled",
@@ -331,6 +340,13 @@ def _normalize_model_blocks(settings: Dict[str, Any]) -> None:
         block = settings.get(key)
         if isinstance(block, dict):
             _normalize_model_endpoint_fields(block)
+            if key == "score_model":
+                block["max_tokens"] = _coerce_int(
+                    block.get("max_tokens"),
+                    150,
+                    min_value=1,
+                    max_value=150,
+                )
 
 
 def _settings_for_storage(settings: Dict[str, Any]) -> Dict[str, Any]:
@@ -341,6 +357,8 @@ def _settings_for_storage(settings: Dict[str, Any]) -> Dict[str, Any]:
     from pretending to be the endpoint source when「模型接入」is the real owner.
     """
     stored = copy.deepcopy(settings)
+    for key in _RETIRED_AI_FIELDS:
+        stored.pop(key, None)
     for key in ("ai_model", "translation_model", "atom_model", "score_model"):
         block = stored.get(key)
         if not isinstance(block, dict):
@@ -462,6 +480,8 @@ def _apply_patch(current: Dict[str, Any], patch: Dict[str, Any]) -> Dict[str, An
 
 def _mask_sensitive(settings: Dict[str, Any]) -> Dict[str, Any]:
     response = copy.deepcopy(settings)
+    for key in _RETIRED_AI_FIELDS:
+        response.pop(key, None)
     for field in ("ai_model", "translation_model", "atom_model", "score_model"):
         model = response.get(field) or {}
         if isinstance(model, dict):
@@ -519,13 +539,20 @@ def get_system_settings_sync(force_refresh: bool = False) -> Dict[str, Any]:
         row = db.query(SystemSetting).filter(SystemSetting.key == SYSTEM_SETTINGS_KEY).first()
         existing_row = row is not None
         payload = _coerce_persisted_settings(row.value if row else {})
+        payload = _ensure_ai_policy_migrated_sync(
+            db,
+            row=row,
+            payload=payload,
+            existing_row=existing_row,
+        )
     except Exception as e:
         logger.warning(f"Load system settings (sync) failed, using defaults: {e}")
     finally:
         db.close()
 
     merged = _merge_dict(DEFAULT_SYSTEM_SETTINGS, payload)
-    _apply_legacy_ai_product_defaults(merged, payload, existing_row=existing_row)
+    if not _has_ai_policy_migration(payload):
+        _apply_legacy_ai_product_defaults(merged, payload, existing_row=existing_row)
     _normalize_fallback_settings(merged)
     _normalize_model_blocks(merged)
     _cache_set(merged)
@@ -546,11 +573,18 @@ async def get_system_settings_async(db: AsyncSession, force_refresh: bool = Fals
         row = result.scalar_one_or_none()
         existing_row = row is not None
         payload = _coerce_persisted_settings(row.value if row else {})
+        payload = await _ensure_ai_policy_migrated_async(
+            db,
+            row=row,
+            payload=payload,
+            existing_row=existing_row,
+        )
     except Exception as e:
         logger.warning(f"Load system settings (async) failed, using defaults: {e}")
 
     merged = _merge_dict(DEFAULT_SYSTEM_SETTINGS, payload)
-    _apply_legacy_ai_product_defaults(merged, payload, existing_row=existing_row)
+    if not _has_ai_policy_migration(payload):
+        _apply_legacy_ai_product_defaults(merged, payload, existing_row=existing_row)
     _normalize_fallback_settings(merged)
     _normalize_model_blocks(merged)
     _cache_set(merged)
@@ -566,6 +600,8 @@ async def update_system_settings_async(db: AsyncSession, patch: Dict[str, Any]) 
     # 避免新旧键并存时持久化层长期保留 legacy，导致前端 ?? 读到旧 false
     for legacy in _LEGACY_BOOL_KEYS:
         merged.pop(legacy, None)
+    for retired in _RETIRED_AI_FIELDS:
+        merged.pop(retired, None)
 
     from app.platform.llm.policy import invalidate_ai_policy_cache
 
@@ -588,3 +624,154 @@ async def update_system_settings_async(db: AsyncSession, patch: Dict[str, Any]) 
 def invalidate_system_settings_cache() -> None:
     """Invalidate in-memory cache (useful for tests)."""
     _cache_invalidate()
+
+
+def _has_ai_policy_migration(payload: Dict[str, Any]) -> bool:
+    return int(payload.get("ai_policy_migration_version") or 0) >= AI_POLICY_MIGRATION_VERSION
+
+
+def _resolved_legacy_ai_settings(payload: Dict[str, Any], *, existing_row: bool) -> Dict[str, bool]:
+    merged = copy.deepcopy(DEFAULT_SYSTEM_SETTINGS)
+    _apply_legacy_ai_product_defaults(merged, payload, existing_row=existing_row)
+    return {
+        "auto_summary_enabled": bool(merged["auto_summary_enabled"]),
+        "auto_listing_translation_enabled": bool(merged["auto_listing_translation_enabled"]),
+        "ai_subjective_scoring_enabled": bool(merged["ai_subjective_scoring_enabled"]),
+        "ai_processing_paused": bool(merged["ai_processing_paused"]),
+    }
+
+
+def _migration_payload(payload: Dict[str, Any], *, existing_row: bool) -> tuple[Dict[str, Any], dict[str, Any]]:
+    resolved = _resolved_legacy_ai_settings(payload, existing_row=existing_row)
+    migrated = copy.deepcopy(payload)
+    for key in _RETIRED_AI_FIELDS:
+        migrated.pop(key, None)
+    migrated.update(resolved)
+    migrated["ai_policy_migration_version"] = AI_POLICY_MIGRATION_VERSION
+    present = [key for key in _LEGACY_AI_ENV_KEYS if os.environ.get(key) is not None]
+    before = {key: os.environ.get(key) for key in present}
+    warning_messages = [
+        (
+            f"{key} is deprecated and was migrated once to system_settings; "
+            "use the AI settings UI/API (or PIM_AI_HARD_DISABLE for emergency stop). "
+            "Removal target: v2.0."
+        )
+        for key in present
+    ]
+    audit = {
+        "source_legacy_keys_present": present,
+        "before_values": before,
+        "resolved_product_settings": resolved,
+        "warnings_emitted": warning_messages,
+    }
+    return migrated, audit
+
+
+def _emit_migration_warnings(messages: list[str]) -> None:
+    for message in messages:
+        warnings.warn(message, DeprecationWarning, stacklevel=3)
+        logger.warning(message)
+
+
+def _ensure_ai_policy_migrated_sync(
+    db,
+    *,
+    row: SystemSetting | None,
+    payload: Dict[str, Any],
+    existing_row: bool,
+) -> Dict[str, Any]:
+    if _has_ai_policy_migration(payload):
+        return payload
+    state = (
+        db.query(AiPolicyMigrationState)
+        .filter(AiPolicyMigrationState.migration_version == AI_POLICY_MIGRATION_VERSION)
+        .first()
+    )
+    if state is not None:
+        # A crash after the atomic commit cannot leave this branch without the
+        # matching settings marker, but tolerate manually edited databases.
+        repaired = copy.deepcopy(payload)
+        repaired.update(state.resolved_product_settings or {})
+        repaired["ai_policy_migration_version"] = AI_POLICY_MIGRATION_VERSION
+        return repaired
+
+    migrated, audit = _migration_payload(payload, existing_row=existing_row)
+    if row is None:
+        row = SystemSetting(key=SYSTEM_SETTINGS_KEY, value=_settings_for_storage(migrated))
+        db.add(row)
+    else:
+        row.value = _settings_for_storage(migrated)
+    db.add(
+        AiPolicyMigrationState(
+            migration_version=AI_POLICY_MIGRATION_VERSION,
+            source_legacy_keys_present=audit["source_legacy_keys_present"],
+            before_values=audit["before_values"],
+            resolved_product_settings=audit["resolved_product_settings"],
+            warnings_emitted=audit["warnings_emitted"],
+        )
+    )
+    db.commit()
+    _emit_migration_warnings(audit["warnings_emitted"])
+    return migrated
+
+
+async def _ensure_ai_policy_migrated_async(
+    db: AsyncSession,
+    *,
+    row: SystemSetting | None,
+    payload: Dict[str, Any],
+    existing_row: bool,
+) -> Dict[str, Any]:
+    if _has_ai_policy_migration(payload):
+        return payload
+    result = await db.execute(
+        select(AiPolicyMigrationState).filter(
+            AiPolicyMigrationState.migration_version == AI_POLICY_MIGRATION_VERSION
+        )
+    )
+    state = result.scalar_one_or_none()
+    if state is not None:
+        repaired = copy.deepcopy(payload)
+        repaired.update(state.resolved_product_settings or {})
+        repaired["ai_policy_migration_version"] = AI_POLICY_MIGRATION_VERSION
+        return repaired
+
+    migrated, audit = _migration_payload(payload, existing_row=existing_row)
+    if row is None:
+        row = SystemSetting(key=SYSTEM_SETTINGS_KEY, value=_settings_for_storage(migrated))
+        db.add(row)
+    else:
+        row.value = _settings_for_storage(migrated)
+    db.add(
+        AiPolicyMigrationState(
+            migration_version=AI_POLICY_MIGRATION_VERSION,
+            source_legacy_keys_present=audit["source_legacy_keys_present"],
+            before_values=audit["before_values"],
+            resolved_product_settings=audit["resolved_product_settings"],
+            warnings_emitted=audit["warnings_emitted"],
+        )
+    )
+    await db.commit()
+    _emit_migration_warnings(audit["warnings_emitted"])
+    return migrated
+
+
+async def get_ai_policy_migration_state(db: AsyncSession) -> dict[str, Any] | None:
+    result = await db.execute(
+        select(AiPolicyMigrationState).filter(
+            AiPolicyMigrationState.migration_version == AI_POLICY_MIGRATION_VERSION
+        )
+    )
+    row = result.scalar_one_or_none()
+    if row is None:
+        return None
+    return {
+        "migration_version": row.migration_version,
+        "migrated_at": row.migrated_at.isoformat() if row.migrated_at else None,
+        "source_legacy_keys_present": row.source_legacy_keys_present or [],
+        "before_values": row.before_values or {},
+        "resolved_product_settings": row.resolved_product_settings or {},
+        "warnings_emitted": row.warnings_emitted or [],
+        "actor": row.actor,
+        "build_version": row.build_version,
+    }

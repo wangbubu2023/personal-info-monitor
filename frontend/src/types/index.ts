@@ -315,9 +315,12 @@ export interface FallbackModelPick {
 
 export interface AiFeatureState {
   enabled: boolean
+  runtime_configured: boolean
   runtime_ready: boolean
   effective: boolean
   reason: string
+  checked_at: string
+  cache_age: number
 }
 
 export interface AiPolicyStatus {
@@ -345,10 +348,7 @@ export interface SystemSettings {
     ollama_num_ctx?: number
     ollama_no_think?: boolean
   }
-  translation_enabled: boolean
-  title_translation_enabled?: boolean
   auto_translate_language: string
-  summarization_enabled: boolean
   auto_summary_enabled?: boolean
   auto_listing_translation_enabled?: boolean
   ai_subjective_scoring_enabled?: boolean

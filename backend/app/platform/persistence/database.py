@@ -108,6 +108,49 @@ AsyncSessionLocal = sessionmaker(
 _async_db_slots = asyncio.Semaphore(_ASYNC_DB_CONCURRENCY)
 
 
+def _install_sqlite_single_writer_hooks() -> None:
+    """Serialize ORM write transactions without serializing read-only sessions."""
+    if engine.dialect.name != "sqlite":
+        return
+    from app.platform.persistence.write_queue import sqlite_write_coordinator
+
+    @event.listens_for(Session, "before_flush")
+    def _acquire_writer(session, flush_context, instances):
+        if session.get_bind().dialect.name != "sqlite":
+            return
+        if session.info.get("_pim_writer_started") is not None:
+            return
+        if not (session.new or session.dirty or session.deleted):
+            return
+        session.info["_pim_writer_started"] = sqlite_write_coordinator.acquire()
+
+    @event.listens_for(Session, "do_orm_execute")
+    def _acquire_bulk_writer(orm_execute_state):
+        session = orm_execute_state.session
+        if session.get_bind().dialect.name != "sqlite":
+            return
+        if session.info.get("_pim_writer_started") is not None:
+            return
+        if orm_execute_state.is_insert or orm_execute_state.is_update or orm_execute_state.is_delete:
+            session.info["_pim_writer_started"] = sqlite_write_coordinator.acquire()
+
+    def _release_writer(session):
+        started = session.info.pop("_pim_writer_started", None)
+        if started is not None:
+            sqlite_write_coordinator.release(started)
+
+    def _release_outer_writer(session, transaction):
+        if transaction.parent is None:
+            _release_writer(session)
+
+    event.listen(Session, "after_commit", _release_writer)
+    event.listen(Session, "after_rollback", _release_writer)
+    event.listen(Session, "after_transaction_end", _release_outer_writer)
+
+
+_install_sqlite_single_writer_hooks()
+
+
 # Base class for models
 class Base(DeclarativeBase):
     pass
