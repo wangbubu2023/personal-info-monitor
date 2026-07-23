@@ -13,11 +13,16 @@ from sqlalchemy.pool import StaticPool
 
 from app.database import Base
 from app.models import Source
+from app.platform.workers.fetch_jobs import FetchDispatchResult
+
+
+def _dispatch(source_id: str, *, enqueued: bool = True) -> FetchDispatchResult:
+    return FetchDispatchResult(source_id, "scheduled", f"job-{source_id}", f"key-{source_id}", True, enqueued=enqueued)
 
 
 @pytest.mark.asyncio
 async def test_fetch_source_source_not_found():
-    """When source doesn't exist, _do_fetch returns error without raising."""
+    """A missing source is a typed terminal failure, never a success."""
     mock_sem = MagicMock()
     mock_sem.__aenter__ = AsyncMock(return_value=None)
     mock_sem.__aexit__ = AsyncMock(return_value=False)
@@ -32,11 +37,14 @@ async def test_fetch_source_source_not_found():
             to_thread_mock = AsyncMock(return_value="Source not found")
             with patch("app.tasks.fetch_tasks.asyncio.to_thread", to_thread_mock):
                 from app.tasks.fetch_tasks import fetch_source
-                # Should not raise
-                await fetch_source("nonexistent-id")
+                from app.domains.fetch.failures import FetchFailureError
+
+                with pytest.raises(FetchFailureError) as caught:
+                    await fetch_source("nonexistent-id")
 
     mock_tracker.start_fetch.assert_called_once()
     mock_tracker.end_fetch.assert_called_once()
+    assert caught.value.failure.code.value == "source_not_found"
 
 
 @pytest.mark.asyncio
@@ -44,37 +52,35 @@ async def test_fetch_all_sources_dispatches_tasks():
     """fetch_all_sources queries enabled sources and enqueues fetch tasks."""
     with patch("app.tasks.fetch_tasks.asyncio.to_thread",
                new=AsyncMock(return_value=["src-1", "src-2"])):
-        with patch("app.tasks.fetch_tasks.fetch_lock") as mock_lock:
-            mock_lock.is_locked.return_value = False
-            with patch("app.tasks.task_queue.task_queue") as mock_queue:
-                mock_queue.enqueue_fetch = AsyncMock(return_value=True)
-                from app.tasks.fetch_tasks import fetch_all_sources
-                result = await fetch_all_sources()
+        with patch("app.tasks.task_queue.task_queue") as mock_queue:
+            mock_queue.enqueue_fetch = AsyncMock(side_effect=lambda sid, **_: _dispatch(sid))
+            from app.tasks.fetch_tasks import fetch_all_sources
+            result = await fetch_all_sources()
 
     assert result["status"] == "success"
-    assert result["total"] == 2
+    assert result["requested_count"] == 2
+    assert result["persisted_count"] == 2
 
 
 @pytest.mark.asyncio
-async def test_fetch_all_sources_skips_locked():
-    """fetch_all_sources skips sources that are already locked."""
+async def test_fetch_all_sources_reports_pending_execution_cache():
+    """Durable accepted jobs remain pending when the execution cache is full."""
     with patch("app.tasks.fetch_tasks.asyncio.to_thread",
                new=AsyncMock(return_value=["src-1", "src-2"])):
-        with patch("app.tasks.fetch_tasks.fetch_lock") as mock_lock:
-            # src-1 is locked, src-2 is not
-            mock_lock.is_locked.side_effect = lambda sid: sid == "src-1"
-            with patch("app.tasks.task_queue.task_queue") as mock_queue:
-                mock_queue.enqueue_fetch = AsyncMock(return_value=True)
-                from app.tasks.fetch_tasks import fetch_all_sources
-                result = await fetch_all_sources()
+        with patch("app.tasks.task_queue.task_queue") as mock_queue:
+            mock_queue.enqueue_fetch = AsyncMock(side_effect=lambda sid, **_: _dispatch(sid, enqueued=sid != "src-1"))
+            from app.tasks.fetch_tasks import fetch_all_sources
+            result = await fetch_all_sources()
 
-    assert result["total"] == 2
-    assert result["scheduled"] == 1
+    assert result["requested_count"] == 2
+    assert result["persisted_count"] == 2
+    assert result["enqueued_count"] == 1
+    assert result["status"] == "partial"
 
 
 @pytest.mark.asyncio
-async def test_fetch_source_exception_is_caught():
-    """Exception in asyncio.to_thread is caught and persisted without re-raising."""
+async def test_fetch_source_exception_is_persisted_and_reraised():
+    """Worker-visible exceptions are persisted and re-raised for durable retry."""
     mock_sem = MagicMock()
     mock_sem.__aenter__ = AsyncMock(return_value=None)
     mock_sem.__aexit__ = AsyncMock(return_value=False)
@@ -93,7 +99,8 @@ async def test_fetch_source_exception_is_caught():
                 with patch("app.tasks.fetch_tasks.persist_fetch_task_exception",
                            new=MagicMock()):
                     from app.tasks.fetch_tasks import fetch_source
-                    await fetch_source("src-1")  # Must not raise
+                    with pytest.raises(RuntimeError, match="network error"):
+                        await fetch_source("src-1")
 
     mock_tracker.end_fetch.assert_called_once()
 
@@ -295,6 +302,15 @@ async def test_do_fetch_batches_new_content_finish_jobs():
         return {
             "saved": 3,
             "new_content_ids": ["content-1", "content-2", "content-3"],
+            "postprocess_candidates": [
+                {
+                    "content_id": f"content-{index}",
+                    "trigger_reason": "new_insert",
+                    "pipeline_version": "ingest-finish-v1",
+                    "content_fingerprint": str(index) * 64,
+                }
+                for index in range(1, 4)
+            ],
         }
 
     with patch("app.database.SessionLocal", return_value=db), \
@@ -304,17 +320,17 @@ async def test_do_fetch_batches_new_content_finish_jobs():
          patch("app.tasks.task_queue.task_queue") as task_queue:
         mock_lock.acquire.return_value = True
         mock_limiter.acquire.return_value = True
-        task_queue.enqueue_ingest_finish_many = AsyncMock(return_value=3)
+        task_queue.enqueue_ingest_finish = AsyncMock(return_value=True)
 
         from app.tasks.fetch_tasks import _do_fetch
 
         result = await _do_fetch("source-1", manual_trigger=False, job_id="fetch-1")
 
     assert result["saved"] == 3
-    task_queue.enqueue_ingest_finish_many.assert_awaited_once_with(
-        ["content-1", "content-2", "content-3"],
-        job_id="fetch-1",
-    )
+    assert task_queue.enqueue_ingest_finish.await_count == 3
+    first = task_queue.enqueue_ingest_finish.await_args_list[0]
+    assert first.args[0] == "content-1"
+    assert first.kwargs["job_id"].startswith("finish:ingest-finish-v1:")
 
 
 @pytest.mark.asyncio
@@ -326,21 +342,15 @@ async def test_check_and_fetch_due_sources_dispatches_due():
     due source, jitter is skipped entirely and the enqueue happens on the
     next loop turn.
     """
-    import asyncio as _asyncio
-
     with patch("app.tasks.fetch_tasks.asyncio.to_thread",
                new=AsyncMock(return_value=["due-src-1"])):
-        with patch("app.tasks.fetch_tasks.fetch_lock") as mock_lock:
-            mock_lock.is_locked.return_value = False
-            with patch("app.tasks.task_queue.task_queue") as mock_queue:
-                mock_queue.enqueue_fetch = AsyncMock(return_value=True)
-                from app.tasks.fetch_tasks import check_and_fetch_due_sources
-                await check_and_fetch_due_sources()
-                # Fire-and-forget enqueue runs on the next event loop
-                # iteration; await a tick to let it land.
-                await _asyncio.sleep(0)
+        with patch("app.tasks.task_queue.task_queue") as mock_queue:
+            mock_queue.enqueue_fetch = AsyncMock(return_value=_dispatch("due-src-1"))
+            from app.tasks.fetch_tasks import check_and_fetch_due_sources
+            result = await check_and_fetch_due_sources()
 
-    assert mock_queue.enqueue_fetch.call_count > 0
+    assert mock_queue.enqueue_fetch.call_count == 1
+    assert result["persisted_count"] == 1
 
 
 @pytest.mark.asyncio
@@ -349,42 +359,23 @@ async def test_check_and_fetch_due_sources_applies_startup_jitter():
     ``create_task`` + randomized sleeps so the target hosts don't see a
     synchronized burst. Verifies the jitter kicks in only above 1 source and
     doesn't block the scheduler loop itself."""
-    import asyncio as _asyncio
-
     due = [f"src-{i}" for i in range(4)]
-    sleep_calls: list[float] = []
-
-    real_sleep = _asyncio.sleep
-
-    async def spy_sleep(duration: float) -> None:
-        sleep_calls.append(duration)
-        # Collapse to an immediate yield so the test runs fast regardless
-        # of the randomized delay.
-        await real_sleep(0)
 
     with patch("app.tasks.fetch_tasks.asyncio.to_thread",
                new=AsyncMock(return_value=due)):
-        with patch("app.tasks.fetch_tasks.fetch_lock") as mock_lock:
-            mock_lock.is_locked.return_value = False
-            with patch("app.tasks.task_queue.task_queue") as mock_queue, \
-                 patch("app.tasks.fetch_tasks.asyncio.sleep", new=spy_sleep):
-                mock_queue.enqueue_fetch = AsyncMock(return_value=True)
-                from app.tasks.fetch_tasks import check_and_fetch_due_sources
-                await check_and_fetch_due_sources()
-                # Give the delayed-enqueue tasks a chance to run.
-                for _ in range(5):
-                    await real_sleep(0)
+        with patch("app.tasks.task_queue.task_queue") as mock_queue:
+            mock_queue.enqueue_fetch = AsyncMock(side_effect=lambda sid, **_: _dispatch(sid, enqueued=False))
+            from app.tasks.fetch_tasks import check_and_fetch_due_sources
+            await check_and_fetch_due_sources()
 
     assert mock_queue.enqueue_fetch.call_count == 4
-    # One jitter-sleep per source and every delay must sit within the
-    # configured window [0, _STARTUP_JITTER_SECONDS].
+    # Jitter is represented durably as not_before; no sleeping task is needed.
     from app.tasks.fetch_tasks import _STARTUP_JITTER_SECONDS
 
-    assert len(sleep_calls) == 4
-    assert all(0.0 <= d <= _STARTUP_JITTER_SECONDS for d in sleep_calls)
-    # Sources must decorrelate — if every delay is identical, the jitter
-    # isn't doing its job.
-    assert len({round(d, 3) for d in sleep_calls}) > 1
+    calls = mock_queue.enqueue_fetch.await_args_list
+    delays = [(call.kwargs["not_before"] - call.kwargs["due_window"]).total_seconds() for call in calls]
+    assert all(0.0 <= delay <= _STARTUP_JITTER_SECONDS for delay in delays)
+    assert len({round(delay, 3) for delay in delays}) > 1
 
 
 def test_effective_due_interval_applies_backoff_and_jitter():

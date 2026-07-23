@@ -2,6 +2,7 @@
 
 import asyncio
 import random
+from datetime import timedelta
 from uuid import uuid4
 
 from app.background import (
@@ -21,14 +22,19 @@ from app.domains.fetch.coordinator import run_fetch_pipeline
 from app.domains.sources.status import persist_fetch_task_exception
 from app.utils.logger import get_logger, bind_job_id, restore_job_id
 from app.utils.url import normalize_host
+from app.utils.datetime import utcnow_naive
 
 logger = get_logger(__name__)
 settings = get_settings()
 
 
-async def fetch_source(source_id: str, manual_trigger: bool = False):
+async def fetch_source(
+    source_id: str,
+    manual_trigger: bool = False,
+    fetch_job_id: str | None = None,
+):
     """Fetch content from a single source. Runs pipeline in a thread."""
-    job_id = uuid4().hex
+    job_id = fetch_job_id or uuid4().hex
     token = bind_job_id(job_id)
     try:
         logger.info(
@@ -41,7 +47,7 @@ async def fetch_source(source_id: str, manual_trigger: bool = False):
             try:
                 await task_tracker.start_fetch()
                 tracker_started = True
-                await _do_fetch(source_id, manual_trigger, job_id=job_id)
+                return await _do_fetch(source_id, manual_trigger, job_id=job_id)
             finally:
                 if tracker_started:
                     await task_tracker.end_fetch()
@@ -52,6 +58,7 @@ async def fetch_source(source_id: str, manual_trigger: bool = False):
 async def _do_fetch(source_id: str, manual_trigger: bool, job_id: str | None = None):
     """执行单源抓取：短生命周期准入检查 + 主循环 async pipeline。"""
     from app.database import SessionLocal
+    from app.domains.fetch.failures import FetchFailureCode, FetchFailureError, make_failure
     from sqlalchemy.orm import joinedload
 
     from app.models import Source
@@ -99,11 +106,16 @@ async def _do_fetch(source_id: str, manual_trigger: bool, job_id: str | None = N
         skip_reason = await asyncio.to_thread(_query_and_lock)
 
         if skip_reason:
-            if skip_reason == "Source not found":
-                logger.error(f"Source not found: {source_id}")
-                return {"status": "error", "message": skip_reason}
-            logger.info(f"Skip fetch for source {source_id}: {skip_reason}")
-            return {"status": "skipped", "message": skip_reason}
+            failure_codes = {
+                "Source not found": FetchFailureCode.SOURCE_NOT_FOUND,
+                "Already fetching": FetchFailureCode.FETCH_ALREADY_RUNNING,
+                "Source is disabled": FetchFailureCode.SOURCE_DISABLED,
+                "Podcast sources are disabled": FetchFailureCode.SOURCE_TYPE_DISABLED,
+                "Domain rate limited": FetchFailureCode.DOMAIN_RATE_LIMITED,
+            }
+            failure = make_failure(failure_codes.get(skip_reason, FetchFailureCode.UNKNOWN))
+            logger.warning("Fetch gate rejected source %s: %s", source_id, failure.code.value)
+            raise FetchFailureError(failure)
 
         lock_acquired = True
 
@@ -126,34 +138,35 @@ async def _do_fetch(source_id: str, manual_trigger: bool, job_id: str | None = N
 
         db, source = await asyncio.to_thread(_open_pipeline_session)
         if not source:
-            logger.error(f"Source disappeared after fetch lock acquisition: {source_id}")
-            return {"status": "error", "message": "Source not found"}
+            raise FetchFailureError(make_failure(FetchFailureCode.SOURCE_NOT_FOUND))
 
         # The coordinator is cooperative async code. Every synchronous ORM or
         # CPU-heavy stage inside it is explicitly sent to a worker thread.
         result = await run_fetch_pipeline(db, source, manual_trigger)
 
-        # 收集新内容 ID 用于 AI 后处理
-        new_ids = []
-        if result.get("saved", 0) > 0:
-            new_ids = result.get("new_content_ids", [])
-
+        candidates = list(result.get("postprocess_candidates") or [])
+        new_ids = [str(item.get("content_id")) for item in candidates if item.get("content_id")]
         result = {**result, "new_content_ids": new_ids}
 
-        # Dispatch non-blocking ingest-finalization for new content.
-        if new_ids:
+        # The content fingerprint + pipeline version is the execution
+        # idempotency boundary. A fetch trace UUID must never force the same
+        # expensive content through the pipeline twice.
+        if candidates:
             from app.tasks.task_queue import task_queue
 
-            await task_queue.enqueue_ingest_finish_many(
-                [str(content_id) for content_id in new_ids],
-                job_id=job_id,
-            )
+            for candidate in candidates:
+                content_id = str(candidate["content_id"])
+                candidate_job_id = (
+                    f"finish:{candidate['pipeline_version']}:{candidate['content_fingerprint']}"
+                )
+                await task_queue.enqueue_ingest_finish(content_id, job_id=candidate_job_id)
 
         return result
 
     except Exception as exc:
         logger.error(f"Fetch failed for {source_id}: {exc}")
         await asyncio.to_thread(persist_fetch_task_exception, source_id, exc)
+        raise
 
     finally:
         if lock_acquired:
@@ -183,15 +196,33 @@ async def fetch_all_sources(manual_trigger: bool = False):
     source_ids = await asyncio.to_thread(_query_sources)
 
     from app.tasks.task_queue import task_queue
-    scheduled = 0
+    persisted = enqueued = duplicates = rejected = 0
+    job_ids: list[str] = []
     for sid in source_ids:
-        if fetch_lock.is_locked(sid):
-            continue
-        await task_queue.enqueue_fetch(sid, manual_trigger=manual_trigger)
-        scheduled += 1
+        dispatch = await task_queue.enqueue_fetch(
+            sid,
+            manual_trigger=manual_trigger,
+            fetch_kind="bulk_manual" if manual_trigger else "scheduled",
+        )
+        persisted += int(dispatch.persisted and not dispatch.duplicate)
+        enqueued += int(dispatch.enqueued)
+        duplicates += int(dispatch.duplicate)
+        rejected += int(dispatch.rejected)
+        if dispatch.job_id:
+            job_ids.append(dispatch.job_id)
 
-    logger.info(f"Dispatched {scheduled}/{len(source_ids)} fetch tasks")
-    return {"status": "success", "total": len(source_ids), "scheduled": scheduled}
+    logger.info("Persisted %s/%s fetch jobs (enqueued=%s duplicate=%s rejected=%s)", persisted, len(source_ids), enqueued, duplicates, rejected)
+    return {
+        "status": "partial" if rejected or enqueued < persisted else "success",
+        "requested_count": len(source_ids),
+        "persisted_count": persisted,
+        "accepted_count": persisted,
+        "enqueued_count": enqueued,
+        "duplicate_count": duplicates,
+        "rejected_count": rejected,
+        "failed_count": rejected,
+        "job_ids": job_ids,
+    }
 
 
 # When multiple sources come due in the same scheduler tick we stagger their
@@ -224,32 +255,41 @@ async def check_and_fetch_due_sources():
 
     from app.tasks.task_queue import task_queue
 
-    async def _delayed_enqueue(sid: str, delay_s: float) -> None:
-        try:
-            if delay_s > 0:
-                await asyncio.sleep(delay_s)
-            if fetch_lock.is_locked(sid):
-                return
-            await task_queue.enqueue_fetch(sid)
-        except Exception:  # noqa: BLE001 - best-effort; log and move on
-            logger.exception("Delayed enqueue failed for source %s", sid)
-
     # Skip the jitter when a single source is due — no correlation risk
     # and a user watching a lone feed shouldn't wait extra seconds for no
     # reason. Above that, spread starts across [0, _STARTUP_JITTER_SECONDS).
-    scheduled = 0
+    persisted = enqueued = duplicates = rejected = 0
     use_jitter = len(due_ids) > 1
+    due_window = utcnow_naive()
     for sid in due_ids:
-        if fetch_lock.is_locked(sid):
-            continue
         delay = random.uniform(0.0, _STARTUP_JITTER_SECONDS) if use_jitter else 0.0
-        asyncio.create_task(_delayed_enqueue(sid, delay))
-        scheduled += 1
+        dispatch = await task_queue.enqueue_fetch(
+            sid,
+            fetch_kind="scheduled",
+            due_window=due_window,
+            not_before=due_window + timedelta(seconds=delay),
+        )
+        persisted += int(dispatch.persisted and not dispatch.duplicate)
+        enqueued += int(dispatch.enqueued)
+        duplicates += int(dispatch.duplicate)
+        rejected += int(dispatch.rejected)
 
     logger.info(
-        "Scheduled %s/%s due sources (startup_jitter=%ss%s)",
-        scheduled,
+        "Persisted %s/%s due sources (enqueued=%s duplicate=%s rejected=%s startup_jitter=%ss%s)",
+        persisted,
         len(due_ids),
+        enqueued,
+        duplicates,
+        rejected,
         _STARTUP_JITTER_SECONDS if use_jitter else 0,
         ", jittered" if use_jitter else "",
     )
+    return {
+        "requested_count": len(due_ids),
+        "persisted_count": persisted,
+        "accepted_count": persisted,
+        "enqueued_count": enqueued,
+        "duplicate_count": duplicates,
+        "rejected_count": rejected,
+        "failed_count": rejected,
+    }

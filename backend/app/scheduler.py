@@ -38,6 +38,7 @@ def setup_scheduler():
         cleanup_error_logs,
         purge_expired_runtime_locks,
         requeue_unfinished_content,
+        dispatch_pending_fetch_jobs,
         run_markdown_export,
     )
     from app.domains.enrich.notifications.daily_digest import send_daily_digest_emails
@@ -136,6 +137,15 @@ def setup_scheduler():
         IntervalTrigger(hours=6),
         id="requeue_unfinished_content",
         name="Requeue unfinished content",
+        replace_existing=True,
+        **_JOB_DEFAULTS,
+    )
+
+    scheduler.add_job(
+        dispatch_pending_fetch_jobs,
+        IntervalTrigger(minutes=1),
+        id="dispatch_pending_fetch_jobs",
+        name="Dispatch durable pending fetch jobs",
         replace_existing=True,
         **_JOB_DEFAULTS,
     )

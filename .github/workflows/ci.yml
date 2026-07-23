@@ -55,15 +55,8 @@ jobs:
       - name: Verify offline eval regression gate
         run: cd backend && uv run python scripts/check_offline_eval_regression.py
 
-      - name: Verify shared Core Eval dataset is installed
-        # The reviewed production dataset is intentionally not committed on
-        # the frozen main branch. Validate it automatically when present.
-        if: ${{ hashFiles('backend/tests/fixtures/core_eval_set.jsonl') != '' }}
-        run: cd backend && uv run python scripts/check_core_eval_dataset.py
-
-      - name: Verify Event clustering eval dataset is installed
-        if: ${{ hashFiles('backend/tests/fixtures/event_cluster_pairs.jsonl') != '' }}
-        run: cd backend && uv run python scripts/run_event_cluster_eval.py
+      - name: Verify M0/M1 real bootstrap eval datasets (fail closed)
+        run: cd backend && uv run python scripts/check_bootstrap_eval.py
 
       - name: Verify requirements.txt matches pyproject.toml
         run: |

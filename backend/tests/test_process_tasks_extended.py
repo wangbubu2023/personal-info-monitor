@@ -19,7 +19,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 @pytest.mark.asyncio
 async def test_finish_content_content_not_found():
-    """Missing content is a completed no-op; real pipeline exceptions raise for retry."""
+    """Missing content is a typed terminal failure, never a successful no-op."""
     mock_sem = MagicMock()
     mock_sem.__aenter__ = AsyncMock(return_value=None)
     mock_sem.__aexit__ = AsyncMock(return_value=False)
@@ -36,7 +36,10 @@ async def test_finish_content_content_not_found():
         with patch("app.domains.ingest.finish.task_tracker", mock_tracker):
             with patch("app.database.SessionLocal", return_value=mock_db):
                 from app.domains.ingest.finish import finish_content
-                await finish_content("nonexistent-id")  # Must not raise
+                from app.domains.ingest.failures import ContentNotFoundError
+                with pytest.raises(ContentNotFoundError) as exc_info:
+                    await finish_content("nonexistent-id")
+                assert exc_info.value.failure.code.value == "CONTENT_NOT_FOUND"
 
     mock_tracker.start_process.assert_called_once()
     mock_tracker.end_process.assert_called_once()

@@ -22,7 +22,8 @@ from __future__ import annotations
 
 import json
 import os
-from collections import Counter, defaultdict
+import time
+from collections import Counter, defaultdict, deque
 from pathlib import Path
 from threading import Lock
 from typing import Any, Dict, Optional
@@ -221,9 +222,97 @@ class TaskQueueMetrics:
             self._dropped = Counter({k: int(v) for k, v in (data.get("dropped") or {}).items()})
 
 
+class StorageMetrics:
+    """Conservation totals plus rolling storage failures for 5m/1h/24h views."""
+
+    _WINDOWS = {"5m": 5 * 60, "1h": 60 * 60, "24h": 24 * 60 * 60}
+
+    def __init__(self) -> None:
+        self._lock = Lock()
+        self._totals: Counter = Counter()
+        self._failure_events: deque[tuple[float, str]] = deque()
+
+    def _purge(self, now: float) -> None:
+        cutoff = now - self._WINDOWS["24h"]
+        while self._failure_events and self._failure_events[0][0] < cutoff:
+            self._failure_events.popleft()
+
+    def record_batch(
+        self,
+        *,
+        requested: int,
+        saved: int,
+        updated: int,
+        unchanged: int,
+        failure_classes: list[str],
+        outcome: str,
+    ) -> None:
+        now = time.time()
+        with self._lock:
+            self._totals.update(
+                {
+                    "batches": 1,
+                    "requested": requested,
+                    "saved": saved,
+                    "updated": updated,
+                    "unchanged": unchanged,
+                    "failed": len(failure_classes),
+                    f"outcome:{outcome}": 1,
+                }
+            )
+            for failure_class in failure_classes:
+                kind = str(failure_class or "unknown")
+                self._totals[f"failure:{kind}"] += 1
+                self._failure_events.append((now, kind))
+            self._purge(now)
+
+    def snapshot(self) -> dict[str, object]:
+        now = time.time()
+        with self._lock:
+            self._purge(now)
+            windows: dict[str, dict[str, int]] = {}
+            for name, seconds in self._WINDOWS.items():
+                counts = Counter(kind for timestamp, kind in self._failure_events if timestamp >= now - seconds)
+                windows[name] = dict(counts)
+            return {"totals": dict(self._totals), "failure_windows": windows}
+
+    def prometheus_snapshot(self) -> str:
+        snapshot = self.snapshot()
+        totals = snapshot["totals"]
+        lines = [
+            "# HELP pim_storage_items_total Storage result items by outcome.",
+            "# TYPE pim_storage_items_total counter",
+        ]
+        for name in ("requested", "saved", "updated", "unchanged", "failed"):
+            lines.append(f'pim_storage_items_total{{result="{name}"}} {totals.get(name, 0)}')
+        for window, counts in snapshot["failure_windows"].items():
+            for failure_class, count in sorted(counts.items()):
+                lines.append(
+                    f'pim_storage_failures_window{{window="{window}",failure_class="{_escape_prometheus_label(failure_class)}"}} {count}'
+                )
+        return "\n".join(lines) + "\n"
+
+    def to_persisted_dict(self) -> Dict[str, Any]:
+        with self._lock:
+            self._purge(time.time())
+            return {"totals": dict(self._totals), "failure_events": list(self._failure_events)}
+
+    def restore_from_dict(self, data: Dict[str, Any]) -> None:
+        if not isinstance(data, dict):
+            return
+        with self._lock:
+            self._totals = Counter({k: int(v) for k, v in (data.get("totals") or {}).items()})
+            self._failure_events = deque(
+                (float(timestamp), str(kind))
+                for timestamp, kind in (data.get("failure_events") or [])
+            )
+            self._purge(time.time())
+
+
 request_metrics = RequestMetrics()
 source_metrics = SourceMetrics()
 task_queue_metrics = TaskQueueMetrics()
+storage_metrics = StorageMetrics()
 
 
 # ---------------------------------------------------------------------------
@@ -244,7 +333,7 @@ def _resolve_persist_path(override: Optional[str | os.PathLike[str]] = None) -> 
 
 
 def persist_metrics(path: Optional[str | os.PathLike[str]] = None) -> Optional[Path]:
-    """Checkpoint the three module singletons to JSON on graceful shutdown.
+    """Checkpoint module-level metric singletons to JSON on graceful shutdown.
 
     Returns the file path on success, or ``None`` if persistence was skipped.
     Failures are intentionally swallowed — metrics are an observability aid,
@@ -254,10 +343,11 @@ def persist_metrics(path: Optional[str | os.PathLike[str]] = None) -> Optional[P
         target = _resolve_persist_path(path)
         target.parent.mkdir(parents=True, exist_ok=True)
         payload = {
-            "version": 1,
+            "version": 2,
             "request": request_metrics.to_persisted_dict(),
             "source": source_metrics.to_persisted_dict(),
             "task_queue": task_queue_metrics.to_persisted_dict(),
+            "storage": storage_metrics.to_persisted_dict(),
         }
         tmp = target.with_suffix(".tmp")
         tmp.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
@@ -280,6 +370,7 @@ def restore_metrics(path: Optional[str | os.PathLike[str]] = None) -> bool:
         request_metrics.restore_from_dict(data.get("request") or {})
         source_metrics.restore_from_dict(data.get("source") or {})
         task_queue_metrics.restore_from_dict(data.get("task_queue") or {})
+        storage_metrics.restore_from_dict(data.get("storage") or {})
         return True
     except Exception:  # noqa: BLE001 - observability best-effort
         return False

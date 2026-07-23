@@ -12,6 +12,8 @@ from app.models.system_setting import SystemSetting
 from app.models.runtime_lock import RuntimeLock
 from app.models.source_fetch_log import SourceFetchLog
 from app.models.postprocess_job import PostprocessJob
+from app.models.fetch_job import FetchJob
+from app.models.web_session import BootstrapCode, WebSession
 from app.models.atom import Atom, AtomIdSequence, AtomOperation, AtomRelation
 from app.models.atom_event import (
     AtomEntity,
@@ -44,6 +46,9 @@ __all__ = [
     "RuntimeLock",
     "SourceFetchLog",
     "PostprocessJob",
+    "FetchJob",
+    "BootstrapCode",
+    "WebSession",
     "Atom",
     "AtomRelation",
     "AtomIdSequence",

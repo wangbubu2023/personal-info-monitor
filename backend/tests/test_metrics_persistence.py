@@ -9,6 +9,7 @@ from app.utils.metrics import (
     request_metrics,
     restore_metrics,
     source_metrics,
+    storage_metrics,
     task_queue_metrics,
 )
 
@@ -17,6 +18,7 @@ def _reset_metrics() -> None:
     request_metrics.restore_from_dict({})
     source_metrics.restore_from_dict({})
     task_queue_metrics.restore_from_dict({})
+    storage_metrics.restore_from_dict({})
 
 
 def test_persist_and_restore_roundtrip(tmp_path):
@@ -27,6 +29,14 @@ def test_persist_and_restore_roundtrip(tmp_path):
     source_metrics.record_fetch("src-1", duration=0.3, success=False)
     source_metrics.record_process("src-1", success=True)
     task_queue_metrics.record_dropped("fetch")
+    storage_metrics.record_batch(
+        requested=10,
+        saved=6,
+        updated=1,
+        unchanged=2,
+        failure_classes=["database"],
+        outcome="partial_failure",
+    )
 
     target = tmp_path / "metrics.json"
     written = persist_metrics(target)
@@ -45,6 +55,9 @@ def test_persist_and_restore_roundtrip(tmp_path):
     assert src["fetch_failures"] == 1
     assert src["process_total"] == 1
     assert task_queue_metrics.snapshot() == {"fetch": 1}
+    storage = storage_metrics.snapshot()
+    assert storage["totals"]["requested"] == 10
+    assert storage["failure_windows"]["5m"] == {"database": 1}
 
 
 def test_restore_missing_file_returns_false(tmp_path):

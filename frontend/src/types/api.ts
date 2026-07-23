@@ -1526,6 +1526,74 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/bootstrap/exchange": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Bootstrap Exchange */
+        post: operations["bootstrap_exchange_bootstrap_exchange_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/bootstrap/session": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Session Status */
+        get: operations["session_status_bootstrap_session_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/bootstrap/session/logout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Logout Session */
+        post: operations["logout_session_bootstrap_session_logout_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/bootstrap/session/rotate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Rotate Session */
+        post: operations["rotate_session_bootstrap_session_rotate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/health": {
         parameters: {
             query?: never;
@@ -1573,16 +1641,11 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /**
-         * Local Token
-         * @description Return the API key for trusted local callers only.
-         *
-         *     See the module docstring for the four defence-in-depth gates this
-         *     endpoint enforces.
-         */
-        get: operations["local_token_local_token_get"];
+        /** Retired Local Token Get */
+        get: operations["retired_local_token_get_local_token_get"];
         put?: never;
-        post?: never;
+        /** Retired Local Token Post */
+        post: operations["retired_local_token_post_local_token_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1795,6 +1858,11 @@ export interface components {
         Body_import_auth_export_zip_from_assistant_api_auth_assistant_auth_exports_import_post: {
             /** File */
             file: string;
+        };
+        /** BootstrapExchangeRequest */
+        BootstrapExchangeRequest: {
+            /** Code */
+            code: string;
         };
         /**
          * BrowserSessionCreate
@@ -6014,6 +6082,99 @@ export interface operations {
             };
         };
     };
+    bootstrap_exchange_bootstrap_exchange_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BootstrapExchangeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    session_status_bootstrap_session_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    logout_session_bootstrap_session_logout_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    rotate_session_bootstrap_session_rotate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
     health_check_health_get: {
         parameters: {
             query?: never;
@@ -6056,7 +6217,7 @@ export interface operations {
             };
         };
     };
-    local_token_local_token_get: {
+    retired_local_token_get_local_token_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -6071,9 +6232,27 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: string;
-                    };
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    retired_local_token_post_local_token_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
         };

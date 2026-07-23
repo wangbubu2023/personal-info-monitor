@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
+from unittest.mock import MagicMock
 
 import pytest
 from fastapi import HTTPException
@@ -44,205 +45,60 @@ async def test_livez_is_public_and_health_requires_api_key():
 
 
 @pytest.mark.asyncio
-async def test_local_token_rejects_request_without_bootstrap_token(monkeypatch):
-    """Missing bootstrap token must 401, even for loopback callers."""
-    from app import main as main_module
-
-    monkeypatch.setattr(main_module.settings, "bootstrap_token", "known-token")
-
-    transport = ASGITransport(app=app, client=("127.0.0.1", 0))
-    async with AsyncClient(transport=transport, base_url="http://127.0.0.1:8000") as client:
-        resp = await client.get("/local-token")
-        assert resp.status_code == 401
+async def test_long_lived_local_token_contract_is_retired():
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.get("/local-token?bootstrap_token=must-not-work")
+    assert response.status_code == 410
+    assert "api_key" not in response.text
 
 
-@pytest.mark.asyncio
-async def test_local_token_rejects_invalid_bootstrap_token(monkeypatch):
-    from app import main as main_module
-
-    monkeypatch.setattr(main_module.settings, "bootstrap_token", "known-token")
-
-    transport = ASGITransport(app=app, client=("127.0.0.1", 0))
-    async with AsyncClient(transport=transport, base_url="http://127.0.0.1:8000") as client:
-        resp = await client.get("/local-token?bootstrap_token=wrong")
-        assert resp.status_code == 401
-
-
-@pytest.mark.asyncio
-async def test_local_token_rejects_foreign_host_header(monkeypatch):
-    """Host-header whitelist blocks DNS rebinding attacks."""
-    from app import main as main_module
-
-    monkeypatch.setattr(main_module.settings, "bootstrap_token", "known-token")
-    monkeypatch.setattr(main_module.settings, "pim_api_key", "secret-api-key")
-
-    transport = ASGITransport(app=app, client=("127.0.0.1", 0))
-    async with AsyncClient(transport=transport, base_url="http://attacker.example.com") as client:
-        resp = await client.get(
-            "/local-token",
-            headers={"X-Bootstrap-Token": "known-token"},
-        )
-        assert resp.status_code == 403
-
-
-@pytest.mark.asyncio
-async def test_local_token_rejects_untrusted_origin(monkeypatch):
-    from app import main as main_module
-
-    monkeypatch.setattr(main_module.settings, "bootstrap_token", "known-token")
-
-    transport = ASGITransport(app=app, client=("127.0.0.1", 0))
-    async with AsyncClient(transport=transport, base_url="http://127.0.0.1:8000") as client:
-        resp = await client.get(
-            "/local-token",
-            headers={
-                "X-Bootstrap-Token": "known-token",
-                "Origin": "https://evil.example.com",
-            },
-        )
-        assert resp.status_code == 403
-
-
-@pytest.mark.asyncio
-async def test_local_token_accepts_valid_bootstrap_and_loopback(monkeypatch):
-    """Happy path: loopback client + matching host + valid token returns the API key."""
-    from app.platform.config.settings import get_settings
-
-    monkeypatch.setenv("BOOTSTRAP_TOKEN", "known-token")
-    monkeypatch.setenv("PIM_API_KEY", "secret-api-key")
-    get_settings.cache_clear()
-
-    transport = ASGITransport(app=app, client=("127.0.0.1", 0))
-    async with AsyncClient(transport=transport, base_url="http://127.0.0.1:8000") as client:
-        resp = await client.get(
-            "/local-token",
-            headers={"X-Bootstrap-Token": "known-token"},
-        )
-        assert resp.status_code == 200
-        assert resp.json()["api_key"] == "secret-api-key"
-
-
-@pytest.mark.asyncio
-async def test_local_token_accepts_query_token(monkeypatch):
-    from app.platform.config.settings import get_settings
-
-    monkeypatch.setenv("BOOTSTRAP_TOKEN", "known-token")
-    monkeypatch.setenv("PIM_API_KEY", "secret-api-key")
-    get_settings.cache_clear()
-
-    transport = ASGITransport(app=app, client=("127.0.0.1", 0))
-    async with AsyncClient(transport=transport, base_url="http://localhost:8000") as client:
-        resp = await client.get("/local-token?bootstrap_token=known-token")
-        assert resp.status_code == 200
-        assert resp.json()["api_key"] == "secret-api-key"
-
-
-@pytest.mark.asyncio
-async def test_local_token_rejects_non_loopback_client(monkeypatch):
-    from app import main as main_module
-
-    monkeypatch.setattr(main_module.settings, "bootstrap_token", "known-token")
-
-    transport = ASGITransport(app=app, client=("10.0.0.5", 0))
-    async with AsyncClient(transport=transport, base_url="http://127.0.0.1:8000") as client:
-        resp = await client.get(
-            "/local-token",
-            headers={"X-Bootstrap-Token": "known-token"},
-        )
-        assert resp.status_code == 403
-
-
-def _build_request(client_host: str | None, host_header: str | None):
-    """Helper: fabricate a minimal Starlette Request for _inject_bootstrap_meta."""
-    from starlette.requests import Request as _Request
-
-    headers: list[tuple[bytes, bytes]] = []
-    if host_header is not None:
-        headers.append((b"host", host_header.encode()))
-    scope: dict = {
-        "type": "http",
-        "method": "GET",
-        "path": "/",
-        "headers": headers,
-    }
-    if client_host is not None:
-        scope["client"] = (client_host, 0)
-    return _Request(scope)
-
-
-def test_inject_bootstrap_meta_adds_tag_for_loopback_with_allowed_host():
+def test_bootstrap_meta_injection_is_a_noop():
     from app.platform.auth.bootstrap_token import _inject_bootstrap_meta
+    from starlette.requests import Request
 
-    request = _build_request("127.0.0.1", "localhost:8000")
-    html = "<html><head><title>PIM</title></head><body></body></html>"
-    injected = _inject_bootstrap_meta(html, request, "shiny-token")
-
-    assert 'name="pim-bootstrap-token"' in injected
-    assert 'content="shiny-token"' in injected
-    assert injected.index('pim-bootstrap-token') < injected.index('</head>')
-
-
-def test_inject_bootstrap_meta_escapes_token_content():
-    from app.platform.auth.bootstrap_token import _inject_bootstrap_meta
-
-    request = _build_request("127.0.0.1", "127.0.0.1:8000")
+    request = Request({"type": "http", "method": "GET", "path": "/", "headers": []})
     html = "<html><head></head><body></body></html>"
-    injected = _inject_bootstrap_meta(html, request, 'evil"<tag>')
-
-    assert 'evil"<tag>' not in injected
-    assert 'content="evil&quot;&lt;tag&gt;"' in injected
-
-
-def test_inject_bootstrap_meta_skips_non_loopback_caller():
-    from app.platform.auth.bootstrap_token import _inject_bootstrap_meta
-
-    request = _build_request("10.0.0.5", "localhost:8000")
-    html = "<html><head></head><body></body></html>"
-
-    assert _inject_bootstrap_meta(html, request, "token") == html
-
-
-def test_inject_bootstrap_meta_skips_foreign_host_header():
-    """DNS-rebinding spoofing attempts must not receive the token."""
-    from app.platform.auth.bootstrap_token import _inject_bootstrap_meta
-
-    request = _build_request("127.0.0.1", "attacker.example.com")
-    html = "<html><head></head><body></body></html>"
-
-    assert _inject_bootstrap_meta(html, request, "token") == html
-
-
-def test_inject_bootstrap_meta_skips_when_token_missing():
-    from app.platform.auth.bootstrap_token import _inject_bootstrap_meta
-
-    request = _build_request("127.0.0.1", "localhost:8000")
-    html = "<html><head></head><body></body></html>"
-
-    assert _inject_bootstrap_meta(html, request, "") == html
-    assert _inject_bootstrap_meta(html, request, "   ") == html
-
-
-def test_inject_bootstrap_meta_handles_missing_head_tag():
-    from app.platform.auth.bootstrap_token import _inject_bootstrap_meta
-
-    request = _build_request("127.0.0.1", "localhost:8000")
-    html = "<!doctype html><body>no head</body>"
-    injected = _inject_bootstrap_meta(html, request, "token")
-
-    assert injected.startswith('<meta name="pim-bootstrap-token"')
+    assert _inject_bootstrap_meta(html, request, "long-lived-secret") == html
 
 
 @pytest.mark.asyncio
-async def test_local_token_fails_closed_when_bootstrap_token_empty(monkeypatch):
-    """A misconfigured server (empty bootstrap token) must not leak keys."""
-    from app import main as main_module
+async def test_bootstrap_exchange_sets_httponly_cookie_and_replay_fails(monkeypatch, caplog):
+    issued = SimpleNamespace(token="session-secret", session_id="session-1", actor="local-cli")
+    exchange = __import__("app.platform.auth.bootstrap_token", fromlist=["x"])
+    calls = [issued, None]
+    monkeypatch.setattr(exchange, "exchange_bootstrap_code", lambda _code: calls.pop(0))
 
-    monkeypatch.setattr(main_module.settings, "bootstrap_token", "")
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="https://testserver") as client:
+        first = await client.post("/bootstrap/exchange", json={"code": "one-time-code-123456"})
+        replay = await client.post("/bootstrap/exchange", json={"code": "one-time-code-123456"})
 
-    transport = ASGITransport(app=app, client=("127.0.0.1", 0))
-    async with AsyncClient(transport=transport, base_url="http://127.0.0.1:8000") as client:
-        resp = await client.get("/local-token?bootstrap_token=anything")
-        assert resp.status_code == 401
+    assert first.status_code == 200
+    cookie = first.headers["set-cookie"]
+    assert "HttpOnly" in cookie and "Secure" in cookie and "SameSite=strict" in cookie
+    assert first.headers["cache-control"] == "no-store"
+    assert "session-secret" not in first.text
+    assert replay.status_code == 401
+    assert "one-time-code-123456" not in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_bootstrap_exchange_rejects_cross_site_origin_before_consuming_code(monkeypatch):
+    exchange = __import__("app.platform.auth.bootstrap_token", fromlist=["x"])
+    consume = MagicMock()
+    monkeypatch.setattr(exchange, "exchange_bootstrap_code", consume)
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="https://testserver") as client:
+        response = await client.post(
+            "/bootstrap/exchange",
+            json={"code": "one-time-code-123456"},
+            headers={"Origin": "https://evil.example"},
+        )
+
+    assert response.status_code == 403
+    consume.assert_not_called()
 
 
 @pytest.mark.asyncio

@@ -8,27 +8,15 @@
  * interface with two concrete backends — :class:`TauriKeyStorage` and
  * :class:`WebKeyStorage` — and a single :func:`activeStorage` dispatcher.
  *
- * Behaviour is unchanged:
- *  * Tauri reads/writes go through the Rust ``*_api_key`` commands which
- *    own the 0600-owned ``runtime-secrets.json``.
- *  * Web stores default to sessionStorage (XSS blast radius reduced), and
- *    only persist to localStorage when the operator explicitly opts in via
- *    ``writeApiKey(value, { remember: true })``.
+ * Tauri secrets stay behind the Rust keychain commands. Web authentication is
+ * cookie-only: long-lived API keys are never returned from this module and
+ * stale pre-M0 WebStorage/query/meta copies are actively scrubbed.
  */
 
-const WEB_LOCAL_KEY = 'pim_api_key'
-const WEB_SESSION_KEY = 'pim_api_key_session'
-const WEB_REMEMBER_FLAG = 'pim_api_key_persist'
-
-type ApiKeyStoreCommand = 'get_api_key' | 'set_api_key' | 'clear_api_key' | 'get_bootstrap_token'
+type ApiKeyStoreCommand = 'has_api_key' | 'set_api_key' | 'clear_api_key'
 
 export interface WriteApiKeyOptions {
-  /**
-   * When true (and not running inside the Tauri shell) the API Key is persisted
-   * to localStorage so it survives browser restarts. Default is false: we only
-   * keep the key in sessionStorage so closing the tab invalidates it, which
-   * reduces the blast radius of any future XSS bug.
-   */
+  /** Legacy UI option. Web ignores it; Tauri always stores in OS Keychain. */
   remember?: boolean
 }
 
@@ -39,17 +27,6 @@ export function isTauriRuntime(): boolean {
 async function invokeStoreCommand<T>(command: ApiKeyStoreCommand, args?: Record<string, unknown>): Promise<T> {
   const { invoke } = await import('@tauri-apps/api/core')
   return invoke<T>(command, args)
-}
-
-function getWebStorage(kind: 'localStorage' | 'sessionStorage'): Storage | null {
-  if (typeof window === 'undefined') {
-    return null
-  }
-  try {
-    return window[kind]
-  } catch {
-    return null
-  }
 }
 
 function normalizeStoredKey(value: string | null): string | null {
@@ -65,26 +42,26 @@ function normalizeStoredKey(value: string | null): string | null {
 interface KeyStorage {
   readBootstrapToken(): Promise<string | null>
   readApiKey(): Promise<string | null>
+  hasCredential(): Promise<boolean>
   writeApiKey(value: string, options: WriteApiKeyOptions): Promise<void>
   clearApiKey(): Promise<void>
 }
 
 class TauriKeyStorage implements KeyStorage {
   async readBootstrapToken(): Promise<string | null> {
-    try {
-      const value = await invokeStoreCommand<string | null>('get_bootstrap_token')
-      return normalizeStoredKey(value)
-    } catch {
-      return null
-    }
+    return null
   }
 
   async readApiKey(): Promise<string | null> {
+    // The renderer is deliberately unable to retrieve the key plaintext.
+    return null
+  }
+
+  async hasCredential(): Promise<boolean> {
     try {
-      const value = await invokeStoreCommand<string | null>('get_api_key')
-      return normalizeStoredKey(value)
+      return await invokeStoreCommand<boolean>('has_api_key')
     } catch {
-      return null
+      return false
     }
   }
 
@@ -98,44 +75,50 @@ class TauriKeyStorage implements KeyStorage {
 }
 
 class WebKeyStorage implements KeyStorage {
+  private purgeLegacySecrets(): void {
+    if (typeof window === 'undefined') return
+    try {
+      window.localStorage?.removeItem('pim_api_key')
+      window.localStorage?.removeItem('pim_api_key_persist')
+      window.sessionStorage?.removeItem('pim_api_key_session')
+    } catch {
+      // Storage may be disabled; authentication remains cookie-only.
+    }
+  }
+
   async readBootstrapToken(): Promise<string | null> {
     if (typeof window === 'undefined') {
       return null
     }
 
-    // 1) Preferred path for same-host web access: the backend stamps the token
-    //    into <meta name="pim-bootstrap-token" …> when serving index.html to a
-    //    loopback client. We pluck it out (and strip the tag from the DOM so it
-    //    doesn't linger for other scripts to read) and hand it to the caller,
-    //    which will silently exchange it for the API key via /local-token.
-    try {
-      if (typeof document !== 'undefined') {
-        const meta = document.querySelector?.(
-          'meta[name="pim-bootstrap-token"]',
-        ) as HTMLMetaElement | null
-        const fromMeta = (meta?.content || '').trim()
-        if (fromMeta) {
-          meta?.parentElement?.removeChild(meta)
-          return fromMeta
-        }
-      }
-    } catch {
-      // DOM access may throw in non-browser runtimes (e.g. SSR shims). Fall through.
-    }
+    this.purgeLegacySecrets()
 
-    // 2) Legacy path kept for "share a one-shot URL" flows: Tauri and the CLI
-    //    can still launch the browser with ?bootstrap_token=… and we strip it
-    //    from history so it doesn't leak into analytics.
+    // A short-lived one-time code may arrive in the fragment. Fragments are
+    // not sent to the server/Referer, and replaceState removes it before any
+    // application request or analytics can observe it.
     try {
       const href = window.location?.href
       if (!href) return null
       const url = new URL(href)
-      const fromQuery = (url.searchParams.get('bootstrap_token') || '').trim()
-      if (fromQuery) {
-        url.searchParams.delete('bootstrap_token')
+
+      // Retired ingress paths are never trusted, but scrub them so an upgrade
+      // does not leave a long-lived secret in history or the live DOM.
+      const legacyMeta = typeof document !== 'undefined' && typeof document.querySelector === 'function'
+        ? document.querySelector('meta[name="pim-bootstrap-token"]')
+        : null
+      legacyMeta?.parentElement?.removeChild(legacyMeta)
+      const hadLegacyQuery = url.searchParams.has('bootstrap_token')
+      if (hadLegacyQuery) url.searchParams.delete('bootstrap_token')
+
+      const fragment = new URLSearchParams(url.hash.replace(/^#/, ''))
+      const code = (fragment.get('bootstrap_code') || '').trim()
+      if (code || hadLegacyQuery) {
+        url.hash = ''
         const title = typeof document !== 'undefined' ? document.title : ''
         window.history?.replaceState({}, title, url.toString())
-        return fromQuery
+      }
+      if (code) {
+        return code
       }
     } catch {
       // Non-standard runtime (e.g. SSR shim) — fall through.
@@ -144,56 +127,23 @@ class WebKeyStorage implements KeyStorage {
   }
 
   async readApiKey(): Promise<string | null> {
-    const persistentStorage = getWebStorage('localStorage')
-    const sessionStorageRef = getWebStorage('sessionStorage')
-
-    // Session storage wins — reflects the most recent write and expires with the tab.
-    const sessionValue = normalizeStoredKey(sessionStorageRef?.getItem(WEB_SESSION_KEY) ?? null)
-    if (sessionValue) {
-      return sessionValue
-    }
-
-    // Fall back to persistent storage only when the user previously opted in.
-    const rememberFlag = persistentStorage?.getItem(WEB_REMEMBER_FLAG)
-    if (rememberFlag === '1') {
-      const persistentValue = normalizeStoredKey(persistentStorage?.getItem(WEB_LOCAL_KEY) ?? null)
-      if (persistentValue) {
-        sessionStorageRef?.setItem(WEB_SESSION_KEY, persistentValue)
-        return persistentValue
-      }
-    }
-
-    // One-shot migration: legacy clients wrote to localStorage without setting the
-    // remember flag. Upgrade them to session-only on first read so the stricter
-    // default applies without losing the user's key.
-    const legacyPersisted = normalizeStoredKey(persistentStorage?.getItem(WEB_LOCAL_KEY) ?? null)
-    if (legacyPersisted && !rememberFlag) {
-      sessionStorageRef?.setItem(WEB_SESSION_KEY, legacyPersisted)
-      persistentStorage?.removeItem(WEB_LOCAL_KEY)
-      return legacyPersisted
-    }
-
+    this.purgeLegacySecrets()
     return null
   }
 
-  async writeApiKey(value: string, options: WriteApiKeyOptions = {}): Promise<void> {
-    const persistentStorage = getWebStorage('localStorage')
-    const sessionStorageRef = getWebStorage('sessionStorage')
+  async hasCredential(): Promise<boolean> {
+    return false
+  }
 
-    sessionStorageRef?.setItem(WEB_SESSION_KEY, value)
-    if (options.remember) {
-      persistentStorage?.setItem(WEB_LOCAL_KEY, value)
-      persistentStorage?.setItem(WEB_REMEMBER_FLAG, '1')
-    } else {
-      persistentStorage?.removeItem(WEB_LOCAL_KEY)
-      persistentStorage?.removeItem(WEB_REMEMBER_FLAG)
-    }
+  async writeApiKey(): Promise<void> {
+    // Web authentication is cookie-only. Long-lived keys never enter renderer
+    // storage, even when an older caller passes remember=true.
+    this.purgeLegacySecrets()
   }
 
   async clearApiKey(): Promise<void> {
-    getWebStorage('localStorage')?.removeItem(WEB_LOCAL_KEY)
-    getWebStorage('localStorage')?.removeItem(WEB_REMEMBER_FLAG)
-    getWebStorage('sessionStorage')?.removeItem(WEB_SESSION_KEY)
+    // HttpOnly cookies are revoked by the backend logout endpoint.
+    this.purgeLegacySecrets()
   }
 }
 
@@ -210,11 +160,9 @@ function activeStorage(): KeyStorage {
 }
 
 /**
- * Read the bootstrap token used to authenticate against /local-token.
- * Tauri: reads runtime-secrets.json via a Rust command (file is 0600-owned).
- * Web:   reads a one-shot ?bootstrap_token=... query parameter and clears it
- *        from the URL so it doesn't leak into history/analytics.
- * Returns null when no source is available (user will be prompted manually).
+ * Read a short-lived bootstrap value. Web accepts only a one-time code in the
+ * URL fragment and removes it immediately. Legacy meta/query tokens are
+ * deleted but never returned.
  */
 export async function readBootstrapToken(): Promise<string | null> {
   return activeStorage().readBootstrapToken()
@@ -222,6 +170,10 @@ export async function readBootstrapToken(): Promise<string | null> {
 
 export async function readApiKey(): Promise<string | null> {
   return activeStorage().readApiKey()
+}
+
+export async function hasStoredCredential(): Promise<boolean> {
+  return activeStorage().hasCredential()
 }
 
 export async function writeApiKey(value: string, options: WriteApiKeyOptions = {}): Promise<void> {

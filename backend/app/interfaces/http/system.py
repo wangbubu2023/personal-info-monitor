@@ -14,7 +14,7 @@ from app.domains.sources.source_types import source_type_catalog
 from app.database import SessionLocal
 from app.scheduler import scheduler
 from app.utils.logger import get_logger
-from app.utils.metrics import request_metrics, source_metrics, task_queue_metrics
+from app.utils.metrics import request_metrics, source_metrics, storage_metrics, task_queue_metrics
 
 logger = get_logger(__name__)
 settings = get_settings()
@@ -96,6 +96,7 @@ def get_metrics() -> Dict[str, Any]:
     """Expose lightweight runtime metrics for local observability."""
     payload = request_metrics.snapshot()
     payload["sources"] = source_metrics.snapshot()
+    payload["storage"] = storage_metrics.snapshot()
     payload["scheduler"] = {
         "running": bool(getattr(scheduler, "running", False)),
         "job_count": len(scheduler.get_jobs()),
@@ -198,6 +199,7 @@ def get_metrics_prometheus() -> str:
     scheduler_jobs = len(scheduler.get_jobs())
     metrics_text = request_metrics.prometheus_snapshot()
     metrics_text += task_queue_metrics.prometheus_snapshot()
+    metrics_text += storage_metrics.prometheus_snapshot()
     metrics_text += (
         "# HELP pim_scheduler_running Whether the scheduler is running.\n"
         "# TYPE pim_scheduler_running gauge\n"

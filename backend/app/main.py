@@ -15,7 +15,7 @@ from app.api import api_router
 from app.auth import verify_api_key
 from app.config import bootstrap_runtime_environment, get_settings, parse_cors_origins
 from app.middleware.api_rate_limit import APIRateLimitMiddleware
-from app.platform.auth import bootstrap_router, inject_bootstrap_meta
+from app.platform.auth import bootstrap_router
 from app.platform.health import health_router
 from app.interfaces.http import auth_assistant
 from app.platform.runtime import build_lifespan
@@ -88,8 +88,8 @@ from app.domains.enrich.content.listing_translation import (
 from app.tasks.fetch_tasks import fetch_source
 
 
-async def _fetch_handler(source_id: str, manual_trigger: bool) -> None:
-    await fetch_source(source_id, manual_trigger=manual_trigger)
+async def _fetch_handler(source_id: str, manual_trigger: bool, fetch_job_id: str):
+    return await fetch_source(source_id, manual_trigger=manual_trigger, fetch_job_id=fetch_job_id)
 
 
 async def _process_handler(content_id: str, job_id: str | None) -> None:
@@ -187,18 +187,7 @@ if os.path.isdir(dist_dir) and not DEV_SERVER_MODE:
     _INDEX_HTML_PATH = os.path.join(dist_dir, "index.html")
 
     def _render_index_html(request: Request) -> HTMLResponse:
-        """Serve index.html, stamping the bootstrap token for trusted local callers.
-
-        The /local-token endpoint hands the API key to any caller that can present
-        the bootstrap_token (a 0600-owned secret). On a single-machine install the
-        browser has no natural way to obtain that token, which is why visiting
-        http://localhost:8000 used to always trigger a manual "请输入 PIM API Key"
-        prompt. We now inline the bootstrap token into the SPA shell for loopback
-        callers with an allowed Host header; the frontend reads it, silently
-        calls /local-token, and persists the returned API key. Remote callers
-        and Host-header spoof attempts still receive a clean index.html with no
-        token, preserving the existing defence-in-depth.
-        """
+        """Serve index.html without injecting credentials or bootstrap material."""
         try:
             with open(_INDEX_HTML_PATH, "r", encoding="utf-8") as fh:
                 html = fh.read()
@@ -208,7 +197,6 @@ if os.path.isdir(dist_dir) and not DEV_SERVER_MODE:
                 headers={**SPA_NO_CACHE_HEADERS, **_SPA_SECURITY_HEADERS},
             )
 
-        html = inject_bootstrap_meta(html, request, settings.bootstrap_token)
         return HTMLResponse(
             content=html,
             headers={**SPA_NO_CACHE_HEADERS, **_SPA_SECURITY_HEADERS},

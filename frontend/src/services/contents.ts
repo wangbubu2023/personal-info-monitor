@@ -1,4 +1,5 @@
-import api, { ensureApiKey, getApiBaseURL } from './api'
+import api, { ensureApiKey, getApiBaseURL, tauriApiRequestRaw } from './api'
+import { isTauriRuntime } from './apiKeyStore'
 import type { Content, PaginatedResponse } from '../types'
 
 export interface ListContentsParams {
@@ -108,6 +109,18 @@ function buildStreamURL(path: string): string {
   return `${window.location.origin}${base}${path}`
 }
 
+function emitReaderStreamLines(raw: string, onEvent: (event: ReaderTranslateStreamEvent) => void): void {
+  for (const rawLine of raw.split('\n')) {
+    const line = rawLine.trim()
+    if (!line) continue
+    try {
+      onEvent(JSON.parse(line) as ReaderTranslateStreamEvent)
+    } catch {
+      // Ignore malformed transport lines.
+    }
+  }
+}
+
 export const contentsApi = {
   // List contents
   list: async (params?: ListContentsParams): Promise<PaginatedResponse<Content>> => {
@@ -139,11 +152,24 @@ export const contentsApi = {
       onEvent: (event: ReaderTranslateStreamEvent) => void
     }
   ): Promise<void> => {
-    const apiKey = await ensureApiKey()
+    await ensureApiKey()
+    if (isTauriRuntime()) {
+      const response = await tauriApiRequestRaw(
+        'GET',
+        `/api/contents/${id}/reader/translate-stream`,
+        opts.signal,
+      )
+      if (response.status < 200 || response.status >= 300) {
+        throw new Error(response.body || `HTTP ${response.status}`)
+      }
+      emitReaderStreamLines(response.body, opts.onEvent)
+      return
+    }
+
     const url = buildStreamURL(`/contents/${id}/reader/translate-stream`)
     const response = await fetch(url, {
       method: 'GET',
-      headers: apiKey ? { 'X-API-Key': apiKey } : {},
+      credentials: 'include',
       signal: opts.signal,
     })
 
@@ -173,23 +199,13 @@ export const contentsApi = {
         if (!line) {
           continue
         }
-        try {
-          const event = JSON.parse(line) as ReaderTranslateStreamEvent
-          opts.onEvent(event)
-        } catch {
-          // ignore malformed line
-        }
+        emitReaderStreamLines(line, opts.onEvent)
       }
     }
 
     const tail = buffer.trim()
     if (tail) {
-      try {
-        const event = JSON.parse(tail) as ReaderTranslateStreamEvent
-        opts.onEvent(event)
-      } catch {
-        // ignore malformed line
-      }
+      emitReaderStreamLines(tail, opts.onEvent)
     }
   },
 

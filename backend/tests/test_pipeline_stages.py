@@ -488,13 +488,16 @@ class TestStorageStage:
         db = MagicMock()
         nested_ctx = MagicMock()
         db.begin_nested.return_value = nested_ctx
+        db.query.return_value.filter.return_value.filter.return_value.first.return_value = None
         nested_ctx.__enter__ = MagicMock(return_value=nested_ctx)
         nested_ctx.__exit__ = MagicMock(return_value=False)
 
         with patch("app.domains.ingest.storage.normalize_external_id", side_effect=lambda x: x):
-            saved, marker = StorageStage.execute(db, [c1, c2])
+            result = StorageStage.execute(db, [c1, c2])
 
-        assert saved == 2
+        assert result.saved_count == 2
+        assert result.requested_count == 2
+        assert len(result.postprocess_candidates) == 2
         assert db.add.call_count == 2
 
     def test_skips_integrity_error(self):
@@ -511,20 +514,26 @@ class TestStorageStage:
         nested_ctx.__enter__ = MagicMock(return_value=nested_ctx)
         nested_ctx.__exit__ = MagicMock(return_value=False)
         db.add.side_effect = IntegrityError("dup", {}, None)
+        existing = MagicMock(spec=Content)
+        existing.id = "existing-id"
+        first = db.query.return_value.filter.return_value.filter.return_value.first
+        first.side_effect = [None, existing]
 
         with patch("app.domains.ingest.storage.normalize_external_id", side_effect=lambda x: x):
-            saved, marker = StorageStage.execute(db, [c1])
+            result = StorageStage.execute(db, [c1])
 
-        assert saved == 0
+        assert result.saved_count == 0
+        assert result.unchanged_duplicate_count == 1
+        assert result.outcome.value == "success"
 
     def test_empty_contents_returns_zero(self):
         from app.domains.ingest.storage import StorageStage
 
         db = MagicMock()
-        saved, marker = StorageStage.execute(db, [])
+        result = StorageStage.execute(db, [])
 
-        assert saved == 0
-        assert marker is None
+        assert result.saved_count == 0
+        assert result.latest_saved_marker is None
 
     def test_marker_from_first_saved(self):
         from app.domains.ingest.storage import StorageStage
@@ -536,14 +545,15 @@ class TestStorageStage:
         db = MagicMock()
         nested_ctx = MagicMock()
         db.begin_nested.return_value = nested_ctx
+        db.query.return_value.filter.return_value.filter.return_value.first.return_value = None
         nested_ctx.__enter__ = MagicMock(return_value=nested_ctx)
         nested_ctx.__exit__ = MagicMock(return_value=False)
 
         with patch("app.domains.ingest.storage.normalize_external_id", return_value="first-id"):
-            saved, marker = StorageStage.execute(db, [c1])
+            result = StorageStage.execute(db, [c1])
 
-        assert saved == 1
-        assert marker == "first-id"
+        assert result.saved_count == 1
+        assert result.latest_saved_marker == "first-id"
 
 
 # ===========================================================================
@@ -771,6 +781,17 @@ class TestUpdateSourceStatus:
         partial_content.full_content = "short"
         partial_content.summary = ""
         partial_content.metadata_ = {"fulltext_status": "partial"}
+        from app.domains.ingest.storage import PostprocessCandidate, StorageResult
+
+        storage_result = StorageResult(
+            requested_count=2,
+            saved_ids=[str(full_content.id), str(partial_content.id)],
+            postprocess_candidates=[
+                PostprocessCandidate(str(full_content.id), "new_insert", "a" * 64),
+                PostprocessCandidate(str(partial_content.id), "new_insert", "b" * 64),
+            ],
+            latest_saved_marker="one",
+        )
 
         with patch(
             "app.domains.fetch.collector_stage.CollectorStage.execute",
@@ -783,7 +804,7 @@ class TestUpdateSourceStatus:
             new=AsyncMock(return_value=([full_content, partial_content], 0)),
         ), patch(
             "app.domains.ingest.storage.StorageStage.execute",
-            return_value=(2, "one"),
+            return_value=storage_result,
         ):
             result = await run_fetch_pipeline(db, source, manual_trigger=False)
 

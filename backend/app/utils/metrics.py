@@ -2,7 +2,7 @@
 
 .. deprecated::
     The canonical home for in-process metrics counters
-    (``SourceMetrics`` / ``RequestMetrics`` / ``TaskQueueMetrics``
+    (``SourceMetrics`` / ``RequestMetrics`` / ``TaskQueueMetrics`` / ``StorageMetrics``
     singletons and the JSON-checkpoint ``persist_metrics`` /
     ``restore_metrics`` helpers) is now
     :mod:`app.platform.observability.metrics`. Phase 5 step 5 of

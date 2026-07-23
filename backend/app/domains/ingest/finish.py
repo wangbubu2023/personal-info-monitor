@@ -43,6 +43,7 @@ async def _finish_content_async(content_id: str) -> None:
     )
     from app.domains.fetch.finalize import hydrate_fetched_content
     from app.domains.ingest.quality_metadata import merge_content_quality_metadata
+    from app.domains.ingest.failures import ContentNotFoundError
     from app.domains.ingest.summary_clean import apply_summary_cleaning
     from app.domains.score.content_columns import sync_content_score_columns
     from app.domains.score.scoring import merge_rule_scoring_metadata_async
@@ -74,8 +75,8 @@ async def _finish_content_async(content_id: str) -> None:
     # those awaits so one slow item cannot reserve a sync-pool slot for minutes.
     try:
         if not content:
-            logger.error(f"Content not found: {content_id}")
-            return
+            logger.error("Content not found: %s", content_id)
+            raise ContentNotFoundError(content_id)
 
         await asyncio.to_thread(db.commit)
 

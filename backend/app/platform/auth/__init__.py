@@ -14,10 +14,9 @@ This package exposes infrastructure-side helpers that any domain may call:
   import from it (``app.api.__init__``, ``app.main``,
   ``tests/conftest.py``, ``tests/test_configs_browser.py``) plus six
   ``patch("app.auth.get_settings")`` sites in ``test_auth_unit.py``.
-* ``bootstrap_token`` — ``/local-token`` endpoint + ``index.html``
-  bootstrap-meta injector (Phase 5 step 14, extracted from
-  :mod:`app.main`). Exposes the ``bootstrap_router`` FastAPI router and
-  the ``inject_bootstrap_meta`` SPA helper.
+* ``bootstrap_token`` — one-time bootstrap-code exchange and revocable Web
+  session lifecycle. The old meta/query/local-token contract is retired;
+  ``inject_bootstrap_meta`` remains only as a no-op compatibility symbol.
 
 It contains **no business logic**. Domain-specific credential handling lives
 under ``app.domains.fetch.auth``.

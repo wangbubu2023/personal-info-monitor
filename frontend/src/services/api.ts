@@ -1,11 +1,18 @@
-import axios from 'axios'
+import axios, {
+  AxiosError,
+  AxiosHeaders,
+  type AxiosAdapter,
+  type AxiosResponse,
+  type InternalAxiosRequestConfig,
+} from 'axios'
 import { promptApiKey } from '../components/ui/ApiKeyModal'
-import { clearApiKey, isTauriRuntime, readApiKey, readBootstrapToken, writeApiKey } from './apiKeyStore'
+import { clearApiKey, hasStoredCredential, isTauriRuntime, readBootstrapToken, writeApiKey } from './apiKeyStore'
 
 declare global {
   interface Window {
     __PIM_API_KEY_PROMPT_PROMISE__?: Promise<string | null> | null
     __PIM_API_KEY_RECOVERY_PROMISE__?: Promise<string | null> | null
+    __PIM_WEB_SESSION_PROMISE__?: Promise<boolean> | null
   }
 }
 
@@ -41,7 +48,76 @@ const api = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
+  withCredentials: true,
 })
+
+interface TauriProxyResponse {
+  status: number
+  content_type?: string | null
+  body: string
+}
+
+async function invokeTauriApi(method: string, path: string, body?: string): Promise<TauriProxyResponse> {
+  const { invoke } = await import('@tauri-apps/api/core')
+  return invoke<TauriProxyResponse>('api_request', {
+    request: { method, path, body: body ?? null },
+  })
+}
+
+function tauriRequestPath(config: InternalAxiosRequestConfig): string {
+  const resolved = new URL(axios.getUri(config), 'http://pim.local')
+  return `${resolved.pathname}${resolved.search}`
+}
+
+function tauriResponseData(response: TauriProxyResponse, responseType?: string): unknown {
+  if (responseType === 'text') return response.body
+  if (responseType === 'blob') {
+    return new Blob([response.body], { type: response.content_type || 'application/octet-stream' })
+  }
+  if (responseType === 'arraybuffer') return new TextEncoder().encode(response.body).buffer
+  try {
+    return JSON.parse(response.body)
+  } catch {
+    return response.body
+  }
+}
+
+const tauriAdapter: AxiosAdapter = async (config) => {
+  let requestBody: string | undefined
+  if (typeof config.data === 'string') requestBody = config.data
+  else if (config.data !== undefined && config.data !== null) requestBody = JSON.stringify(config.data)
+
+  const proxied = await invokeTauriApi(
+    String(config.method || 'GET').toUpperCase(),
+    tauriRequestPath(config),
+    requestBody,
+  )
+  const headers = new AxiosHeaders()
+  if (proxied.content_type) headers.set('Content-Type', proxied.content_type)
+  const response: AxiosResponse = {
+    data: tauriResponseData(proxied, config.responseType),
+    status: proxied.status,
+    statusText: String(proxied.status),
+    headers,
+    config,
+    request: null,
+  }
+  if (!config.validateStatus || config.validateStatus(response.status)) return response
+  throw new AxiosError(
+    `Request failed with status code ${response.status}`,
+    response.status >= 500 ? AxiosError.ERR_BAD_RESPONSE : AxiosError.ERR_BAD_REQUEST,
+    config,
+    null,
+    response,
+  )
+}
+
+export async function tauriApiRequestRaw(method: string, path: string, signal?: AbortSignal): Promise<TauriProxyResponse> {
+  if (signal?.aborted) throw new DOMException('Aborted', 'AbortError')
+  const response = await invokeTauriApi(method, path)
+  if (signal?.aborted) throw new DOMException('Aborted', 'AbortError')
+  return response
+}
 
 function getPromptPromise(): Promise<string | null> | null {
   return typeof window !== 'undefined' ? (window.__PIM_API_KEY_PROMPT_PROMISE__ ?? null) : null
@@ -63,56 +139,14 @@ function setRecoveryPromise(value: Promise<string | null> | null): void {
   }
 }
 
-function normalizeApiKey(value: unknown): string | null {
-  if (typeof value !== 'string') {
-    return null
-  }
-  const trimmed = value.trim()
-  return trimmed || null
-}
-
-function getHeaderApiKey(headers: unknown): string | null {
-  if (!headers || typeof headers !== 'object') {
-    return null
-  }
-
-  const candidate = headers as {
-    get?: (name: string) => unknown
-    ['X-API-Key']?: unknown
-    ['x-api-key']?: unknown
-  }
-
-  if (typeof candidate.get === 'function') {
-    return normalizeApiKey(candidate.get('X-API-Key') ?? candidate.get('x-api-key'))
-  }
-
-  return normalizeApiKey(candidate['X-API-Key'] ?? candidate['x-api-key'])
-}
-
-function withApiKeyHeader<T extends { headers?: unknown }>(config: T, apiKey: string): T {
-  const headers = config.headers as { set?: (name: string, value: string) => void } | undefined
-  if (headers && typeof headers.set === 'function') {
-    headers.set('X-API-Key', apiKey)
-    return config
-  }
-
-  return {
-    ...config,
-    headers: {
-      ...(typeof config.headers === 'object' && config.headers ? config.headers : {}),
-      'X-API-Key': apiKey,
-    },
-  }
-}
-
-// Resolve the backend origin for out-of-band requests like /local-token.
+// Resolve the backend origin for Web session bootstrap requests.
 //
 // Production (FastAPI serves the SPA): the frontend is on the same origin as the
 // backend, so a relative path is correct and avoids any CORS issue regardless of
 // whether the user typed "localhost" or "127.0.0.1" in the address bar.
 //
-// Dev (Vite proxy on :3000): VITE_API_URL is not set, but the Vite proxy only
-// covers /api — call the backend directly. CORS allows localhost:3000 → 127.0.0.1:8000.
+// Dev uses the same-origin Vite /bootstrap proxy so SameSite=Strict cookies
+// remain valid and the one-time code never crosses origins.
 //
 // Tauri: always direct loopback.
 function backendOrigin(): string {
@@ -125,47 +159,59 @@ function backendOrigin(): string {
     return 'http://127.0.0.1:8000'
   }
   if (import.meta.env.DEV) {
-    // Vite dev server: /local-token is not proxied, go direct to backend.
-    return 'http://127.0.0.1:8000'
+    return ''
   }
   // Production: FastAPI serves this file, so we're on the same origin.
   return ''
 }
 
-/**
- * Silently fetch the API key from the local-only /local-token endpoint.
- *
- * The endpoint requires a bootstrap token which the Tauri shell reads from
- * runtime-secrets.json (0600), and the web client picks up from a one-shot
- * ?bootstrap_token=... URL param. Without a token, we return null and the
- * caller falls back to a manual prompt — this is the expected path when a
- * new browser opens the app without the bootstrap URL.
- *
- * Returns null (and never throws) on any failure.
- */
-async function tryAutoProvision(): Promise<string | null> {
-  try {
-    const token = await readBootstrapToken()
-    if (!token) return null
+/** Establish an HttpOnly Web session without exposing a long-lived key. */
+let webSessionEstablished = false
 
-    const resp = await fetch(`${backendOrigin()}/local-token`, {
-      headers: { 'X-Bootstrap-Token': token },
+async function hasWebSession(): Promise<boolean> {
+  try {
+    const response = await fetch(`${backendOrigin()}/bootstrap/session`, {
+      credentials: 'include',
       signal: AbortSignal.timeout(3000),
     })
-    if (!resp.ok) return null
-    const data = await resp.json()
-    const key = typeof data?.api_key === 'string' ? data.api_key.trim() : null
-    if (key) {
-      // In the Tauri shell the key is owned by the Rust side (0600
-      // runtime-secrets.json), so persistence is safe. On the web, default to
-      // session-scoped storage so a future XSS bug can't lift a long-lived key
-      // out of localStorage; the user can still opt into "remember me" manually.
-      await writeApiKey(key, { remember: isTauriRuntime() })
-    }
-    return key || null
+    webSessionEstablished = response.ok
+    return response.ok
   } catch {
-    return null
+    return false
   }
+}
+
+async function exchangeBootstrapCode(code: string): Promise<boolean> {
+  try {
+    const resp = await fetch(`${backendOrigin()}/bootstrap/exchange`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code }),
+      signal: AbortSignal.timeout(3000),
+    })
+    webSessionEstablished = resp.ok
+    return resp.ok
+  } catch {
+    return false
+  }
+}
+
+async function ensureWebSession(): Promise<boolean> {
+  if (webSessionEstablished) return true
+  const active = typeof window !== 'undefined' ? window.__PIM_WEB_SESSION_PROMISE__ : null
+  if (active) return active
+  const promise = (async () => {
+    if (await hasWebSession()) return true
+    const codeFromFragment = await readBootstrapToken()
+    if (codeFromFragment && await exchangeBootstrapCode(codeFromFragment)) return true
+    const { apiKey: code } = await promptApiKey({ bootstrapOnly: true })
+    return Boolean(code && await exchangeBootstrapCode(code))
+  })().finally(() => {
+    if (typeof window !== 'undefined') window.__PIM_WEB_SESSION_PROMISE__ = null
+  })
+  if (typeof window !== 'undefined') window.__PIM_WEB_SESSION_PROMISE__ = promise
+  return promise
 }
 
 function requestApiKeyOnce(): Promise<string | null> {
@@ -190,42 +236,39 @@ function requestApiKeyOnce(): Promise<string | null> {
 }
 
 export async function ensureApiKey(): Promise<string | null> {
-  const existing = await readApiKey()
-  if (existing && existing.trim()) {
-    return existing.trim()
+  if (!isTauriRuntime()) {
+    await ensureWebSession()
+    return null
   }
-  // Try silent auto-provision before showing any prompt to the user.
-  const auto = await tryAutoProvision()
-  if (auto) return auto
-  return requestApiKeyOnce()
+  if (await hasStoredCredential()) return null
+  // User-entered material is sent directly to the Rust keychain command and
+  // is never returned to an HTTP interceptor.
+  await requestApiKeyOnce()
+  return null
 }
 
-async function recoverApiKey(failedApiKey: string | null): Promise<string | null> {
-  const currentApiKey = await readApiKey()
-  if (currentApiKey && currentApiKey !== failedApiKey) {
-    return currentApiKey
+async function recoverApiKey(): Promise<string | null> {
+  if (!isTauriRuntime()) {
+    webSessionEstablished = false
+    const activeRecovery = getRecoveryPromise()
+    if (activeRecovery) return activeRecovery
+    const recoveryPromise = (async () => {
+      const { apiKey: code } = await promptApiKey({ bootstrapOnly: true })
+      if (code) await exchangeBootstrapCode(code)
+      return null
+    })().finally(() => setRecoveryPromise(null))
+    setRecoveryPromise(recoveryPromise)
+    return recoveryPromise
   }
-
   const activeRecovery = getRecoveryPromise()
   if (activeRecovery) {
     return activeRecovery
   }
 
   const recoveryPromise = (async () => {
-    const latestApiKey = await readApiKey()
-    if (latestApiKey && latestApiKey !== failedApiKey) {
-      return latestApiKey
-    }
-
-    if (latestApiKey && failedApiKey && latestApiKey === failedApiKey) {
-      await clearApiKey()
-    }
-
-    // Key changed on server (e.g. secrets file was recreated) — re-fetch silently.
-    const refreshed = await tryAutoProvision()
-    if (refreshed) return refreshed
-
-    return requestApiKeyOnce()
+    await clearApiKey()
+    await requestApiKeyOnce()
+    return null
   })().finally(() => {
     setRecoveryPromise(null)
   })
@@ -238,10 +281,13 @@ async function recoverApiKey(failedApiKey: string | null): Promise<string | null
 api.interceptors.request.use(
   async (config) => {
     // Prompt once up front so the first page load doesn't fan out into 401 retries.
-    const apiKey = await ensureApiKey()
-    if (apiKey) {
-      return withApiKeyHeader(config, apiKey)
+    if (isTauriRuntime()) {
+      await ensureApiKey()
+      config.headers.delete?.('X-API-Key')
+      config.adapter = tauriAdapter
+      return config
     }
+    await ensureApiKey()
     return config
   },
   (error) => {
@@ -258,11 +304,14 @@ api.interceptors.response.use(
     const originalConfig = error.config as (typeof error.config & { _retry?: boolean }) | undefined
     if (error.response?.status === 401 && !originalConfig?._retry) {
       // Coordinate 401 recovery so parallel requests only prompt once.
-      const failedApiKey = getHeaderApiKey(originalConfig?.headers)
-      const key = await recoverApiKey(failedApiKey)
-      if (key && originalConfig) {
+      await recoverApiKey()
+      if (isTauriRuntime() && originalConfig && await hasStoredCredential()) {
         originalConfig._retry = true
-        return api.request(withApiKeyHeader(originalConfig, key))
+        return api.request(originalConfig)
+      }
+      if (!isTauriRuntime() && webSessionEstablished && originalConfig) {
+        originalConfig._retry = true
+        return api.request(originalConfig)
       }
     }
     return Promise.reject(error)

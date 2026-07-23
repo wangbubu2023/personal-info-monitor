@@ -110,6 +110,26 @@ async def enqueue_due_postprocess_jobs(*, limit: int = 200) -> int:
     return enqueued
 
 
+async def enqueue_due_fetch_jobs(*, limit: int = 200, startup: bool = False) -> int:
+    """Refill the in-process cache from durable pending FetchJobs."""
+    from app.platform.workers.fetch_jobs import due_fetch_jobs, reset_pending_fetch_enqueued
+    from app.tasks.task_queue import task_queue
+
+    if startup:
+        reset = await asyncio.to_thread(reset_pending_fetch_enqueued)
+        if reset:
+            logger.info("Reset %d pending FetchJob execution-cache marker(s)", reset)
+    jobs = await asyncio.to_thread(due_fetch_jobs, limit=limit)
+    enqueued = 0
+    for fetch_job_id, source_id, manual_trigger in jobs:
+        if not await task_queue.enqueue_existing_fetch(fetch_job_id, source_id, manual_trigger):
+            break
+        enqueued += 1
+    if enqueued:
+        logger.info("Queued %d durable fetch jobs", enqueued)
+    return enqueued
+
+
 async def enqueue_unfinished_content_on_startup(
     *, limit: int = 200, lookback_hours: int = 24, job_id: str = "startup-refinish"
 ) -> int:
@@ -209,6 +229,7 @@ def build_lifespan(
             fetch_handler=fetch_handler,
             process_handler=process_handler,
         )
+        await enqueue_due_fetch_jobs(startup=True)
         await enqueue_due_postprocess_jobs()
         await enqueue_unfinished_content_on_startup()
 

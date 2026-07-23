@@ -332,12 +332,26 @@ async def run_fetch_pipeline(db: Session, source: Source, manual_trigger: bool =
                 "keyword_filtered": keyword_filtered_count,
             }
 
-    saved_count, latest_saved_marker = await asyncio.to_thread(StorageStage.execute, db, content_objects)
+    storage_result = await asyncio.to_thread(StorageStage.execute, db, content_objects)
+    from app.platform.observability.metrics import storage_metrics
+
+    storage_metrics.record_batch(
+        requested=storage_result.requested_count,
+        saved=storage_result.saved_count,
+        updated=storage_result.updated_count,
+        unchanged=storage_result.unchanged_duplicate_count,
+        failure_classes=[item.failure_class for item in storage_result.failed_items],
+        outcome=storage_result.outcome.value,
+    )
     _mark_stage("storage")
 
     # 4. Update source metadata
-    if latest_saved_marker:
-        marker = latest_saved_marker[:255] if len(latest_saved_marker) > 255 else latest_saved_marker
+    if storage_result.latest_saved_marker:
+        marker = (
+            storage_result.latest_saved_marker[:255]
+            if len(storage_result.latest_saved_marker) > 255
+            else storage_result.latest_saved_marker
+        )
         source.last_content_id = marker
     else:
         has_existing_content = await asyncio.to_thread(
@@ -349,30 +363,59 @@ async def run_fetch_pipeline(db: Session, source: Source, manual_trigger: bool =
     fulltext_ok, fulltext_total = _content_fulltext_stats(content_objects)
     _update_source_status(source, merged_warning, primary_warning,
                           "ok", "info", "抓取成功",
-                          saved_count=saved_count, latency_ms=_elapsed_ms(),
+                          saved_count=storage_result.saved_count, latency_ms=_elapsed_ms(),
                           fulltext_ok=fulltext_ok,
                           fulltext_total=fulltext_total,
                           preferred_strategy=_preferred_strategy())
     await _commit_and_dispatch_session_alert_async(db, source)
     _mark_stage("status_commit")
 
-    # 5. Collect new content IDs for async post-processing
-    new_content_ids = [str(c.id) for c in content_objects if c.id]
+    # 5. Only durable inserts and substantive updates become candidates.
+    postprocess_candidates = [
+        {
+            "content_id": candidate.content_id,
+            "trigger_reason": candidate.trigger_reason,
+            "content_fingerprint": candidate.content_fingerprint,
+            "pipeline_version": candidate.pipeline_version,
+        }
+        for candidate in storage_result.postprocess_candidates
+    ]
+    new_content_ids = [candidate["content_id"] for candidate in postprocess_candidates]
 
     logger.info(
-        "Fetched %s items from %s, saved=%s, stale_skipped=%s, build_failed=%s",
+        "Fetched %s items from %s, saved=%s, updated=%s, unchanged=%s, failed=%s, "
+        "stale_skipped=%s, build_failed=%s",
         len(raw_contents),
         source.name,
-        saved_count,
+        storage_result.saved_count,
+        storage_result.updated_count,
+        storage_result.unchanged_duplicate_count,
+        storage_result.failed_count,
         stale_skipped,
         build_failed,
     )
     return {
-        "status": "success",
+        "status": "warning" if storage_result.failed_count else "success",
         "count": len(raw_contents),
-        "saved": saved_count,
+        "saved": storage_result.saved_count,
+        "updated": storage_result.updated_count,
+        "unchanged_duplicates": storage_result.unchanged_duplicate_count,
+        "storage_failed": storage_result.failed_count,
+        "storage_outcome": storage_result.outcome.value,
+        "storage_failures": [
+            {
+                "input_ref": item.input_ref,
+                "failure_code": item.failure_code,
+                "failure_class": item.failure_class,
+                "retryable": item.retryable,
+                "message": item.message,
+                "stage": item.stage,
+            }
+            for item in storage_result.failed_items
+        ],
         "stale_skipped": stale_skipped,
         "build_failed": build_failed,
         "keyword_filtered": keyword_filtered_count,
         "new_content_ids": new_content_ids,
+        "postprocess_candidates": postprocess_candidates,
     }

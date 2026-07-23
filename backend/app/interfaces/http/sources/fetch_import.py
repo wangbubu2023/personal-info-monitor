@@ -7,7 +7,6 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.background import fetch_lock
 from app.database import get_async_db
 from app.models import Source
 from app.schemas.source import SourceBulkImport
@@ -103,22 +102,32 @@ async def trigger_fetch_all(db: AsyncSession = Depends(get_async_db)):
     if not sources:
         return {"message": "No active sources to fetch", "source_count": 0}
 
-    scheduled = 0
-    dropped = 0
+    persisted = 0
+    enqueued = 0
+    duplicates = 0
+    rejected = 0
+    job_ids: list[str] = []
     for source in sources:
         sid = str(source.id)
-        if fetch_lock.is_locked(sid):
-            continue
-        if await task_queue.enqueue_fetch(sid, manual_trigger=True):
-            scheduled += 1
-        else:
-            dropped += 1
+        dispatch = await task_queue.enqueue_fetch(sid, manual_trigger=True, fetch_kind="bulk_manual")
+        persisted += int(dispatch.persisted and not dispatch.duplicate)
+        enqueued += int(dispatch.enqueued)
+        duplicates += int(dispatch.duplicate)
+        rejected += int(dispatch.rejected)
+        if dispatch.job_id:
+            job_ids.append(dispatch.job_id)
 
     return {
-        "message": "Fetch all dispatched",
-        "source_count": len(sources),
-        "scheduled": scheduled,
-        "dropped": dropped,
+        "message": "Fetch requests persisted",
+        "requested_count": len(sources),
+        "persisted_count": persisted,
+        "accepted_count": persisted,
+        "enqueued_count": enqueued,
+        "duplicate_count": duplicates,
+        "rejected_count": rejected,
+        "failed_count": rejected,
+        "partial": rejected > 0 or enqueued < persisted,
+        "job_ids": job_ids,
     }
 
 
@@ -130,12 +139,20 @@ async def trigger_fetch(source_id: UUID, db: AsyncSession = Depends(get_async_db
     if not source or not _source_is_visible(source):
         raise HTTPException(status_code=404, detail="Source not found")
     sid = str(source_id)
-    if fetch_lock.is_locked(sid):
-        return {"message": "Fetch already running", "source_id": sid}
-    accepted = await task_queue.enqueue_fetch(sid, manual_trigger=True)
-    if not accepted:
+    dispatch = await task_queue.enqueue_fetch(sid, manual_trigger=True, fetch_kind="manual")
+    if dispatch.rejected:
         raise HTTPException(
             status_code=503,
-            detail="Fetch queue is full; try again shortly",
+            detail=f"Fetch request could not be persisted: {dispatch.reason or 'unknown error'}",
         )
-    return {"message": "Fetch task dispatched", "source_id": sid}
+    return {
+        "message": "Fetch request persisted",
+        "source_id": sid,
+        "job_id": dispatch.job_id,
+        "persisted": dispatch.persisted,
+        "enqueued": dispatch.enqueued,
+        "duplicate": dispatch.duplicate,
+        "rejected": dispatch.rejected,
+        "state": "duplicate" if dispatch.duplicate else ("enqueued" if dispatch.enqueued else "pending"),
+        "reason": dispatch.reason,
+    }

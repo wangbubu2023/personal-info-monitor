@@ -30,7 +30,7 @@ Usage:
     ./pim support-bundle    Export a redacted diagnostic zip for bug reports
                             Use --out <path> to choose the output file.
     ./pim cleanup           Remove stale caches, rotated logs, and Python __pycache__
-    ./pim bootstrap-url     Print a one-shot URL containing the bootstrap token
+    ./pim bootstrap-url     Print the Web URL and a one-time 5-minute bootstrap code
                             Use --origin https://example.com for VPS/public access.
                             for auto-provisioning a fresh web browser session
     ./pim auth-bundle       Export/import local browser login bundles
@@ -401,31 +401,6 @@ def _bootstrap_runtime_api_key() -> Optional[str]:
                     "from app.config import bootstrap_runtime_environment, get_settings; "
                     "bootstrap_runtime_environment(); "
                     "print(get_settings().pim_api_key, end='')"
-                ),
-            ],
-            cwd=str(BACKEND),
-            text=True,
-        )
-    except (OSError, subprocess.SubprocessError):
-        return None
-
-    return output.strip() or None
-
-
-def _bootstrap_token() -> Optional[str]:
-    """Return the bootstrap token guarding /local-token (initializes on first call)."""
-    if not VENV.exists():
-        return None
-
-    try:
-        output = subprocess.check_output(
-            [
-                _python(),
-                "-c",
-                (
-                    "from app.config import bootstrap_runtime_environment, get_settings; "
-                    "bootstrap_runtime_environment(); "
-                    "print(get_settings().bootstrap_token, end='')"
                 ),
             ],
             cwd=str(BACKEND),
@@ -1562,13 +1537,7 @@ def cmd_uninstall_service():
 
 
 def cmd_bootstrap_url():
-    """Print a one-shot URL for auto-provisioning a fresh browser session.
-
-    The URL carries the bootstrap token as a query param; the frontend reads it
-    once, exchanges it with /local-token for the API Key, then strips the token
-    from the address bar. Because the token lives in a 0600 file under
-    ``runtime-secrets.json``, only the local user can print it.
-    """
+    """Print a clean Web URL and a single-use, five-minute binding code."""
     args = sys.argv[2:]
     origin = None
     if "--origin" in args:
@@ -1578,9 +1547,28 @@ def cmd_bootstrap_url():
             sys.exit(2)
         origin = args[idx + 1]
 
-    token = _bootstrap_token()
-    if not token:
-        print("Bootstrap token unavailable. Run: ./pim setup", file=sys.stderr)
+    if not VENV.exists():
+        print("PIM environment unavailable. Run: ./pim setup", file=sys.stderr)
+        sys.exit(1)
+
+    try:
+        code = subprocess.check_output(
+            [
+                _python(),
+                "-c",
+                (
+                    "from app.config import bootstrap_runtime_environment; "
+                    "bootstrap_runtime_environment(); "
+                    "from app.migrations import run_migrations; run_migrations(); "
+                    "from app.platform.auth.web_session import issue_bootstrap_code; "
+                    "print(issue_bootstrap_code(), end='')"
+                ),
+            ],
+            cwd=str(BACKEND),
+            text=True,
+        ).strip()
+    except (OSError, subprocess.SubprocessError):
+        print("Could not issue bootstrap code. Check backend configuration.", file=sys.stderr)
         sys.exit(1)
 
     host = (
@@ -1589,11 +1577,11 @@ def cmd_bootstrap_url():
         or _read_env_var("PIM_PUBLIC_ORIGIN")
         or "http://localhost:8000"
     ).rstrip("/")
-    url = f"{host}/?bootstrap_token={token}"
-    print(url)
+    print(host + "/")
     print()
-    print("Open this URL once in your browser. After the first load, the", file=sys.stderr)
-    print("API Key is cached locally and the token is stripped from history.", file=sys.stderr)
+    print(f"Bootstrap Code: {code}")
+    print("Code expires in 5 minutes and can be used once.", file=sys.stderr)
+    print("Open the URL and paste the code when prompted; it is never placed in URL/history.", file=sys.stderr)
 
 
 def _run_auth_bundle_cli(*prefix_args: str):

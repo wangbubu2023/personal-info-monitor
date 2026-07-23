@@ -1,12 +1,14 @@
 //! Tauri shell: start/stop local backend (single uvicorn process) when the desktop app runs.
 
+use keyring::Entry;
+use serde::{Deserialize, Serialize};
+use std::io::Read;
 use std::net::TcpStream;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, Manager, RunEvent};
-use keyring::Entry;
 
 /// Child processes we spawned (killed on app exit).
 struct BackendState {
@@ -169,8 +171,7 @@ fn stop_backend_stack(app: &AppHandle) {
     }
 }
 
-#[tauri::command]
-fn get_api_key(app: AppHandle) -> Result<Option<String>, String> {
+fn read_api_key(app: &AppHandle) -> Result<Option<String>, String> {
     let entry = Entry::new("pim", "api_key").map_err(|e| format!("keyring init failed: {e}"))?;
     match entry.get_password() {
         Ok(value) => {
@@ -189,22 +190,30 @@ fn get_api_key(app: AppHandle) -> Result<Option<String>, String> {
     }
 }
 
+#[tauri::command]
+fn has_api_key(app: AppHandle) -> Result<bool, String> {
+    Ok(read_api_key(&app)?.is_some())
+}
+
 /// 从旧的 secrets/pim_api_key 文件读取，写入 Keychain，删除文件。
 fn migrate_from_legacy_file(app: &AppHandle, entry: &Entry) -> Result<Option<String>, String> {
-    let base = app.path().app_config_dir()
+    let base = app
+        .path()
+        .app_config_dir()
         .map_err(|e| format!("cannot get config dir: {e}"))?;
     let legacy = base.join("secrets").join("pim_api_key");
     if !legacy.exists() {
         return Ok(None);
     }
-    let raw = std::fs::read_to_string(&legacy)
-        .map_err(|e| format!("read legacy key: {e}"))?;
+    let raw = std::fs::read_to_string(&legacy).map_err(|e| format!("read legacy key: {e}"))?;
     let trimmed = raw.trim().to_string();
     if trimmed.is_empty() {
         let _ = std::fs::remove_file(&legacy);
         return Ok(None);
     }
-    entry.set_password(&trimmed).map_err(|e| format!("migrate to keyring: {e}"))?;
+    entry
+        .set_password(&trimmed)
+        .map_err(|e| format!("migrate to keyring: {e}"))?;
     let _ = std::fs::remove_file(&legacy);
     eprintln!("[pim-tauri] API Key 已从旧文件迁移到系统 Keychain");
     Ok(Some(trimmed))
@@ -217,7 +226,9 @@ fn set_api_key(_app: AppHandle, value: String) -> Result<(), String> {
         return Err("API Key 不能为空".into());
     }
     let entry = Entry::new("pim", "api_key").map_err(|e| format!("keyring init failed: {e}"))?;
-    entry.set_password(&trimmed).map_err(|e| format!("写入 API Key 失败: {e}"))
+    entry
+        .set_password(&trimmed)
+        .map_err(|e| format!("写入 API Key 失败: {e}"))
 }
 
 #[tauri::command]
@@ -230,42 +241,109 @@ fn clear_api_key(_app: AppHandle) -> Result<(), String> {
     }
 }
 
-/// Resolve the PIM data directory — mirrors backend logic in `app/config.py`.
-fn resolve_data_dir() -> Option<PathBuf> {
-    if let Ok(raw) = std::env::var("DATA_DIR") {
-        let trimmed = raw.trim();
-        if !trimmed.is_empty() {
-            return Some(PathBuf::from(shellexpand::tilde(trimmed).into_owned()));
-        }
-    }
-    if let Some(home) = dirs::home_dir() {
-        return Some(home.join(".pim").join("data"));
-    }
-    None
+#[derive(Deserialize)]
+struct ApiProxyRequest {
+    method: String,
+    path: String,
+    body: Option<String>,
 }
 
-/// Read ``BOOTSTRAP_TOKEN`` from the backend's runtime-secrets.json (mode 0600).
-/// Returns ``Ok(None)`` if the file is missing so the frontend can fall back to
-/// manual API-Key input without surfacing an error.
-#[tauri::command]
-fn get_bootstrap_token(_app: AppHandle) -> Result<Option<String>, String> {
-    let Some(data_dir) = resolve_data_dir() else {
-        return Ok(None);
-    };
-    let path = data_dir.join("runtime-secrets.json");
-    if !path.exists() {
-        return Ok(None);
+#[derive(Serialize)]
+struct ApiProxyResponse {
+    status: u16,
+    content_type: Option<String>,
+    body: String,
+}
+
+fn validate_api_path(raw: &str) -> Result<&str, String> {
+    let path = raw.trim();
+    let path_only = path.split('?').next().unwrap_or(path);
+    let encoded_path = path_only.to_ascii_lowercase();
+    if !path_only.starts_with("/api/")
+        || path.contains("://")
+        || path.contains('#')
+        || path.contains('\\')
+        || path.contains('\r')
+        || path.contains('\n')
+        || path_only.split('/').any(|segment| segment == "..")
+        || encoded_path.contains("%2e")
+        || encoded_path.contains("%2f")
+        || encoded_path.contains("%5c")
+        || path.len() > 8192
+    {
+        return Err("API proxy path is outside the permitted /api surface".into());
     }
-    let raw = std::fs::read_to_string(&path)
-        .map_err(|e| format!("读取 runtime-secrets.json 失败: {e}"))?;
-    let value: serde_json::Value = serde_json::from_str(&raw)
-        .map_err(|e| format!("解析 runtime-secrets.json 失败: {e}"))?;
-    let token = value
-        .get("BOOTSTRAP_TOKEN")
-        .and_then(|v| v.as_str())
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty());
-    Ok(token)
+    Ok(path)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::validate_api_path;
+
+    #[test]
+    fn restricted_proxy_accepts_only_api_paths() {
+        assert_eq!(
+            validate_api_path("/api/contents?page=1").unwrap(),
+            "/api/contents?page=1"
+        );
+        assert!(validate_api_path("https://evil.example/api/contents").is_err());
+        assert!(validate_api_path("/livez").is_err());
+        assert!(validate_api_path("/api/../livez").is_err());
+        assert!(validate_api_path("/api/%2e%2e/livez").is_err());
+    }
+}
+
+/// Restricted loopback proxy. The renderer supplies only an API path and
+/// payload; the long-lived credential is read and attached inside Rust.
+#[tauri::command]
+fn api_request(app: AppHandle, request: ApiProxyRequest) -> Result<ApiProxyResponse, String> {
+    let method = request.method.trim().to_ascii_uppercase();
+    if !matches!(method.as_str(), "GET" | "POST" | "PUT" | "PATCH" | "DELETE") {
+        return Err("API proxy method is not permitted".into());
+    }
+    let path = validate_api_path(&request.path)?;
+    if request
+        .body
+        .as_ref()
+        .map_or(false, |body| body.len() > 10 * 1024 * 1024)
+    {
+        return Err("API proxy request body exceeds 10 MiB".into());
+    }
+    let api_key = read_api_key(&app)?.ok_or_else(|| "API Key 尚未配置".to_string())?;
+    let url = format!("http://127.0.0.1:{}{}", backend_port(), path);
+    let agent = ureq::AgentBuilder::new()
+        .redirects(0)
+        .timeout(Duration::from_secs(130))
+        .build();
+    let mut outbound = agent.request(&method, &url).set("X-API-Key", &api_key).set(
+        "Accept",
+        "application/json, application/x-ndjson, text/plain, */*",
+    );
+    if request.body.is_some() {
+        outbound = outbound.set("Content-Type", "application/json");
+    }
+    let result = match request.body {
+        Some(body) => outbound.send_string(&body),
+        None => outbound.call(),
+    };
+    let response = match result {
+        Ok(response) => response,
+        Err(ureq::Error::Status(_, response)) => response,
+        Err(error) => return Err(format!("API proxy transport failed: {error}")),
+    };
+    let status = response.status();
+    let content_type = response.header("Content-Type").map(str::to_string);
+    let mut body = String::new();
+    response
+        .into_reader()
+        .take(20 * 1024 * 1024)
+        .read_to_string(&mut body)
+        .map_err(|error| format!("API proxy response read failed: {error}"))?;
+    Ok(ApiProxyResponse {
+        status,
+        content_type,
+        body,
+    })
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -284,10 +362,10 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            get_api_key,
+            has_api_key,
             set_api_key,
             clear_api_key,
-            get_bootstrap_token
+            api_request
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

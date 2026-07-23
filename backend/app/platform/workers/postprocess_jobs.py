@@ -77,7 +77,7 @@ def ensure_postprocess_jobs(jobs: list[tuple[str, str | None]]) -> int:
                 )
                 changed += 1
                 continue
-            if job.status in _ACTIVE_STATUSES:
+            if job.status in _ACTIVE_STATUSES or job.status in _TERMINAL_STATUSES:
                 continue
             job.status = "pending"
             job.attempts = 0

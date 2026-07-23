@@ -76,7 +76,7 @@ def test_fresh_sqlite_database_can_upgrade_to_head(tmp_path):
     finally:
         conn.close()
 
-    assert revision == ("20260713_0032",)
+    assert revision == ("20260722_0033",)
     assert "ix_content_created_at" in indexes
     assert "ix_score_feedback_content_id" in indexes
     assert "ix_score_feedback_event_type" in indexes
@@ -187,3 +187,11 @@ def test_fresh_sqlite_database_can_upgrade_to_head(tmp_path):
     assert "ix_personal_item_states_target" in indexes
     assert "ix_observation_aggregates_status" in indexes
     assert "ix_user_rules_scope" in indexes
+    assert {"fetch_jobs", "bootstrap_codes", "web_sessions"} <= tables
+    assert {
+        "ix_fetch_jobs_source_id",
+        "ix_fetch_jobs_state_not_before",
+        "ix_bootstrap_codes_hash",
+        "ix_web_sessions_token_hash",
+        "ix_web_sessions_expires",
+    } <= indexes

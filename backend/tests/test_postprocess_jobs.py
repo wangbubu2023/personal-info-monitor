@@ -56,6 +56,10 @@ def test_postprocess_job_lifecycle(monkeypatch, tmp_path):
     assert claim_postprocess_job("content-1", "fetch-1") is True
     mark_postprocess_job_succeeded("content-1", "fetch-1")
     assert claim_postprocess_job("content-1", "fetch-1") is False
+    # Replaying the same content fingerprint + pipeline job must not revive a
+    # completed side effect.
+    assert ensure_postprocess_jobs([("content-1", "fetch-1")]) == 0
+    assert due_postprocess_jobs() == []
 
     metrics = postprocess_completion_rate()
     assert metrics["total"] == 1

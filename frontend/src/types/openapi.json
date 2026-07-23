@@ -441,6 +441,21 @@
         "title": "Body_import_auth_export_zip_from_assistant_api_auth_assistant_auth_exports_import_post",
         "type": "object"
       },
+      "BootstrapExchangeRequest": {
+        "properties": {
+          "code": {
+            "maxLength": 256,
+            "minLength": 16,
+            "title": "Code",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code"
+        ],
+        "title": "BootstrapExchangeRequest",
+        "type": "object"
+      },
       "BrowserSessionCreate": {
         "description": "Create/update a persistent browser session profile.",
         "properties": {
@@ -8617,6 +8632,102 @@
         ]
       }
     },
+    "/bootstrap/exchange": {
+      "post": {
+        "operationId": "bootstrap_exchange_bootstrap_exchange_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BootstrapExchangeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Bootstrap Exchange",
+        "tags": [
+          "bootstrap"
+        ]
+      }
+    },
+    "/bootstrap/session": {
+      "get": {
+        "operationId": "session_status_bootstrap_session_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Session Status",
+        "tags": [
+          "bootstrap"
+        ]
+      }
+    },
+    "/bootstrap/session/logout": {
+      "post": {
+        "operationId": "logout_session_bootstrap_session_logout_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Logout Session",
+        "tags": [
+          "bootstrap"
+        ]
+      }
+    },
+    "/bootstrap/session/rotate": {
+      "post": {
+        "operationId": "rotate_session_bootstrap_session_rotate_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Rotate Session",
+        "tags": [
+          "bootstrap"
+        ]
+      }
+    },
     "/health": {
       "get": {
         "description": "Detailed health check endpoint for authenticated operators.",
@@ -8670,25 +8781,35 @@
     },
     "/local-token": {
       "get": {
-        "description": "Return the API key for trusted local callers only.\n\nSee the module docstring for the four defence-in-depth gates this\nendpoint enforces.",
-        "operationId": "local_token_local_token_get",
+        "operationId": "retired_local_token_get_local_token_get",
         "responses": {
           "200": {
             "content": {
               "application/json": {
-                "schema": {
-                  "additionalProperties": {
-                    "type": "string"
-                  },
-                  "title": "Response Local Token Local Token Get",
-                  "type": "object"
-                }
+                "schema": {}
               }
             },
             "description": "Successful Response"
           }
         },
-        "summary": "Local Token",
+        "summary": "Retired Local Token Get",
+        "tags": [
+          "bootstrap"
+        ]
+      },
+      "post": {
+        "operationId": "retired_local_token_post_local_token_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Retired Local Token Post",
         "tags": [
           "bootstrap"
         ]

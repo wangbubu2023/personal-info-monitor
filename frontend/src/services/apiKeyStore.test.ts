@@ -46,37 +46,32 @@ describe('apiKeyStore', () => {
     })
   })
 
-  it('defaults to session-scoped storage only (no localStorage persistence)', async () => {
+  it('never writes a long-lived api key to WebStorage', async () => {
     await writeApiKey(' secret-key ')
 
-    expect(sessionStorageRef.getItem('pim_api_key_session')).toBe('secret-key')
+    expect(sessionStorageRef.getItem('pim_api_key_session')).toBeNull()
     expect(localStorageRef.getItem('pim_api_key')).toBeNull()
     expect(localStorageRef.getItem('pim_api_key_persist')).toBeNull()
-    await expect(readApiKey()).resolves.toBe('secret-key')
+    await expect(readApiKey()).resolves.toBeNull()
   })
 
-  it('persists to localStorage only when remember=true is explicit', async () => {
+  it('ignores remember=true in Web mode', async () => {
     await writeApiKey(' remembered ', { remember: true })
 
-    expect(localStorageRef.getItem('pim_api_key')).toBe('remembered')
-    expect(localStorageRef.getItem('pim_api_key_persist')).toBe('1')
-    expect(sessionStorageRef.getItem('pim_api_key_session')).toBe('remembered')
+    expect(localStorageRef.getItem('pim_api_key')).toBeNull()
+    expect(localStorageRef.getItem('pim_api_key_persist')).toBeNull()
+    expect(sessionStorageRef.getItem('pim_api_key_session')).toBeNull()
   })
 
-  it('re-hydrates from localStorage when the remember flag is set', async () => {
+  it('scrubs pre-M0 WebStorage copies instead of re-hydrating them', async () => {
     localStorageRef.setItem('pim_api_key', 'persisted-key')
     localStorageRef.setItem('pim_api_key_persist', '1')
+    sessionStorageRef.setItem('pim_api_key_session', 'session-key')
 
-    await expect(readApiKey()).resolves.toBe('persisted-key')
-    expect(sessionStorageRef.getItem('pim_api_key_session')).toBe('persisted-key')
-  })
-
-  it('downgrades legacy localStorage entries without the remember flag to session-only', async () => {
-    localStorageRef.setItem('pim_api_key', 'legacy-unflagged')
-
-    await expect(readApiKey()).resolves.toBe('legacy-unflagged')
-    expect(sessionStorageRef.getItem('pim_api_key_session')).toBe('legacy-unflagged')
+    await expect(readApiKey()).resolves.toBeNull()
+    expect(sessionStorageRef.getItem('pim_api_key_session')).toBeNull()
     expect(localStorageRef.getItem('pim_api_key')).toBeNull()
+    expect(localStorageRef.getItem('pim_api_key_persist')).toBeNull()
   })
 
   it('clears all browser-side copies of the api key', async () => {
@@ -88,7 +83,7 @@ describe('apiKeyStore', () => {
     expect(sessionStorageRef.getItem('pim_api_key_session')).toBeNull()
   })
 
-  it('reads bootstrap token from a <meta> tag injected by the backend and removes it', async () => {
+  it('rejects a legacy meta/query token and scrubs both ingress paths', async () => {
     const removed: HTMLElement[] = []
     const metaElement: any = {
       content: '  baked-in-token  ',
@@ -102,9 +97,8 @@ describe('apiKeyStore', () => {
       value: {
         localStorage: localStorageRef,
         sessionStorage: sessionStorageRef,
-        // Should not be consulted when meta tag already provides the token.
         location: { href: 'http://localhost:3000/?bootstrap_token=from-url' },
-        history: { replaceState: () => undefined },
+        history: { replaceState: (_state: unknown, _title: string, url: string) => { replacedUrl = url } },
       },
       configurable: true,
       writable: true,
@@ -119,12 +113,14 @@ describe('apiKeyStore', () => {
       writable: true,
     })
 
-    await expect(readBootstrapToken()).resolves.toBe('baked-in-token')
+    let replacedUrl: string | null = null
+    await expect(readBootstrapToken()).resolves.toBeNull()
     expect(removed).toHaveLength(1)
     expect(removed[0]).toBe(metaElement)
+    expect(replacedUrl).not.toContain('bootstrap_token=')
   })
 
-  it('falls back to URL query when meta tag is absent', async () => {
+  it('rejects a legacy URL query token', async () => {
     Object.defineProperty(globalThis, 'document', {
       value: {
         title: 'test',
@@ -144,16 +140,16 @@ describe('apiKeyStore', () => {
       writable: true,
     })
 
-    await expect(readBootstrapToken()).resolves.toBe('fallback-token')
+    await expect(readBootstrapToken()).resolves.toBeNull()
   })
 
-  it('reads bootstrap token from URL query and strips it from history', async () => {
+  it('reads a one-time bootstrap code from the URL fragment and strips it from history', async () => {
     let replacedUrl: string | null = null
     Object.defineProperty(globalThis, 'window', {
       value: {
         localStorage: localStorageRef,
         sessionStorage: sessionStorageRef,
-        location: { href: 'http://localhost:3000/?bootstrap_token=shiny-token&keep=1' },
+        location: { href: 'http://localhost:3000/?keep=1#bootstrap_code=shiny-code' },
         history: {
           replaceState: (_state: unknown, _title: string, url: string) => {
             replacedUrl = url
@@ -169,9 +165,9 @@ describe('apiKeyStore', () => {
       writable: true,
     })
 
-    await expect(readBootstrapToken()).resolves.toBe('shiny-token')
+    await expect(readBootstrapToken()).resolves.toBe('shiny-code')
     expect(replacedUrl).not.toBeNull()
-    expect(replacedUrl as unknown as string).not.toContain('bootstrap_token=')
+    expect(replacedUrl as unknown as string).not.toContain('bootstrap_code=')
     expect(replacedUrl as unknown as string).toContain('keep=1')
   })
 

@@ -59,6 +59,11 @@ class FetchFailureCode(str, Enum):
     RSS_PARSE_ERROR = "rss_parse_error"
     HTML_PARSE_EMPTY = "html_parse_empty"
     BODY_INCOMPLETE = "body_incomplete"
+    SOURCE_NOT_FOUND = "source_not_found"
+    FETCH_ALREADY_RUNNING = "fetch_already_running"
+    SOURCE_DISABLED = "source_disabled"
+    SOURCE_TYPE_DISABLED = "source_type_disabled"
+    DOMAIN_RATE_LIMITED = "domain_rate_limited"
     UNKNOWN = "unknown"
 
 
@@ -120,6 +125,11 @@ _POLICY: dict[FetchFailureCode, tuple[bool, Severity, int | None]] = {
     FetchFailureCode.RSS_PARSE_ERROR: (False, "warning", None),
     FetchFailureCode.HTML_PARSE_EMPTY: (False, "warning", None),
     FetchFailureCode.BODY_INCOMPLETE: (False, "warning", None),
+    FetchFailureCode.SOURCE_NOT_FOUND: (False, "error", None),
+    FetchFailureCode.FETCH_ALREADY_RUNNING: (True, "warning", 60),
+    FetchFailureCode.SOURCE_DISABLED: (False, "info", None),
+    FetchFailureCode.SOURCE_TYPE_DISABLED: (False, "info", None),
+    FetchFailureCode.DOMAIN_RATE_LIMITED: (True, "warning", 60),
     FetchFailureCode.UNKNOWN: (True, "error", None),
 }
 
@@ -144,6 +154,11 @@ _DEFAULT_MESSAGES: dict[FetchFailureCode, str] = {
     FetchFailureCode.RSS_PARSE_ERROR: "RSS 解析失败",
     FetchFailureCode.HTML_PARSE_EMPTY: "HTML 解析后无有效内容",
     FetchFailureCode.BODY_INCOMPLETE: "正文抓取不完整",
+    FetchFailureCode.SOURCE_NOT_FOUND: "来源不存在",
+    FetchFailureCode.FETCH_ALREADY_RUNNING: "来源正在抓取",
+    FetchFailureCode.SOURCE_DISABLED: "来源已停用",
+    FetchFailureCode.SOURCE_TYPE_DISABLED: "来源类型已停用",
+    FetchFailureCode.DOMAIN_RATE_LIMITED: "来源域名被限速",
     FetchFailureCode.UNKNOWN: "未知抓取失败",
 }
 

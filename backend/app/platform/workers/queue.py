@@ -16,14 +16,16 @@ RQ / Celery / Arq use.
 import asyncio
 import logging
 import os
+from datetime import datetime
 from logging.handlers import RotatingFileHandler
 from typing import Awaitable, Callable, Optional
 
 from app.platform.observability.logger import get_logger
 from app.platform.observability.metrics import task_queue_metrics
+from app.utils.datetime import utcnow_naive
 
-FetchHandler = Callable[[str, bool], Awaitable[None]]
-"""``(source_id, manual_trigger) -> awaitable`` — runs a single fetch job."""
+FetchHandler = Callable[[str, bool, str], Awaitable[object]]
+"""``(source_id, manual_trigger, fetch_job_id) -> awaitable``."""
 
 ProcessHandler = Callable[[str, Optional[str]], Awaitable[None]]
 """``(content_id, job_id) -> awaitable`` — runs a single bounded process job."""
@@ -79,17 +81,72 @@ class BoundedTaskQueue:
         except Exception:
             logger.error("Failed to write dropped-task DLQ log", exc_info=True)
 
-    async def enqueue_fetch(self, source_id: str, manual_trigger: bool = False) -> bool:
-        """Enqueue a fetch job. Returns False (and logs) if queue is full."""
+    async def enqueue_fetch(
+        self,
+        source_id: str,
+        manual_trigger: bool = False,
+        *,
+        fetch_kind: str | None = None,
+        due_window: datetime | None = None,
+        not_before: datetime | None = None,
+    ):
+        """Persist a FetchJob first, then best-effort cache it for execution."""
+        from app.platform.workers.fetch_jobs import FetchDispatchResult, create_fetch_job
+
+        kind = fetch_kind or ("manual" if manual_trigger else "scheduled")
         try:
-            self._fetch_queue.put_nowait((source_id, manual_trigger))
+            result = await asyncio.to_thread(
+                create_fetch_job,
+                source_id,
+                fetch_kind=kind,
+                due_window=due_window,
+                not_before=not_before,
+            )
+        except Exception as exc:  # noqa: BLE001 - API must report rejected truthfully
+            logger.exception("fetch job persistence failed for source_id=%s", source_id)
+            return FetchDispatchResult(
+                source_id=str(source_id),
+                fetch_kind=kind,
+                job_id=None,
+                business_key="",
+                persisted=False,
+                rejected=True,
+                state="rejected",
+                reason=str(exc)[:500],
+            )
+        if result.duplicate or not result.job_id:
+            return result
+        if not_before is not None and not_before > utcnow_naive():
+            return result
+        enqueued = await self.enqueue_existing_fetch(result.job_id, str(source_id), manual_trigger)
+        return FetchDispatchResult(
+            source_id=result.source_id,
+            fetch_kind=result.fetch_kind,
+            job_id=result.job_id,
+            business_key=result.business_key,
+            persisted=result.persisted,
+            enqueued=enqueued,
+            duplicate=result.duplicate,
+            rejected=result.rejected,
+            state=result.state,
+            reason=None if enqueued else "execution_cache_full",
+        )
+
+    async def enqueue_existing_fetch(self, job_id: str, source_id: str, manual_trigger: bool = False) -> bool:
+        """Cache an already-durable pending FetchJob without creating another row."""
+        from app.platform.workers.fetch_jobs import mark_fetch_job_enqueued
+
+        try:
+            self._fetch_queue.put_nowait((job_id, source_id, manual_trigger))
+            await asyncio.to_thread(mark_fetch_job_enqueued, job_id)
             return True
         except asyncio.QueueFull:
             logger.warning(
-                "fetch queue full (maxsize=%d), dropping source_id=%s",
+                "fetch queue full (maxsize=%d), deferring durable source_id=%s job_id=%s",
                 self._fetch_maxsize, source_id,
+                job_id,
             )
-            self._record_dropped_task("FETCH", source_id, f"manual={manual_trigger}")
+            self._record_dropped_task("FETCH", source_id, f"manual={manual_trigger}; durable=pending; job_id={job_id}")
             task_queue_metrics.record_dropped("fetch")
             return False
 
@@ -205,14 +262,30 @@ class BoundedTaskQueue:
         logger.info("BoundedTaskQueue stopped")
 
     async def _fetch_worker(self) -> None:
+        from app.platform.workers.fetch_jobs import (
+            claim_fetch_job,
+            mark_fetch_job_failed,
+            mark_fetch_job_succeeded,
+        )
+
         while True:
             try:
-                source_id, manual_trigger = await self._fetch_queue.get()
+                fetch_job_id, source_id, manual_trigger = await self._fetch_queue.get()
                 try:
+                    claimed = await asyncio.to_thread(claim_fetch_job, fetch_job_id)
+                    if not claimed:
+                        continue
                     if self._fetch_handler is not None:
-                        await self._fetch_handler(source_id, manual_trigger)
-                except Exception:
-                    logger.exception("fetch worker error for source_id=%s", source_id)
+                        await self._fetch_handler(source_id, manual_trigger, fetch_job_id)
+                    await asyncio.to_thread(mark_fetch_job_succeeded, fetch_job_id)
+                except Exception as exc:
+                    status = await asyncio.to_thread(mark_fetch_job_failed, fetch_job_id, exc)
+                    logger.exception(
+                        "fetch worker error for source_id=%s job_id=%s status=%s",
+                        source_id,
+                        fetch_job_id,
+                        status,
+                    )
                 finally:
                     self._fetch_queue.task_done()
                     # Explicitly hand control back to request handlers before

@@ -8,20 +8,30 @@ from unittest.mock import ANY, AsyncMock, MagicMock, patch
 @pytest.mark.asyncio
 async def test_enqueue_fetch_returns_true_when_capacity_available():
     from app.tasks.task_queue import BoundedTaskQueue
+    from app.platform.workers.fetch_jobs import FetchDispatchResult
     q = BoundedTaskQueue(fetch_maxsize=5, process_maxsize=5)
-    # No workers needed — just test the return value when queue has space
-    result = await q.enqueue_fetch("source-1")
-    assert result is True
+    persisted = FetchDispatchResult("source-1", "scheduled", "job-1", "key-1", True)
+    with patch("app.platform.workers.fetch_jobs.create_fetch_job", return_value=persisted), \
+         patch("app.platform.workers.fetch_jobs.mark_fetch_job_enqueued"):
+        result = await q.enqueue_fetch("source-1")
+    assert result.persisted is True
+    assert result.enqueued is True
+    assert q._fetch_queue.get_nowait() == ("job-1", "source-1", False)
 
 
 @pytest.mark.asyncio
 async def test_enqueue_fetch_returns_false_when_queue_full():
     from app.tasks.task_queue import BoundedTaskQueue
+    from app.platform.workers.fetch_jobs import FetchDispatchResult
     q = BoundedTaskQueue(fetch_maxsize=1, process_maxsize=1)
     # Don't start workers so queue fills up
-    q._fetch_queue.put_nowait(("source-x", False))  # fill it
-    result = await q.enqueue_fetch("source-overflow")
-    assert result is False
+    q._fetch_queue.put_nowait(("job-x", "source-x", False))  # fill it
+    persisted = FetchDispatchResult("source-overflow", "scheduled", "job-overflow", "key-2", True)
+    with patch("app.platform.workers.fetch_jobs.create_fetch_job", return_value=persisted):
+        result = await q.enqueue_fetch("source-overflow")
+    assert result.persisted is True
+    assert result.enqueued is False
+    assert result.reason == "execution_cache_full"
 
 
 @pytest.mark.asyncio
