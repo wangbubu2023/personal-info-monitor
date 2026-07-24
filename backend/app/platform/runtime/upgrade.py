@@ -103,15 +103,17 @@ def configured_upgrade_args() -> list[str]:
 
     The browser cannot supply shell arguments. Operators who need systemd or a
     backend-only VPS can set PIM_UI_UPGRADE_ARGS in the service environment,
-    e.g. ``--server --systemd pim``. When no override is supplied, a detached
-    checkout gets ``--no-pull`` automatically: it can refresh the current
-    checkout instead of failing because Git cannot fast-forward a detached
-    HEAD. A branch checkout keeps the historical pull-and-upgrade behavior.
+    e.g. ``--server --systemd pim``. A detached checkout gets ``--no-pull``
+    automatically, merged with any operator arguments: it can refresh the
+    current checkout instead of failing because Git cannot fast-forward a
+    detached HEAD. A branch checkout keeps the historical pull-and-upgrade
+    behavior.
     """
     raw = str(getattr(get_settings(), "pim_ui_upgrade_args", "") or "").strip()
-    if raw:
-        return shlex.split(raw)
-    return ["--no-pull"] if _checkout_is_detached() else []
+    user_args = shlex.split(raw) if raw else []
+    if _checkout_is_detached() and "--no-pull" not in user_args:
+        return ["--no-pull", *user_args]
+    return user_args
 
 
 def get_upgrade_status(*, data_dir: Path | None = None) -> dict[str, Any]:

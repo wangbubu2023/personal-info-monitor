@@ -392,11 +392,83 @@ class WindowedReliabilityMetrics:
             self._purge(time.time())
 
 
+class EventMetrics:
+    """Low-cardinality Event v1 counters and bounded observations."""
+
+    def __init__(self) -> None:
+        self._lock = Lock()
+        self._counters: Counter = Counter()
+        self._observations: dict[tuple[str, tuple[tuple[str, str], ...]], deque[float]] = defaultdict(
+            lambda: deque(maxlen=1000)
+        )
+        self._gauges: dict[tuple[str, tuple[tuple[str, str], ...]], float] = {}
+
+    @staticmethod
+    def _key(metric: str, labels: dict[str, Any] | None) -> tuple[str, tuple[tuple[str, str], ...]]:
+        return metric, tuple(sorted((str(key), str(value)) for key, value in (labels or {}).items()))
+
+    def increment(self, metric: str, *, labels: dict[str, Any] | None = None, value: float = 1.0) -> None:
+        with self._lock:
+            self._counters[self._key(metric, labels)] += value
+
+    def observe(self, metric: str, value: float, *, labels: dict[str, Any] | None = None) -> None:
+        with self._lock:
+            self._observations[self._key(metric, labels)].append(float(value))
+
+    def gauge(self, metric: str, value: float, *, labels: dict[str, Any] | None = None) -> None:
+        with self._lock:
+            self._gauges[self._key(metric, labels)] = float(value)
+
+    def snapshot(self) -> dict[str, Any]:
+        with self._lock:
+            counters = {
+                f"{metric}{dict(labels)}": value
+                for (metric, labels), value in sorted(self._counters.items())
+            }
+            observations = {}
+            for (metric, labels), values in sorted(self._observations.items()):
+                ordered = sorted(values)
+                observations[f"{metric}{dict(labels)}"] = {
+                    "count": len(values),
+                    "last": values[-1] if values else 0.0,
+                    "p95": ordered[min(len(ordered) - 1, int((len(ordered) - 1) * 0.95))] if ordered else 0.0,
+                }
+            gauges = {
+                f"{metric}{dict(labels)}": value
+                for (metric, labels), value in sorted(self._gauges.items())
+            }
+            return {"counters": counters, "observations": observations, "gauges": gauges}
+
+    @staticmethod
+    def _labels(labels: tuple[tuple[str, str], ...]) -> str:
+        if not labels:
+            return ""
+        rendered = ",".join(f'{key}="{_escape_prometheus_label(value)}"' for key, value in labels)
+        return f"{{{rendered}}}"
+
+    def prometheus_snapshot(self) -> str:
+        lines = ["# TYPE pim_event_assignment_total counter"]
+        with self._lock:
+            for (metric, labels), value in sorted(self._counters.items()):
+                lines.append(f"{metric}{self._labels(labels)} {value}")
+            for (metric, labels), values in sorted(self._observations.items()):
+                if not values:
+                    continue
+                ordered = sorted(values)
+                p95 = ordered[min(len(ordered) - 1, int((len(ordered) - 1) * 0.95))]
+                lines.append(f"{metric}{self._labels(labels)} {values[-1]}")
+                lines.append(f"{metric}_p95{self._labels(labels)} {p95}")
+            for (metric, labels), value in sorted(self._gauges.items()):
+                lines.append(f"{metric}{self._labels(labels)} {value}")
+        return "\n".join(lines) + "\n"
+
+
 request_metrics = RequestMetrics()
 source_metrics = SourceMetrics()
 task_queue_metrics = TaskQueueMetrics()
 storage_metrics = StorageMetrics()
 reliability_metrics = WindowedReliabilityMetrics()
+event_metrics = EventMetrics()
 
 
 # ---------------------------------------------------------------------------

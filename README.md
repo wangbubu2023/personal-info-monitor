@@ -2,9 +2,16 @@
 
 > 本地优先的个人资讯监控系统。PIM 把 RSS、网站、X、YouTube、Podcast 等来源统一抓取、去重、评分、摘要和归档，并提供 Web UI、桌面端、`pimctl` CLI 与远程部署运维能力。
 
-当前版本：**1.6.8**
+当前版本：**1.6.9**
 
 > 分支提示：`main` 暂时冻结原子库产品入口；原子库相关能力保留在 `dev` 分支继续探索，详见 [`docs/ATOM_FREEZE_MAIN.md`](docs/ATOM_FREEZE_MAIN.md)。
+
+## 1.6.9 重点
+
+- **Event v1 稳定内核与灰度链路**：新增稳定 UUIDv7 Event、结构化签名、多通道召回、来源独立性、meaningful Snapshot、有界重平衡及 v0/v1 双跑审计；生产读切换继续由正式评测与 Shadow 门禁保护。
+- **可靠执行与正式质量闭环**：落地 durable job、SchedulerRun、Transactional Outbox、lineage、SQLite single writer，以及 Core/Event/Ranking/Calibration 正式评测和 fail-closed release artifact。
+- **Web 升级兼容 detached HEAD**：自动把 detached checkout 所需的 `--no-pull` 与 `PIM_UI_UPGRADE_ARGS` 合并，外部进程管理器使用 `--no-restart` 时不再因参数覆盖而失败。
+- **可观测与运维加固**：补充 Event 指标、诊断和操作 API、迁移/回填/性能基准，并保持生产灰度开关默认关闭。
 
 ## 1.6.8 重点
 
@@ -350,10 +357,10 @@ cd backend
 然后提交、打 tag，并创建 GitHub Release。Web 更新检查依赖 GitHub Releases 的 `latest` 端点，仅推 tag 不会触发“发现新版本”提示。
 
 ```bash
-git commit -m "release: 1.6.8"
-git tag -a v1.6.8 -m "Release 1.6.8"
-git push origin main v1.6.8
-gh release create v1.6.8 --title "v1.6.8" --notes-file /tmp/pim-release-notes.md
+git commit -m "release: 1.6.9"
+git tag -a v1.6.9 -m "Release 1.6.9"
+git push origin main v1.6.9
+gh release create v1.6.9 --title "v1.6.9" --notes-file /tmp/pim-release-notes.md
 ```
 
 发布 GitHub Release 后，`Release Auth Assistant for macOS` workflow 会构建 arm64 DMG、使用

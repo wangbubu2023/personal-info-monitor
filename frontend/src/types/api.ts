@@ -798,6 +798,91 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/events/config": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Event Engine Config */
+        get: operations["get_event_engine_config_api_events_config_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/events/diagnostics/content/{content_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Content Assignment Diagnostics */
+        get: operations["get_content_assignment_diagnostics_api_events_diagnostics_content__content_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/events/diagnostics/event/{event_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Event Diagnostics */
+        get: operations["get_event_diagnostics_api_events_diagnostics_event__event_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/events/operations/merge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Merge Event Command */
+        post: operations["merge_event_command_api_events_operations_merge_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/events/operations/{operation_id}/revert": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Revert Event Command */
+        post: operations["revert_event_command_api_events_operations__operation_id__revert_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/events/quality-feedback/queue": {
         parameters: {
             query?: never;
@@ -829,6 +914,74 @@ export interface paths {
         put?: never;
         /** Adjudicate Event Feedback */
         post: operations["adjudicate_event_feedback_api_events_quality_feedback__feedback_id__adjudicate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/events/rebalance": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Run Event Rebalance */
+        post: operations["run_event_rebalance_api_events_rebalance_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/events/rebalance/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Event Rebalance Runs */
+        get: operations["list_event_rebalance_runs_api_events_rebalance_runs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/events/resolve/{event_ref}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Resolve Event Reference */
+        get: operations["resolve_event_reference_api_events_resolve__event_ref__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/events/shadow/today-preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Preview Event V1 Today */
+        get: operations["preview_event_v1_today_api_events_shadow_today_preview_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -886,6 +1039,40 @@ export interface paths {
         put?: never;
         /** Create Event Feedback */
         post: operations["create_event_feedback_api_events__event_id__feedback_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/events/{event_id}/operations/lifecycle": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Lifecycle Event Command */
+        post: operations["lifecycle_event_command_api_events__event_id__operations_lifecycle_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/events/{event_id}/operations/split": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Split Event Command */
+        post: operations["split_event_command_api_events__event_id__operations_split_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2470,6 +2657,26 @@ export interface components {
             /** Type */
             type: string;
         };
+        /** EventLifecycleCreate */
+        EventLifecycleCreate: {
+            /** Action */
+            action: string;
+            /** Actor */
+            actor: string;
+            /** Reason */
+            reason: string;
+        };
+        /** EventMergeCreate */
+        EventMergeCreate: {
+            /** Actor */
+            actor: string;
+            /** Canonical Event Id */
+            canonical_event_id: string;
+            /** Reason */
+            reason: string;
+            /** Source Event Ids */
+            source_event_ids: string[];
+        };
         /** EventReadStateResponse */
         EventReadStateResponse: {
             /** Event Id */
@@ -2482,10 +2689,54 @@ export interface components {
             /** User Seen Version */
             user_seen_version: number;
         };
+        /** EventRebalanceCreate */
+        EventRebalanceCreate: {
+            /**
+             * Checkpoint Size
+             * @default 100
+             */
+            checkpoint_size: number;
+            /**
+             * Max Events
+             * @default 1000
+             */
+            max_events: number;
+            /**
+             * Max Pairs
+             * @default 5000
+             */
+            max_pairs: number;
+            /**
+             * Max Runtime Seconds
+             * @default 30
+             */
+            max_runtime_seconds: number;
+            /** Resume Cursor */
+            resume_cursor?: string | null;
+            /** Run Kind */
+            run_kind: string;
+        };
+        /** EventRevertCreate */
+        EventRevertCreate: {
+            /** Actor */
+            actor: string;
+            /** Reason */
+            reason: string;
+        };
         /** EventSnapshotItem */
         EventSnapshotItem: {
+            /** Change Type */
+            change_type?: string | null;
             /** Created At */
             created_at?: string | null;
+            /** Evidence Refs */
+            evidence_refs?: {
+                [key: string]: unknown;
+            }[];
+            /** Facts */
+            facts?: {
+                [key: string]: unknown;
+            }[];
             /**
              * Is Seen
              * @default false
@@ -2495,12 +2746,23 @@ export interface components {
             summary?: string | null;
             /** Title */
             title: string;
+            /** Uncertainty */
+            uncertainty?: unknown[];
             /** Version */
             version: number;
             /** What Changed */
             what_changed?: string | null;
             /** Why Matters */
             why_matters?: string | null;
+        };
+        /** EventSplitCreate */
+        EventSplitCreate: {
+            /** Actor */
+            actor: string;
+            /** Groups */
+            groups: string[][];
+            /** Reason */
+            reason: string;
         };
         /** EventStateUpdate */
         EventStateUpdate: {
@@ -3373,6 +3635,11 @@ export interface components {
             primary_content_id?: string | null;
             /** Section */
             section?: string | null;
+            /**
+             * Snapshot Version
+             * @default 0
+             */
+            snapshot_version: number;
             /** Source Names */
             source_names?: string[];
             /** Summary */
@@ -4943,6 +5210,158 @@ export interface operations {
             };
         };
     };
+    get_event_engine_config_api_events_config_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    get_content_assignment_diagnostics_api_events_diagnostics_content__content_id__get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                content_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_event_diagnostics_api_events_diagnostics_event__event_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    merge_event_command_api_events_operations_merge_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EventMergeCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    revert_event_command_api_events_operations__operation_id__revert_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                operation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EventRevertCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_quality_feedback_queue_api_events_quality_feedback_queue_get: {
         parameters: {
             query?: {
@@ -4997,6 +5416,133 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["QualityAdjudicationItem"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    run_event_rebalance_api_events_rebalance_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EventRebalanceCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_event_rebalance_runs_api_events_rebalance_runs_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    resolve_event_reference_api_events_resolve__event_ref__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                event_ref: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preview_event_v1_today_api_events_shadow_today_preview_get: {
+        parameters: {
+            query?: {
+                date?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TodayHighlightsResponse"];
                 };
             };
             /** @description Validation Error */
@@ -5095,6 +5641,76 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EventFeedbackItem"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    lifecycle_event_command_api_events__event_id__operations_lifecycle_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EventLifecycleCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    split_event_command_api_events__event_id__operations_split_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EventSplitCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
             /** @description Validation Error */

@@ -371,6 +371,12 @@ export const mockApi = async (page: Page) => {
   await page.addInitScript(() => {
     window.localStorage.setItem('pim_api_key', 'e2e-mock-api-key')
   })
+  await page.route('**/bootstrap/session', async (route) => {
+    if (route.request().method() === 'GET') {
+      return response(route, 200, { status: 'authenticated', actor: 'e2e' })
+    }
+    return route.fallback()
+  })
   await page.route('**/api/**', async (route) => {
     const method = route.request().method()
     const url = new URL(route.request().url())

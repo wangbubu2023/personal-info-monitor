@@ -1283,6 +1283,70 @@
         "title": "EventFeedbackItem",
         "type": "object"
       },
+      "EventLifecycleCreate": {
+        "properties": {
+          "action": {
+            "pattern": "^(close|reopen)$",
+            "title": "Action",
+            "type": "string"
+          },
+          "actor": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Actor",
+            "type": "string"
+          },
+          "reason": {
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "action",
+          "actor",
+          "reason"
+        ],
+        "title": "EventLifecycleCreate",
+        "type": "object"
+      },
+      "EventMergeCreate": {
+        "properties": {
+          "actor": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Actor",
+            "type": "string"
+          },
+          "canonical_event_id": {
+            "title": "Canonical Event Id",
+            "type": "string"
+          },
+          "reason": {
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          },
+          "source_event_ids": {
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Source Event Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "canonical_event_id",
+          "source_event_ids",
+          "actor",
+          "reason"
+        ],
+        "title": "EventMergeCreate",
+        "type": "object"
+      },
       "EventReadStateResponse": {
         "properties": {
           "event_id": {
@@ -1315,8 +1379,94 @@
         "title": "EventReadStateResponse",
         "type": "object"
       },
+      "EventRebalanceCreate": {
+        "properties": {
+          "checkpoint_size": {
+            "default": 100,
+            "maximum": 10000.0,
+            "minimum": 1.0,
+            "title": "Checkpoint Size",
+            "type": "integer"
+          },
+          "max_events": {
+            "default": 1000,
+            "maximum": 10000.0,
+            "minimum": 1.0,
+            "title": "Max Events",
+            "type": "integer"
+          },
+          "max_pairs": {
+            "default": 5000,
+            "maximum": 100000.0,
+            "minimum": 1.0,
+            "title": "Max Pairs",
+            "type": "integer"
+          },
+          "max_runtime_seconds": {
+            "default": 30.0,
+            "maximum": 300.0,
+            "minimum": 0.1,
+            "title": "Max Runtime Seconds",
+            "type": "number"
+          },
+          "resume_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resume Cursor"
+          },
+          "run_kind": {
+            "pattern": "^(light|deep)$",
+            "title": "Run Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_kind"
+        ],
+        "title": "EventRebalanceCreate",
+        "type": "object"
+      },
+      "EventRevertCreate": {
+        "properties": {
+          "actor": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Actor",
+            "type": "string"
+          },
+          "reason": {
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "actor",
+          "reason"
+        ],
+        "title": "EventRevertCreate",
+        "type": "object"
+      },
       "EventSnapshotItem": {
         "properties": {
+          "change_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Change Type"
+          },
           "created_at": {
             "anyOf": [
               {
@@ -1327,6 +1477,22 @@
               }
             ],
             "title": "Created At"
+          },
+          "evidence_refs": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Evidence Refs",
+            "type": "array"
+          },
+          "facts": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Facts",
+            "type": "array"
           },
           "is_seen": {
             "default": false,
@@ -1347,6 +1513,11 @@
           "title": {
             "title": "Title",
             "type": "string"
+          },
+          "uncertainty": {
+            "items": {},
+            "title": "Uncertainty",
+            "type": "array"
           },
           "version": {
             "title": "Version",
@@ -1380,6 +1551,40 @@
           "title"
         ],
         "title": "EventSnapshotItem",
+        "type": "object"
+      },
+      "EventSplitCreate": {
+        "properties": {
+          "actor": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Actor",
+            "type": "string"
+          },
+          "groups": {
+            "items": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "minItems": 2,
+            "title": "Groups",
+            "type": "array"
+          },
+          "reason": {
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "groups",
+          "actor",
+          "reason"
+        ],
+        "title": "EventSplitCreate",
         "type": "object"
       },
       "EventStateUpdate": {
@@ -3647,6 +3852,11 @@
             ],
             "title": "Section"
           },
+          "snapshot_version": {
+            "default": 0,
+            "title": "Snapshot Version",
+            "type": "integer"
+          },
           "source_names": {
             "items": {
               "type": "string"
@@ -3954,7 +4164,7 @@
   "info": {
     "description": "个人化资讯监控管理系统 API",
     "title": "Personal Information Monitor",
-    "version": "1.6.8"
+    "version": "1.6.9"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -6467,6 +6677,232 @@
         ]
       }
     },
+    "/api/events/config": {
+      "get": {
+        "operationId": "get_event_engine_config_api_events_config_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Get Event Engine Config",
+        "tags": [
+          "events"
+        ]
+      }
+    },
+    "/api/events/diagnostics/content/{content_id}": {
+      "get": {
+        "operationId": "get_content_assignment_diagnostics_api_events_diagnostics_content__content_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "content_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Content Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Get Content Assignment Diagnostics",
+        "tags": [
+          "events"
+        ]
+      }
+    },
+    "/api/events/diagnostics/event/{event_id}": {
+      "get": {
+        "operationId": "get_event_diagnostics_api_events_diagnostics_event__event_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "event_id",
+            "required": true,
+            "schema": {
+              "title": "Event Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Get Event Diagnostics",
+        "tags": [
+          "events"
+        ]
+      }
+    },
+    "/api/events/operations/merge": {
+      "post": {
+        "operationId": "merge_event_command_api_events_operations_merge_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EventMergeCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Merge Event Command",
+        "tags": [
+          "events"
+        ]
+      }
+    },
+    "/api/events/operations/{operation_id}/revert": {
+      "post": {
+        "operationId": "revert_event_command_api_events_operations__operation_id__revert_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "operation_id",
+            "required": true,
+            "schema": {
+              "title": "Operation Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EventRevertCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Revert Event Command",
+        "tags": [
+          "events"
+        ]
+      }
+    },
     "/api/events/quality-feedback/queue": {
       "get": {
         "description": "List explicit quality observations; reading behavior is never included.",
@@ -6585,6 +7021,209 @@
           }
         ],
         "summary": "Adjudicate Event Feedback",
+        "tags": [
+          "events"
+        ]
+      }
+    },
+    "/api/events/rebalance": {
+      "post": {
+        "operationId": "run_event_rebalance_api_events_rebalance_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EventRebalanceCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Run Event Rebalance",
+        "tags": [
+          "events"
+        ]
+      }
+    },
+    "/api/events/rebalance/runs": {
+      "get": {
+        "operationId": "list_event_rebalance_runs_api_events_rebalance_runs_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "List Event Rebalance Runs",
+        "tags": [
+          "events"
+        ]
+      }
+    },
+    "/api/events/resolve/{event_ref}": {
+      "get": {
+        "operationId": "resolve_event_reference_api_events_resolve__event_ref__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "event_ref",
+            "required": true,
+            "schema": {
+              "title": "Event Ref",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Resolve Event Reference",
+        "tags": [
+          "events"
+        ]
+      }
+    },
+    "/api/events/shadow/today-preview": {
+      "get": {
+        "operationId": "preview_event_v1_today_api_events_shadow_today_preview_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "date",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Date"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 8,
+              "maximum": 8,
+              "minimum": 3,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TodayHighlightsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Preview Event V1 Today",
         "tags": [
           "events"
         ]
@@ -6756,6 +7395,116 @@
           }
         ],
         "summary": "Create Event Feedback",
+        "tags": [
+          "events"
+        ]
+      }
+    },
+    "/api/events/{event_id}/operations/lifecycle": {
+      "post": {
+        "operationId": "lifecycle_event_command_api_events__event_id__operations_lifecycle_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "event_id",
+            "required": true,
+            "schema": {
+              "title": "Event Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EventLifecycleCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Lifecycle Event Command",
+        "tags": [
+          "events"
+        ]
+      }
+    },
+    "/api/events/{event_id}/operations/split": {
+      "post": {
+        "operationId": "split_event_command_api_events__event_id__operations_split_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "event_id",
+            "required": true,
+            "schema": {
+              "title": "Event Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EventSplitCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Split Event Command",
         "tags": [
           "events"
         ]

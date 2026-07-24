@@ -20,7 +20,19 @@ from sqlalchemy.orm.session import Session
 
 from app.domains.events.personal_state import get_event_read_state, get_or_create_item_state
 from app.domains.events.presentation import event_name_from_cluster, is_need_to_know_event, simplify_event_name
-from app.models import Content, ContentEvent, ContentEventMembership, ContentEventSnapshot, HourlyDigest, ScoreFeedback, UserRule
+from app.models import (
+    Content,
+    ContentEvent,
+    ContentEventMembership,
+    ContentEventSnapshot,
+    EventAlias,
+    EventAssignmentLog,
+    EventMembershipV1,
+    EventOperation,
+    HourlyDigest,
+    ScoreFeedback,
+    UserRule,
+)
 from app.utils.datetime import to_iso_z, utcnow_naive
 
 
@@ -179,6 +191,39 @@ def upsert_events_from_clusters(db: Session, clusters: list[dict[str, Any]]) -> 
                     created_at=utcnow_naive(),
                 )
             )
+            event.latest_snapshot_version = (int(latest_snapshot.version) + 1) if latest_snapshot else 1
+        for item in items:
+            cid = str(item.get("content_id") or "").strip()
+            if not cid:
+                continue
+            logged = (
+                db.query(EventAssignmentLog.id)
+                .filter(
+                    EventAssignmentLog.content_id == cid,
+                    EventAssignmentLog.assignment_version == "hybrid-v0",
+                )
+                .first()
+            )
+            if logged is None:
+                db.add(
+                    EventAssignmentLog(
+                        content_id=cid,
+                        assignment_version="hybrid-v0",
+                        selected_event_id=event_id,
+                        decision="attach",
+                        relation="same_event",
+                        assignment_method="hourly_hybrid_clusterer",
+                        candidate_count=0,
+                        candidates=[],
+                        component_scores=cluster.get("component_scores") or {},
+                        hard_conflicts=[],
+                        explain_reasons=cluster.get("explain_reasons") or [],
+                        effective_threshold=(cluster.get("similarity_thresholds") or {}).get("default"),
+                        latency_ms=0.0,
+                        shadow_only=False,
+                        created_at=utcnow_naive(),
+                    )
+                )
         persisted.append(event)
     return persisted
 
@@ -269,6 +314,21 @@ async def _apply_active_user_rules(db: AsyncSession, candidates: list[dict[str, 
 async def list_today_highlights(db: AsyncSession, target_date: date, *, limit: int = 8) -> list[dict[str, Any]]:
     """Return 3-8 event cards for the Digest page; empty means hide the section."""
 
+    from app.domains.events.config import event_v1_today_read_enabled
+
+    if event_v1_today_read_enabled():
+        from app.domains.events.shadow import list_v1_today_cards
+
+        selected = await list_v1_today_cards(db, target_date, limit=limit)
+        rule_adjusted = await _apply_active_user_rules(db, selected)
+        for item in rule_adjusted:
+            read_state = await get_event_read_state(db, str(item.get("event_id") or ""))
+            item["latest_version"] = read_state.latest_version
+            item["snapshot_version"] = read_state.latest_version
+            item["user_seen_version"] = read_state.user_seen_version
+            item["has_updates"] = read_state.has_updates
+        return rule_adjusted
+
     result = await db.execute(
         select(HourlyDigest)
         .where(HourlyDigest.digest_date == target_date)
@@ -309,6 +369,7 @@ async def list_today_highlights(db: AsyncSession, target_date: date, *, limit: i
                 "importance_score": score,
                 "confidence_score": item.get("confidence_score"),
                 "primary_content_id": item.get("content_id"),
+                "snapshot_version": int(item.get("snapshot_version") or 0),
                 "content_ids": item.get("content_ids") or [item.get("content_id")],
                 "corroboration_tier": item.get("corroboration_tier"),
             }
@@ -333,10 +394,20 @@ async def build_event_detail(db: AsyncSession, event_id: str) -> dict[str, Any] 
     if event is None:
         return None
     contents: list[Content] = []
-    membership_result = await db.execute(
-        select(ContentEventMembership).where(ContentEventMembership.event_id == event_id)
-    )
-    content_ids = [str(row.content_id) for row in membership_result.scalars().all()]
+    if event.cluster_version != "hybrid-v0":
+        membership_result = await db.execute(
+            select(EventMembershipV1).where(
+                EventMembershipV1.event_id == event_id,
+                EventMembershipV1.active.is_(True),
+            )
+        )
+    else:
+        membership_result = await db.execute(
+            select(ContentEventMembership).where(ContentEventMembership.event_id == event_id)
+        )
+    membership_rows = list(membership_result.scalars().all())
+    content_ids = [str(row.content_id) for row in membership_rows]
+    membership_roles = {str(row.content_id): str(row.role) for row in membership_rows}
     if content_ids:
         content_result = await db.execute(
             select(Content)
@@ -354,7 +425,7 @@ async def build_event_detail(db: AsyncSession, event_id: str) -> dict[str, Any] 
             "url": content.original_url,
             "publish_time": to_iso_z(content.publish_time),
             "fetched_at": to_iso_z(content.fetched_at),
-            "role": "primary" if idx == len(contents) - 1 else "supporting",
+            "role": membership_roles.get(str(content.id), "primary" if idx == len(contents) - 1 else "supporting"),
         }
         for idx, content in enumerate(contents)
     ]
@@ -378,6 +449,7 @@ async def build_event_detail(db: AsyncSession, event_id: str) -> dict[str, Any] 
         .limit(10)
     )
     snapshots = list(snapshots_result.scalars().all())
+    canonical_snapshot = snapshots[0] if snapshots else None
     read_state = await get_event_read_state(db, event.event_id)
     personal_state = await get_or_create_item_state(db, "event", event.event_id)
     feedback_result = await db.execute(
@@ -387,12 +459,28 @@ async def build_event_detail(db: AsyncSession, event_id: str) -> dict[str, Any] 
         .limit(20)
     )
     feedback = [row for row in feedback_result.scalars().all() if (row.snapshot or {}).get("event_id") == event.event_id]
+    operations_result = await db.execute(
+        select(EventOperation)
+        .where(EventOperation.event_id == event.event_id)
+        .order_by(EventOperation.created_at.desc())
+        .limit(50)
+    )
+    operations = list(operations_result.scalars().all())
+    aliases_result = await db.execute(
+        select(EventAlias).where(EventAlias.canonical_event_id == event.event_id)
+    )
+    aliases = list(aliases_result.scalars().all())
     return {
         "event_id": event.event_id,
         "event_key": event.event_key,
-        "title": event.title,
-        "current_conclusion": event.summary or (contents[-1].summary if contents else None) or "该事件仍在观察中。",
-        "why_matters": (snapshots[0].why_matters if snapshots else None) or (event.metadata_ or {}).get("why_matters"),
+        "title": canonical_snapshot.title if canonical_snapshot else event.title,
+        "current_conclusion": (
+            (canonical_snapshot.summary if canonical_snapshot else None)
+            or event.summary
+            or (contents[-1].summary if contents else None)
+            or "该事件仍在观察中。"
+        ),
+        "why_matters": (canonical_snapshot.why_matters if canonical_snapshot else None) or (event.metadata_ or {}).get("why_matters"),
         "source_names": event.source_names or [c.source.name for c in contents if c.source],
         "independent_source_count": event.independent_source_count,
         "updated_at": to_iso_z(event.last_seen_at or event.updated_at),
@@ -412,6 +500,10 @@ async def build_event_detail(db: AsyncSession, event_id: str) -> dict[str, Any] 
                 "why_matters": row.why_matters,
                 "created_at": to_iso_z(row.created_at),
                 "is_seen": int(row.version or 0) <= read_state.user_seen_version,
+                "change_type": row.change_type,
+                "facts": row.facts or [],
+                "evidence_refs": row.evidence_refs or [],
+                "uncertainty": row.uncertainty or [],
             }
             for row in snapshots
         ],
@@ -422,4 +514,33 @@ async def build_event_detail(db: AsyncSession, event_id: str) -> dict[str, Any] 
             {"type": row.event_type, "note": row.note, "created_at": to_iso_z(row.created_at)}
             for row in feedback
         ],
+        "extra": {
+            "cluster_version": event.cluster_version,
+            "event_state": event.event_state,
+            "status": event.status,
+            "canonical_content_id": str(event.canonical_content_id or "") or None,
+            "dispersion": event.dispersion,
+            "centroid_version": (event.centroid or {}).get("centroid_version"),
+            "source_independence": (event.metadata_ or {}).get("source_independence") or {},
+            "aliases": [
+                {
+                    "type": row.alias_type,
+                    "value": row.alias_value,
+                    "redirect_enabled": bool(row.redirect_enabled),
+                }
+                for row in aliases
+            ],
+            "operations": [
+                {
+                    "id": str(row.id),
+                    "type": row.operation_type,
+                    "input_event_ids": row.input_event_ids or [],
+                    "output_event_ids": row.output_event_ids or [],
+                    "reason": row.reason,
+                    "actor": row.actor,
+                    "created_at": to_iso_z(row.created_at),
+                }
+                for row in operations
+            ],
+        },
     }

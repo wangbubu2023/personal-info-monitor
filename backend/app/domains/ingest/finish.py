@@ -181,6 +181,15 @@ async def _finish_content_async(content_id: str) -> None:
         await asyncio.to_thread(db.commit)
         logger.info(f"Post-processed content: {content.title[:50]}")
 
+        # Event assignment is no longer coupled to the hourly Brief. It runs as
+        # an idempotent stage of the existing durable postprocess job so worker
+        # crashes/retries cannot lose an accepted Content row. v1 writes remain
+        # shadow-only until the separately gated Today read switch is approved.
+        if accepted:
+            from app.domains.events.engine import assign_content_sync
+
+            await asyncio.to_thread(assign_content_sync, str(content.id), shadow_only=True)
+
         if KEYWORD_MONITORING_ENABLED and content.keyword_matches:
             await _dispatch_keyword_alerts_async(db, content)
             # Alert preference resolution performs read-only lookups. End that

@@ -37,6 +37,13 @@ from app.models.reliable_execution import (
     SchedulerRun,
 )
 from app.models.ai_governance import AiPolicyMigrationState, AiSubjectiveScoreCache
+from app.models.event_engine import (
+    EventAssignmentLog,
+    EventRebalanceRun,
+    EventRebalanceSuggestion,
+    EventSignature,
+    EventTodayDiffAudit,
+)
 
 __all__ = [
     "Source",
@@ -88,4 +95,9 @@ __all__ = [
     "EventMembershipV1",
     "AiPolicyMigrationState",
     "AiSubjectiveScoreCache",
+    "EventSignature",
+    "EventAssignmentLog",
+    "EventRebalanceRun",
+    "EventRebalanceSuggestion",
+    "EventTodayDiffAudit",
 ]

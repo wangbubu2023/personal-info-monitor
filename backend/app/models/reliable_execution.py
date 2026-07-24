@@ -5,6 +5,7 @@ from __future__ import annotations
 import uuid
 
 from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Index, Integer, JSON, String, Text, UniqueConstraint
+from sqlalchemy import text as sa_text
 
 from app.platform.persistence.database import Base, UUIDString
 from app.utils.datetime import utcnow_naive
@@ -149,6 +150,14 @@ class EventMembershipV1(Base):
     __table_args__ = (
         UniqueConstraint("event_id", "content_id", "assignment_version", name="uq_event_membership_v1"),
         Index("ix_event_memberships_v1_content", "content_id"),
+        Index(
+            "uq_event_memberships_v1_active_content_version",
+            "content_id",
+            "assignment_version",
+            unique=True,
+            sqlite_where=sa_text("active = 1"),
+            postgresql_where=sa_text("active = true"),
+        ),
     )
 
     id = Column(Integer, primary_key=True, autoincrement=True)
@@ -159,6 +168,11 @@ class EventMembershipV1(Base):
     confidence = Column(Float, nullable=True)
     explanation = Column(JSON, nullable=False, default=dict)
     shadow_only = Column(Boolean, nullable=False, default=True)
+    active = Column(Boolean, nullable=False, default=True)
+    assignment_method = Column(String(64), nullable=False, default="rules")
+    relation = Column(String(32), nullable=False, default="same_event")
+    effective_threshold = Column(Float, nullable=True)
+    updated_at = Column(DateTime, nullable=False, default=utcnow_naive, onupdate=utcnow_naive)
     created_at = Column(DateTime, nullable=False, default=utcnow_naive)
 
 

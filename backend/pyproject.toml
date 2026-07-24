@@ -1,6 +1,6 @@
 [project]
 name = "personal-info-monitor-backend"
-version = "1.6.8"
+version = "1.6.9"
 description = "Personal Information Monitor — FastAPI backend, collectors, AI pipeline."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -49,6 +49,7 @@ dependencies = [
     "python-dotenv>=1.0.0",
     "httpx>=0.28.1",
     "tenacity>=8.2.3",
+    "publicsuffix2>=2.20191221",
     # Email
     "aiosmtplib>=3.0.1",
     "jinja2>=3.1.3",

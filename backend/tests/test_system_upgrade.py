@@ -34,6 +34,28 @@ def test_configured_upgrade_args_skips_pull_for_detached_checkout(monkeypatch):
     assert upgrade.configured_upgrade_args() == ["--no-pull"]
 
 
+def test_configured_upgrade_args_merges_no_pull_with_user_override(monkeypatch):
+    monkeypatch.setattr(
+        upgrade,
+        "get_settings",
+        lambda: SimpleNamespace(pim_ui_upgrade_args="--no-restart"),
+    )
+    monkeypatch.setattr(upgrade, "_checkout_is_detached", lambda: True)
+
+    assert upgrade.configured_upgrade_args() == ["--no-pull", "--no-restart"]
+
+
+def test_configured_upgrade_args_dedupes_user_no_pull(monkeypatch):
+    monkeypatch.setattr(
+        upgrade,
+        "get_settings",
+        lambda: SimpleNamespace(pim_ui_upgrade_args="--no-pull --no-restart"),
+    )
+    monkeypatch.setattr(upgrade, "_checkout_is_detached", lambda: True)
+
+    assert upgrade.configured_upgrade_args() == ["--no-pull", "--no-restart"]
+
+
 def test_configured_upgrade_args_preserves_explicit_override(monkeypatch):
     monkeypatch.setattr(
         upgrade,

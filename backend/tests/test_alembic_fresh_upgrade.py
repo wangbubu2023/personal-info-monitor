@@ -79,7 +79,7 @@ def test_fresh_sqlite_database_can_upgrade_to_head(tmp_path):
     finally:
         conn.close()
 
-    assert revision == ("20260724_0036",)
+    assert revision == ("20260724_0037",)
     assert "ix_content_created_at" in indexes
     assert "ix_score_feedback_content_id" in indexes
     assert "ix_score_feedback_event_type" in indexes
@@ -161,6 +161,11 @@ def test_fresh_sqlite_database_can_upgrade_to_head(tmp_path):
         "content_events",
         "content_event_memberships",
         "content_event_snapshots",
+        "event_signatures",
+        "event_assignment_logs",
+        "event_rebalance_runs",
+        "event_rebalance_suggestions",
+        "event_today_diff_audits",
     } <= tables
     assert {
         "event_id",
@@ -169,10 +174,30 @@ def test_fresh_sqlite_database_can_upgrade_to_head(tmp_path):
         "incremental_score",
         "confidence_score",
         "independent_source_count",
+        "cluster_version",
+        "latest_snapshot_version",
+        "event_state",
+        "canonical_content_id",
+        "centroid",
+        "dispersion",
+        "last_material_update_at",
         "metadata",
     } <= content_event_columns
     assert {"event_id", "content_id", "role", "confidence", "evidence"} <= content_event_membership_columns
-    assert {"event_id", "version", "what_changed", "why_matters", "source_content_ids"} <= content_event_snapshot_columns
+    assert {
+        "event_id",
+        "version",
+        "what_changed",
+        "why_matters",
+        "source_content_ids",
+        "change_type",
+        "change_fingerprint",
+        "facts",
+        "evidence_refs",
+        "uncertainty",
+        "generator_version",
+        "explanation",
+    } <= content_event_snapshot_columns
     assert "ix_content_events_event_key" in indexes
     assert "ix_content_event_memberships_content" in indexes
     assert "ix_content_event_snapshots_event" in indexes

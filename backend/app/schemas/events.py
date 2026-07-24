@@ -22,6 +22,7 @@ class TodayHighlightEvent(BaseModel):
     importance_score: Optional[float] = None
     confidence_score: Optional[float] = None
     primary_content_id: Optional[str] = None
+    snapshot_version: int = 0
     latest_version: int = 0
     user_seen_version: int = 0
     has_updates: bool = False
@@ -53,6 +54,10 @@ class EventSnapshotItem(BaseModel):
     why_matters: Optional[str] = None
     created_at: Optional[str] = None
     is_seen: bool = False
+    change_type: Optional[str] = None
+    facts: list[dict[str, Any]] = Field(default_factory=list)
+    evidence_refs: list[dict[str, Any]] = Field(default_factory=list)
+    uncertainty: list[Any] = Field(default_factory=list)
 
 
 class EventFeedbackCreate(BaseModel):
@@ -129,3 +134,36 @@ class EventDetailResponse(BaseModel):
     related_discussions: list[EventEvidenceGroup] = Field(default_factory=list)
     feedback: list[EventFeedbackItem] = Field(default_factory=list)
     extra: dict[str, Any] = Field(default_factory=dict)
+
+
+class EventMergeCreate(BaseModel):
+    canonical_event_id: str
+    source_event_ids: list[str] = Field(min_length=1)
+    actor: str = Field(min_length=1, max_length=128)
+    reason: str = Field(min_length=1, max_length=4000)
+
+
+class EventSplitCreate(BaseModel):
+    groups: list[list[str]] = Field(min_length=2)
+    actor: str = Field(min_length=1, max_length=128)
+    reason: str = Field(min_length=1, max_length=4000)
+
+
+class EventLifecycleCreate(BaseModel):
+    action: str = Field(pattern="^(close|reopen)$")
+    actor: str = Field(min_length=1, max_length=128)
+    reason: str = Field(min_length=1, max_length=4000)
+
+
+class EventRevertCreate(BaseModel):
+    actor: str = Field(min_length=1, max_length=128)
+    reason: str = Field(min_length=1, max_length=4000)
+
+
+class EventRebalanceCreate(BaseModel):
+    run_kind: str = Field(pattern="^(light|deep)$")
+    max_events: int = Field(default=1000, ge=1, le=10_000)
+    max_pairs: int = Field(default=5000, ge=1, le=100_000)
+    max_runtime_seconds: float = Field(default=30.0, ge=0.1, le=300.0)
+    checkpoint_size: int = Field(default=100, ge=1, le=10_000)
+    resume_cursor: Optional[str] = None

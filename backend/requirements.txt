@@ -177,6 +177,8 @@ protobuf==7.34.1
     #   google-api-core
     #   googleapis-common-protos
     #   proto-plus
+publicsuffix2==2.20191221
+    # via personal-info-monitor-backend
 pyasn1==0.6.3
     # via pyasn1-modules
 pyasn1-modules==0.4.2

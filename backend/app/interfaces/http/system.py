@@ -98,6 +98,9 @@ def get_metrics() -> Dict[str, Any]:
     payload["sources"] = source_metrics.snapshot()
     payload["storage"] = storage_metrics.snapshot()
     payload["reliability"] = reliability_metrics.snapshot()
+    from app.platform.observability.metrics import event_metrics
+
+    payload["events"] = event_metrics.snapshot()
     payload["scheduler"] = {
         "running": bool(getattr(scheduler, "running", False)),
         "job_count": len(scheduler.get_jobs()),
@@ -202,6 +205,9 @@ def get_metrics_prometheus() -> str:
     metrics_text += task_queue_metrics.prometheus_snapshot()
     metrics_text += storage_metrics.prometheus_snapshot()
     metrics_text += reliability_metrics.prometheus_snapshot()
+    from app.platform.observability.metrics import event_metrics
+
+    metrics_text += event_metrics.prometheus_snapshot()
     metrics_text += (
         "# HELP pim_scheduler_running Whether the scheduler is running.\n"
         "# TYPE pim_scheduler_running gauge\n"

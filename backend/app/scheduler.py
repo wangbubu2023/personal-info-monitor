@@ -62,6 +62,12 @@ def setup_scheduler():
     from app.domains.enrich.notifications.daily_digest import send_daily_digest_emails
     from app.domains.enrich.notifications.doctor_digest import send_doctor_digest_email
     from app.domains.system.weekly_report import send_weekly_health_report_email
+    from app.domains.events.lifecycle import run_lifecycle_tick
+    from app.domains.events.rebalance import (
+        cleanup_event_assignment_logs,
+        run_event_rebalance_deep,
+        run_event_rebalance_light,
+    )
 
     # Core: check sources every 5 minutes (fetch priority)
     _add_durable_job(
@@ -162,6 +168,31 @@ def setup_scheduler():
         IntervalTrigger(minutes=1),
         id="dispatch_notification_outbox",
         name="Dispatch durable notification outbox",
+    )
+
+    _add_durable_job(
+        run_lifecycle_tick,
+        CronTrigger(minute=20),
+        id="event_lifecycle_tick",
+        name="Event v1 lifecycle tick",
+    )
+    _add_durable_job(
+        run_event_rebalance_light,
+        CronTrigger(minute=25),
+        id="event_rebalance_light",
+        name="Event v1 light rebalance",
+    )
+    _add_durable_job(
+        run_event_rebalance_deep,
+        CronTrigger(hour=2, minute=20),
+        id="event_rebalance_deep",
+        name="Event v1 bounded deep rebalance",
+    )
+    _add_durable_job(
+        cleanup_event_assignment_logs,
+        CronTrigger(hour=3, minute=20),
+        id="event_assignment_log_retention",
+        name="Event assignment diagnostic retention",
     )
 
     logger.info(f"Scheduler configured with {len(scheduler.get_jobs())} jobs")

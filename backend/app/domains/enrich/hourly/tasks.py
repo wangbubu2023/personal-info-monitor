@@ -113,10 +113,33 @@ async def generate_previous_hour_digest() -> None:
 
         def _persist_events():
             from app.domains.events.repository import upsert_events_from_clusters
+            from app.domains.events.shadow import freeze_digest_snapshot_refs, record_today_diff_audit
 
             upsert_events_from_clusters(db, ranked_clusters)
+            frozen = freeze_digest_snapshot_refs(db, event_items)
+            from app.platform.persistence.lineage import add_lineage_edge
 
-        await asyncio.to_thread(_persist_events)
+            for item in frozen:
+                event_id = str(item.get("event_id") or "")
+                snapshot_version = int(item.get("snapshot_version") or 0)
+                if event_id and snapshot_version:
+                    add_lineage_edge(
+                        from_type="event_snapshot",
+                        from_id=f"{event_id}:v{snapshot_version}",
+                        to_type="digest",
+                        to_id=str(ctx["digest"].id),
+                        relation="presented_in",
+                        pipeline_version="hourly-digest-v1",
+                        session=db,
+                    )
+            record_today_diff_audit(
+                db,
+                target_date=ctx["digest"].digest_date,
+                v0_items=frozen,
+            )
+            return frozen
+
+        event_items = await asyncio.to_thread(_persist_events)
         if not event_items:
             event_items = build_hourly_digest_event_items(entries)
 

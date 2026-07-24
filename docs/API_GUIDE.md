@@ -141,3 +141,8 @@ curl -H "X-API-Key: <your-api-key>" \
 
 1. 说明服务端未正确加载运行时密钥
 2. 重新执行 `./pim setup` 或检查 `DATA_DIR/runtime-secrets.json`
+## Event Engine v1
+
+The stable Event v1 assignment, Snapshot, operator, Shadow preview, and rollback
+surfaces are documented in [EVENT_ENGINE_V1.md](EVENT_ENGINE_V1.md). Production
+Today reads remain fail-closed behind the two Event read-gate flags.
