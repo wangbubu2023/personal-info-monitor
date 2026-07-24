@@ -1,0 +1,23 @@
+{
+  "schema_version": "pim-formal-eval-config-v1",
+  "core": {
+    "classification_threshold": 60.0,
+    "minimum_records": 200,
+    "minimum_sources": 10,
+    "top_k": 20
+  },
+  "event": {
+    "minimum_clusters": 50,
+    "minimum_pairs": 200,
+    "missing_merge_rate_max_exclusive": 0.08,
+    "pair_precision_min": 0.92,
+    "pair_recall_min": 0.82,
+    "similarity_threshold": 0.28,
+    "wrong_merge_rate_max_exclusive": 0.03
+  },
+  "shadow": {
+    "minimum_days": 7,
+    "recommended_days": 14,
+    "retention_days": 30
+  }
+}

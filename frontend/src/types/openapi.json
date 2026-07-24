@@ -2788,6 +2788,195 @@
         "title": "ProbeResponse",
         "type": "object"
       },
+      "QualityAdjudicationCreate": {
+        "properties": {
+          "adjudicator": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Adjudicator",
+            "type": "string"
+          },
+          "evidence": {
+            "additionalProperties": true,
+            "title": "Evidence",
+            "type": "object"
+          },
+          "rationale": {
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Rationale",
+            "type": "string"
+          },
+          "verdict": {
+            "title": "Verdict",
+            "type": "string"
+          }
+        },
+        "required": [
+          "verdict",
+          "adjudicator",
+          "rationale"
+        ],
+        "title": "QualityAdjudicationCreate",
+        "type": "object"
+      },
+      "QualityAdjudicationItem": {
+        "properties": {
+          "adjudicator": {
+            "title": "Adjudicator",
+            "type": "string"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "feedback_id": {
+            "title": "Feedback Id",
+            "type": "string"
+          },
+          "gold_candidate": {
+            "title": "Gold Candidate",
+            "type": "boolean"
+          },
+          "hard_negative": {
+            "title": "Hard Negative",
+            "type": "boolean"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "issue_type": {
+            "title": "Issue Type",
+            "type": "string"
+          },
+          "rationale": {
+            "title": "Rationale",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "verdict": {
+            "title": "Verdict",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "feedback_id",
+          "issue_type",
+          "status",
+          "verdict",
+          "adjudicator",
+          "rationale",
+          "gold_candidate",
+          "hard_negative"
+        ],
+        "title": "QualityAdjudicationItem",
+        "type": "object"
+      },
+      "QualityFeedbackQueueItem": {
+        "properties": {
+          "adjudicated_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Adjudicated At"
+          },
+          "content_id": {
+            "title": "Content Id",
+            "type": "string"
+          },
+          "event_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Event Id"
+          },
+          "feedback_id": {
+            "title": "Feedback Id",
+            "type": "string"
+          },
+          "gold_candidate": {
+            "default": false,
+            "title": "Gold Candidate",
+            "type": "boolean"
+          },
+          "hard_negative": {
+            "default": false,
+            "title": "Hard Negative",
+            "type": "boolean"
+          },
+          "issue_type": {
+            "title": "Issue Type",
+            "type": "string"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "observed_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Observed At"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "verdict": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verdict"
+          }
+        },
+        "required": [
+          "feedback_id",
+          "content_id",
+          "issue_type",
+          "status"
+        ],
+        "title": "QualityFeedbackQueueItem",
+        "type": "object"
+      },
       "ReportStateUpdate": {
         "properties": {
           "completed": {
@@ -6275,6 +6464,129 @@
         "summary": "Get Digest Stats",
         "tags": [
           "digest"
+        ]
+      }
+    },
+    "/api/events/quality-feedback/queue": {
+      "get": {
+        "description": "List explicit quality observations; reading behavior is never included.",
+        "operationId": "list_quality_feedback_queue_api_events_quality_feedback_queue_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "default": "observation",
+              "pattern": "^(observation|adjudicated|all)$",
+              "title": "Status",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/QualityFeedbackQueueItem"
+                  },
+                  "title": "Response List Quality Feedback Queue Api Events Quality Feedback Queue Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "List Quality Feedback Queue",
+        "tags": [
+          "events"
+        ]
+      }
+    },
+    "/api/events/quality-feedback/{feedback_id}/adjudicate": {
+      "post": {
+        "operationId": "adjudicate_event_feedback_api_events_quality_feedback__feedback_id__adjudicate_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "feedback_id",
+            "required": true,
+            "schema": {
+              "title": "Feedback Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QualityAdjudicationCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QualityAdjudicationItem"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Adjudicate Event Feedback",
+        "tags": [
+          "events"
         ]
       }
     },

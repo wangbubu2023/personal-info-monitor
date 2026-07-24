@@ -14,15 +14,28 @@ from sqlalchemy.orm import selectinload
 from app.database import get_async_db
 from app.domains.events.personal_state import mark_event_seen, update_event_state
 from app.domains.events.repository import build_event_detail, list_today_highlights
-from app.domains.score.feedback import content_feedback_snapshot, record_score_feedback_event
-from app.models import Content
-from app.schemas.events import EventDetailResponse, EventFeedbackCreate, EventFeedbackItem, TodayHighlightsResponse
+from app.domains.score.feedback import (
+    EVENT_CLUSTER_FEEDBACK_EVENTS,
+    adjudicate_quality_feedback,
+    content_feedback_snapshot,
+    record_score_feedback_event,
+)
+from app.models import Content, QualityAdjudication, ScoreFeedback
+from app.schemas.events import (
+    EventDetailResponse,
+    EventFeedbackCreate,
+    EventFeedbackItem,
+    QualityAdjudicationCreate,
+    QualityAdjudicationItem,
+    QualityFeedbackQueueItem,
+    TodayHighlightsResponse,
+)
 from app.schemas.personal_monitor import EventStateUpdate, PersonalItemStateResponse
 from app.utils.datetime import to_iso_z, today_in_user_timezone
 
 router = APIRouter()
 
-_VALID_EVENT_FEEDBACK = frozenset({"event_wrong_merge", "event_missing_merge"})
+_VALID_EVENT_FEEDBACK = EVENT_CLUSTER_FEEDBACK_EVENTS
 
 
 def _personal_state_response(state) -> PersonalItemStateResponse:
@@ -53,6 +66,82 @@ async def get_today_highlights(
     target_date = datetime.strptime(digest_date, "%Y-%m-%d").date() if digest_date else today_in_user_timezone()
     items = await list_today_highlights(db, target_date, limit=limit)
     return TodayHighlightsResponse(date=target_date.isoformat(), items=items)
+
+
+@router.get("/quality-feedback/queue", response_model=list[QualityFeedbackQueueItem])
+async def list_quality_feedback_queue(
+    status: str = Query("observation", pattern="^(observation|adjudicated|all)$"),
+    limit: int = Query(100, ge=1, le=500),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """List explicit quality observations; reading behavior is never included."""
+
+    statement = (
+        select(ScoreFeedback, QualityAdjudication)
+        .outerjoin(QualityAdjudication, QualityAdjudication.feedback_id == ScoreFeedback.id)
+        .where(ScoreFeedback.event_type.in_(sorted(_VALID_EVENT_FEEDBACK)))
+    )
+    if status == "observation":
+        statement = statement.where(QualityAdjudication.id.is_(None))
+    elif status == "adjudicated":
+        statement = statement.where(QualityAdjudication.id.is_not(None))
+    statement = statement.order_by(ScoreFeedback.created_at.asc()).limit(limit)
+    rows = (await db.execute(statement)).all()
+    items = []
+    for feedback, adjudication in rows:
+        row_status = "adjudicated" if adjudication else "observation"
+        event_value = feedback.event_value if isinstance(feedback.event_value, dict) else {}
+        items.append(
+            QualityFeedbackQueueItem(
+                feedback_id=str(feedback.id),
+                event_id=event_value.get("event_id"),
+                content_id=str(feedback.content_id),
+                issue_type=str(feedback.event_type),
+                note=feedback.note,
+                status=row_status,
+                verdict=adjudication.verdict if adjudication else None,
+                gold_candidate=bool(adjudication and adjudication.gold_candidate),
+                hard_negative=bool(adjudication and adjudication.hard_negative),
+                observed_at=to_iso_z(feedback.created_at),
+                adjudicated_at=to_iso_z(adjudication.created_at) if adjudication else None,
+            )
+        )
+    return items
+
+
+@router.post("/quality-feedback/{feedback_id}/adjudicate", response_model=QualityAdjudicationItem)
+async def adjudicate_event_feedback(
+    feedback_id: str,
+    body: QualityAdjudicationCreate,
+    db: AsyncSession = Depends(get_async_db),
+):
+    try:
+        row = await adjudicate_quality_feedback(
+            db,
+            feedback_id.strip(),
+            verdict=body.verdict.strip(),
+            adjudicator=body.adjudicator,
+            rationale=body.rationale,
+            evidence=body.evidence,
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    await db.commit()
+    await db.refresh(row)
+    return QualityAdjudicationItem(
+        id=str(row.id),
+        feedback_id=str(row.feedback_id),
+        issue_type=row.issue_type,
+        status=row.status,
+        verdict=row.verdict,
+        adjudicator=row.adjudicator,
+        rationale=row.rationale,
+        gold_candidate=bool(row.gold_candidate),
+        hard_negative=bool(row.hard_negative),
+        created_at=to_iso_z(row.created_at),
+    )
 
 
 @router.get("/{event_id}", response_model=EventDetailResponse)

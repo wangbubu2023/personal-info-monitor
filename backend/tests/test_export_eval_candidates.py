@@ -75,6 +75,32 @@ def test_content_to_eval_record_maps_core_fields():
     assert record["full_content"].endswith("...")
 
 
+def test_content_to_eval_record_formal_mode_separates_predictions_and_adds_strata():
+    source = _source("Example", "https://example.com")
+    content = _content(
+        source,
+        1,
+        metadata_={
+            "fulltext_status": "full",
+            "language": "en",
+            "is_paywalled": True,
+            "eval_case_type": "paywall",
+        },
+    )
+
+    record = content_to_eval_record(content, formal_dataset=True)
+
+    assert "article_score" not in record
+    assert "final_score" not in record
+    assert record["strata"] == {
+        "source_type": "website",
+        "language": "en",
+        "paywall": True,
+        "content_length": "medium",
+        "case_type": "paywall",
+    }
+
+
 def test_interleave_by_source_round_robins_candidates():
     source_a = _source("A")
     source_b = _source("B", "https://b.example")

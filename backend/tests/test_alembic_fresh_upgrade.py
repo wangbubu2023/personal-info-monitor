@@ -73,10 +73,13 @@ def test_fresh_sqlite_database_can_upgrade_to_head(tmp_path):
         user_rule_columns = {
             row[1] for row in conn.execute("PRAGMA table_info(user_rules)")
         }
+        quality_adjudication_columns = {
+            row[1] for row in conn.execute("PRAGMA table_info(quality_adjudications)")
+        }
     finally:
         conn.close()
 
-    assert revision == ("20260723_0035",)
+    assert revision == ("20260724_0036",)
     assert "ix_content_created_at" in indexes
     assert "ix_score_feedback_content_id" in indexes
     assert "ix_score_feedback_event_type" in indexes
@@ -187,6 +190,19 @@ def test_fresh_sqlite_database_can_upgrade_to_head(tmp_path):
     assert "ix_personal_item_states_target" in indexes
     assert "ix_observation_aggregates_status" in indexes
     assert "ix_user_rules_scope" in indexes
+    assert "quality_adjudications" in tables
+    assert {
+        "feedback_id",
+        "issue_type",
+        "status",
+        "verdict",
+        "adjudicator",
+        "rationale",
+        "gold_candidate",
+        "hard_negative",
+        "evidence",
+    } <= quality_adjudication_columns
+    assert "ix_quality_adjudications_issue_status" in indexes
     assert {"fetch_jobs", "bootstrap_codes", "web_sessions"} <= tables
     assert {
         "ix_fetch_jobs_source_id",

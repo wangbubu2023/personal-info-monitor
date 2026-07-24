@@ -67,6 +67,40 @@ class EventFeedbackItem(BaseModel):
     created_at: Optional[str] = None
 
 
+class QualityAdjudicationCreate(BaseModel):
+    verdict: str
+    adjudicator: str = Field(min_length=1, max_length=128)
+    rationale: str = Field(min_length=1, max_length=4000)
+    evidence: dict[str, Any] = Field(default_factory=dict)
+
+
+class QualityFeedbackQueueItem(BaseModel):
+    feedback_id: str
+    event_id: Optional[str] = None
+    content_id: str
+    issue_type: str
+    note: Optional[str] = None
+    status: str
+    verdict: Optional[str] = None
+    gold_candidate: bool = False
+    hard_negative: bool = False
+    observed_at: Optional[str] = None
+    adjudicated_at: Optional[str] = None
+
+
+class QualityAdjudicationItem(BaseModel):
+    id: str
+    feedback_id: str
+    issue_type: str
+    status: str
+    verdict: str
+    adjudicator: str
+    rationale: str
+    gold_candidate: bool
+    hard_negative: bool
+    created_at: Optional[str] = None
+
+
 class EventEvidenceGroup(BaseModel):
     key: str
     title: str

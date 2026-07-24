@@ -87,6 +87,7 @@ def content_to_eval_record(
     *,
     default_label: str = "",
     max_full_content_chars: int = 4000,
+    formal_dataset: bool = False,
 ) -> dict[str, Any]:
     source = content.source
     metadata = content.metadata_ if isinstance(content.metadata_, dict) else {}
@@ -114,13 +115,26 @@ def content_to_eval_record(
         "source_metadata": _source_metadata_subset(source_metadata),
         "annotation_notes": "",
     }
-    if article_score is not None:
+    if article_score is not None and not formal_dataset:
         record["article_score"] = article_score
-    if final_score is not None:
+    if final_score is not None and not formal_dataset:
         record["final_score"] = final_score
     duplicate_group_id = metadata.get("duplicate_group_id")
     if duplicate_group_id:
         record["duplicate_group_id"] = duplicate_group_id
+    if formal_dataset:
+        body_length = len((content.full_content or "").strip())
+        record["strata"] = {
+            "source_type": source_type or "unknown",
+            "language": str(metadata.get("language") or metadata.get("detected_language") or "unknown"),
+            "paywall": bool(
+                metadata.get("paywall")
+                or metadata.get("is_paywalled")
+                or metadata.get("requires_subscription")
+            ),
+            "content_length": "short" if body_length < 500 else "medium" if body_length < 2000 else "long",
+            "case_type": str(metadata.get("eval_case_type") or "normal"),
+        }
     return record
 
 
@@ -221,6 +235,7 @@ def export_eval_candidates(
     default_label: str = "",
     include_archived: bool = False,
     max_full_content_chars: int = 4000,
+    formal_dataset: bool = False,
     now: datetime | None = None,
     diagnostics: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
@@ -246,6 +261,7 @@ def export_eval_candidates(
             content,
             default_label=default_label,
             max_full_content_chars=max_full_content_chars,
+            formal_dataset=formal_dataset,
         )
         for content in contents
     ]
@@ -272,6 +288,11 @@ def main() -> int:
     parser.add_argument("--label", default="", help="Optional prefilled label: must_see, ok, or noise")
     parser.add_argument("--include-archived", action="store_true")
     parser.add_argument("--max-full-content-chars", type=int, default=4000)
+    parser.add_argument(
+        "--formal",
+        action="store_true",
+        help="Omit existing predictions and emit formal_eval_1_0 strata fields",
+    )
     args = parser.parse_args()
 
     diagnostics: dict[str, Any] = {}
@@ -287,6 +308,7 @@ def main() -> int:
             default_label=args.label,
             include_archived=args.include_archived,
             max_full_content_chars=args.max_full_content_chars,
+            formal_dataset=args.formal,
             diagnostics=diagnostics,
         )
     source_count = len({record.get("source_id") for record in records if record.get("source_id")})

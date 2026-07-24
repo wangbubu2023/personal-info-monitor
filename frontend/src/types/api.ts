@@ -798,6 +798,43 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/events/quality-feedback/queue": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Quality Feedback Queue
+         * @description List explicit quality observations; reading behavior is never included.
+         */
+        get: operations["list_quality_feedback_queue_api_events_quality_feedback_queue_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/events/quality-feedback/{feedback_id}/adjudicate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Adjudicate Event Feedback */
+        post: operations["adjudicate_event_feedback_api_events_quality_feedback__feedback_id__adjudicate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/events/today-highlights": {
         parameters: {
             query?: never;
@@ -3042,6 +3079,73 @@ export interface components {
             /** Strategy */
             strategy: string;
         };
+        /** QualityAdjudicationCreate */
+        QualityAdjudicationCreate: {
+            /** Adjudicator */
+            adjudicator: string;
+            /** Evidence */
+            evidence?: {
+                [key: string]: unknown;
+            };
+            /** Rationale */
+            rationale: string;
+            /** Verdict */
+            verdict: string;
+        };
+        /** QualityAdjudicationItem */
+        QualityAdjudicationItem: {
+            /** Adjudicator */
+            adjudicator: string;
+            /** Created At */
+            created_at?: string | null;
+            /** Feedback Id */
+            feedback_id: string;
+            /** Gold Candidate */
+            gold_candidate: boolean;
+            /** Hard Negative */
+            hard_negative: boolean;
+            /** Id */
+            id: string;
+            /** Issue Type */
+            issue_type: string;
+            /** Rationale */
+            rationale: string;
+            /** Status */
+            status: string;
+            /** Verdict */
+            verdict: string;
+        };
+        /** QualityFeedbackQueueItem */
+        QualityFeedbackQueueItem: {
+            /** Adjudicated At */
+            adjudicated_at?: string | null;
+            /** Content Id */
+            content_id: string;
+            /** Event Id */
+            event_id?: string | null;
+            /** Feedback Id */
+            feedback_id: string;
+            /**
+             * Gold Candidate
+             * @default false
+             */
+            gold_candidate: boolean;
+            /**
+             * Hard Negative
+             * @default false
+             */
+            hard_negative: boolean;
+            /** Issue Type */
+            issue_type: string;
+            /** Note */
+            note?: string | null;
+            /** Observed At */
+            observed_at?: string | null;
+            /** Status */
+            status: string;
+            /** Verdict */
+            verdict?: string | null;
+        };
         /** ReportStateUpdate */
         ReportStateUpdate: {
             /** Completed */
@@ -4826,6 +4930,73 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_quality_feedback_queue_api_events_quality_feedback_queue_get: {
+        parameters: {
+            query?: {
+                status?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QualityFeedbackQueueItem"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    adjudicate_event_feedback_api_events_quality_feedback__feedback_id__adjudicate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                feedback_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["QualityAdjudicationCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QualityAdjudicationItem"];
                 };
             };
             /** @description Validation Error */

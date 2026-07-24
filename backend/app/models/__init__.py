@@ -26,7 +26,7 @@ from app.models.atom_event import (
 )
 from app.models.content_event import ContentEvent, ContentEventMembership, ContentEventSnapshot
 from app.models.personal_monitor import InteractionEvent, ObservationAggregate, PersonalItemState, UserRule
-from app.models.score_feedback import ScoreFeedback
+from app.models.score_feedback import QualityAdjudication, ScoreFeedback
 from app.models.reliable_execution import (
     EventAlias,
     EventMembershipV1,
@@ -78,6 +78,7 @@ __all__ = [
     "PersonalItemState",
     "UserRule",
     "ScoreFeedback",
+    "QualityAdjudication",
     "SchedulerRun",
     "OutboxEvent",
     "NotificationDelivery",

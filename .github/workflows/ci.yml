@@ -72,6 +72,33 @@ jobs:
       - name: Verify M0/M1 real bootstrap eval datasets (fail closed)
         run: cd backend && uv run python scripts/check_bootstrap_eval.py
 
+      - name: Generate M2 formal eval report (fail closed)
+        if: always()
+        run: |
+          cd backend
+          uv run python scripts/run_formal_eval.py --output artifacts/formal_eval_report.json
+
+      - name: Generate M2 release eval artifact
+        if: always()
+        run: |
+          cd backend
+          if test -f artifacts/formal_eval_report.json; then
+            uv run python scripts/generate_release_eval_artifact.py \
+              --formal-report artifacts/formal_eval_report.json \
+              --output artifacts/release_eval_artifact.json
+          else
+            uv run python scripts/generate_release_eval_artifact.py \
+              --output artifacts/release_eval_artifact.json
+          fi
+
+      - name: Upload M2 eval artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: m2-eval-artifacts
+          path: backend/artifacts/*.json
+          if-no-files-found: error
+
       - name: Verify requirements.txt matches pyproject.toml
         run: |
           cd backend

@@ -6,11 +6,21 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import Content, ScoreFeedback
+from sqlalchemy import select
+
+from app.models import Content, QualityAdjudication, ScoreFeedback
 
 SCORE_CALIBRATION_EVENT = "score_calibration"
 USER_INTERACTION_EVENTS = frozenset({"open", "star", "hide"})
-EVENT_CLUSTER_FEEDBACK_EVENTS = frozenset({"event_wrong_merge", "event_missing_merge"})
+EVENT_CLUSTER_FEEDBACK_EVENTS = frozenset(
+    {
+        "event_wrong_merge",
+        "event_missing_merge",
+        "event_wrong_title",
+        "event_wrong_fact",
+        "event_wrong_source_role",
+    }
+)
 VALID_FEEDBACK_EVENT_TYPES = frozenset({SCORE_CALIBRATION_EVENT, *USER_INTERACTION_EVENTS, *EVENT_CLUSTER_FEEDBACK_EVENTS})
 
 
@@ -58,11 +68,54 @@ async def record_score_feedback_event(
     return row
 
 
+async def adjudicate_quality_feedback(
+    db: AsyncSession,
+    feedback_id: str,
+    *,
+    verdict: str,
+    adjudicator: str,
+    rationale: str,
+    evidence: dict[str, Any] | None = None,
+) -> QualityAdjudication:
+    """Confirm/reject one observation without changing generic content scores."""
+
+    if verdict not in {"confirmed", "rejected"}:
+        raise ValueError("verdict must be confirmed or rejected")
+    feedback = await db.scalar(select(ScoreFeedback).where(ScoreFeedback.id == feedback_id))
+    if feedback is None:
+        raise LookupError("feedback observation not found")
+    issue_type = str(feedback.event_type or "")
+    if issue_type not in EVENT_CLUSTER_FEEDBACK_EVENTS:
+        raise ValueError("only explicit quality observations can be adjudicated")
+    existing = await db.scalar(select(QualityAdjudication).where(QualityAdjudication.feedback_id == feedback_id))
+    if existing is not None:
+        raise ValueError("feedback observation is already adjudicated")
+    reviewer = adjudicator.strip()
+    reason = rationale.strip()
+    if not reviewer or not reason:
+        raise ValueError("adjudicator and rationale are required")
+    confirmed = verdict == "confirmed"
+    row = QualityAdjudication(
+        feedback_id=feedback_id,
+        issue_type=issue_type,
+        status="adjudicated",
+        verdict=verdict,
+        adjudicator=reviewer,
+        rationale=reason,
+        gold_candidate=confirmed,
+        hard_negative=confirmed and issue_type == "event_wrong_merge",
+        evidence=evidence or {},
+    )
+    db.add(row)
+    return row
+
+
 __all__ = [
     "SCORE_CALIBRATION_EVENT",
     "USER_INTERACTION_EVENTS",
     "EVENT_CLUSTER_FEEDBACK_EVENTS",
     "VALID_FEEDBACK_EVENT_TYPES",
+    "adjudicate_quality_feedback",
     "content_feedback_snapshot",
     "record_score_feedback_event",
 ]

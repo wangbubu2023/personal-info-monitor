@@ -46,6 +46,7 @@ test-results/
 # Logs and data
 *.log
 output/
+backend/artifacts/
 
 # Tauri build artifacts
 frontend/src-tauri/target/
