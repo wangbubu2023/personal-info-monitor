@@ -1,5 +1,6 @@
 from app.domains.events.presentation import (
     classify_event_section,
+    is_rolling_highlight_event,
     simplify_event_name,
 )
 
@@ -20,6 +21,12 @@ def test_event_below_seventy_remains_brewing():
         confidence=92,
         corroboration_tier="single_high",
     ) == "brewing"
+
+
+def test_rolling_highlight_requires_heat_and_aggregation_but_not_hourly_increment():
+    assert is_rolling_highlight_event(importance=70, independent_source_count=2) is True
+    assert is_rolling_highlight_event(importance=69.9, independent_source_count=3) is False
+    assert is_rolling_highlight_event(importance=95, independent_source_count=1) is False
 
 
 def test_event_name_removes_article_framing_and_commentary():

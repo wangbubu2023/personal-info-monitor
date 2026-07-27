@@ -10,16 +10,21 @@ possible clustering signal.
 from __future__ import annotations
 
 import hashlib
-from datetime import date, datetime
+from datetime import date, datetime, time, timedelta, timezone
 from typing import Any, Iterable
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from sqlalchemy.orm.session import Session
 
 from app.domains.events.personal_state import get_event_read_state, get_or_create_item_state
-from app.domains.events.presentation import event_name_from_cluster, is_need_to_know_event, simplify_event_name
+from app.domains.events.presentation import (
+    NEED_TO_KNOW_IMPORTANCE_THRESHOLD,
+    TODAY_HIGHLIGHT_MIN_INDEPENDENT_SOURCES,
+    TODAY_HIGHLIGHT_WINDOW_HOURS,
+    event_name_from_cluster,
+)
 from app.models import (
     Content,
     ContentEvent,
@@ -29,11 +34,10 @@ from app.models import (
     EventAssignmentLog,
     EventMembershipV1,
     EventOperation,
-    HourlyDigest,
     ScoreFeedback,
     UserRule,
 )
-from app.utils.datetime import to_iso_z, utcnow_naive
+from app.utils.datetime import to_iso_z, user_timezone, utcnow_naive
 
 
 def stable_event_id(event_key: str) -> str:
@@ -311,75 +315,103 @@ async def _apply_active_user_rules(db: AsyncSession, candidates: list[dict[str, 
     return filtered
 
 
-async def list_today_highlights(db: AsyncSession, target_date: date, *, limit: int = 8) -> list[dict[str, Any]]:
-    """Return 3-8 event cards for the Digest page; empty means hide the section."""
+def _rolling_highlight_window(target_date: date) -> tuple[datetime, datetime]:
+    """Return the UTC-naive 48-hour window ending at the selected local date."""
 
-    from app.domains.events.config import event_v1_today_read_enabled
+    tz = user_timezone()
+    now_local = datetime.now(tz)
+    if target_date >= now_local.date():
+        end_local = now_local
+    else:
+        end_local = datetime.combine(target_date + timedelta(days=1), time.min, tzinfo=tz)
+    end_utc = end_local.astimezone(timezone.utc).replace(tzinfo=None)
+    return end_utc - timedelta(hours=TODAY_HIGHLIGHT_WINDOW_HOURS), end_utc
 
-    if event_v1_today_read_enabled():
-        from app.domains.events.shadow import list_v1_today_cards
 
-        selected = await list_v1_today_cards(db, target_date, limit=limit)
-        rule_adjusted = await _apply_active_user_rules(db, selected)
-        for item in rule_adjusted:
-            read_state = await get_event_read_state(db, str(item.get("event_id") or ""))
-            item["latest_version"] = read_state.latest_version
-            item["snapshot_version"] = read_state.latest_version
-            item["user_seen_version"] = read_state.user_seen_version
-            item["has_updates"] = read_state.has_updates
-        return rule_adjusted
+async def list_today_highlights(db: AsyncSession, target_date: date, *, limit: int = 50) -> list[dict[str, Any]]:
+    """Return hot, sufficiently corroborated persisted Events from a rolling 48-hour window."""
 
-    result = await db.execute(
-        select(HourlyDigest)
-        .where(HourlyDigest.digest_date == target_date)
-        .order_by(HourlyDigest.hour.desc())
+    from app.domains.events.config import event_config, event_v1_today_read_enabled
+
+    cluster_version = event_config().cluster_version if event_v1_today_read_enabled() else "hybrid-v0"
+    window_start, window_end = _rolling_highlight_window(target_date)
+    activity_at = func.coalesce(
+        ContentEvent.last_material_update_at,
+        ContentEvent.last_seen_at,
+        ContentEvent.updated_at,
     )
-    candidates: dict[str, dict[str, Any]] = {}
-    for digest in result.scalars().all():
-        for item in digest.items_json or []:
-            if not isinstance(item, dict):
-                continue
-            event_id = str(item.get("event_id") or "").strip()
-            if not event_id:
-                continue
-            event_key = str(item.get("event_key") or "").strip()
-            score = float(item.get("importance_score") or item.get("score") or 0.0)
-            incremental = float(item.get("incremental_score") or 0.0)
-            confidence = float(item.get("confidence_score") or 0.0)
-            if not is_need_to_know_event(
-                importance=score,
-                incremental=incremental,
-                confidence=confidence,
-            ):
-                continue
-            existing = candidates.get(event_id)
-            if existing and float(existing.get("importance_score") or 0.0) >= score:
-                continue
-            candidates[event_id] = {
-                "event_id": event_id,
-                "event_key": event_key,
+    result = await db.execute(
+        select(ContentEvent)
+        .where(
+            ContentEvent.cluster_version == cluster_version,
+            ContentEvent.status.in_(["active", "cooling", "reopened"]),
+            activity_at >= window_start,
+            activity_at < window_end,
+            ContentEvent.importance_score >= NEED_TO_KNOW_IMPORTANCE_THRESHOLD,
+            ContentEvent.independent_source_count >= TODAY_HIGHLIGHT_MIN_INDEPENDENT_SOURCES,
+        )
+        .order_by(
+            ContentEvent.importance_score.desc(),
+            activity_at.desc(),
+            ContentEvent.event_id,
+        )
+        .limit(max(1, min(50, int(limit or 50))))
+    )
+    candidates: list[dict[str, Any]] = []
+    for event in result.scalars().all():
+        snapshot_result = await db.execute(
+            select(ContentEventSnapshot)
+            .where(ContentEventSnapshot.event_id == event.event_id)
+            .order_by(ContentEventSnapshot.version.desc())
+            .limit(1)
+        )
+        snapshot = snapshot_result.scalar_one_or_none()
+        explanation = snapshot.explanation if snapshot and isinstance(snapshot.explanation, dict) else {}
+        primary_content_id = (
+            str(snapshot.canonical_content_id or event.canonical_content_id or "")
+            if snapshot
+            else str(event.canonical_content_id or "")
+        ) or None
+        content_ids = list(snapshot.source_content_ids or []) if snapshot else []
+        candidates.append(
+            {
+                "event_id": event.event_id,
+                "event_key": event.event_key,
                 "section": "need_to_know",
-                "title": simplify_event_name(str(item.get("title") or "未命名事件")),
-                "summary": item.get("summary") or item.get("what_happened"),
-                "why_matters": item.get("why_matters"),
-                "what_changed": item.get("new_signal") or item.get("what_happened"),
-                "independent_source_count": item.get("independent_source_count") or len(item.get("source_names") or []),
-                "source_names": item.get("source_names") or [item.get("source_name") or "Unknown"],
-                "updated_at": item.get("fetched_at") or item.get("publish_time"),
-                "importance_score": score,
-                "confidence_score": item.get("confidence_score"),
-                "primary_content_id": item.get("content_id"),
-                "snapshot_version": int(item.get("snapshot_version") or 0),
-                "content_ids": item.get("content_ids") or [item.get("content_id")],
-                "corroboration_tier": item.get("corroboration_tier"),
+                "title": snapshot.title if snapshot else event.title,
+                "summary": snapshot.summary if snapshot else event.summary,
+                "why_matters": (
+                    explanation.get("selection_reason")
+                    or (snapshot.why_matters if snapshot else None)
+                    or (event.metadata_ or {}).get("why_matters")
+                    or event.summary
+                ),
+                "what_changed": (
+                    explanation.get("what_changed_since_last_read")
+                    or (snapshot.what_changed if snapshot else None)
+                    or (event.metadata_ or {}).get("what_changed")
+                ),
+                "independent_source_count": int(event.independent_source_count or 0),
+                "source_names": event.source_names or [],
+                "updated_at": to_iso_z(
+                    event.last_material_update_at or event.last_seen_at or event.updated_at
+                ),
+                "importance_score": event.importance_score,
+                "confidence_score": event.confidence_score,
+                "primary_content_id": primary_content_id,
+                "snapshot_version": int(snapshot.version if snapshot else event.latest_snapshot_version or 0),
+                "content_ids": content_ids or ([primary_content_id] if primary_content_id else []),
+                "corroboration_tier": (event.metadata_ or {}).get("corroboration_tier"),
             }
-    rule_adjusted = await _apply_active_user_rules(db, list(candidates.values()))
+        )
+
+    rule_adjusted = await _apply_active_user_rules(db, candidates)
     ordered = sorted(
         rule_adjusted,
         key=lambda item: (int(item.get("_rule_priority") or 0), float(item.get("importance_score") or 0.0)),
         reverse=True,
     )
-    selected = ordered[: min(8, int(limit or 8))]
+    selected = ordered[: min(50, int(limit or 50))]
     for item in selected:
         read_state = await get_event_read_state(db, str(item.get("event_id") or ""))
         item["latest_version"] = read_state.latest_version

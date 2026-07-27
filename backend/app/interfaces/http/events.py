@@ -359,13 +359,13 @@ def _personal_state_response(state) -> PersonalItemStateResponse:
 @router.get("/today-highlights", response_model=TodayHighlightsResponse)
 async def get_today_highlights(
     digest_date: Optional[str] = Query(None, alias="date"),
-    limit: int = Query(8, ge=3, le=8),
+    limit: int = Query(50, ge=1, le=50),
     db: AsyncSession = Depends(get_async_db),
 ):
-    """Return 3-8 event cards for the PIM Digest page.
+    """Return qualifying event cards from the rolling 48-hour highlights window.
 
-    Empty ``items`` means the section should be hidden. The Timeline/资讯 page
-    intentionally keeps the full content timeline and does not consume this API.
+    This endpoint reads persisted Events, not hourly Digest payloads. Empty
+    ``items`` means no event currently meets the corroboration and heat gates.
     """
 
     target_date = datetime.strptime(digest_date, "%Y-%m-%d").date() if digest_date else today_in_user_timezone()

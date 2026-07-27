@@ -60,6 +60,9 @@ const TodayHighlightsPage: React.FC = () => {
               <span className="text-[12px] text-[#5f6f82]">重点事件</span>
               <span className="text-[14px] font-semibold tabular-nums text-[#2c3a50]">{eventCount}</span>
             </div>
+            <div className="rounded-lg border border-[rgba(88,100,118,0.08)] bg-white/90 px-2.5 py-1.5 text-[12px] font-medium text-[#5f6f82] shadow-sm">
+              滚动 48 小时
+            </div>
             <Link
               to="/timeline"
               className="inline-flex items-center gap-1.5 rounded-lg border border-[rgba(88,100,118,0.08)] bg-white/90 px-2.5 py-1.5 text-[12px] font-medium text-[#5f6f82] shadow-sm transition-colors hover:text-[#49A8C9]"
@@ -87,7 +90,7 @@ const TodayHighlightsPage: React.FC = () => {
                 <div className="mb-3 flex items-center justify-between gap-3 text-[11px] font-semibold uppercase tracking-wide text-[#8C866A]">
                   <span className="inline-flex items-center gap-1.5">
                     <Sparkles size={12} strokeWidth={iconStroke} />
-                    必看
+                    事件
                   </span>
                   <span className="flex items-center gap-1.5">
                     {typeof eventItem.importance_score === 'number' ? <span>{Math.round(eventItem.importance_score)}分</span> : null}
@@ -117,7 +120,7 @@ const TodayHighlightsPage: React.FC = () => {
           </div>
         ) : (
           <div className="rounded-3xl border border-[rgba(88,100,118,0.1)] bg-white/92 py-20 shadow-[0_18px_50px_-24px_rgba(41,56,89,0.16)]">
-            <Empty description="今日暂无达到必看标准的事件。你仍可在全部动态查看 RSS、X 和网站信息流。" />
+            <Empty description="所选 48 小时窗口内暂无达到聚合与热度标准的事件。你仍可在全部动态查看 RSS、X 和网站信息流。" />
             <div className="mt-5 flex justify-center">
               <Link
                 to="/timeline"

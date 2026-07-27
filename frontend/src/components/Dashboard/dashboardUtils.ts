@@ -263,11 +263,11 @@ export const contentToDigestItem = (content: Content): DigestItem => {
 }
 
 export function buildDashboardSourcePath(sourceId?: string | null, sourceName?: string | null): string {
-  if (!sourceId) return '/'
+  if (!sourceId) return '/timeline'
   const p = new URLSearchParams()
   p.set('source_id', sourceId)
   if (sourceName) p.set('source', sourceName)
-  return `/?${p.toString()}`
+  return `/timeline?${p.toString()}`
 }
 
 /** 阅读页链接：可附带 translate，以及返回时恢复的 `?tab=`、`?search=`、`?source_id=` 或 `?from=` */
@@ -295,7 +295,7 @@ export function buildReaderPath(
   return q ? `/reader/${id}?${q}` : `/reader/${id}`
 }
 
-/** 资讯中心首页：保留搜索/信源过滤上下文，否则保留分类 tab */
+/** 全部动态页：保留搜索/信源过滤上下文，否则保留分类 tab */
 export function buildDashboardHomePath(
   tab?: string | null,
   search?: string | null,
@@ -309,7 +309,7 @@ export function buildDashboardHomePath(
     if (sourceName) p.set('source', sourceName)
   }
   const q = p.toString()
-  if (q) return `/?${q}`
-  if (tab && tab !== 'all') return `/?tab=${encodeURIComponent(tab)}`
-  return '/'
+  if (q) return `/timeline?${q}`
+  if (tab && tab !== 'all') return `/timeline?tab=${encodeURIComponent(tab)}`
+  return '/timeline'
 }

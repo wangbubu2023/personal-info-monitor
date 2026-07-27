@@ -18,6 +18,7 @@ function renderReaderPage() {
     <MemoryRouter initialEntries={['/reader/content-1']}>
       <Routes>
         <Route path="/reader/:id" element={<ReaderPage />} />
+        <Route path="/timeline" element={<div>全部动态</div>} />
       </Routes>
     </MemoryRouter>,
   )
@@ -126,6 +127,12 @@ describe('ReaderPage', () => {
     for (const key of ['K', 'J', 'L']) {
       expect(screen.getByText(key)).toBeTruthy()
     }
+  })
+
+  it('returns to the all-activity timeline by default', () => {
+    renderReaderPage()
+
+    expect(screen.getByRole('link', { name: '返回' }).getAttribute('href')).toBe('/timeline')
   })
 
   it('hides via toolbar button and records negative feedback intent', async () => {

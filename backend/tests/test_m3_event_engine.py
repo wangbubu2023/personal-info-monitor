@@ -250,6 +250,7 @@ async def test_v1_today_read_uses_same_canonical_snapshot(client, db_session, mo
         cluster_version="event-v1.0-rules",
         latest_snapshot_version=3,
         event_state="need_to_know",
+        importance_score=88,
         independent_source_count=2,
         source_names=["Official", "Independent"],
         last_material_update_at=datetime(2026, 7, 24, 9, 0),

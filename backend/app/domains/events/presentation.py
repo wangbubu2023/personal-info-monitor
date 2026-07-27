@@ -9,6 +9,8 @@ from typing import Any, Mapping
 NEED_TO_KNOW_IMPORTANCE_THRESHOLD = 70.0
 NEED_TO_KNOW_INCREMENTAL_THRESHOLD = 45.0
 NEED_TO_KNOW_CONFIDENCE_THRESHOLD = 55.0
+TODAY_HIGHLIGHT_WINDOW_HOURS = 48
+TODAY_HIGHLIGHT_MIN_INDEPENDENT_SOURCES = 2
 
 _MAX_EVENT_NAME_CJK_CHARS = 28
 _MAX_EVENT_NAME_LATIN_WORDS = 10
@@ -36,6 +38,23 @@ def is_need_to_know_event(
         importance >= NEED_TO_KNOW_IMPORTANCE_THRESHOLD
         and incremental >= NEED_TO_KNOW_INCREMENTAL_THRESHOLD
         and confidence >= NEED_TO_KNOW_CONFIDENCE_THRESHOLD
+    )
+
+
+def is_rolling_highlight_event(
+    *,
+    importance: float,
+    independent_source_count: int,
+) -> bool:
+    """Return whether a persisted event belongs in the rolling highlights feed.
+
+    The feed represents mature, hot event clusters rather than hourly novelty,
+    so incremental score is deliberately not part of this decision.
+    """
+
+    return (
+        importance >= NEED_TO_KNOW_IMPORTANCE_THRESHOLD
+        and independent_source_count >= TODAY_HIGHLIGHT_MIN_INDEPENDENT_SOURCES
     )
 
 
@@ -188,10 +207,13 @@ __all__ = [
     "NEED_TO_KNOW_CONFIDENCE_THRESHOLD",
     "NEED_TO_KNOW_IMPORTANCE_THRESHOLD",
     "NEED_TO_KNOW_INCREMENTAL_THRESHOLD",
+    "TODAY_HIGHLIGHT_MIN_INDEPENDENT_SOURCES",
+    "TODAY_HIGHLIGHT_WINDOW_HOURS",
     "classify_event_section",
     "event_name_from_cluster",
     "export_event_to_markdown",
     "format_event_presentation",
     "is_need_to_know_event",
+    "is_rolling_highlight_event",
     "simplify_event_name",
 ]

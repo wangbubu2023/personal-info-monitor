@@ -214,7 +214,7 @@ export const digestApi = {
     return response.data
   },
 
-  // Get 3-8 event highlights for the PIM Digest page.
+  // Get qualifying persisted events from the rolling 48-hour highlights window.
   getTodayHighlights: async (date: string): Promise<TodayHighlightsResponse> => {
     const response = await api.get('/events/today-highlights', { params: { date } })
     return response.data

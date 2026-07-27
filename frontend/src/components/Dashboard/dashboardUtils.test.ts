@@ -278,16 +278,21 @@ describe('buildReaderPath / buildDashboardHomePath', () => {
     expect(buildReaderPath('x', { tab: 'all' })).toBe('/reader/x')
   })
 
-  it('搜索上下文附带 search，返回首页优先 search', () => {
+  it('搜索上下文附带 search，返回全部动态时优先恢复 search', () => {
     expect(buildReaderPath('x', { search: 'foo' })).toBe('/reader/x?search=foo')
-    expect(buildDashboardHomePath('rss', 'foo')).toBe('/?search=foo')
-    expect(buildDashboardHomePath('rss', undefined)).toBe('/?tab=rss')
+    expect(buildDashboardHomePath('rss', 'foo')).toBe('/timeline?search=foo')
+    expect(buildDashboardHomePath('rss', undefined)).toBe('/timeline?tab=rss')
   })
 
   it('信源上下文附带 source_id，阅读页返回时保留信源过滤', () => {
-    expect(buildDashboardSourcePath('s-1', '36kr')).toBe('/?source_id=s-1&source=36kr')
+    expect(buildDashboardSourcePath('s-1', '36kr')).toBe('/timeline?source_id=s-1&source=36kr')
     expect(buildReaderPath('x', { sourceId: 's-1', sourceName: '36kr' })).toBe('/reader/x?source_id=s-1&source=36kr')
-    expect(buildDashboardHomePath('rss', undefined, 's-1', '36kr')).toBe('/?source_id=s-1&source=36kr')
-    expect(buildDashboardHomePath('rss', 'ai', 's-1', '36kr')).toBe('/?search=ai&source_id=s-1&source=36kr')
+    expect(buildDashboardHomePath('rss', undefined, 's-1', '36kr')).toBe('/timeline?source_id=s-1&source=36kr')
+    expect(buildDashboardHomePath('rss', 'ai', 's-1', '36kr')).toBe('/timeline?search=ai&source_id=s-1&source=36kr')
+  })
+
+  it('无筛选上下文时返回全部动态，而不是今日重点', () => {
+    expect(buildDashboardHomePath()).toBe('/timeline')
+    expect(buildDashboardSourcePath()).toBe('/timeline')
   })
 })

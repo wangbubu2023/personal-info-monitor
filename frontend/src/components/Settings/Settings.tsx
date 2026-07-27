@@ -11,6 +11,8 @@ const FetchHealthTab = lazy(() => import('./FetchHealthTab'));
 const CredentialsTab = lazy(() => import('./CredentialsTab'));
 const AIModelTab = lazy(() => import('./AIModelTab'));
 const MaintenanceTab = lazy(() => import('./MaintenanceTab'));
+const KeywordsTab = lazy(() => import('./KeywordsTab'));
+const ScoreLabSettingsTab = lazy(() => import('./ScoreLabSettingsTab'));
 
 /**
  * URL keys we used to ship: `api-keys` (API key tab) and `browser-sessions`
@@ -40,6 +42,7 @@ interface SettingsTabItem {
 
 const Settings: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
+  const requestedTab = searchParams.get('tab');
 
   const validTabKeys = useMemo(() => {
     const keys: string[] = ['sources', 'fetch-health', 'credentials', 'ai-model', 'system-upgrade'];
@@ -52,18 +55,17 @@ const Settings: React.FC = () => {
   // unified credentials tab. Done in a useEffect so it plays well with
   // React Router's search-params setter.
   useEffect(() => {
-    const current = searchParams.get('tab');
-    if (current && LEGACY_TAB_REDIRECTS[current]) {
+    if (requestedTab && LEGACY_TAB_REDIRECTS[requestedTab]) {
       setSearchParams(
         (prev) => {
           const next = new URLSearchParams(prev);
-          next.set('tab', LEGACY_TAB_REDIRECTS[current]);
+          next.set('tab', LEGACY_TAB_REDIRECTS[requestedTab]);
           return next;
         },
         { replace: true },
       );
     }
-  }, [searchParams, setSearchParams]);
+  }, [requestedTab, setSearchParams]);
 
   const tabItems: SettingsTabItem[] = [
     {
@@ -104,7 +106,6 @@ const Settings: React.FC = () => {
   ];
 
   if (KEYWORD_MONITORING_ENABLED) {
-    const KeywordsTab = lazy(() => import('./KeywordsTab'));
     tabItems.push({
       key: 'keywords',
       label: '关键词',
@@ -115,7 +116,6 @@ const Settings: React.FC = () => {
   }
 
   if (SCORE_LAB_BUILD_ENABLED) {
-    const ScoreLabSettingsTab = lazy(() => import('./ScoreLabSettingsTab'));
     tabItems.push({
       key: 'score-lab',
       label: '评分实验室',
@@ -127,10 +127,9 @@ const Settings: React.FC = () => {
 
   /** 与 URL `?tab=` 同步，刷新后保留设置子 tab */
   const activeTab = useMemo(() => {
-    const t = searchParams.get('tab');
-    if (t && validTabKeys.includes(t)) return t;
+    if (requestedTab && validTabKeys.includes(requestedTab)) return requestedTab;
     return 'sources';
-  }, [searchParams, validTabKeys]);
+  }, [requestedTab, validTabKeys]);
 
   const setActiveTab = useCallback(
     (key: string) => {

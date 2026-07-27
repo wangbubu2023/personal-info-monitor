@@ -1,34 +1,20 @@
 import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { DatePicker, Spin, Empty } from 'antd';
 import { 
   Clock, 
-  FileText, 
   ChevronRight, 
   Calendar, 
   ArrowLeft,
   Zap,
   BarChart3,
-  ExternalLink,
-  Gauge,
-  Star,
-  Layers3,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import dayjs from 'dayjs';
 import { digestApi } from '../../services/digest';
 import type { HourlyDigestSummary, HourlyDigestDetail } from '../../services/digest';
-import type { DigestItem } from '../../types';
 import { formatLocalDateTime } from '../../utils/datetime';
 import PageHeroTitle from '../common/PageHeroTitle';
-import {
-  buildReaderPath,
-  getDigestItemFinalScore,
-  getDigestItemFulltextStatusLabel,
-  getDigestItemRecommendationReason,
-  getDigestItemSourceStars,
-} from '../Dashboard/dashboardUtils';
 
 const renderInlineMarkdown = (text: string): React.ReactNode[] => {
   const nodes: React.ReactNode[] = [];
@@ -75,34 +61,6 @@ const renderInlineMarkdown = (text: string): React.ReactNode[] => {
   return nodes;
 };
 
-const renderQualityBadges = (item: DigestItem) => {
-  const finalScore = getDigestItemFinalScore(item);
-  const sourceStars = getDigestItemSourceStars(item);
-  const fulltextLabel = getDigestItemFulltextStatusLabel(item);
-  return (
-    <>
-      {sourceStars ? (
-        <span className="inline-flex items-center gap-1 rounded-full border border-[#8C866A]/18 bg-[#8C866A]/8 px-2 py-0.5 text-[#7a7358]">
-          <Star size={11} className="shrink-0 fill-current" strokeWidth={1.5} />
-          {sourceStars}星
-        </span>
-      ) : null}
-      {finalScore !== undefined ? (
-        <span className="inline-flex items-center gap-1 rounded-full border border-[#49A8C9]/18 bg-[#49A8C9]/8 px-2 py-0.5 text-[#3a8da9]">
-          <Gauge size={11} className="shrink-0" strokeWidth={1.5} />
-          {Math.round(finalScore)}分
-        </span>
-      ) : null}
-      {fulltextLabel ? (
-        <span className="inline-flex items-center gap-1 rounded-full border border-[#5f6f82]/14 bg-[#eef4f8] px-2 py-0.5 text-[#5f6f82]">
-          <FileText size={11} className="shrink-0" strokeWidth={1.5} />
-          {fulltextLabel}
-        </span>
-      ) : null}
-    </>
-  );
-};
-
 const DigestView: React.FC = () => {
   const [selectedDate, setSelectedDate] = useState(dayjs());
   const [selectedHour, setSelectedHour] = useState<number | null>(null);
@@ -122,10 +80,6 @@ const DigestView: React.FC = () => {
     },
     enabled: selectedHour !== null,
   });
-
-  const materialCount = hourlyDigests?.reduce((total, digest) => total + digest.content_count, 0) ?? 0;
-  const selectedEventCount = digestDetail?.event_items?.length ?? 0;
-  const selectedMaterialCount = digestDetail?.items?.length ?? digestDetail?.content_count ?? 0;
 
   return (
     <div className="min-h-screen bg-[#f5f9fc] pb-24" data-testid="digest-page">
@@ -161,11 +115,6 @@ const DigestView: React.FC = () => {
               <span className="text-[12px] text-[#5f6f82]">时段简报</span>
               <span className="text-[14px] font-semibold tabular-nums text-[#2c3a50]">{hourlyDigests?.length || 0}</span>
             </div>
-            <div className="flex items-center gap-2 rounded-lg border border-[rgba(88,100,118,0.08)] bg-white/90 px-2.5 py-1.5 shadow-sm">
-              <FileText className="h-3.5 w-3.5 shrink-0 text-[#8C866A]" strokeWidth={1.5} />
-              <span className="text-[12px] text-[#5f6f82]">收录素材</span>
-              <span className="text-[14px] font-semibold tabular-nums text-[#2c3a50]">{materialCount}</span>
-            </div>
           </div>
         </div>
       </div>
@@ -190,7 +139,7 @@ const DigestView: React.FC = () => {
                   <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
                     <div>
                       <h2 className="text-[18px] font-semibold tracking-tight text-[#293859]">时段简报</h2>
-                      <p className="mt-1 text-[12px] text-[#5f6f82]">按小时回看 AI 整理的阶段摘要与入选素材。</p>
+                      <p className="mt-1 text-[12px] text-[#5f6f82]">按小时回看 AI 整理的简报内容。</p>
                     </div>
                     <span className="text-[12px] font-medium text-[#5f6f82]">共 {hourlyDigests.length} 期</span>
                   </div>
@@ -209,17 +158,8 @@ const DigestView: React.FC = () => {
                       <h3 className="text-lg font-semibold text-[#293859] transition-colors group-hover:text-[#49A8C9]">
                         {selectedDate.month() + 1} 月 {selectedDate.date()} 日 · {digest.hour}:00
                       </h3>
-                      <div className="mt-1.5 flex flex-wrap items-center gap-3 text-[12px] font-medium text-[#586476]">
-                        <span className="flex items-center gap-1">
-                          <FileText size={12} /> {digest.content_count} 条
-                        </span>
-                        <span className="hidden h-1 w-1 rounded-full bg-[#586476]/40 sm:inline" />
-                        <span className="max-w-full truncate text-[12px] uppercase tracking-wide text-[#8C866A]">
-                          {Object.entries(digest.sources)
-                            .filter(([, v]) => v > 0)
-                            .map(([k]) => k)
-                            .join(', ') || '—'}
-                        </span>
+                      <div className="mt-1.5 text-[12px] font-medium text-[#586476]">
+                        {digest.title || '每小时简报'}
                       </div>
                     </div>
                     <ChevronRight
@@ -271,33 +211,14 @@ const DigestView: React.FC = () => {
                       {digestDetail.title || `${selectedHour}:00 简报`}
                     </h2>
 
-                    <div className="grid grid-cols-2 gap-5 rounded-2xl border border-[rgba(88,100,118,0.08)] border-l-[3px] border-l-[#8C866A]/40 bg-[#eef4f8]/80 p-5 sm:gap-6 md:grid-cols-4">
-                      <div className="space-y-1.5">
-                        <div className="text-[12px] font-semibold text-[#5f6f82] sm:text-[13px]">生成时间</div>
-                        <div className="text-[15px] font-semibold tabular-nums text-[#293859] sm:text-base">
-                          {digestDetail.generated_at
-                            ? formatLocalDateTime(digestDetail.generated_at, 'zh-CN', {
-                                hour: '2-digit',
-                                minute: '2-digit',
-                              })
-                            : '—'}
-                        </div>
-                      </div>
-                      <div className="space-y-1.5">
-                        <div className="text-[12px] font-semibold text-[#5f6f82] sm:text-[13px]">事件数</div>
-                        <div className="text-[15px] font-semibold text-[#293859] sm:text-base">{selectedEventCount || selectedMaterialCount} 个</div>
-                      </div>
-                      <div className="space-y-1.5">
-                        <div className="text-[12px] font-semibold text-[#5f6f82] sm:text-[13px]">输入素材</div>
-                        <div className="text-[15px] font-semibold text-[#293859] sm:text-base">{digestDetail.content_count} 条</div>
-                      </div>
-                      <div className="col-span-2 space-y-1.5 md:col-span-1">
-                        <div className="text-[12px] font-semibold text-[#5f6f82] sm:text-[13px]">主要来源</div>
-                        <div className="truncate text-[15px] font-semibold text-[#293859] sm:text-base">
-                          {digestDetail.sources?.slice(0, 3).join(', ') || '—'}
-                        </div>
-                      </div>
-                    </div>
+                    <p className="text-[12px] font-medium text-[#5f6f82] sm:text-[13px]">
+                      {digestDetail.generated_at
+                        ? `生成于 ${formatLocalDateTime(digestDetail.generated_at, 'zh-CN', {
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          })}`
+                        : '生成时间未知'}
+                    </p>
                   </header>
 
                   <div className="max-w-none text-[15px] leading-relaxed text-[#293859] sm:text-[15px] sm:leading-[1.7]">
@@ -361,109 +282,6 @@ const DigestView: React.FC = () => {
                     })}
                   </div>
 
-                  {digestDetail.event_items?.length ? (
-                    <section className="mt-10 border-t border-[rgba(88,100,118,0.12)] pt-7">
-                      <div className="mb-4 flex items-center justify-between gap-3">
-                        <h3 className="inline-flex items-center gap-2 text-[15px] font-semibold tracking-tight text-[#293859]">
-                          <Layers3 size={15} className="shrink-0 text-[#8C866A]" strokeWidth={1.75} />
-                          事件卡片
-                        </h3>
-                        <span className="text-[12px] font-medium text-[#5f6f82]">{digestDetail.event_items.length} 条</span>
-                      </div>
-                      <div className="grid gap-3 md:grid-cols-2">
-                        {digestDetail.event_items.map((eventItem) => (
-                          <article
-                            key={eventItem.content_id}
-                            className="border border-[rgba(88,100,118,0.12)] bg-[#fbfdff] p-4"
-                          >
-                            <div className="flex items-start justify-between gap-3">
-                              <Link
-                                to={eventItem.event_id ? `/events/${eventItem.event_id}` : buildReaderPath(eventItem.content_id)}
-                                className="min-w-0 text-[14px] font-semibold leading-snug text-[#293859] transition-colors hover:text-[#49A8C9]"
-                              >
-                                {eventItem.title}
-                              </Link>
-                              {typeof eventItem.score === 'number' ? (
-                                <span className="shrink-0 rounded-full border border-[#49A8C9]/18 bg-[#49A8C9]/8 px-2 py-0.5 text-[11px] font-semibold text-[#3a8da9]">
-                                  {Math.round(eventItem.score)}分
-                                </span>
-                              ) : null}
-                            </div>
-                            <div className="mt-2 flex flex-wrap items-center gap-2 text-[12px] text-[#5f6f82]">
-                              <span className="font-medium text-[#7a7358]">{eventItem.source_name}</span>
-                              {eventItem.lane ? <span>{eventItem.lane}</span> : null}
-                              {eventItem.duplicate_group_id ? <span>同组</span> : null}
-                            </div>
-                            {eventItem.what_happened || eventItem.summary ? (
-                              <p className="mt-2 line-clamp-3 text-[12px] leading-relaxed text-[#5f6f82]">
-                                {eventItem.what_happened || eventItem.summary}
-                              </p>
-                            ) : null}
-                            {eventItem.why_matters || eventItem.new_signal ? (
-                              <p className="mt-2 line-clamp-2 text-[12px] leading-relaxed text-[#7a7358]">
-                                {eventItem.new_signal ? <><span className="font-semibold">变化</span> {eventItem.new_signal}</> : eventItem.why_matters}
-                              </p>
-                            ) : null}
-                            <a
-                              href={eventItem.url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="mt-3 inline-flex items-center gap-1 text-[12px] font-medium text-[#8a96a5] hover:text-[#49A8C9]"
-                            >
-                              原文
-                              <ExternalLink size={11} className="shrink-0" strokeWidth={1.75} />
-                            </a>
-                          </article>
-                        ))}
-                      </div>
-                    </section>
-                  ) : null}
-
-                  {digestDetail.items?.length ? (
-                    <section className="mt-10 border-t border-[rgba(88,100,118,0.12)] pt-7">
-                      <div className="mb-4 flex items-center justify-between gap-3">
-                        <h3 className="text-[15px] font-semibold tracking-tight text-[#293859]">入选素材</h3>
-                        <span className="text-[12px] font-medium text-[#5f6f82]">{digestDetail.items.length} 条</span>
-                      </div>
-                      <div className="divide-y divide-[rgba(88,100,118,0.1)]">
-                        {digestDetail.items.map((item) => (
-                          <div key={item.id} className="py-4 first:pt-0 last:pb-0">
-                            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                              <Link
-                                to={buildReaderPath(item.id)}
-                                className="min-w-0 flex-1 text-[14px] font-semibold leading-snug text-[#293859] transition-colors hover:text-[#49A8C9] sm:text-[15px]"
-                              >
-                                {item.translated_title || item.title}
-                              </Link>
-                              <a
-                                href={item.url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="inline-flex shrink-0 items-center gap-1 text-[12px] font-medium text-[#8a96a5] hover:text-[#49A8C9]"
-                              >
-                                原文
-                                <ExternalLink size={11} className="shrink-0" strokeWidth={1.75} />
-                              </a>
-                            </div>
-                            <div className="mt-2 flex flex-wrap items-center gap-2 text-[12px]">
-                              <span className="font-medium text-[#7a7358]">{item.source_name}</span>
-                              {renderQualityBadges(item)}
-                            </div>
-                            {(() => {
-                              const reason = getDigestItemRecommendationReason(item);
-                              return reason?.why_matters ? (
-                                <p className="mt-2 line-clamp-2 text-[12px] leading-relaxed text-[#5f6f82]">
-                                  <span className="font-semibold text-[#7a7358]">理由</span>
-                                  <span className="ml-1">{reason.why_matters}</span>
-                                  {reason.caveat ? <span className="ml-1 text-[#8a96a5]">{reason.caveat}</span> : null}
-                                </p>
-                              ) : null;
-                            })()}
-                          </div>
-                        ))}
-                      </div>
-                    </section>
-                  ) : null}
                 </article>
               ) : (
                 <Empty description="简报暂不可用" />

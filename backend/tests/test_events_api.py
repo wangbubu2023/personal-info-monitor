@@ -10,10 +10,90 @@ from app.models import Content, ContentEvent, ContentEventMembership, ContentEve
 from app.models.source import SourceType
 
 
-@pytest.mark.asyncio
-async def test_today_highlights_use_digest_event_items_not_timeline(client, db_session):
-    event_key = "event:policy:update"
+def _add_highlight_event(
+    db_session,
+    *,
+    event_key: str,
+    title: str,
+    importance_score: float,
+    independent_source_count: int,
+    updated_at: datetime,
+    content_ids: list[str] | None = None,
+    source_names: list[str] | None = None,
+    why_matters: str = "达到聚合与热度标准。",
+) -> ContentEvent:
     event_id = stable_event_id(event_key)
+    ids = content_ids or []
+    event = ContentEvent(
+        event_id=event_id,
+        event_key=event_key,
+        title=title,
+        summary=f"{title} summary",
+        status="active",
+        cluster_version="hybrid-v0",
+        latest_snapshot_version=1,
+        importance_score=importance_score,
+        confidence_score=90,
+        independent_source_count=independent_source_count,
+        source_names=source_names or ["Official", "Independent"],
+        last_seen_at=updated_at,
+        created_at=updated_at,
+        updated_at=updated_at,
+    )
+    snapshot = ContentEventSnapshot(
+        event_id=event_id,
+        version=1,
+        title=title,
+        summary=f"{title} summary",
+        why_matters=why_matters,
+        what_changed="滚动窗口内出现新的聚合材料。",
+        source_content_ids=ids,
+        canonical_content_id=ids[0] if ids else None,
+        created_at=updated_at,
+    )
+    db_session.add_all([event, snapshot])
+    return event
+
+
+@pytest.mark.asyncio
+async def test_today_highlights_use_persisted_events_from_rolling_48_hours(client, db_session):
+    event_key = "event:policy:update"
+    qualifying = _add_highlight_event(
+        db_session,
+        event_key=event_key,
+        title="监管发布模型新规",
+        importance_score=88,
+        independent_source_count=2,
+        updated_at=datetime(2026, 7, 10, 8, 0),
+        why_matters="已有多个独立来源互相确认，优先级上升。",
+    )
+    _add_highlight_event(
+        db_session,
+        event_key="event:low-heat",
+        title="热度不足的聚合事件",
+        importance_score=69,
+        independent_source_count=3,
+        updated_at=datetime(2026, 7, 11, 9, 0),
+    )
+    _add_highlight_event(
+        db_session,
+        event_key="event:not-aggregated",
+        title="只有单一来源的高热内容",
+        importance_score=95,
+        independent_source_count=1,
+        updated_at=datetime(2026, 7, 11, 9, 0),
+    )
+    _add_highlight_event(
+        db_session,
+        event_key="event:expired",
+        title="窗口外的旧事件",
+        importance_score=99,
+        independent_source_count=3,
+        updated_at=datetime(2026, 7, 9, 8, 0),
+    )
+
+    # A qualifying-looking digest payload is intentionally ignored: Today
+    # Highlights now reads the persisted event lifecycle, not hourly snapshots.
     digest = HourlyDigest(
         digest_date=date(2026, 7, 11),
         hour=9,
@@ -24,14 +104,10 @@ async def test_today_highlights_use_digest_event_items_not_timeline(client, db_s
         items_json=[
             {
                 "event_key": event_key,
-                "event_id": event_id,
-                "section": "brewing",
+                "event_id": "digest-only-event",
+                "section": "need_to_know",
                 "content_id": str(uuid4()),
-                "content_ids": [str(uuid4()), str(uuid4())],
-                "title": "监管发布模型新规",
-                "summary": "新规明确了模型备案要求。",
-                "why_matters": "已有多个独立来源互相确认，优先级上升。",
-                "new_signal": "官方版本发布。",
+                "title": "只存在于小时简报的事件",
                 "source_name": "Official",
                 "source_names": ["Official", "Analyst"],
                 "fetched_at": "2026-07-11T09:10:00Z",
@@ -39,44 +115,6 @@ async def test_today_highlights_use_digest_event_items_not_timeline(client, db_s
                 "incremental_score": 72,
                 "confidence_score": 91,
                 "independent_source_count": 2,
-            },
-            {
-                "event_key": "event:brewing",
-                "event_id": stable_event_id("event:brewing"),
-                "section": "brewing",
-                "content_id": str(uuid4()),
-                "title": "产业链出现跟进信号",
-                "source_name": "Industry",
-                "source_names": ["Industry", "Analyst"],
-                "fetched_at": "2026-07-11T09:05:00Z",
-                "importance_score": 72,
-                "incremental_score": 40,
-                "confidence_score": 91,
-                "independent_source_count": 2,
-            },
-            {
-                "event_key": "event:need-2",
-                "event_id": stable_event_id("event:need-2"),
-                "section": "need_to_know",
-                "content_id": str(uuid4()),
-                "title": "模型公司发布新版路线图",
-                "source_name": "Company",
-                "source_names": ["Company", "Media"],
-                "fetched_at": "2026-07-11T09:01:00Z",
-                "importance_score": 68,
-                "incremental_score": 72,
-                "confidence_score": 91,
-                "independent_source_count": 2,
-            },
-            {
-                "event_key": "event:later",
-                "event_id": stable_event_id("event:later"),
-                "section": "later",
-                "content_id": str(uuid4()),
-                "title": "低优先级事件",
-                "source_name": "Other",
-                "source_names": ["Other"],
-                "importance_score": 95,
             },
         ],
     )
@@ -88,9 +126,8 @@ async def test_today_highlights_use_digest_event_items_not_timeline(client, db_s
     assert response.status_code == 200
     payload = response.json()
     assert payload["date"] == "2026-07-11"
-    assert [item["event_id"] for item in payload["items"]][:1] == [event_id]
+    assert [item["event_id"] for item in payload["items"]] == [qualifying.event_id]
     assert len(payload["items"]) == 1
-    assert all(item["section"] == "need_to_know" for item in payload["items"])
     item = payload["items"][0]
     assert item["section"] == "need_to_know"
     assert item["independent_source_count"] == 2
@@ -121,33 +158,17 @@ async def test_today_highlights_apply_active_user_rules(client, db_session):
     )
     db_session.add_all([source, supporting_source, *contents, supporting_content])
     await db_session.flush()
-    items = [
-        {
-            "event_key": f"event:rule:{index}",
-            "event_id": stable_event_id(f"event:rule:{index}"),
-            "section": "need_to_know",
-            "content_id": str(content.id),
-            "content_ids": [str(content.id)] + ([str(supporting_content.id)] if index == 0 else []),
-            "title": content.title,
-            "source_names": [source.name],
-            "importance_score": 95 - index * 5,
-            "incremental_score": 72,
-            "confidence_score": 90,
-            "corroboration_tier": "single_high",
-        }
-        for index, content in enumerate(contents)
-    ]
-    db_session.add(
-        HourlyDigest(
-            digest_date=date(2026, 7, 11),
-            hour=9,
-            title="9 时简报",
-            summary="Summary",
-            content_count=4,
-            sources=[source.name],
-            items_json=items,
+    for index, content in enumerate(contents):
+        _add_highlight_event(
+            db_session,
+            event_key=f"event:rule:{index}",
+            title=content.title,
+            importance_score=95 - index * 5,
+            independent_source_count=2,
+            updated_at=datetime(2026, 7, 11, 9, index),
+            content_ids=[str(content.id)] + ([str(supporting_content.id)] if index == 0 else []),
+            source_names=[source.name, supporting_source.name],
         )
-    )
     db_session.add_all(
         [
             UserRule(scope_type="topic", scope_key="priority-topic", rule="highlight", status="active"),
@@ -363,30 +384,14 @@ def test_build_event_briefing_items_separates_event_from_duplicate_group():
 
 @pytest.mark.asyncio
 async def test_today_highlights_show_even_when_only_one_event_qualifies(client, db_session):
-    digest = HourlyDigest(
-        digest_date=date(2026, 7, 11),
-        hour=9,
-        title="9 时简报",
-        summary="Summary",
-        content_count=1,
-        sources=["Official"],
-        items_json=[
-            {
-                "event_key": "event:single",
-                "event_id": stable_event_id("event:single"),
-                "section": "need_to_know",
-                "content_id": str(uuid4()),
-                "title": "单条事件",
-                "source_name": "Official",
-                "source_names": ["Official"],
-                "fetched_at": "2026-07-11T09:10:00Z",
-                "importance_score": 90,
-                "incremental_score": 72,
-                "confidence_score": 90,
-            }
-        ],
+    _add_highlight_event(
+        db_session,
+        event_key="event:single",
+        title="唯一符合条件的事件",
+        importance_score=90,
+        independent_source_count=2,
+        updated_at=datetime(2026, 7, 11, 9, 10),
     )
-    db_session.add(digest)
     await db_session.commit()
 
     response = await client.get("/api/events/today-highlights", params={"date": "2026-07-11"})

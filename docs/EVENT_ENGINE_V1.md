@@ -19,6 +19,20 @@ Today switches to v1 only when both read flags are true. Disabling either flag
 immediately restores v0 reads without deleting v1 memberships, aliases,
 operations, Snapshots, or diff audits.
 
+## Today highlights read model
+
+`GET /api/events/today-highlights` reads persisted Event rows and their latest
+Snapshots. It does not read `HourlyDigest.items_json`.
+
+- Window: rolling 48 hours, ending now for the current date or at the end of a
+  selected historical business date.
+- Aggregation gate: at least 2 independent sources.
+- Heat gate: `importance_score >= 70`.
+- Incremental score is intentionally not required: a mature hot Event remains
+  visible throughout the window even when it did not change in the latest
+  hourly digest.
+- The v0/v1 read flags still select the authoritative Event cluster version.
+
 ## Operator surfaces
 
 - `GET /api/events/config`: effective versions, thresholds, TTLs, weights, and flags.
