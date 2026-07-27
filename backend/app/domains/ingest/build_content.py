@@ -32,6 +32,7 @@ from app.domains.ingest.quality import (
 )
 from app.domains.ingest.quality_metadata import merge_content_quality_metadata
 from app.domains.ingest.title_identity import merge_title_identity_metadata
+from app.config import get_settings
 
 logger = get_logger(__name__)
 
@@ -52,6 +53,7 @@ async def build_raw_content_objects(
 
     extractor = ContentExtractor()
     source_type = source.type.value if hasattr(source.type, "value") else str(source.type)
+    settings = get_settings()
     results: List[Content] = []
     build_failed = 0
 
@@ -60,8 +62,41 @@ async def build_raw_content_objects(
         try:
             main_text = raw.get("content", "")
             html = raw.get("html")
+            clean_result = None
 
-            if html and not main_text:
+            web_clean_active = bool(
+                html
+                and source_type == "website"
+                and (settings.pim_web_clean_enabled or settings.pim_web_clean_shadow)
+            )
+            if web_clean_active:
+                source_metadata = dict(source.metadata_ or {})
+                if not settings.pim_web_clean_template_enabled:
+                    source_metadata.pop("web_clean_template", None)
+                try:
+                    clean_result = await asyncio.wait_for(
+                        extractor.extract_clean(
+                            str(html),
+                            raw.get("url"),
+                            source_id=str(source.id),
+                            source_metadata=source_metadata,
+                            hydrated=bool(raw.get("hydrated")),
+                            max_html_bytes=settings.pim_web_clean_max_html_bytes,
+                        ),
+                        timeout=settings.pim_web_clean_timeout_ms / 1000,
+                    )
+                    from app.domains.fetch.web_clean.contracts import CleanResult
+
+                    if not isinstance(clean_result, CleanResult):
+                        clean_result = None
+                except asyncio.TimeoutError:
+                    logger.warning("Web clean timed out for %s", raw.get("url", "?"))
+                except (ValueError, TypeError, RuntimeError) as exc:
+                    logger.warning("Web clean failed for %s: %s", raw.get("url", "?"), exc)
+
+            if settings.pim_web_clean_enabled and clean_result and clean_result.article_text:
+                main_text = clean_result.article_markdown or clean_result.article_text
+            elif html and not main_text:
                 main_text = await extractor.extract(html, raw.get("url"))
 
             main_text_clean = await asyncio.to_thread(normalize_article_text, main_text) if main_text else ""
@@ -76,6 +111,33 @@ async def build_raw_content_objects(
             if not isinstance(metadata, dict):
                 metadata = {}
             metadata, publish_time = await asyncio.to_thread(_merge_article_page_metadata, raw, metadata)
+            if clean_result and settings.pim_web_clean_write_metadata:
+                from app.domains.fetch.web_clean.shadow import build_shadow_diff
+
+                web_clean_meta = clean_result.to_metadata(include_trace=True)
+                web_clean_meta["shadow"] = not settings.pim_web_clean_enabled
+                if not settings.pim_web_clean_enabled:
+                    web_clean_meta["shadow_diff"] = build_shadow_diff(main_text_clean, clean_result)
+                metadata = dict(metadata)
+                metadata["web_clean"] = web_clean_meta
+                source_meta = dict(source.metadata_ or {})
+                source_meta["web_clean_profile"] = {
+                    key: web_clean_meta.get(key)
+                    for key in (
+                        "version",
+                        "extraction_method",
+                        "template_id",
+                        "quality_status",
+                        "quality_score",
+                        "text_chars",
+                        "paragraph_count",
+                        "boilerplate_ratio",
+                        "link_density",
+                        "shadow",
+                    )
+                    if web_clean_meta.get(key) is not None
+                }
+                source.metadata_ = source_meta
             if isinstance(publish_time, str):
                 try:
                     publish_time = datetime.fromisoformat(publish_time.replace("Z", "+00:00"))

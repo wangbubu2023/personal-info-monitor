@@ -18,7 +18,7 @@ from app.platform.auth.web_session import (
     rotate_web_session,
     validate_web_session,
 )
-from app.platform.config.settings import get_settings, parse_cors_origins
+from app.platform.config.settings import effective_cors_origins, get_settings
 from app.platform.observability.logger import get_logger
 
 logger = get_logger(__name__)
@@ -35,7 +35,7 @@ def _origin_is_permitted(origin: str | None) -> bool:
         return True
     if candidate == "tauri://localhost":
         return True
-    return candidate in {item.lower() for item in parse_cors_origins(get_settings().cors_origins)}
+    return candidate in {item.lower() for item in effective_cors_origins(get_settings())}
 
 
 def _set_session_cookie(response: Response, token: str) -> None:
@@ -77,6 +77,8 @@ async def rotate_session(request: Request, response: Response):
 
 @bootstrap_router.get("/bootstrap/session")
 async def session_status(request: Request):
+    if not getattr(get_settings(), "pim_web_auth_required", True):
+        return {"status": "not_required", "actor": "same-origin-browser"}
     actor = validate_web_session(request.cookies.get(SESSION_COOKIE_NAME, ""))
     if actor is None:
         raise HTTPException(status_code=401, detail="Invalid or expired session")

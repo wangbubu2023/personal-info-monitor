@@ -247,7 +247,7 @@ const DashboardItemCard: React.FC<DashboardItemCardProps> = ({
             aria-pressed={favorited}
           >
             <Star size={13} className={favorited ? 'fill-current' : ''} />
-            {favorited ? '已喜欢' : '喜欢'}
+            {favorited ? '已标为重要' : '重要'}
           </button>
           <button
             type="button"
@@ -256,7 +256,7 @@ const DashboardItemCard: React.FC<DashboardItemCardProps> = ({
             className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[rgba(88,100,118,0.14)] bg-white/70 px-2.5 text-[12px] font-semibold text-[#5f6f82] transition-all hover:border-rose-300/60 hover:bg-white hover:text-rose-500 disabled:opacity-60"
           >
             <EyeOff size={13} />
-            不感兴趣
+            不重要
           </button>
         </div>
 

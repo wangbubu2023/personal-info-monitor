@@ -215,18 +215,16 @@ sudo systemctl start personal-info-monitor
 sudo systemctl status personal-info-monitor
 ```
 
-`PIM_PUBLIC_URL` 用于生成公网引导链接。服务启动后可执行：
+`PIM_PUBLIC_URL` 同时用于信任公网 Origin 和生成一键引导链接。修改该配置后重启服务，再执行：
 
 ```bash
 cd /path/to/personal-info-monitor
 ./pim bootstrap-url --origin https://your-domain.com
 ```
 
-或使用环境变量：
+命令会输出一个 5 分钟内有效、只能使用一次的完整 URL。直接在浏览器打开即可，无需复制或输入 Code。链接使用 URL fragment 携带短时代码，前端会在交换前立即清除 fragment。
 
-```bash
-PIM_PUBLIC_URL=https://your-domain.com ./pim bootstrap-url
-```
+`--origin` 只决定命令输出的链接地址；运行中的服务仍必须通过 systemd 或 `backend/.env` 读取到同一 `PIM_PUBLIC_URL`，否则 Origin 校验会拒绝交换。若另有独立跨域前端，再通过 `CORS_ORIGINS` 增加精确 Origin；公网主域名无需重复配置。
 
 ## 4.1 无 systemd 容器守护
 

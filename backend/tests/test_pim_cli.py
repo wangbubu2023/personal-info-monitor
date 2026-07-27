@@ -220,6 +220,66 @@ def test_capture_session_dispatches_to_auth_bundle_export(monkeypatch, tmp_path)
     assert kwargs["cwd"] == str(pim.ROOT)
 
 
+def test_bootstrap_url_outputs_one_click_fragment_without_raw_code_prompt(
+    monkeypatch, tmp_path, capsys
+):
+    pim = _load_pim_cli()
+    venv = tmp_path / "venv"
+    venv.mkdir()
+    values = {
+        "PIM_PUBLIC_URL": "https://pim.example.com",
+        "PIM_PUBLIC_ORIGIN": None,
+    }
+
+    monkeypatch.setattr(pim, "VENV", venv)
+    monkeypatch.setattr(pim.sys, "argv", ["pim", "bootstrap-url"])
+    monkeypatch.setattr(pim, "_read_env_var", lambda name: values.get(name))
+    monkeypatch.setattr(
+        pim.subprocess,
+        "check_output",
+        lambda *_args, **_kwargs: "one-time-code+/=\n",
+    )
+
+    pim.cmd_bootstrap_url()
+
+    captured = capsys.readouterr()
+    assert (
+        captured.out.strip()
+        == "https://pim.example.com/#bootstrap_code=one-time-code%2B%2F%3D"
+    )
+    assert "Bootstrap Code:" not in captured.out
+    assert "no code entry is required" in captured.err
+
+
+def test_bootstrap_url_origin_override_warns_about_server_configuration(
+    monkeypatch, tmp_path, capsys
+):
+    pim = _load_pim_cli()
+    venv = tmp_path / "venv"
+    venv.mkdir()
+    monkeypatch.setattr(pim, "VENV", venv)
+    monkeypatch.setattr(
+        pim.sys,
+        "argv",
+        ["pim", "bootstrap-url", "--origin", "https://pim.example.com"],
+    )
+    monkeypatch.setattr(pim, "_read_env_var", lambda _name: None)
+
+    monkeypatch.setattr(
+        pim.subprocess,
+        "check_output",
+        lambda *_args, **_kwargs: "one-time-code-123456",
+    )
+
+    pim.cmd_bootstrap_url()
+
+    captured = capsys.readouterr()
+    assert captured.out.startswith(
+        "https://pim.example.com/#bootstrap_code=one-time-code-123456"
+    )
+    assert "running server also has this address in PIM_PUBLIC_URL" in captured.err
+
+
 def test_playwright_system_deps_uses_dnf_mapping(monkeypatch):
     pim = _load_pim_cli()
     calls = []

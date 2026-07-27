@@ -10,6 +10,16 @@ from app.platform.config.settings import get_settings
 _api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 
 
+def _is_same_origin_browser_request(request: Request | None) -> bool:
+    """Recognise browser navigation/XHR without treating generic clients as trusted."""
+    if request is None:
+        return False
+    return request.headers.get("sec-fetch-site", "").strip().lower() in {
+        "same-origin",
+        "none",
+    }
+
+
 def verify_api_key(
     api_key: str | None = Security(_api_key_header),
     request: Request = None,  # type: ignore[assignment]
@@ -24,6 +34,9 @@ def verify_api_key(
         raise HTTPException(status_code=500, detail="Server misconfigured: API key not set")
     if api_key and secrets.compare_digest(api_key, expected):
         return api_key
+
+    if not getattr(settings, "pim_web_auth_required", True) and _is_same_origin_browser_request(request):
+        return "browser:same-origin"
 
     if request is not None:
         from app.platform.auth.web_session import SESSION_COOKIE_NAME, validate_web_session

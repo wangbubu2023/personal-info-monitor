@@ -102,6 +102,34 @@ async def test_bootstrap_exchange_rejects_cross_site_origin_before_consuming_cod
 
 
 @pytest.mark.asyncio
+async def test_bootstrap_exchange_trusts_configured_public_url(monkeypatch):
+    exchange = __import__("app.platform.auth.bootstrap_token", fromlist=["x"])
+    issued = SimpleNamespace(token="session-secret", session_id="session-1", actor="local-cli")
+    consume = MagicMock(return_value=issued)
+    monkeypatch.setattr(exchange, "exchange_bootstrap_code", consume)
+    monkeypatch.setattr(
+        exchange,
+        "get_settings",
+        lambda: SimpleNamespace(
+            cors_origins="http://localhost:3000",
+            pim_public_url="https://pim.example.com/app/",
+            pim_public_origin="",
+        ),
+    )
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="https://testserver") as client:
+        response = await client.post(
+            "/bootstrap/exchange",
+            json={"code": "one-time-code-123456"},
+            headers={"Origin": "https://pim.example.com"},
+        )
+
+    assert response.status_code == 200
+    consume.assert_called_once_with("one-time-code-123456")
+
+
+@pytest.mark.asyncio
 async def test_metrics_endpoint_exposes_request_counters(client):
     await client.get("/livez")
 

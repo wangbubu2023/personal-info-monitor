@@ -5,7 +5,11 @@ import axios, {
   type AxiosResponse,
   type InternalAxiosRequestConfig,
 } from 'axios'
-import { promptApiKey } from '../components/ui/ApiKeyModal'
+import {
+  promptApiKey,
+  showBootstrapNotice,
+  type BootstrapNoticeReason,
+} from '../components/ui/ApiKeyModal'
 import { clearApiKey, hasStoredCredential, isTauriRuntime, readBootstrapToken, writeApiKey } from './apiKeyStore'
 
 declare global {
@@ -167,21 +171,33 @@ function backendOrigin(): string {
 
 /** Establish an HttpOnly Web session without exposing a long-lived key. */
 let webSessionEstablished = false
+let webSessionBlocked = false
 
-async function hasWebSession(): Promise<boolean> {
+type WebSessionProbe = 'authenticated' | 'missing' | 'unavailable'
+
+async function probeWebSession(): Promise<WebSessionProbe> {
   try {
     const response = await fetch(`${backendOrigin()}/bootstrap/session`, {
       credentials: 'include',
       signal: AbortSignal.timeout(3000),
     })
-    webSessionEstablished = response.ok
-    return response.ok
+    if (response.ok) {
+      webSessionEstablished = true
+      return 'authenticated'
+    }
+    webSessionEstablished = false
+    return response.status === 401 ? 'missing' : 'unavailable'
   } catch {
-    return false
+    webSessionEstablished = false
+    return 'unavailable'
   }
 }
 
-async function exchangeBootstrapCode(code: string): Promise<boolean> {
+type BootstrapExchangeResult =
+  | { ok: true }
+  | { ok: false; reason: BootstrapNoticeReason }
+
+async function exchangeBootstrapCode(code: string): Promise<BootstrapExchangeResult> {
   try {
     const resp = await fetch(`${backendOrigin()}/bootstrap/exchange`, {
       method: 'POST',
@@ -190,23 +206,46 @@ async function exchangeBootstrapCode(code: string): Promise<boolean> {
       body: JSON.stringify({ code }),
       signal: AbortSignal.timeout(3000),
     })
-    webSessionEstablished = resp.ok
-    return resp.ok
+    if (resp.ok) return { ok: true }
+    webSessionEstablished = false
+    if (resp.status === 403) return { ok: false, reason: 'origin_not_allowed' }
+    if (resp.status === 401) return { ok: false, reason: 'invalid_or_expired' }
+    return { ok: false, reason: 'unavailable' }
   } catch {
-    return false
+    webSessionEstablished = false
+    return { ok: false, reason: 'unavailable' }
   }
+}
+
+function blockWebSession(reason: BootstrapNoticeReason): false {
+  if (!webSessionBlocked) {
+    webSessionBlocked = true
+    showBootstrapNotice(reason)
+  }
+  return false
 }
 
 async function ensureWebSession(): Promise<boolean> {
   if (webSessionEstablished) return true
+  if (webSessionBlocked) return false
   const active = typeof window !== 'undefined' ? window.__PIM_WEB_SESSION_PROMISE__ : null
   if (active) return active
   const promise = (async () => {
-    if (await hasWebSession()) return true
+    const initialProbe = await probeWebSession()
+    if (initialProbe === 'authenticated') return true
     const codeFromFragment = await readBootstrapToken()
-    if (codeFromFragment && await exchangeBootstrapCode(codeFromFragment)) return true
-    const { apiKey: code } = await promptApiKey({ bootstrapOnly: true })
-    return Boolean(code && await exchangeBootstrapCode(code))
+    if (!codeFromFragment) {
+      return blockWebSession(initialProbe === 'unavailable' ? 'unavailable' : 'required')
+    }
+
+    const exchanged = await exchangeBootstrapCode(codeFromFragment)
+    if (!exchanged.ok) return blockWebSession(exchanged.reason)
+
+    const verification = await probeWebSession()
+    if (verification === 'authenticated') return true
+    return blockWebSession(
+      verification === 'unavailable' ? 'unavailable' : 'cookie_not_persisted',
+    )
   })().finally(() => {
     if (typeof window !== 'undefined') window.__PIM_WEB_SESSION_PROMISE__ = null
   })
@@ -237,7 +276,9 @@ function requestApiKeyOnce(): Promise<string | null> {
 
 export async function ensureApiKey(): Promise<string | null> {
   if (!isTauriRuntime()) {
-    await ensureWebSession()
+    if (!await ensureWebSession()) {
+      throw new Error('PIM Web session is not established')
+    }
     return null
   }
   if (await hasStoredCredential()) return null
@@ -250,11 +291,11 @@ export async function ensureApiKey(): Promise<string | null> {
 async function recoverApiKey(): Promise<string | null> {
   if (!isTauriRuntime()) {
     webSessionEstablished = false
+    if (webSessionBlocked) return null
     const activeRecovery = getRecoveryPromise()
     if (activeRecovery) return activeRecovery
     const recoveryPromise = (async () => {
-      const { apiKey: code } = await promptApiKey({ bootstrapOnly: true })
-      if (code) await exchangeBootstrapCode(code)
+      await ensureWebSession()
       return null
     })().finally(() => setRecoveryPromise(null))
     setRecoveryPromise(recoveryPromise)

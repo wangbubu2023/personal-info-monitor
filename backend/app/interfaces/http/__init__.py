@@ -13,17 +13,20 @@ from fastapi import APIRouter, Depends
 
 from app.interfaces.http import (
     ai_governance,
+    briefs,
     configs,
     contents,
     dashboard,
     digest,
     events,
     keywords,
+    paid_matrix,
     personal_monitor,
     reliability,
     score_lab,
     sources,
     system,
+    topics,
 )
 from app.platform.auth import verify_api_key
 from app.features import ATOMS_PRODUCT_ENABLED, KEYWORD_MONITORING_ENABLED
@@ -49,3 +52,6 @@ if ATOMS_PRODUCT_ENABLED:
     api_router.include_router(atoms.router, prefix="/atoms", tags=["atoms"])
     api_router.include_router(atoms.relations_router, prefix="/atom-relations", tags=["atoms"])
 api_router.include_router(score_lab.router, prefix="/score-lab", tags=["score-lab"])
+api_router.include_router(paid_matrix.router, prefix="/paid-matrix", tags=["paid-matrix"])
+api_router.include_router(topics.router, prefix="/topics", tags=["topics"])
+api_router.include_router(briefs.router, prefix="/briefs", tags=["briefs"])

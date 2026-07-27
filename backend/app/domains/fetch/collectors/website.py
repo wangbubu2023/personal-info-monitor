@@ -53,7 +53,7 @@ from .fetch_profile import diagnose_article_html, get_fetch_profile
 from . import website_helpers as _helpers
 from . import website_parser as _parser
 from . import website_sitemap as _sitemap
-from . import bpc_strategies
+from . import bpc_strategies, website_shadow_dom as _shadow_dom
 
 logger = get_logger(__name__)
 
@@ -348,6 +348,7 @@ class WebsiteCollector(BaseCollector):
                 await human_scroll_page(page)
             except Exception as exc:  # noqa: BLE001 - Playwright surfaces many eval error types
                 self.logger.debug("playwright_scroll_lazy skipped: %s", exc)
+        await _shadow_dom.materialize_shadow_dom(page, logger=self.logger)
 
     async def _close_browser_resources(
         self,
@@ -893,8 +894,7 @@ class WebsiteCollector(BaseCollector):
                         vendor_counts[str(vendor["code"])] += 1
                 contents[idx]["metadata"] = item_metadata
             # Let ContentProcessor extractor derive main text from article HTML.
-            contents[idx]["html"] = html
-            contents[idx]["content"] = ""
+            contents[idx].update({"html": html, "content": "", "hydrated": True})
         diag = {
             "attempted": len(direct_indexes),
             "hydrated": hydrated_count,

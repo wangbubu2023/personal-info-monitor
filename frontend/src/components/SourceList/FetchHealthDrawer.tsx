@@ -67,6 +67,7 @@ const FetchHealthDrawer: React.FC<FetchHealthDrawerProps> = ({
   const failure = s?.metadata?.fetch_failure
   const rssHealth = s?.metadata?.rss_health
   const discovery = s?.metadata?.discovery_diagnostics
+  const webClean = s?.metadata?.web_clean_profile
   const severity = s ? deriveHealthSeverity(s) : 'unknown'
   const sevMeta = HEALTH_SEVERITY_META[severity]
   const cooldownRemaining = formatCooldownRemaining(s?.cooldown_until)
@@ -215,6 +216,46 @@ const FetchHealthDrawer: React.FC<FetchHealthDrawerProps> = ({
               <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="近 7 天暂无抓取记录" />
             )}
           </div>
+
+          {webClean ? (
+            <Descriptions
+              size="small"
+              column={1}
+              bordered
+              labelStyle={labelStyle}
+              title="网页清洗诊断"
+            >
+              <Descriptions.Item label="运行模式">
+                {webClean.shadow ? <Tag color="blue">Shadow</Tag> : <Tag color="green">已启用</Tag>}
+              </Descriptions.Item>
+              <Descriptions.Item label="抽取方法">
+                {webClean.extraction_method ?? '—'}
+              </Descriptions.Item>
+              <Descriptions.Item label="模板 ID">
+                {webClean.template_id ?? '通用模板'}
+              </Descriptions.Item>
+              <Descriptions.Item label="正文质量">
+                <Space>
+                  <Tag>{webClean.quality_status ?? 'unknown'}</Tag>
+                  {webClean.quality_score != null
+                    ? `${Math.round(webClean.quality_score * 100)} 分`
+                    : '—'}
+                </Space>
+              </Descriptions.Item>
+              <Descriptions.Item label="正文信号">
+                {webClean.text_chars ?? 0} 字符 · {webClean.paragraph_count ?? 0} 段
+              </Descriptions.Item>
+              <Descriptions.Item label="噪音/链接密度">
+                {webClean.boilerplate_ratio != null
+                  ? `${Math.round(webClean.boilerplate_ratio * 100)}%`
+                  : '—'}
+                {' / '}
+                {webClean.link_density != null
+                  ? `${Math.round(webClean.link_density * 100)}%`
+                  : '—'}
+              </Descriptions.Item>
+            </Descriptions>
+          ) : null}
 
           {/* RSS 健康 / 发现诊断 */}
           {(rssHealth || discovery) && (

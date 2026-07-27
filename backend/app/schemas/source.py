@@ -10,6 +10,7 @@ from urllib.parse import urlparse
 
 from app.utils.url import normalize_source_url_input
 from app.domains.score.score_utils import normalize_authority_type
+from app.domains.fetch.web_clean.templates import TemplateValidationError, validate_template
 
 _MAX_FETCH_LAG_MIN = 1
 _MAX_FETCH_LAG_MAX = 525600  # 365 days
@@ -45,6 +46,17 @@ def _normalize_source_quality_metadata(meta: Optional[Dict[str, Any]]) -> Option
 
     if "authority_type" in out and out.get("authority_type") is not None:
         out["authority_type"] = normalize_authority_type(out["authority_type"])[:80]
+
+    if "web_clean_template" in out and out.get("web_clean_template") is not None:
+        template = out["web_clean_template"]
+        if not isinstance(template, dict):
+            raise ValueError("metadata.web_clean_template must be an object")
+        try:
+            validate_template(template)
+        except TemplateValidationError as exc:
+            raise ValueError(
+                "metadata.web_clean_template is invalid: " + "; ".join(exc.errors)
+            ) from exc
 
     return out
 

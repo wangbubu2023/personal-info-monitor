@@ -64,7 +64,7 @@ describe('DashboardDigestList', () => {
     renderList([{ ...item('a', 'First item', false), metadata: {} }])
 
     expect(screen.queryByRole('button', { name: '标为已读' })).toBeNull()
-    expect(screen.getByRole('button', { name: '喜欢' })).toBeTruthy()
-    expect(screen.getByRole('button', { name: '不感兴趣' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: '重要' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: '不重要' })).toBeTruthy()
   })
 })

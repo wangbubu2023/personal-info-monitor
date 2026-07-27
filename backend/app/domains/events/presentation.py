@@ -120,12 +120,78 @@ def event_name_from_cluster(primary: Mapping[str, Any], cluster: Mapping[str, An
     return simplify_event_name(str(raw))
 
 
+def format_event_presentation(
+    *,
+    event_data: dict[str, Any],
+    full_reports: bool = False,
+) -> dict[str, Any]:
+    """根据 full_reports 参数返回 Curated 精选视图或 Full 全量历史视图。
+    默认接口必须为 Curated (精选 3 条 Highlights，不直接暴露庞大 Timeline)。
+    """
+    curated = {
+        "event_id": event_data.get("id"),
+        "title": simplify_event_name(event_data.get("title", "")),
+        "summary": event_data.get("summary", ""),
+        "status": event_data.get("status", "active"),
+        "canonical_url": event_data.get("canonical_url"),
+        "created_at": event_data.get("created_at"),
+    }
+
+    reports = event_data.get("reports", [])
+    if full_reports:
+        curated["timeline"] = reports
+        curated["view_mode"] = "full"
+    else:
+        curated["timeline"] = reports[:3] if isinstance(reports, list) else []
+        curated["view_mode"] = "curated"
+
+    return curated
+
+
+def export_event_to_markdown(
+    *,
+    title: str,
+    summary: str,
+    source_url: str,
+    full_body: str | None = None,
+    is_paid_source: bool = False,
+) -> str:
+    """生成 Markdown 导出的文本。
+    合规准则: 如果是付费源 (is_paid_source=True)，绝对滤除无权再分发的付费全文 (full_body)。
+    """
+    md_lines = [
+        f"# {title}",
+        "",
+        "## 摘要",
+        summary,
+        "",
+        f"- **原文链接**: {source_url}",
+    ]
+
+    if is_paid_source:
+        md_lines.extend([
+            "",
+            "> [!NOTE]",
+            "> 该内容源自受权/付费源，根据版权再分发保护协议，已自动过滤付费全文，仅保留结构化摘要与原文出处链接。",
+        ])
+    elif full_body:
+        md_lines.extend([
+            "",
+            "## 正文",
+            full_body,
+        ])
+
+    return "\n".join(md_lines)
+
+
 __all__ = [
     "NEED_TO_KNOW_CONFIDENCE_THRESHOLD",
     "NEED_TO_KNOW_IMPORTANCE_THRESHOLD",
     "NEED_TO_KNOW_INCREMENTAL_THRESHOLD",
     "classify_event_section",
     "event_name_from_cluster",
+    "export_event_to_markdown",
+    "format_event_presentation",
     "is_need_to_know_event",
     "simplify_event_name",
 ]

@@ -6,12 +6,12 @@ from pathlib import Path
 from typing import Any, Dict
 
 import frontmatter
-from markdownify import markdownify as md
 from sqlalchemy.orm import Session
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from app.models.content import Content
+from app.platform.export.html_markdown import render_html_markdown
 from app.platform.observability.logger import get_logger
 
 logger = get_logger(__name__)
@@ -171,7 +171,7 @@ class MarkdownExporter:
             lines.extend(["## 正文", ""])
             if "<html" in full.lower() or "<p>" in full.lower() or "<article" in full.lower():
                 try:
-                    lines.append(md(full).strip())
+                    lines.append(render_html_markdown(full))
                 except Exception:
                     lines.append(full.strip())
             else:

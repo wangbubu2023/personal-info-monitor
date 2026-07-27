@@ -2,7 +2,7 @@
   "max_lines": {
     "backend/app/domains/fetch/collectors/website.py": 1466,
     "cli/pimctl/app.py": 1520,
-    "pim": 1688,
+    "pim": 1687,
     "frontend/src/components/Settings/CredentialsTab.tsx": 975
   }
 }

@@ -76,6 +76,30 @@ def _extract_metadata_from_meta_tags(soup) -> dict:
 class ContentExtractor:
     """Extract main content from HTML pages."""
 
+    async def extract_clean(
+        self,
+        html: str,
+        url: Optional[str] = None,
+        *,
+        source_id: str | None = None,
+        source_metadata: dict | None = None,
+        hydrated: bool = False,
+        max_html_bytes: int = 3_000_000,
+    ):
+        """Return the shared Web Clean intermediate representation."""
+        from app.domains.fetch.web_clean import CleanInput, WebDocumentExtractor
+
+        return await WebDocumentExtractor().extract(
+            CleanInput(
+                url=str(url or ""),
+                raw_html=html or "",
+                source_id=source_id,
+                source_metadata=dict(source_metadata or {}),
+                hydrated=hydrated,
+            ),
+            max_html_bytes=max_html_bytes,
+        )
+
     async def extract(self, html: str, url: Optional[str] = None) -> str:
         """
         Extract main content from HTML.

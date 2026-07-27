@@ -24,6 +24,7 @@ from app.platform.config.settings import (
     _runtime_secrets_path,
     _write_runtime_secrets,
     bootstrap_runtime_environment,
+    effective_cors_origins,
     get_settings,
     parse_cors_origins,
 )
@@ -32,6 +33,7 @@ __all__ = [
     "CorsOriginConfigError",
     "Settings",
     "bootstrap_runtime_environment",
+    "effective_cors_origins",
     "get_settings",
     "parse_cors_origins",
 ]

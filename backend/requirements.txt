@@ -179,8 +179,10 @@ protobuf==7.34.1
     #   proto-plus
 publicsuffix2==2.20191221
     # via personal-info-monitor-backend
-pyasn1==0.6.3
-    # via pyasn1-modules
+pyasn1==0.6.4
+    # via
+    #   personal-info-monitor-backend
+    #   pyasn1-modules
 pyasn1-modules==0.4.2
     # via google-auth
 pycparser==3.0 ; implementation_name != 'PyPy' and platform_python_implementation != 'PyPy'

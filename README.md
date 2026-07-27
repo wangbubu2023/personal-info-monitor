@@ -2,9 +2,16 @@
 
 > 本地优先的个人资讯监控系统。PIM 把 RSS、网站、X、YouTube、Podcast 等来源统一抓取、去重、评分、摘要和归档，并提供 Web UI、桌面端、`pimctl` CLI 与远程部署运维能力。
 
-当前版本：**1.6.9**
+当前版本：**1.7.0**
 
 > 分支提示：`main` 暂时冻结原子库产品入口；原子库相关能力保留在 `dev` 分支继续探索，详见 [`docs/ATOM_FREEZE_MAIN.md`](docs/ATOM_FREEZE_MAIN.md)。
+
+## 1.7.0 重点
+
+- **Web Clean 正文清洗管线**：新增统一标准化、正文提取、噪声过滤、Markdown 生成、模板与离线评测能力，并通过 Shadow 开关支持安全灰度。
+- **M4 主题、简报与付费来源能力**：新增 Topic、Brief、付费来源健康矩阵、认证 ZIP 导入和本地捕获接口，完善高价值内容的组织与恢复链路。
+- **阅读反馈语义升级**：前端将“喜欢 / 不感兴趣”统一调整为“重要 / 不重要”，让反馈更贴合资讯筛选目的。
+- **Web 访问体验优化**：同源个人 Web 部署默认不再要求反复输入 Bootstrap Code；公网或多用户部署仍可通过配置恢复严格鉴权。
 
 ## 1.6.9 重点
 
@@ -229,7 +236,7 @@ X 抓取优先使用浏览器登录态 Cookie 的 GraphQL 路径，然后才尝�
 | 变量 | 默认 | 说明 |
 |---|---|---|
 | `DATA_DIR` | `~/.pim/data` | SQLite、日志、浏览器会话目录 |
-| `PIM_PUBLIC_URL` | 空 | VPS / 反向代理公网地址 |
+| `PIM_PUBLIC_URL` | 空 | VPS / 反向代理公网地址；自动加入 Bootstrap/CORS 白名单并用于生成一键绑定链接 |
 | `FETCH_CONCURRENCY` | `20` | 并发抓取上限；同步 DB 连接池会自动至少按该值配置，并额外保留 10 个 overflow 连接 |
 | `PIM_AI_HARD_DISABLE` | `false` | 部署级 LLM 紧急停机开关；产品功能开关在 Web 设置中管理 |
 | `AI_DAILY_TOKEN_BUDGET` / `AI_MONTHLY_TOKEN_BUDGET` | `0` | 持久化的 LLM Token 预算；`0` 不限制 |
@@ -247,7 +254,7 @@ X 抓取优先使用浏览器登录态 Cookie 的 GraphQL 路径，然后才尝�
 环境变量变化不会覆盖用户选择。
 | `PIM_PLAYWRIGHT_CHANNEL` | `none` | 可设为 `chrome` 使用系统 Chrome |
 
-默认 CORS 覆盖 `localhost:3000`、`127.0.0.1:3000`、`tauri.localhost` 和 Tauri 开发端口。
+默认可信 Origin 覆盖 `localhost` / `127.0.0.1` 的开发与生产端口、`tauri.localhost` 和 Tauri 开发端口。公网部署只需配置 `PIM_PUBLIC_URL`，无需再把同一域名重复写入 `CORS_ORIGINS`；后者仅用于额外的跨域前端。
 
 ## pimctl
 
@@ -300,11 +307,13 @@ cd backend && alembic upgrade head
 - `20260708_0027_content_duplicate_markers.py`：为内容表添加重复标记并回填历史同组数据。
 - `20260709_0028_auth_assistant_pairing.py`：新增 Auth Assistant 配对、设备和导入审计表。
 
-VPS 首次登录 Web UI 时可生成公网引导链接：
+VPS 首次登录 Web UI 时，先在 `backend/.env` 配置 `PIM_PUBLIC_URL` 并重启服务，再生成一次性引导链接：
 
 ```bash
-./pim bootstrap-url --origin https://your-domain.com
+./pim bootstrap-url
 ```
+
+直接打开命令输出的完整 URL 即可绑定，不需要复制或输入 Bootstrap Code。链接 5 分钟内有效且只能使用一次；Code 位于 URL fragment 中，前端会在交换前立即从浏览器地址和历史记录中移除。
 
 本地采集并上传远程登录态：
 
@@ -357,10 +366,10 @@ cd backend
 然后提交、打 tag，并创建 GitHub Release。Web 更新检查依赖 GitHub Releases 的 `latest` 端点，仅推 tag 不会触发“发现新版本”提示。
 
 ```bash
-git commit -m "release: 1.6.9"
-git tag -a v1.6.9 -m "Release 1.6.9"
-git push origin main v1.6.9
-gh release create v1.6.9 --title "v1.6.9" --notes-file /tmp/pim-release-notes.md
+git commit -m "release: 1.7.0"
+git tag -a v1.7.0 -m "Release 1.7.0"
+git push origin main v1.7.0
+gh release create v1.7.0 --title "v1.7.0" --notes-file /tmp/pim-release-notes.md
 ```
 
 发布 GitHub Release 后，`Release Auth Assistant for macOS` workflow 会构建 arm64 DMG、使用

@@ -79,9 +79,20 @@ def test_fresh_sqlite_database_can_upgrade_to_head(tmp_path):
     finally:
         conn.close()
 
-    assert revision == ("20260724_0037",)
-    assert "ix_content_created_at" in indexes
-    assert "ix_score_feedback_content_id" in indexes
+    assert revision == ("20260724_0038",)
+    assert {
+        "paid_source_matrix_audits",
+        "session_recovery_audits",
+        "local_capture_audits",
+        "daily_canary_runs",
+        "auth_archive_extractions",
+        "topics",
+        "topic_event_associations",
+        "brief_snapshots",
+        "modality_audit_logs",
+    } <= tables
+
+
     assert "ix_score_feedback_event_type" in indexes
     assert {"event_type", "event_value"} <= score_feedback_columns
     assert {

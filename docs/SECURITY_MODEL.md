@@ -12,7 +12,7 @@
 | 机制 | 防什么 | 不防什么 | 依据 |
 |------|--------|----------|------|
 | API Key 认证（`X-API-Key`，`secrets.compare_digest` 常量时间比较） | 未持 key 的网络客户端访问任何 API / `/metrics`；时序侧信道猜 key | key 泄露后的滥用（无轮换、无过期、无速率限制）；能读本机配置的进程 | `app/platform/auth/api_key.py` |
-| CORS 精确白名单（拒绝 `*` 与通配 origin，启动时校验报错） | 恶意网页借用户浏览器发起跨源调用（配合浏览器同源策略） | 非浏览器客户端——curl/脚本不受 CORS 约束，真正的门是 API key | `app/platform/config/settings.py::parse_cors_origins` |
+| CORS 精确白名单（`PIM_PUBLIC_URL` 自动加入；拒绝 `*` 与通配 origin，启动时校验报错） | 恶意网页借用户浏览器发起跨源调用（配合浏览器同源策略） | 非浏览器客户端——curl/脚本不受 CORS 约束，真正的门是 API key / Web session | `app/platform/config/settings.py::effective_cors_origins` |
 | 凭据静态加密：写入用 `v4:`（HKDF-SHA256 + 每记录随机盐）；`v3/v2/legacy`（PBKDF2）仅保留解密兼容，更新时自动升级信封 | 数据库文件单独泄露时，cookie/会话/凭据的明文暴露 | 攻击者同时拿到 `ENCRYPTION_KEY`（`runtime-secrets.json`，与库同机）；运行时内存中的明文。注：不用高迭代 KDF 是**有意的**——主密钥为机器生成全熵，口令拉伸只对低熵人类口令有意义（v1.4 审计修正） | `app/platform/security/encryption.py`（模块 docstring 即设计依据） |
 | SSRF 防护：`assert_public_http_target` 拒绝私有/回环/保留地址；解析后**按 IP 固定连接**（`_pin_request_to_ip`）；重定向手动逐跳复查（上限 5 跳） | 抓取用户可配 URL 时打到内网/云元数据地址；DNS rebinding（解析与请求之间换 IP）；重定向绕过 | 公网上的恶意内容本身；经允许协议的公网开放代理中转到目标 | `app/platform/security/ssrf.py`（rebinding 防护为 v1.4 审计修正） |
 | Reader 结构化白名单渲染：正文只经受控 block 类型（paragraph/heading/image/quote/code/footnote/link）以 React 文本节点渲染；URL 经 `safeHttpUrl` 仅放行 http/https | 抓取内容中的 script 注入 / XSS；`javascript:` 伪协议链接与图片 | 钓鱼性质的文本内容；外链图片加载产生的第三方追踪 | `backend/app/domains/enrich/reader/shared.py` + `frontend/src/pages/ReaderPage.tsx::renderReaderBlock` |

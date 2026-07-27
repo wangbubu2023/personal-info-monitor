@@ -114,10 +114,10 @@ describe('ReaderPage', () => {
     expect(hide).toHaveBeenCalledTimes(1)
   })
 
-  it('labels positive feedback as like', () => {
+  it('labels positive feedback as important', () => {
     renderReaderPage()
 
-    expect(screen.getByRole('button', { name: '喜欢' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: '重要' })).toBeTruthy()
   })
 
   it('shows toolbar shortcut hints', () => {
@@ -133,7 +133,7 @@ describe('ReaderPage', () => {
     renderReaderPage()
 
     await user.click(screen.getByRole('button', { name: '更多操作' }))
-    await user.click(await screen.findByText('不感兴趣'))
+    await user.click(await screen.findByText('不重要'))
     expect(hide).toHaveBeenCalledTimes(1)
   })
 })

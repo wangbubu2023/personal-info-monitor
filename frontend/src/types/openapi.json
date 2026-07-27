@@ -116,6 +116,22 @@
         "title": "APIConfigUpdate",
         "type": "object"
       },
+      "AssociateEventsRequest": {
+        "properties": {
+          "event_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Event Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "event_ids"
+        ],
+        "title": "AssociateEventsRequest",
+        "type": "object"
+      },
       "AuthAssistantBundleImportRequest": {
         "properties": {
           "bind_matching_sources": {
@@ -425,6 +441,20 @@
           }
         },
         "title": "AuthConfigUpdate",
+        "type": "object"
+      },
+      "Body_api_extract_archive_api_paid_matrix_extract_archive_post": {
+        "properties": {
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file"
+        ],
+        "title": "Body_api_extract_archive_api_paid_matrix_extract_archive_post",
         "type": "object"
       },
       "Body_import_auth_export_zip_from_assistant_api_auth_assistant_auth_exports_import_post": {
@@ -870,6 +900,133 @@
           }
         },
         "title": "ContentUpdate",
+        "type": "object"
+      },
+      "CreateBriefRequest": {
+        "properties": {
+          "brief_modality": {
+            "default": "reported",
+            "title": "Brief Modality",
+            "type": "string"
+          },
+          "brief_type": {
+            "title": "Brief Type",
+            "type": "string"
+          },
+          "generator_version": {
+            "default": "v1.0",
+            "title": "Generator Version",
+            "type": "string"
+          },
+          "period_key": {
+            "title": "Period Key",
+            "type": "string"
+          },
+          "summary_content": {
+            "title": "Summary Content",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "upstream_event_snapshot_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Upstream Event Snapshot Ids",
+            "type": "array"
+          },
+          "upstream_modality": {
+            "default": "reported",
+            "title": "Upstream Modality",
+            "type": "string"
+          }
+        },
+        "required": [
+          "period_key",
+          "brief_type",
+          "title",
+          "summary_content",
+          "upstream_event_snapshot_ids"
+        ],
+        "title": "CreateBriefRequest",
+        "type": "object"
+      },
+      "CreateTopicRequest": {
+        "properties": {
+          "creation_type": {
+            "default": "manual",
+            "title": "Creation Type",
+            "type": "string"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "rule_spec": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rule Spec"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title"
+        ],
+        "title": "CreateTopicRequest",
+        "type": "object"
+      },
+      "DailyCanaryRequest": {
+        "properties": {
+          "run_date_str": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Run Date Str"
+          },
+          "sample_body": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sample Body"
+          },
+          "source_id": {
+            "title": "Source Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_id"
+        ],
+        "title": "DailyCanaryRequest",
         "type": "object"
       },
       "DigestCategory": {
@@ -2686,6 +2843,53 @@
         "title": "KeywordUpdate",
         "type": "object"
       },
+      "LocalCaptureRequest": {
+        "properties": {
+          "allowlist": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Allowlist"
+          },
+          "device_id": {
+            "title": "Device Id",
+            "type": "string"
+          },
+          "origin_url": {
+            "title": "Origin Url",
+            "type": "string"
+          },
+          "reader_doc_body": {
+            "title": "Reader Doc Body",
+            "type": "string"
+          },
+          "reader_doc_title": {
+            "title": "Reader Doc Title",
+            "type": "string"
+          },
+          "task_token": {
+            "title": "Task Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "device_id",
+          "task_token",
+          "origin_url",
+          "reader_doc_title",
+          "reader_doc_body"
+        ],
+        "title": "LocalCaptureRequest",
+        "type": "object"
+      },
       "ObservationAggregateResponse": {
         "properties": {
           "confidence": {
@@ -2765,6 +2969,75 @@
           "scope_key"
         ],
         "title": "ObservationAggregateResponse",
+        "type": "object"
+      },
+      "OverrideModalityRequest": {
+        "properties": {
+          "override_by": {
+            "title": "Override By",
+            "type": "string"
+          },
+          "override_reason": {
+            "title": "Override Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "override_by",
+          "override_reason"
+        ],
+        "title": "OverrideModalityRequest",
+        "type": "object"
+      },
+      "PaidSourceRecordRequest": {
+        "properties": {
+          "body_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Body Text"
+          },
+          "discovery_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Discovery Url"
+          },
+          "http_status": {
+            "default": 200,
+            "title": "Http Status",
+            "type": "integer"
+          },
+          "source_id": {
+            "title": "Source Id",
+            "type": "string"
+          },
+          "validation_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Validation Url"
+          }
+        },
+        "required": [
+          "source_id"
+        ],
+        "title": "PaidSourceRecordRequest",
         "type": "object"
       },
       "PairingClaimRequest": {
@@ -3541,6 +3814,24 @@
         "title": "ScoreLabContentSummary",
         "type": "object"
       },
+      "SessionTriggerRequest": {
+        "properties": {
+          "auth_config_id": {
+            "title": "Auth Config Id",
+            "type": "string"
+          },
+          "root_cause": {
+            "default": "MANUAL_TEST_EXPIRATION",
+            "title": "Root Cause",
+            "type": "string"
+          }
+        },
+        "required": [
+          "auth_config_id"
+        ],
+        "title": "SessionTriggerRequest",
+        "type": "object"
+      },
       "SourceBulkImport": {
         "description": "Schema for bulk importing sources.",
         "properties": {
@@ -4164,7 +4455,7 @@
   "info": {
     "description": "个人化资讯监控管理系统 API",
     "title": "Personal Information Monitor",
-    "version": "1.6.9"
+    "version": "1.7.0"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -4563,6 +4854,105 @@
         "summary": "Create Pairing Token",
         "tags": [
           "auth-assistant"
+        ]
+      }
+    },
+    "/api/briefs": {
+      "post": {
+        "operationId": "api_create_brief_api_briefs_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateBriefRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Api Create Brief",
+        "tags": [
+          "briefs"
+        ]
+      }
+    },
+    "/api/briefs/{brief_id}/override": {
+      "post": {
+        "operationId": "api_override_modality_api_briefs__brief_id__override_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "brief_id",
+            "required": true,
+            "schema": {
+              "title": "Brief Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OverrideModalityRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Api Override Modality",
+        "tags": [
+          "briefs"
         ]
       }
     },
@@ -7950,6 +8340,316 @@
         ]
       }
     },
+    "/api/paid-matrix/ack-recovery/{audit_id}": {
+      "post": {
+        "operationId": "api_ack_recovery_api_paid_matrix_ack_recovery__audit_id__post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "audit_id",
+            "required": true,
+            "schema": {
+              "title": "Audit Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Api Ack Recovery",
+        "tags": [
+          "paid-matrix"
+        ]
+      }
+    },
+    "/api/paid-matrix/complete-recovery/{audit_id}": {
+      "post": {
+        "operationId": "api_complete_recovery_api_paid_matrix_complete_recovery__audit_id__post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "audit_id",
+            "required": true,
+            "schema": {
+              "title": "Audit Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Api Complete Recovery",
+        "tags": [
+          "paid-matrix"
+        ]
+      }
+    },
+    "/api/paid-matrix/daily-canary": {
+      "post": {
+        "operationId": "api_daily_canary_api_paid_matrix_daily_canary_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DailyCanaryRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Api Daily Canary",
+        "tags": [
+          "paid-matrix"
+        ]
+      }
+    },
+    "/api/paid-matrix/extract-archive": {
+      "post": {
+        "operationId": "api_extract_archive_api_paid_matrix_extract_archive_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_api_extract_archive_api_paid_matrix_extract_archive_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Api Extract Archive",
+        "tags": [
+          "paid-matrix"
+        ]
+      }
+    },
+    "/api/paid-matrix/local-capture": {
+      "post": {
+        "operationId": "api_local_capture_api_paid_matrix_local_capture_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LocalCaptureRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Api Local Capture",
+        "tags": [
+          "paid-matrix"
+        ]
+      }
+    },
+    "/api/paid-matrix/record": {
+      "post": {
+        "operationId": "api_record_paid_source_api_paid_matrix_record_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PaidSourceRecordRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Api Record Paid Source",
+        "tags": [
+          "paid-matrix"
+        ]
+      }
+    },
+    "/api/paid-matrix/trigger-recovery-drill": {
+      "post": {
+        "operationId": "api_trigger_recovery_api_paid_matrix_trigger_recovery_drill_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SessionTriggerRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Api Trigger Recovery",
+        "tags": [
+          "paid-matrix"
+        ]
+      }
+    },
     "/api/personal-monitor/events/{event_id}/read-state": {
       "get": {
         "operationId": "get_event_personal_read_state_api_personal_monitor_events__event_id__read_state_get",
@@ -10218,6 +10918,150 @@
         "summary": "Start Upgrade",
         "tags": [
           "system"
+        ]
+      }
+    },
+    "/api/topics": {
+      "post": {
+        "operationId": "api_create_topic_api_topics_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateTopicRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Api Create Topic",
+        "tags": [
+          "topics"
+        ]
+      }
+    },
+    "/api/topics/{topic_id}": {
+      "get": {
+        "operationId": "api_get_topic_details_api_topics__topic_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "topic_id",
+            "required": true,
+            "schema": {
+              "title": "Topic Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Api Get Topic Details",
+        "tags": [
+          "topics"
+        ]
+      }
+    },
+    "/api/topics/{topic_id}/events": {
+      "post": {
+        "operationId": "api_associate_events_api_topics__topic_id__events_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "topic_id",
+            "required": true,
+            "schema": {
+              "title": "Topic Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssociateEventsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Api Associate Events",
+        "tags": [
+          "topics"
         ]
       }
     },

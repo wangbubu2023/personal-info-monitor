@@ -13,7 +13,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTex
 
 from app.api import api_router
 from app.auth import verify_api_key
-from app.config import bootstrap_runtime_environment, get_settings, parse_cors_origins
+from app.config import bootstrap_runtime_environment, effective_cors_origins, get_settings
 from app.middleware.api_rate_limit import APIRateLimitMiddleware
 from app.platform.auth import bootstrap_router
 from app.platform.health import health_router
@@ -112,7 +112,7 @@ app = FastAPI(
 # CORS: browser dev + Tauri WebView
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=parse_cors_origins(settings.cors_origins),
+    allow_origins=effective_cors_origins(settings),
     allow_origin_regex=r"^tauri://localhost$",
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],

@@ -6,6 +6,7 @@ import secrets
 from functools import lru_cache
 from pathlib import Path
 from typing import Optional
+from urllib.parse import urlsplit
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -20,6 +21,8 @@ def _default_cors_origins() -> str:
         [
             "http://localhost:3000",
             "http://127.0.0.1:3000",
+            "http://localhost:8000",
+            "http://127.0.0.1:8000",
             "http://tauri.localhost",
             "https://tauri.localhost",
             "http://localhost:1420",
@@ -120,10 +123,20 @@ class Settings(BaseSettings):
     encryption_key: str = ""
     probe_disable_ssl_verify: bool = False
     pim_api_key: str = ""
+    # Personal single-user Web deployments may trust the same-origin browser
+    # UI and avoid recurring bootstrap prompts. API-key auth still applies to
+    # non-browser clients. Set true for an Internet-facing multi-user boundary.
+    pim_web_auth_required: bool = False
     # One-time shared secret guarding /local-token. Populated from runtime-secrets.json
     # on startup; distributed to trusted local callers (Tauri shell, operator CLI) via
     # the filesystem (file mode 0600), never exposed over HTTP.
     bootstrap_token: str = ""
+    # Canonical browser-facing deployment URL. Besides generating one-click
+    # bootstrap links, this origin is trusted automatically by both CORS and
+    # the bootstrap exchange endpoint.
+    pim_public_url: str = ""
+    # Backward-compatible alias used by older deployments/CLI invocations.
+    pim_public_origin: str = ""
     cors_origins: str = _default_cors_origins()
     # Per-IP (+ API key hint) sliding window for /api; 0 = disabled
     api_rate_limit_per_minute: int = 120
@@ -144,6 +157,16 @@ class Settings(BaseSettings):
     #: Hard-disable password-based browser auto-login. Recommended for VPS/headless deployments
     #: that should only consume imported cookies/browser sessions.
     pim_disable_password_auto_login: bool = False
+
+    # Web Clean Pipeline. The legacy extractor remains authoritative until
+    # explicitly enabled; shadow mode only writes bounded diagnostics.
+    pim_web_clean_enabled: bool = False
+    pim_web_clean_shadow: bool = True
+    pim_web_clean_write_metadata: bool = True
+    pim_web_clean_use_sidecar: bool = False
+    pim_web_clean_max_html_bytes: int = Field(default=3_000_000, ge=10_000, le=20_000_000)
+    pim_web_clean_timeout_ms: int = Field(default=8_000, ge=100, le=60_000)
+    pim_web_clean_template_enabled: bool = False
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -307,4 +330,47 @@ def parse_cors_origins(raw: Optional[str]) -> list[str]:
             )
         seen.add(origin)
         origins.append(origin)
+    return origins
+
+
+def _browser_origin(raw: str, *, setting_name: str) -> str:
+    """Return the HTTP(S) origin represented by a public deployment URL."""
+    value = raw.strip()
+    if not value:
+        return ""
+
+    try:
+        parsed = urlsplit(value)
+        # Accessing ``port`` also validates malformed/out-of-range ports.
+        parsed.port
+    except ValueError as exc:
+        raise CorsOriginConfigError(f"{setting_name} is not a valid URL: {exc}.") from exc
+
+    if parsed.scheme.lower() not in {"http", "https"} or not parsed.netloc:
+        raise CorsOriginConfigError(
+            f"{setting_name} must be an absolute http:// or https:// URL."
+        )
+    if parsed.username or parsed.password:
+        raise CorsOriginConfigError(f"{setting_name} must not contain credentials.")
+
+    return f"{parsed.scheme.lower()}://{parsed.netloc.lower()}"
+
+
+def effective_cors_origins(settings: object) -> list[str]:
+    """Return explicit CORS entries plus configured public deployment origins.
+
+    ``PIM_PUBLIC_URL`` is the canonical public browser address, so requiring an
+    operator to repeat the same value in ``CORS_ORIGINS`` is both redundant and
+    error-prone. Keep ``PIM_PUBLIC_ORIGIN`` as a compatibility alias.
+    """
+    origins = parse_cors_origins(getattr(settings, "cors_origins", ""))
+    seen = {origin.lower() for origin in origins}
+    for setting_name, raw in (
+        ("PIM_PUBLIC_URL", getattr(settings, "pim_public_url", "")),
+        ("PIM_PUBLIC_ORIGIN", getattr(settings, "pim_public_origin", "")),
+    ):
+        origin = _browser_origin(str(raw or ""), setting_name=setting_name)
+        if origin and origin.lower() not in seen:
+            origins.append(origin)
+            seen.add(origin.lower())
     return origins

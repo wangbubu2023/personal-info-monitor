@@ -61,11 +61,25 @@ export interface DiscoveryDiagnostics {
   truncated?: number
 }
 
+export interface WebCleanProfile {
+  version?: string
+  extraction_method?: string
+  template_id?: string
+  quality_status?: string
+  quality_score?: number
+  text_chars?: number
+  paragraph_count?: number
+  boilerplate_ratio?: number
+  link_density?: number
+  shadow?: boolean
+}
+
 export interface SourceMetadata {
   fetch_failure?: FetchFailureMeta
   fetch_profile?: Record<string, unknown>
   rss_health?: RssHealthMeta
   discovery_diagnostics?: DiscoveryDiagnostics
+  web_clean_profile?: WebCleanProfile
   [key: string]: unknown
 }
 

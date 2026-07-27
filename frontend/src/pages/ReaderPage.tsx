@@ -394,7 +394,7 @@ const ReaderPage: React.FC = () => {
                       : 'border-[rgba(88,100,118,0.16)] bg-white/70 text-[#586476] hover:bg-white hover:text-[#293859]'
                   }`}
                 >
-                  <Bookmark size={14} /> {data.favorited ? '已喜欢' : '喜欢'} <ShortcutHint>L</ShortcutHint>
+                  <Bookmark size={14} /> {data.favorited ? '已标为重要' : '重要'} <ShortcutHint>L</ShortcutHint>
                 </button>
                 <Dropdown
                   trigger={['click']}
@@ -403,7 +403,7 @@ const ReaderPage: React.FC = () => {
                     items: [
                       { key: 'export', icon: <Download size={14} />, label: '导出 Markdown' },
                       { type: 'divider' },
-                      { key: 'hide', danger: true, icon: <EyeOff size={14} />, label: '不感兴趣' },
+                      { key: 'hide', danger: true, icon: <EyeOff size={14} />, label: '不重要' },
                     ],
                     onClick: ({ key }) => {
                       if (key === 'export') void exportMarkdown();

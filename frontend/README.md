@@ -41,8 +41,8 @@ src/
 ## 状态管理策略
 
 - **服务端数据**：React Query（`useQuery` / `useMutation`）。缓存键在 `services/queryKeys.ts` 等处按资源分层（例如 `sourceKeys.all` / `list` / `list(params)`），便于 `invalidateQueries` 与列表参数区分。
-- **客户端持久化**：API Key 等由 `services/apiKeyStore.ts` 处理——浏览器端可用 `localStorage` / `sessionStorage`；Tauri 运行时通过 `invoke('get_api_key' | 'set_api_key' | 'clear_api_key')` 走原生侧存储。
-- **鉴权与请求**：`services/api.ts` 中 Axios 在请求拦截器里附加 `X-API-Key`（`ensureApiKey`）；401 时通过 `recoverApiKey` 协调单次恢复与重试，并与弹窗、`apiKeyStore` 联动。
+- **客户端持久化**：Web 只使用 HttpOnly session Cookie，一次性 bootstrap fragment 会在交换前立即清除；Tauri API Key 通过原生命令写入系统钥匙串。
+- **鉴权与请求**：`services/api.ts` 统一协调 Web session 与 Tauri Key。Web 通过 `./pim bootstrap-url` 输出的一次性链接自动绑定，不提供手输 Code 回退；失败时只显示一次按原因分类的操作提示。
 - **UI 状态**：以页面与组件内 `useState` 为主；无全局客户端 store 依赖。
 
 ## 组件分层

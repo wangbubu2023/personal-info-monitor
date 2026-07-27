@@ -44,6 +44,15 @@ from app.models.event_engine import (
     EventSignature,
     EventTodayDiffAudit,
 )
+from app.models.paid_matrix import (
+    AuthArchiveExtraction,
+    DailyCanaryRun,
+    LocalCaptureAudit,
+    PaidSourceMatrixAudit,
+    SessionRecoveryAudit,
+)
+from app.models.topic import Topic, TopicEventAssociation
+from app.models.brief import BriefSnapshot, ModalityAuditLog, ModalityLevel, MODALITY_SCORE_MAP
 
 __all__ = [
     "Source",
@@ -100,4 +109,15 @@ __all__ = [
     "EventRebalanceRun",
     "EventRebalanceSuggestion",
     "EventTodayDiffAudit",
+    "PaidSourceMatrixAudit",
+    "SessionRecoveryAudit",
+    "LocalCaptureAudit",
+    "DailyCanaryRun",
+    "AuthArchiveExtraction",
+    "Topic",
+    "TopicEventAssociation",
+    "BriefSnapshot",
+    "ModalityAuditLog",
+    "ModalityLevel",
+    "MODALITY_SCORE_MAP",
 ]
