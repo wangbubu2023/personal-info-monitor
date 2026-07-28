@@ -118,6 +118,41 @@ _ROUNDUP_TITLE_MARKERS = (
     "and more science stories",
 )
 
+# Affiliate coupon landing pages are evergreen commercial inventory rather
+# than editorial articles.  They frequently arrive through otherwise useful
+# publication-wide RSS feeds (for example WIRED's ``/story/*-promo-code/``
+# pages), so source-level filtering is too coarse.  Keep this gate
+# deliberately high precision: a generic mention of a promo code in a news
+# headline must not be enough on its own.
+_PROMOTIONAL_URL_MARKERS = (
+    "promo-code",
+    "promo-codes",
+    "coupon-code",
+    "coupon-codes",
+    "discount-code",
+    "discount-codes",
+)
+
+_PROMOTIONAL_METADATA_TAGS = frozenset({
+    "coupon",
+    "coupons",
+})
+
+_PROMOTIONAL_TITLE_PHRASE_RE = re.compile(
+    r"\b(?:promo(?:tion)?|coupon|discount)\s+codes?\b",
+    re.IGNORECASE,
+)
+
+_PROMOTIONAL_LANDING_TITLE_RE = re.compile(
+    r"(?:"
+    r"\b\d{1,3}\s*%\s*off\b"
+    r"|\bsave\s+(?:up\s+to\s+)?(?:\$\s*)?\d"
+    r"|\b(?:january|february|march|april|may|june|july|august|"
+    r"september|october|november|december)\s+20\d{2}\b"
+    r")",
+    re.IGNORECASE,
+)
+
 _NON_ARTICLE_PATH_SEGMENTS = {
     "account",
     "author",
@@ -256,13 +291,48 @@ def _engadget_roundup_reject_reason(url: str, title: str) -> str | None:
     return None
 
 
+def _promotional_coupon_reject_reason(raw_content: dict) -> str | None:
+    """Reject high-confidence affiliate coupon / promo-code landing pages.
+
+    Requiring corroborating URL, title-shape, or metadata-tag evidence keeps
+    ordinary reporting about promo codes eligible for ingestion.
+    """
+
+    url = str(raw_content.get("url") or "").strip()
+    title = strip_html_tags(str(raw_content.get("title") or "")).strip()
+    path = unquote(urlparse(url).path or "").lower()
+    promo_url = any(marker in path for marker in _PROMOTIONAL_URL_MARKERS)
+
+    promo_title = bool(_PROMOTIONAL_TITLE_PHRASE_RE.search(title))
+    landing_title = bool(_PROMOTIONAL_LANDING_TITLE_RE.search(title))
+
+    metadata = raw_content.get("metadata")
+    raw_tags = metadata.get("tags") if isinstance(metadata, dict) else None
+    normalized_tags = {
+        str(tag).strip().casefold()
+        for tag in raw_tags
+        if str(tag).strip()
+    } if isinstance(raw_tags, (list, tuple, set)) else set()
+    coupon_tag = bool(normalized_tags & _PROMOTIONAL_METADATA_TAGS)
+
+    if (promo_url and coupon_tag) or (promo_title and coupon_tag):
+        return "blocked_promotional_coupon_page"
+    if promo_url and promo_title and landing_title:
+        return "blocked_promotional_coupon_page"
+    return None
+
+
 def get_non_article_format_reject_reason(source_url: str, raw_content: dict) -> str | None:
-    """Reject slideshows / photo galleries regardless of ingest channel (RSS included)."""
+    """Reject high-confidence non-editorial items for every ingest channel."""
     _ = source_url  # reserved for future domain-specific rules
     url = str(raw_content.get("url") or "").strip()
     title = strip_html_tags(str(raw_content.get("title") or "")).strip()
     if not url and not title:
         return None
+
+    promo_reason = _promotional_coupon_reject_reason(raw_content)
+    if promo_reason:
+        return promo_reason
 
     roundup_reason = _engadget_roundup_reject_reason(url, title)
     if roundup_reason:

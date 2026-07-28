@@ -229,6 +229,94 @@ def test_non_article_format_rejects_engadget_review_recap():
     assert get_website_content_reject_reason("https://www.engadget.com/", raw) is None
 
 
+@pytest.mark.parametrize(
+    ("title", "url"),
+    [
+        ("30% Off Samsung Promo Code | July 2026", "https://www.wired.com/story/samsung-promo-codes/"),
+        ("Newegg Promo Codes and Coupons for July 2026", "https://www.wired.com/story/newegg-promo-code/"),
+        ("Altra Running Promo Codes: 10% Off July 2026", "https://www.wired.com/story/altra-promo-code/"),
+        ("Herman Miller Promo Codes: 40% Off July 2026", "https://www.wired.com/story/herman-miller-promo-code/"),
+        ("25% Off Adidas Promo Code | July 2026", "https://www.wired.com/story/adidas-promo-code/"),
+        ("Uber Eats Promo Codes: $15 Off│July 2026", "https://www.wired.com/story/uber-eats-promo-code/"),
+        ("Ray-Ban Promo Codes: Save 50% in July 2026", "https://www.wired.com/story/ray-ban-promo-code/"),
+        ("Ulta Promo Codes: Up to 50% Off in July 2026", "https://www.wired.com/story/ulta-coupon/"),
+        ("B&H Photo Promo Codes and Deals This July 2026", "https://www.wired.com/story/bh-photo-coupon/"),
+        ("Birdfy Discount Codes: 15% Off Sitewide", "https://www.wired.com/story/birdfy-discount-code/"),
+        ("Corsair Discount Code: Up to 50% Off for July 2026", "https://www.wired.com/story/corsair-coupon/"),
+    ],
+)
+def test_non_article_format_rejects_wired_coupon_landing_pages(title, url):
+    raw = {
+        "title": title,
+        "content": "Long affiliate landing-page copy.",
+        "url": url,
+        "ingest_channel": "rss",
+        "metadata": {"tags": ["Gear", "Shopping", "Coupons"], "ingest_channel": "rss"},
+    }
+    assert (
+        get_non_article_format_reject_reason("https://www.wired.com/feed/rss", raw)
+        == "blocked_promotional_coupon_page"
+    )
+
+
+def test_non_article_format_keeps_reporting_about_promo_code_changes():
+    raw = {
+        "title": "Retailer disables leaked promo codes after account breach",
+        "content": "The company said the codes were disabled during its security response.",
+        "url": "https://example.com/news/leaked-promo-codes-disabled",
+        "ingest_channel": "rss",
+        "metadata": {"tags": ["Security", "News"], "ingest_channel": "rss"},
+    }
+    assert get_non_article_format_reject_reason("https://example.com/feed", raw) is None
+
+
+async def test_normalizer_stage_drops_coupon_landing_page_from_rss(db_session):
+    db = db_session
+    source = Source(
+        name="Wired",
+        type=SourceType.RSS,
+        url="https://www.wired.com/feed/rss",
+        fetch_interval=60,
+        enabled=True,
+        metadata_={},
+    )
+    db.add(source)
+    db.commit()
+    db.refresh(source)
+
+    raw_contents = [
+        {
+            "external_id": "https://www.wired.com/story/samsung-promo-codes/",
+            "title": "30% Off Samsung Promo Code | July 2026",
+            "content": "Long affiliate landing-page copy.",
+            "url": "https://www.wired.com/story/samsung-promo-codes/",
+            "publish_time": utcnow_naive(),
+            "ingest_channel": "rss",
+            "metadata": {"tags": ["Gear", "Shopping", "Coupons"], "ingest_channel": "rss"},
+        },
+    ]
+    diagnostics = []
+
+    valid_contents, stale_skipped = await NormalizerStage.execute(
+        db=db,
+        source=source,
+        raw_contents=raw_contents,
+        manual_trigger=False,
+        diagnostics=diagnostics,
+    )
+
+    assert stale_skipped == 0
+    assert valid_contents == []
+    assert diagnostics == [
+        {
+            "reason": "non_article_format",
+            "detail": "blocked_promotional_coupon_page",
+            "title": "30% Off Samsung Promo Code | July 2026",
+            "url": "https://www.wired.com/story/samsung-promo-codes/",
+        }
+    ]
+
+
 async def test_normalizer_stage_drops_engadget_roundup_from_rss(db_session):
     db = db_session
     source = Source(

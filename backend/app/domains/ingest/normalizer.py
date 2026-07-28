@@ -186,22 +186,21 @@ class NormalizerStage:
             await asyncio.sleep(0)
             source_type = source.type.value if hasattr(source.type, "value") else source.type
 
-            if str(source_type).lower() == "website":
-                reject_reason = get_non_article_format_reject_reason(source.url, raw_content)
-                if reject_reason:
-                    logger.info(
-                        "Skipping non-article website content (%s): %s [%s]",
-                        reject_reason,
-                        str(raw_content.get("title") or "").strip(),
-                        str(raw_content.get("url") or "").strip(),
-                    )
-                    _append_skip_diagnostic(
-                        diagnostics,
-                        reason="non_article_format",
-                        detail=str(reject_reason),
-                        raw_content=raw_content,
-                    )
-                    continue
+            reject_reason = get_non_article_format_reject_reason(source.url, raw_content)
+            if reject_reason:
+                logger.info(
+                    "Skipping non-editorial content (%s): %s [%s]",
+                    reject_reason,
+                    str(raw_content.get("title") or "").strip(),
+                    str(raw_content.get("url") or "").strip(),
+                )
+                _append_skip_diagnostic(
+                    diagnostics,
+                    reason="non_article_format",
+                    detail=str(reject_reason),
+                    raw_content=raw_content,
+                )
+                continue
 
             # If the collector hydrated the article HTML for us (paywall sites,
             # direct-article mode), extract the body text up-front so the dedupe

@@ -166,9 +166,9 @@ async def build_raw_content_objects(
             )
             metadata = merge_title_identity_metadata(metadata, title=title)
 
-            # Slideshows/galleries/roundups are format-level non-articles and
-            # can be dropped before storage. Low-signal business gating belongs
-            # to finish-time fetch acceptance so incomplete rows are observable.
+            # High-confidence non-editorial items (slideshows, roundups, coupon
+            # landing pages) can be dropped before storage. Ambiguous low-signal
+            # business gating still belongs to finish-time fetch acceptance.
             reject_reason = get_non_article_format_reject_reason(
                 source.url,
                 {
@@ -176,6 +176,8 @@ async def build_raw_content_objects(
                     "content": main_text_clean,
                     "url": raw.get("url", ""),
                     "html": html or "",
+                    "ingest_channel": raw.get("ingest_channel"),
+                    "metadata": metadata,
                 },
             )
             if reject_reason:
