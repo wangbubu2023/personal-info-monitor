@@ -258,6 +258,10 @@ class BoundedTaskQueue:
                     f"job_id={job_id}; durable=pending",
                 )
                 task_queue_metrics.record_dropped("process")
+                # The whole batch is already durable. Stop probing a known-full
+                # execution cache so one recovery scan emits one warning rather
+                # than hundreds and lets the periodic dispatcher refill later.
+                break
         return enqueued
 
     async def enqueue_listing_translation(self, content_id: str) -> bool:

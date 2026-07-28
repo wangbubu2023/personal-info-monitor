@@ -97,6 +97,11 @@ async def enqueue_due_postprocess_jobs(*, limit: int = 200) -> int:
     recovered = await asyncio.to_thread(recover_stale_postprocess_jobs)
     if recovered:
         logger.warning("Recovered %d stale postprocess job(s)", recovered)
+    # Pending rows are not marked as "enqueued" in durable storage. Refilling
+    # a non-empty cache would enqueue duplicates of the oldest rows on every
+    # scheduler tick. Refill only after workers drain the current batch.
+    if not task_queue._process_queue.empty():
+        return 0
     jobs = await asyncio.to_thread(due_postprocess_jobs, limit=limit)
     enqueued = 0
     for content_id, job_id in jobs:
@@ -131,7 +136,7 @@ async def enqueue_due_fetch_jobs(*, limit: int = 200, startup: bool = False) -> 
 
 
 async def enqueue_unfinished_content_on_startup(
-    *, limit: int = 200, lookback_hours: int = 24, job_id: str = "startup-refinish"
+    *, limit: int = 200, lookback_hours: int = 24, job_id: str = "recovery-refinish-v1"
 ) -> int:
     """Requeue recent content that was stored before finish_content completed.
 
@@ -143,6 +148,7 @@ async def enqueue_unfinished_content_on_startup(
     """
     from app.database import SessionLocal
     from app.models import Content
+    from app.models.postprocess_job import PostprocessJob
     from app.tasks.task_queue import task_queue
     from app.utils.datetime import utcnow_naive
 
@@ -158,12 +164,30 @@ async def enqueue_unfinished_content_on_startup(
                 .limit(limit)
                 .all()
             )
-            ids: list[str] = []
+            candidate_ids: list[str] = []
             for content in rows:
                 metadata = content.metadata_ if isinstance(content.metadata_, dict) else {}
                 if metadata.get("fetch_acceptance") is None:
-                    ids.append(str(content.id))
-            return ids
+                    candidate_ids.append(str(content.id))
+            if not candidate_ids:
+                return []
+
+            # A durable finish job already guarantees eventual processing. The
+            # old startup/periodic recovery IDs created a second version for
+            # the same content on every scan, which multiplied queue backlog.
+            existing_rows = (
+                db.query(PostprocessJob.content_id)
+                .filter(
+                    PostprocessJob.content_id.in_(candidate_ids),
+                    PostprocessJob.pipeline_stage == "finish",
+                    PostprocessJob.status.in_(
+                        ["pending", "leased", "running", "retry_wait", "abandoned", "succeeded"]
+                    ),
+                )
+                .all()
+            )
+            covered_ids = {str(row[0]) for row in existing_rows}
+            return [content_id for content_id in candidate_ids if content_id not in covered_ids]
         finally:
             db.close()
 

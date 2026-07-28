@@ -100,3 +100,21 @@ async def test_event_loop_observability_sets_slow_callback_threshold():
                 await task
         loop.set_debug(original_debug)
         loop.slow_callback_duration = original_threshold
+
+
+@pytest.mark.asyncio
+async def test_async_sqlite_write_does_not_acquire_threading_writer_lock(
+    async_session_factory,
+    monkeypatch,
+):
+    from app.models.system_setting import SystemSetting
+    from app.platform.persistence.write_queue import sqlite_write_coordinator
+
+    def fail_if_acquired():
+        raise AssertionError("async SQLite writes must not block on the threading writer lock")
+
+    monkeypatch.setattr(sqlite_write_coordinator, "acquire", fail_if_acquired)
+
+    async with async_session_factory() as session:
+        session.add(SystemSetting(key="async-writer-regression", value={"ok": True}))
+        await session.commit()

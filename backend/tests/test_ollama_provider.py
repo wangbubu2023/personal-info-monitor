@@ -179,4 +179,6 @@ async def test_ollama_generate_text_appends_no_think_when_requested():
 
     payload = mock_client.stream.call_args.kwargs["json"]
     assert payload["think"] is False
+    assert payload["messages"][0]["content"] == "你是一个严谨的翻译助手。"
+    assert payload["messages"][1]["content"] == "translate this /no_think"
     assert payload["options"]["num_ctx"] == OLLAMA_NUM_CTX_TRANSLATION_DEFAULT

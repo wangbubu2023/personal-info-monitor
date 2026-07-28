@@ -26,6 +26,20 @@ def test_strip_markdown_removes_bold_and_link_urls():
     assert cleaned.startswith("Summary")
 
 
+def test_strip_markdown_drops_image_alt_text_instead_of_promoting_it_to_body():
+    raw = (
+        "正文第一段。\n\n"
+        "![A diagram showing that the same architecture from big Google AI models "
+        "can be used on a low-end machine.](https://example.com/diagram.png)\n\n"
+        "正文第二段。"
+    )
+
+    cleaned = strip_markdown(raw)
+
+    assert "A diagram showing" not in cleaned
+    assert cleaned == "正文第一段。\n\n正文第二段。"
+
+
 def test_normalize_article_text_preserves_readable_sentences():
     cleaned = normalize_article_text(SAMPLE)
 
@@ -56,6 +70,19 @@ def test_normalize_article_text_strips_embed_noise_lines():
     assert "Lead paragraph about OpenAI." in cleaned
     assert "Next paragraph after an embed placeholder." in cleaned
     assert cleaned.count("\n\n") == 1
+
+
+def test_normalize_article_text_strips_site_ad_disclosure_paragraph():
+    raw = (
+        "IT之家正文第一段。\n\n"
+        "广告声明：文内含有的对外跳转链接用于传递更多信息，IT之家所有文章均包含本声明。\n\n"
+        "IT之家正文第二段。"
+    )
+
+    cleaned = normalize_article_text(raw)
+
+    assert "广告声明" not in cleaned
+    assert cleaned == "IT之家正文第一段。\n\nIT之家正文第二段。"
 
 
 def test_normalize_article_text_single_newline_blocks_become_paragraphs():

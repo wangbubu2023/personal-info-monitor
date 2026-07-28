@@ -7,6 +7,7 @@ materialise a readable body before we hand it to the translator.
 
 from __future__ import annotations
 
+import re
 from typing import Optional
 from urllib.parse import urlparse
 
@@ -36,9 +37,13 @@ from app.utils.http import permissive_session_kwargs
 from app.utils.logger import get_logger
 from app.platform.security.ssrf import assert_public_http_target, fetch_public_http_text  # noqa: F401
 from app.domains.ingest.quality_metadata import merge_content_quality_metadata
+from app.domains.fetch.fulltext_quality import assess_fulltext_quality
 from app.utils.text import strip_html_tags, truncate_content, normalize_article_text
 
 logger = get_logger(__name__)
+
+_CLS_HOSTS = frozenset({"cls.cn", "www.cls.cn"})
+_CLS_TIMESTAMP_RE = re.compile(r"^20\d{2}年\d{2}月\d{2}日 \d{2}:\d{2}:\d{2}(?:\n+)")
 
 
 _TRANSLATION_CACHE_KEYS = (
@@ -102,8 +107,23 @@ async def fetch_reader_fulltext(original_url: str) -> tuple[str, str]:
     structured = extract_structured_article(html_text, min_chars=120)
     extracted = structured.text if structured else await ContentExtractor().extract(html_text, final_url)
     clean_text = normalize_article_text(extracted or "").strip()
-    if len(clean_text) < 120:
+    trusted_structured = bool(structured and structured.method == "cls_next_data")
+    if len(clean_text) < 120 and not trusted_structured:
         return "", ""
+    if not trusted_structured:
+        verdict = assess_fulltext_quality(
+            body=clean_text,
+            url=final_url,
+        )
+        if verdict.status not in {"full", "partial"}:
+            logger.info(
+                "Reader fulltext rejected for %s: status=%s reason=%s chars=%d",
+                final_url,
+                verdict.status,
+                verdict.reason,
+                verdict.text_chars,
+            )
+            return "", ""
     return clean_text, final_url
 
 
@@ -256,6 +276,8 @@ def _website_body_needs_reader_backfill(content: Content, metadata: dict, body_r
         return False
     if not (content.original_url or "").strip():
         return False
+    if metadata.get("article_fulltext") and not metadata.get("reader_fulltext_backfill_failed"):
+        return False
     status = str(metadata.get("fulltext_status") or "").strip()
     body_len = len((content.full_content or "").strip())
     if status in {"summary_only", "title_only"}:
@@ -266,6 +288,24 @@ def _website_body_needs_reader_backfill(content: Content, metadata: dict, body_r
     if not metadata.get("article_fulltext") and body_len < 280:
         return True
     return not body_raw
+
+
+def _is_trusted_cls_reader_body(url: str, body: str, title: str) -> bool:
+    try:
+        host = (urlparse(url).hostname or "").lower()
+    except ValueError:
+        return False
+    if host not in _CLS_HOSTS or not _CLS_TIMESTAMP_RE.match(body or ""):
+        return False
+    clean_title = normalize_article_text(title or "").strip()
+    return bool(clean_title and clean_title in body)
+
+
+def _reader_backfill_quality_ok(*, url: str, title: str, body: str) -> tuple[bool, str]:
+    if _is_trusted_cls_reader_body(url, body, title):
+        return True, "cls_next_data"
+    verdict = assess_fulltext_quality(title=title, body=body, url=url)
+    return verdict.status in {"full", "partial"}, verdict.status
 
 
 async def backfill_website_reader_body(
@@ -287,16 +327,36 @@ async def backfill_website_reader_body(
         await db.commit()
         return body_raw, merged
 
+    effective_url = resolved_url or content.original_url or ""
+    accepted, quality_status = _reader_backfill_quality_ok(
+        url=effective_url,
+        title=str(content.title or ""),
+        body=fetched_body,
+    )
+    if not accepted:
+        merged = dict(metadata)
+        merged["reader_fulltext_backfill_failed_at"] = utcnow_naive().isoformat()
+        merged["reader_fulltext_backfill_failed"] = True
+        merged["reader_fulltext_backfill_rejected_status"] = quality_status
+        content.metadata_ = merged
+        await db.commit()
+        return body_raw, merged
+
     content.full_content = truncate_content(fetched_body, url=resolved_url or content.original_url or "")
-    if not (content.summary or "").strip():
-        preview = fetched_body[:500]
-        content.summary = preview + ("..." if len(fetched_body) > 500 else "")
+    if getattr(content, "is_user_edited", False) is not True:
+        summary_body = _CLS_TIMESTAMP_RE.sub("", fetched_body, count=1).strip()
+        preview = summary_body[:500]
+        content.summary = preview + ("..." if len(summary_body) > 500 else "")
 
     merged = clear_reader_translation_cache(metadata)
     merged["reader_fulltext_backfilled_at"] = utcnow_naive().isoformat()
     merged.pop("reader_fulltext_backfill_failed", None)
     merged.pop("reader_fulltext_backfill_failed_at", None)
     merged["article_fulltext"] = True
+    merged["article_extract_method"] = (
+        "structured:cls_next_data" if quality_status == "cls_next_data" else "reader_fallback"
+    )
+    merged["reader_fulltext_quality_status"] = quality_status
     if resolved_url and resolved_url != content.original_url:
         merged["resolved_original_url"] = resolved_url
         content.original_url = resolved_url

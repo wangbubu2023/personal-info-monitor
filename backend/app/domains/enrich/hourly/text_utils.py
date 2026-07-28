@@ -202,18 +202,77 @@ def hourly_digest_skip_format_validation() -> bool:
     return raw in {"1", "true", "yes", "on"}
 
 
-def is_valid_digest_format(body: str) -> bool:
-    """Sanity-check the LLM output before we commit it as a digest."""
+_DIGEST_SECTION_HEADINGS = (
+    "### 需要你现在知道",
+    "### 正在发酵",
+    "### 可稍后看",
+)
+
+_LLM_META_REASONING_MARKERS = (
+    "首先，用户要求",
+    "首先，任务是",
+    "用户要求我",
+    "我需要",
+    "我必须",
+    "我们需要",
+    "关键点：",
+    "the user asks",
+    "i need to",
+    "we need to",
+)
+
+
+def is_valid_digest_format(
+    body: str,
+    *,
+    expected_title: str | None = None,
+    require_reader_link: bool = False,
+) -> bool:
+    """Validate the complete public briefing contract before persistence.
+
+    Merely containing Markdown markers is insufficient: leaked model
+    scratchpads repeat prompt examples and therefore used to pass the old
+    substring check.  Require the actual title/summary/section sequence and
+    reject common meta-reasoning language.
+    """
+
     text = (body or "").strip()
     if not text:
         return False
     if hourly_digest_skip_format_validation():
         return True
-    if "### " in text and "来源：" in text:
-        return True
-    if "## " in text and "/reader/" in text and len(text) >= 80:
-        return True
-    return False
+    if len(text) > 8000:
+        return False
+    if require_reader_link and "/reader/" not in text:
+        return False
+
+    folded = text.casefold()
+    if any(marker.casefold() in folded for marker in _LLM_META_REASONING_MARKERS):
+        return False
+
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    if len(lines) < 5:
+        return False
+
+    expected_heading = f"## {expected_title.strip()}" if expected_title else None
+    if expected_heading:
+        if lines[0] != expected_heading:
+            return False
+    elif not re.fullmatch(r"##\s+\S.*", lines[0]):
+        return False
+
+    if not lines[1].startswith("一句话："):
+        return False
+
+    h2_lines = [line for line in lines if line.startswith("## ")]
+    if h2_lines != [lines[0]]:
+        return False
+    h3_lines = [line for line in lines if line.startswith("### ")]
+    if h3_lines != list(_DIGEST_SECTION_HEADINGS):
+        return False
+
+    positions = [lines.index(heading) for heading in _DIGEST_SECTION_HEADINGS]
+    return positions == sorted(positions) and positions[0] > 1
 
 
 ORDERED_DIGEST_CATEGORIES: tuple[str, ...] = (

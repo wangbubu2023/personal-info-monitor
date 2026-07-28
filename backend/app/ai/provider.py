@@ -281,15 +281,16 @@ async def ollama_generate_text(
 ) -> str:
     """Generate text via local Ollama with streaming and tuned runtime options."""
     base = _normalize_api_base(api_base)
+    # Qwen3's prompt control is scoped to the current user turn.  Appending
+    # ``/no_think`` to the system message looks plausible but older Ollama
+    # Qwen3 templates ignore it and still emit a full scratchpad.
+    user_prompt = append_ollama_no_think(prompt, enabled=no_think)
     if system_prompt:
-        merged_prompt = f"{append_ollama_no_think(system_prompt, enabled=no_think)}\n\n{prompt}"
+        merged_prompt = f"{system_prompt}\n\n{user_prompt}"
     else:
-        merged_prompt = append_ollama_no_think(prompt, enabled=no_think)
+        merged_prompt = user_prompt
 
-    sys_content = append_ollama_no_think(
-        system_prompt or "You are a helpful assistant.",
-        enabled=no_think,
-    )
+    sys_content = system_prompt or "You are a helpful assistant."
     options = ollama_request_options(
         temperature=temperature,
         num_ctx=num_ctx,
@@ -312,7 +313,7 @@ async def ollama_generate_text(
         "model": model,
         "messages": [
             {"role": "system", "content": sys_content},
-            {"role": "user", "content": prompt},
+            {"role": "user", "content": user_prompt},
         ],
         "stream": True,
         "keep_alive": OLLAMA_KEEP_ALIVE,

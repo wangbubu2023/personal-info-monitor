@@ -12,9 +12,14 @@ from typing import Optional
 from app.utils.url import normalize_host
 
 _X_HOSTS: frozenset[str] = frozenset({"x.com", "twitter.com"})
-
-
 def is_x_host(host: Optional[str]) -> bool:
     """Whether ``host`` refers to the X (ex-Twitter) family of sites."""
 
     return normalize_host(host or "") in _X_HOSTS
+
+
+def is_wsj_host(host: Optional[str]) -> bool:
+    """Whether ``host`` belongs to The Wall Street Journal."""
+
+    normalized = normalize_host(host or "")
+    return normalized == "wsj.com" or normalized.endswith(".wsj.com")

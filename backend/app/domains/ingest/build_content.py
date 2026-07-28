@@ -24,7 +24,7 @@ from typing import List
 from app.models import Content, Source
 from app.utils.datetime import utcnow_naive
 from app.utils.logger import get_logger
-from app.utils.structured_article import extract_article_page_metadata
+from app.utils.structured_article import extract_article_page_metadata, extract_structured_article
 from app.utils.text import strip_html_tags, truncate_content, normalize_article_text
 from app.utils.url import canonical_article_external_id
 from app.domains.ingest.quality import (
@@ -63,6 +63,7 @@ async def build_raw_content_objects(
             main_text = raw.get("content", "")
             html = raw.get("html")
             clean_result = None
+            structured_result = None
 
             web_clean_active = bool(
                 html
@@ -97,7 +98,15 @@ async def build_raw_content_objects(
             if settings.pim_web_clean_enabled and clean_result and clean_result.article_text:
                 main_text = clean_result.article_markdown or clean_result.article_text
             elif html and not main_text:
-                main_text = await extractor.extract(html, raw.get("url"))
+                structured_result = await asyncio.to_thread(
+                    extract_structured_article,
+                    str(html),
+                    min_chars=120,
+                )
+                if structured_result:
+                    main_text = structured_result.text
+                else:
+                    main_text = await extractor.extract(html, raw.get("url"))
 
             main_text_clean = await asyncio.to_thread(normalize_article_text, main_text) if main_text else ""
             title = await asyncio.to_thread(strip_html_tags, raw.get("title", "Untitled"))
@@ -110,6 +119,10 @@ async def build_raw_content_objects(
             metadata = raw.get("metadata")
             if not isinstance(metadata, dict):
                 metadata = {}
+            if structured_result:
+                metadata = dict(metadata)
+                metadata["article_fulltext"] = True
+                metadata["article_extract_method"] = f"structured:{structured_result.method}"
             metadata, publish_time = await asyncio.to_thread(_merge_article_page_metadata, raw, metadata)
             if clean_result and settings.pim_web_clean_write_metadata:
                 from app.domains.fetch.web_clean.shadow import build_shadow_diff

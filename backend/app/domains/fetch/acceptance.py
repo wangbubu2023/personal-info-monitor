@@ -108,6 +108,13 @@ def assess_fetch_acceptance(
     if content_type in {"website", "rss"}:
         if not title:
             return False, "missing_title"
+        trusted_structured_short = (
+            str(metadata.get("article_extract_method") or "") == "structured:cls_next_data"
+            and len(body) >= 20
+            and title in body
+        )
+        if trusted_structured_short:
+            return True, "ok_trusted_structured_short"
         relaxed_authority = _title_only_relaxed_authority(source_metadata)
         if relaxed_authority and status == "title_only":
             return True, f"ok_relaxed_title_only_{relaxed_authority}"

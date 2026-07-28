@@ -676,7 +676,7 @@ class TestEnsureReaderBody:
 class TestBackfillWebsiteReaderBody:
 
     @pytest.mark.asyncio
-    async def test_partial_short_body_triggers_backfill(self):
+    async def test_partial_short_body_marked_as_article_fulltext_does_not_refetch(self):
         content = MagicMock()
         content.content_type = "website"
         content.original_url = "https://cn.nytimes.com/china/article/"
@@ -692,8 +692,8 @@ class TestBackfillWebsiteReaderBody:
                     content.full_content,
                     db,
                 )
-                assert "Full article" in body
-                mock_fetch.assert_awaited_once()
+                assert body == content.full_content
+                mock_fetch.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_non_empty_body_skips(self):
@@ -819,6 +819,73 @@ class TestBackfillWebsiteReaderBody:
                 assert meta.get("reader_fulltext_backfilled_at")
                 assert meta.get("article_fulltext") is True
                 db.commit.assert_called()
+
+    @pytest.mark.asyncio
+    async def test_rejects_boilerplate_backfill_without_overwriting_body(self):
+        content = MagicMock()
+        content.content_type = "website"
+        content.title = "财联社短电报"
+        content.original_url = "https://www.cls.cn/detail/123"
+        content.summary = "原摘要"
+        content.full_content = "原正文"
+        content.is_user_edited = False
+        dirty = (
+            "关于我们 网站声明 联系方式 用户反馈 网站地图 关联话题 "
+            "举报电话 举报邮箱 沪ICP备 沪公网安备 互联网新闻信息服务许可证 "
+        ) * 8
+        db = AsyncMock()
+        with patch(
+            "app.domains.enrich.reader.body_loader.fetch_reader_fulltext",
+            new_callable=AsyncMock,
+            return_value=(dirty, content.original_url),
+        ):
+            body, meta = await _backfill_website_reader_body(
+                content,
+                {"fulltext_status": "summary_only"},
+                content.full_content,
+                db,
+            )
+
+        assert body == "原正文"
+        assert content.full_content == "原正文"
+        assert meta["reader_fulltext_backfill_failed"] is True
+        assert meta["reader_fulltext_backfill_rejected_status"] == "boilerplate_only"
+
+    @pytest.mark.asyncio
+    async def test_accepts_trusted_short_cls_structured_body(self):
+        content = MagicMock()
+        content.content_type = "website"
+        content.title = "财联社7月28日电，上期所原油主力合约日内跌幅扩大至6%，报531.1元/桶。"
+        content.original_url = "https://www.cls.cn/detail/2438608"
+        content.summary = "旧摘要"
+        content.full_content = ""
+        content.translated_summary = None
+        content.is_user_edited = False
+        fetched = (
+            "2026年07月28日 10:32:15\n\n"
+            "财联社7月28日电，上期所原油主力合约日内跌幅扩大至6%，报531.1元/桶。"
+        )
+        db = AsyncMock()
+        with patch(
+            "app.domains.enrich.reader.body_loader.fetch_reader_fulltext",
+            new_callable=AsyncMock,
+            return_value=(fetched, content.original_url),
+        ):
+            with patch(
+                "app.domains.enrich.reader.body_loader.truncate_content",
+                return_value=fetched,
+            ):
+                body, meta = await _backfill_website_reader_body(
+                    content,
+                    {"fulltext_status": "title_only"},
+                    "",
+                    db,
+                )
+
+        assert body == fetched
+        assert content.summary == content.title
+        assert meta["article_extract_method"] == "structured:cls_next_data"
+        assert meta["reader_fulltext_quality_status"] == "cls_next_data"
 
     @pytest.mark.asyncio
     async def test_backfill_updates_resolved_url(self):

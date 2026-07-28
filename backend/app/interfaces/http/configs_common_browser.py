@@ -33,10 +33,13 @@ from app.platform.browser.bootstrap import (
     _require_playwright,
     run_browser_bootstrap,
 )
-from app.platform.browser.hosts import _X_HOSTS, is_x_host
+from app.platform.browser.hosts import _X_HOSTS, is_wsj_host, is_x_host
 from app.platform.browser.profiles import profiles_root, slugify_profile_name
 from app.platform.browser.validation import (
     _run_x_cookie_validation,
+    _has_wsj_authenticated_session,
+    _run_wsj_session_validation,
+    _wsj_auth_cookie_names,
     _validation_html_for_wall_scan,
     _validation_paragraph_count,
     browser_validation_probe_url,
@@ -47,6 +50,7 @@ __all__ = [
     "bind_browser_session_to_sources",
     "browser_validation_probe_url",
     "ensure_x_shared_auth_config",
+    "is_wsj_host",
     "is_x_host",
     "profiles_root",
     "run_browser_bootstrap",

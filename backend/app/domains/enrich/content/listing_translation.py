@@ -154,7 +154,10 @@ async def run_listing_translation_job(content_id: str) -> bool:
 
 async def translate_listing_fields_async(content_id: str) -> bool:
     """Populate ``translated_title`` / ``translated_summary`` for one Content row."""
-    if not listing_translation_enabled():
+    # System settings use a small process-wide threading lock. Never acquire it
+    # directly on the event loop: concurrent startup backfills can otherwise
+    # stall every HTTP request while another worker refreshes the cache.
+    if not await asyncio.to_thread(listing_translation_enabled):
         return False
 
     from app.platform.llm.policy import resolve_translation_state
@@ -190,7 +193,7 @@ async def _translate_listing_fields_impl(content_id: str) -> bool:
         await asyncio.to_thread(db.commit)
 
         translator = Translator()
-        target_language = _resolve_target_language()
+        target_language = await asyncio.to_thread(_resolve_target_language)
 
         original_title = (content.title or "").strip()
         if (

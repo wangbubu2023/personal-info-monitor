@@ -109,14 +109,27 @@ _async_db_slots = asyncio.Semaphore(_ASYNC_DB_CONCURRENCY)
 
 
 def _install_sqlite_single_writer_hooks() -> None:
-    """Serialize ORM write transactions without serializing read-only sessions."""
+    """Serialize synchronous ORM writes without blocking the async event loop.
+
+    AsyncSession delegates SQLite work to aiosqlite worker threads. Acquiring
+    the process-wide threading lock from its synchronous event hooks would
+    block the event-loop thread while a background writer held the lock.
+    SQLite's busy timeout already coordinates those async-driver writes, so
+    only synchronous background sessions use the process-wide mutex.
+    """
     if engine.dialect.name != "sqlite":
         return
     from app.platform.persistence.write_queue import sqlite_write_coordinator
 
+    def _uses_async_driver(session: Session) -> bool:
+        bind = session.get_bind()
+        return bool(getattr(bind.dialect, "is_async", False))
+
     @event.listens_for(Session, "before_flush")
     def _acquire_writer(session, flush_context, instances):
         if session.get_bind().dialect.name != "sqlite":
+            return
+        if _uses_async_driver(session):
             return
         if session.info.get("_pim_writer_started") is not None:
             return
@@ -128,6 +141,8 @@ def _install_sqlite_single_writer_hooks() -> None:
     def _acquire_bulk_writer(orm_execute_state):
         session = orm_execute_state.session
         if session.get_bind().dialect.name != "sqlite":
+            return
+        if _uses_async_driver(session):
             return
         if session.info.get("_pim_writer_started") is not None:
             return

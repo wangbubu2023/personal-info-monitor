@@ -7,7 +7,7 @@ from app.domains.fetch.collectors.fetch_profile import (
     diagnose_article_html,
     get_fetch_profile,
 )
-from app.utils.structured_article import extract_structured_article
+from app.utils.structured_article import extract_article_page_metadata, extract_structured_article
 
 
 def test_extracts_json_ld_article_body():
@@ -75,6 +75,113 @@ def test_extracts_next_data_content_html():
     assert result.method == "next_data"
     assert "Second paragraph carries the actual body" in result.text
     assert "<p>" not in result.text
+
+
+def test_extracts_current_prismic_next_article_without_read_next_posts_or_image_alt():
+    intro = "The visible introduction explains the opening example in enough detail. " * 3
+    section_one = "The first hidden section contains the individual effects and supporting evidence. " * 5
+    section_two = "The second hidden section explains why the bias happens and how to avoid it. " * 5
+    unrelated = "This is a different recommended article and must never enter the current body. " * 20
+    payload = {
+        "props": {
+            "pageProps": {
+                "page": {
+                    "title": [{"type": "heading1", "text": "Current Prismic Article"}],
+                    "excerpt_title": [{"type": "heading2", "text": "What is this bias?"}],
+                    "excerpt": [
+                        {"type": "paragraph", "text": "A concise definition of the current bias."},
+                        {"type": "image", "alt": "Decorative image alt that is not body text"},
+                    ],
+                    "intro_section_title": [{"type": "heading2", "text": "Where this bias occurs"}],
+                    "intro_section_body": [{"type": "paragraph", "text": intro}],
+                    "body": [
+                        {
+                            "slice_type": "content_section",
+                            "primary": {
+                                "title": [{"type": "heading2", "text": "Individual effects"}],
+                                "content_block": [{"type": "paragraph", "text": section_one}],
+                            },
+                        },
+                        {
+                            "slice_type": "content_section",
+                            "primary": {
+                                "title": [{"type": "heading2", "text": "How to avoid it"}],
+                                "content_block": [{"type": "paragraph", "text": section_two}],
+                            },
+                        },
+                        {
+                            "slice_type": "content_section",
+                            "primary": {
+                                "title": [{"type": "heading2", "text": "Related TDL articles"}],
+                                "content_block": [{"type": "paragraph", "text": unrelated}],
+                            },
+                        },
+                    ],
+                    "sources": [{"type": "o-list-item", "text": "A relevant source citation."}],
+                    "read_next_posts": [{"post": {"content": unrelated}}],
+                }
+            }
+        }
+    }
+    html = (
+        "<html><body><p>Only the short intro is server-rendered.</p>"
+        f'<script id="__NEXT_DATA__" type="application/json">{json.dumps(payload)}</script>'
+        "</body></html>"
+    )
+
+    result = extract_structured_article(html, min_chars=120)
+
+    assert result is not None
+    assert result.method == "prismic_next_data"
+    assert result.title == "Current Prismic Article"
+    assert "Individual effects" in result.text
+    assert "How to avoid it" in result.text
+    assert "A relevant source citation." in result.text
+    assert unrelated.strip() not in result.text
+    assert "Decorative image alt" not in result.text
+    assert result.signals["section_count"] == 2
+    assert result.signals["skipped_related_sections"] == 1
+
+
+def test_extracts_short_cls_telegraph_from_item_scoped_next_data():
+    html = """
+    <html><body>
+      <nav>关于我们 网站声明 首页 电报 关联话题</nav>
+      <script id="__NEXT_DATA__" type="application/json">
+      {
+        "props": {
+          "pageProps": {
+            "articleDetail": {
+              "id": 2438608,
+              "title": "财联社7月28日电，上期所原油主力合约日内跌幅扩大至6%，报531.1元/桶。",
+              "content": "财联社7月28日电，上期所原油主力合约日内跌幅扩大至6%，报531.1元/桶。",
+              "ctime": 1785205935
+            }
+          }
+        }
+      }
+      </script>
+      <footer>沪ICP备14040942号-9 沪公网安备31010402006047号</footer>
+    </body></html>
+    """
+
+    result = extract_structured_article(html, min_chars=120)
+
+    assert result is not None
+    assert result.method == "cls_next_data"
+    assert result.text == (
+        "2026年07月28日 10:32:15\n\n"
+        "财联社7月28日电，上期所原油主力合约日内跌幅扩大至6%，报531.1元/桶。"
+    )
+    assert "关于我们" not in result.text
+    assert result.signals["body_key"] == "props.pageProps.articleDetail.content"
+
+    metadata = extract_article_page_metadata(
+        html,
+        page_url="https://www.cls.cn/detail/2438608",
+    )
+    assert metadata["published_time"].isoformat() == "2026-07-28T02:32:15+00:00"
+    assert metadata["published_time_raw"] == "1785205935"
 
 
 def test_extracts_structured_html_body_with_paragraph_breaks():

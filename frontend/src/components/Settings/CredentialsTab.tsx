@@ -131,25 +131,6 @@ const CredentialsTab: React.FC = () => {
   }
 
   // ---- mutations: browser sessions ---------------------------------------
-  const createSessionMutation = useMutation({
-    mutationFn: browserSessionsApi.create,
-    onSuccess: async (created) => {
-      await invalidate()
-      message.success('已创建登录会话')
-      setCreateSessionOpen(false)
-      createSessionForm.resetFields()
-      setOpeningSession(created)
-      openForm.resetFields()
-    },
-    onError: (err: unknown) => {
-      const detail =
-        typeof err === 'object' && err && 'response' in err
-          ? ((err as any).response?.data?.detail as string | undefined)
-          : undefined
-      message.error(detail || '创建失败')
-    },
-  })
-
   const openLoginMutation = useMutation({
     mutationFn: ({ id, payload }: { id: string; payload: OpenLoginFormValues }) =>
       browserSessionsApi.openLogin(id, {
@@ -172,12 +153,41 @@ const CredentialsTab: React.FC = () => {
     },
   })
 
+  const createSessionMutation = useMutation({
+    mutationFn: browserSessionsApi.create,
+    onSuccess: async (created) => {
+      await invalidate()
+      setCreateSessionOpen(false)
+      createSessionForm.resetFields()
+      setOpeningSession(created)
+      openForm.resetFields()
+      message.success('已创建登录会话，正在打开登录窗口')
+      openLoginMutation.mutate({
+        id: created.id,
+        payload: {
+          dwell_seconds: 300,
+          bootstrap_auth_cookies: true,
+        },
+      })
+    },
+    onError: (err: unknown) => {
+      const detail =
+        typeof err === 'object' && err && 'response' in err
+          ? ((err as any).response?.data?.detail as string | undefined)
+          : undefined
+      message.error(detail || '创建失败')
+    },
+  })
+
   const validateSessionMutation = useMutation({
     mutationFn: (id: string) => browserSessionsApi.validate(id, {}),
     onSuccess: async (res) => {
       await invalidate()
       if (res.status === 'active') {
-        message.success(`会话可用：抓到 ${res.validation?.paragraph_count ?? 0} 段正文`)
+        message.success(
+          res.validation?.message ||
+            `会话可用：抓到 ${res.validation?.paragraph_count ?? 0} 段正文`,
+        )
       } else {
         message.warning(res.validation?.message || res.last_error || '会话校验未通过')
       }

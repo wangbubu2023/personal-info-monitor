@@ -26,7 +26,7 @@ from app.platform.browser.bootstrap import (
     _BROWSER_USER_AGENT,
     _require_playwright,
 )
-from app.platform.browser.hosts import is_x_host
+from app.platform.browser.hosts import is_wsj_host, is_x_host
 from app.platform.observability.logger import get_logger
 from app.platform.browser.playwright_runtime import (
     async_playwright,
@@ -38,6 +38,8 @@ from app.platform.browser.playwright_stealth import stealth_init_script
 from app.utils.url import host_matches, normalize_host
 
 logger = get_logger(__name__)
+
+_WSJ_AUTH_COOKIE_NAMES = frozenset({"djsession", "sso", "session", "usr_prof_v2"})
 
 
 async def _open_validation_context(
@@ -188,6 +190,13 @@ async def run_browser_validation(
             storage_state_path=storage_state_path,
             session_mode=mode,
         )
+    if is_wsj_host(site_host):
+        return await _run_wsj_session_validation(
+            user_data_dir=user_data_dir,
+            site_url=site_url,
+            storage_state_path=storage_state_path,
+            session_mode=mode,
+        )
 
     target_url = browser_validation_probe_url(site_url, test_url)
     async with async_playwright() as p:
@@ -272,6 +281,110 @@ async def run_browser_validation(
                 "cookie_count": len(cookies_now),
                 "paragraph_count": paragraph_count,
                 "cookies": cookies_now,
+            }
+        finally:
+            await context.close()
+
+
+def _wsj_auth_cookie_names(cookies: List[dict]) -> set[str]:
+    """Return authentication-bearing WSJ/Dow Jones cookie names.
+
+    WSJ's homepage is not article-shaped and its headless response can be a
+    DataDome challenge even when the persistent profile is fully signed in.
+    Login validity therefore comes from first-party WSJ/Dow Jones SSO cookies,
+    not from counting ``article p`` nodes on the homepage.
+    """
+
+    names: set[str] = set()
+    for cookie in cookies or []:
+        domain = str(cookie.get("domain") or "").strip().lower().lstrip(".")
+        if not (
+            domain == "wsj.com"
+            or domain.endswith(".wsj.com")
+            or domain == "dowjones.com"
+            or domain.endswith(".dowjones.com")
+        ):
+            continue
+        name = str(cookie.get("name") or "").strip().lower()
+        if name in _WSJ_AUTH_COOKIE_NAMES:
+            names.add(name)
+    return names
+
+
+def _has_wsj_authenticated_session(cookies: List[dict]) -> bool:
+    """Require both a WSJ session and a Dow Jones SSO/account signal."""
+
+    names = _wsj_auth_cookie_names(cookies)
+    return "djsession" in names and bool(names & {"sso", "session", "usr_prof_v2"})
+
+
+async def _run_wsj_session_validation(
+    *,
+    user_data_dir: str | None,
+    site_url: str,
+    storage_state_path: str | None = None,
+    session_mode: str = "persistent_profile",
+) -> Dict[str, Any]:
+    """WSJ-specific validation based on the session cookies used after login.
+
+    A generic homepage paragraph check produces a deterministic false negative:
+    wsj.com has no article body at the root, while a fresh headless visit may
+    independently trigger DataDome.  The persistent profile remains useful to
+    article fetches when it carries ``DJSESSION`` plus a Dow Jones SSO signal.
+    """
+
+    async with async_playwright() as p:
+        context = await _open_validation_context(
+            p,
+            user_data_dir=user_data_dir,
+            storage_state_path=storage_state_path,
+            session_mode=session_mode,
+        )
+        try:
+            page = context.pages[0] if context.pages else await context.new_page()
+            if not is_patchright_active():
+                await page.add_init_script(stealth_init_script())
+            probe_url = "https://www.wsj.com/"
+            try:
+                await page.goto(probe_url, wait_until="domcontentloaded", timeout=45000)
+                await page.wait_for_timeout(1200)
+            except Exception as exc:  # noqa: BLE001 - cookies remain inspectable
+                logger.warning("WSJ validation navigation to %s failed: %s", probe_url, exc)
+
+            cookies_now = await context.cookies()
+            final_url = page.url or probe_url
+            title = await page.title()
+            auth_names = _wsj_auth_cookie_names(cookies_now)
+            logged_in = _has_wsj_authenticated_session(cookies_now)
+            bounced_to_login = any(
+                marker in final_url.lower()
+                for marker in ("/login", "/signin", "/sign-in", "accounts.dowjones.com")
+            )
+
+            if logged_in and not bounced_to_login:
+                message = "WSJ 登录态有效（DJSESSION 与 Dow Jones SSO 会话已就绪）"
+                status = BrowserSessionStatus.ACTIVE
+            elif bounced_to_login:
+                message = "WSJ 未登录（被重定向到登录页）"
+                status = BrowserSessionStatus.NEEDS_LOGIN
+            else:
+                missing = []
+                if "djsession" not in auth_names:
+                    missing.append("DJSESSION")
+                if not auth_names.intersection({"sso", "session", "usr_prof_v2"}):
+                    missing.append("Dow Jones SSO")
+                message = f"WSJ 登录态不完整（缺少 {', '.join(missing) or '会话 Cookie'}）"
+                status = BrowserSessionStatus.NEEDS_LOGIN
+
+            return {
+                "status": status,
+                "message": message,
+                "final_url": final_url,
+                "title": title,
+                "cookie_count": len(cookies_now),
+                "paragraph_count": 0,
+                "cookies": cookies_now,
+                "validation_kind": "wsj_session_cookies",
             }
         finally:
             await context.close()

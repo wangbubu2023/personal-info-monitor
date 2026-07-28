@@ -293,6 +293,41 @@ def _missing_confirmation(cluster: dict, confidence: float) -> str:
     return "后续还需要观察是否有一手材料或官方确认。"
 
 
+_NON_SUBSTANTIVE_EVENT_SUMMARIES = {
+    "comment",
+    "comments",
+    "no comments",
+    "本小时出现新的相关信号。",
+    "出现新的报道或材料。",
+    "该事件在本次简报窗口内出现新的进展。",
+}
+
+
+def filter_hourly_digest_event_items(event_items: list[dict]) -> list[dict]:
+    """Keep only event cards with enough evidence to support a briefing claim.
+
+    Title-only rows and feed placeholders such as Hacker News ``Comments`` do
+    not contain a factual change the writer can safely summarize.  Passing
+    them to the LLM previously produced invented filler ("综合评分较高") and
+    polluted the deterministic fallback as well.
+    """
+
+    kept: list[dict] = []
+    for item in event_items:
+        title = " ".join(str(item.get("title") or "").split()).strip()
+        summary = " ".join(str(item.get("summary") or "").split()).strip()
+        normalized_summary = summary.casefold().rstrip("。.!！")
+        if len(title) < 4:
+            continue
+        if not summary or normalized_summary in {
+            value.casefold().rstrip("。.!！")
+            for value in _NON_SUBSTANTIVE_EVENT_SUMMARIES
+        }:
+            continue
+        kept.append(item)
+    return kept
+
+
 def build_hourly_digest_event_briefing_items(
     clusters: list[dict],
     *,
@@ -321,6 +356,11 @@ def build_hourly_digest_event_briefing_items(
             confidence=confidence,
             corroboration_tier=cluster.get("corroboration_tier"),
         )
+        # A fresh single-source cluster gets a high incremental score by
+        # construction. Do not let that alone promote a very low-importance
+        # item into "正在发酵".
+        if importance < 30:
+            section = "later"
         source_names: list[str] = []
         source_keys: list[str] = []
         content_ids: list[str] = []

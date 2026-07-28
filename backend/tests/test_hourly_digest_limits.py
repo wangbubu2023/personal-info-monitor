@@ -146,6 +146,32 @@ def test_build_hourly_briefing_digest_uses_redesigned_sections():
     assert "- [产品小更新](/reader/ghi)（Blog，重要性 61）" in body
 
 
+def test_llm_synthesis_disables_reasoning_and_caps_output():
+    calls = []
+
+    class _FakeClient:
+        async def generate_text(self, runtime, **kwargs):
+            calls.append(kwargs)
+            return "ok"
+
+    class _Runtime:
+        max_tokens = 2400
+
+    result = asyncio.run(
+        digest_tasks._llm_synthesize_hourly_digest(
+            _FakeClient(),
+            _Runtime(),
+            title="7 月 28 日 9 时简报",
+            materials="### 事件 1",
+            task_prompt="只写最终简报。",
+        )
+    )
+
+    assert result == "ok"
+    assert calls[0]["no_think"] is True
+    assert calls[0]["max_tokens"] == 2400
+
+
 def test_localize_fallback_clusters_translates_primary_items(monkeypatch):
     class _FakeTranslator:
         def is_chinese(self, text: str) -> bool:
@@ -166,8 +192,17 @@ def test_localize_fallback_clusters_translates_primary_items(monkeypatch):
 
 def test_is_valid_digest_format_accepts_synthesized_reader_links():
     title = "3 月 31 日 19 时简报"
-    body = f"## {title}\n\n本小时最值得关注的动态集中在政策与科技交叉领域。[详情](/reader/abc) 与 [延伸](/reader/def) 显示多方信息正在收敛。"
-    assert digest_tasks._is_valid_digest_format(body)
+    body = (
+        f"## {title}\n\n"
+        "一句话：本小时最值得关注的动态集中在政策与科技交叉领域。\n\n"
+        "### 需要你现在知道\n\n"
+        "[详情](/reader/abc) 显示多方信息正在收敛。\n\n"
+        "### 正在发酵\n\n"
+        "暂无。\n\n"
+        "### 可稍后看\n\n"
+        "- [延伸](/reader/def)"
+    )
+    assert digest_tasks._is_valid_digest_format(body, expected_title=title)
 
 
 def test_parse_selection_ids_filters_and_caps():

@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from app.domains.fetch.fulltext_quality import assess_fulltext_quality
+from app.domains.fetch.acceptance import assess_fetch_acceptance
+from app.domains.ingest.quality_metadata import assess_content_quality
 
 
 def test_full_article():
@@ -86,6 +88,68 @@ def test_empty():
     q = assess_fulltext_quality(title="", body="", summary="", url="")
     assert q.status == "empty"
     assert q.text_chars == 0
+
+
+def test_cls_navigation_and_footer_shell_is_boilerplate_even_over_400_chars():
+    body = """
+    关于我们
+    网站声明
+    联系方式
+    用户反馈
+    网站地图
+    首页
+    电报
+    关联话题
+    期货市场情报
+    财联社7月28日电，上期所原油主力合约日内跌幅扩大至6%，报531.1元/桶。
+    举报电话：021-54679377转617
+    举报邮箱：editor@cls.cn
+    ©2018-2026 上海界面财联社科技股份有限公司 版权所有
+    沪ICP备14040942号-9
+    沪公网安备31010402006047号
+    互联网新闻信息服务许可证：31120170007
+    """ + ("导航 " * 100)
+
+    q = assess_fulltext_quality(
+        title="财联社7月28日电，上期所原油主力合约日内跌幅扩大至6%",
+        body=body,
+        url="https://www.cls.cn/detail/2438608",
+    )
+
+    assert 400 <= q.text_chars < 1200
+    assert q.status == "boilerplate_only"
+    assert q.reason == "boilerplate_dominated"
+
+
+def test_trusted_short_cls_structured_body_is_complete_and_accepted():
+    title = "财联社7月28日电，上期所原油主力合约日内跌幅扩大至6%，报531.1元/桶。"
+    body = f"2026年07月28日 10:32:15\n\n{title}"
+    metadata = {"article_extract_method": "structured:cls_next_data"}
+
+    quality = assess_content_quality(
+        title=title,
+        full_content=body,
+        summary=title,
+        metadata=metadata,
+    )
+    assert quality.fulltext_status == "full"
+    assert quality.score_basis == "trusted_structured_fulltext"
+    assert quality.signals["trusted_structured_short"] is True
+
+    content = type(
+        "ContentStub",
+        (),
+        {
+            "content_type": "website",
+            "title": title,
+            "summary": title,
+            "full_content": body,
+        },
+    )()
+    assert assess_fetch_acceptance(content, metadata) == (
+        True,
+        "ok_trusted_structured_short",
+    )
 
 
 def test_summary_only():

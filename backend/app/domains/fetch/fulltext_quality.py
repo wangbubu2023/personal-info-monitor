@@ -72,6 +72,9 @@ _BOILERPLATE_LINE_MARKERS = (
     "subscribe", "newsletter", "sign up", "follow us", "advertisement",
     "©", "menu", "search", "home", "contact us",
     "隐私政策", "服务条款", "版权所有", "订阅", "广告", "关注我们", "免责声明",
+    "关于我们", "网站声明", "联系方式", "用户反馈", "网站地图", "友情链接",
+    "关联话题", "举报电话", "举报邮箱", "沪ICP备", "沪公网安备",
+    "互联网新闻信息服务许可证",
 )
 
 
@@ -204,8 +207,11 @@ def assess_fulltext_quality(
     if body_len == 0 and summary_len == 0 and title_len == 0:
         return FulltextQuality("empty", 0.0, "no_text", 0, None, None)
 
-    # 3. Boilerplate-dominated short page (nav / footer template, not an article).
-    if short_body and distinct_boilerplate >= 3:
+    # 3. Boilerplate-dominated page (nav / footer template, not an article).
+    # Keep the check bounded to sub-1200-char candidates so a legitimate long
+    # article with a small publisher footer is not rejected. The old <400
+    # boundary let 400-600-char navigation shells pass as ``partial``.
+    if body_len < 1200 and distinct_boilerplate >= 3:
         return FulltextQuality("boilerplate_only", 0.05, "boilerplate_dominated", body_len, title_match, boilerplate_ratio)
 
     # 4. Looks like a listing / non-article page: real-but-short text, the URL is

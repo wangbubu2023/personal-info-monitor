@@ -14,6 +14,7 @@ def test_hourly_digest_job_is_always_registered():
     assert "send_daily_digest_emails" in job_ids
     assert "purge_expired_runtime_locks" in job_ids
     assert "requeue_unfinished_content" in job_ids
+    assert "dispatch_pending_postprocess_jobs" in job_ids
 
     hourly_job = scheduler.get_job("generate_hourly_digest")
     assert hourly_job is not None

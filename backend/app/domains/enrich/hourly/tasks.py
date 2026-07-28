@@ -28,6 +28,7 @@ from app.domains.enrich.hourly.repository import (
     build_hourly_digest_event_items,
     build_digest_generation_context,
     clear_hourly_digests,
+    filter_hourly_digest_event_items,
     store_digest,
 )
 from app.domains.enrich.hourly.selection import (
@@ -91,6 +92,8 @@ async def generate_previous_hour_digest() -> None:
         runtime = await get_runtime_from_system_settings(
             setting_key="ai_model",
             default_provider="ollama",
+            # Model selection belongs to the user's AI settings. Keep this
+            # empty so the hourly digest never overrides the configured model.
             default_model="",
             default_api_base="http://localhost:11434",
             default_temperature=0.2,
@@ -105,10 +108,12 @@ async def generate_previous_hour_digest() -> None:
         eligible = [e for e in entries if not is_rejected_selection(e.get("selection_status"))]
         ranked_clusters = RankingService().cluster_and_rank(eligible)
 
-        event_items = build_hourly_digest_event_briefing_items(
-            ranked_clusters,
-            previous_event_index=ctx.get("previous_event_index") or {},
-            limit=max_pick,
+        event_items = filter_hourly_digest_event_items(
+            build_hourly_digest_event_briefing_items(
+                ranked_clusters,
+                previous_event_index=ctx.get("previous_event_index") or {},
+                limit=max_pick,
+            )
         )
 
         def _persist_events():
@@ -141,7 +146,33 @@ async def generate_previous_hour_digest() -> None:
 
         event_items = await asyncio.to_thread(_persist_events)
         if not event_items:
-            event_items = build_hourly_digest_event_items(entries)
+            event_items = filter_hourly_digest_event_items(
+                build_hourly_digest_event_items(entries)
+            )
+
+        has_noteworthy_signal = any(
+            str(item.get("section") or "") in {"need_to_know", "brewing"}
+            for item in event_items
+        )
+        if not event_items or not has_noteworthy_signal:
+            body = build_hourly_briefing_digest(ctx["title"], event_items)
+
+            def _save_without_noteworthy_signal():
+                store_digest(
+                    db,
+                    ctx["digest"],
+                    ctx["title"],
+                    body,
+                    content_count=len(ctx["rows"]),
+                    sources=ctx["source_names"],
+                    items_json=event_items,
+                )
+
+            await asyncio.to_thread(_save_without_noteworthy_signal)
+            logger.info(
+                "Stored deterministic hourly digest because no substantive high-priority signal was available"
+            )
+            return
 
         def _ranked_clusters(n: int):
             # Keep content the selection stage already rejected/deferred out of
@@ -196,7 +227,11 @@ async def generate_previous_hour_digest() -> None:
             body = ""
 
         # --- Path 2: deterministic briefing when the one-shot output doesn't validate.
-        if not is_valid_digest_format(body):
+        if not is_valid_digest_format(
+            body,
+            expected_title=ctx["title"],
+            require_reader_link=True,
+        ):
             body = build_hourly_briefing_digest(
                 ctx["title"],
                 event_items,
@@ -204,7 +239,11 @@ async def generate_previous_hour_digest() -> None:
             )
 
         # --- Path 3: pure rule-based fallback when both AI paths fail format validation.
-        if not is_valid_digest_format(body):
+        if not is_valid_digest_format(
+            body,
+            expected_title=ctx["title"],
+            require_reader_link=True,
+        ):
             logger.warning("Digest output invalid, storing ranked fallback digest")
             reason = degrade_reason or "综述生成未通过校验或模型输出异常，已回退为分类简版（含本地阅读链接）。"
             body = build_hourly_briefing_digest(
@@ -280,6 +319,7 @@ _build_digest_text_seed = _repository.build_digest_text_seed
 _build_entries = _repository.build_entries
 _build_hourly_digest_event_items = _repository.build_hourly_digest_event_items
 _build_hourly_digest_event_briefing_items = _repository.build_hourly_digest_event_briefing_items
+_filter_hourly_digest_event_items = _repository.filter_hourly_digest_event_items
 _load_recent_digest_event_index = _repository.load_recent_digest_event_index
 _compute_digest_window = _repository.compute_digest_window
 _load_digest_rows = _repository.load_digest_rows

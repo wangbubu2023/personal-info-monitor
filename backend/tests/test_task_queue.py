@@ -74,6 +74,21 @@ async def test_enqueue_ingest_finish_many_persists_source_batch_once():
 
 
 @pytest.mark.asyncio
+async def test_enqueue_ingest_finish_many_stops_after_execution_cache_fills():
+    from app.tasks.task_queue import BoundedTaskQueue
+
+    q = BoundedTaskQueue(fetch_maxsize=1, process_maxsize=1)
+    content_ids = ["content-1", "content-2", "content-3"]
+
+    with patch("app.platform.workers.postprocess_jobs.ensure_postprocess_jobs") as ensure:
+        enqueued = await q.enqueue_ingest_finish_many(content_ids, job_id="fetch-1")
+
+    assert enqueued == 1
+    ensure.assert_called_once_with([(content_id, "fetch-1") for content_id in content_ids])
+    assert q._process_queue.qsize() == 1
+
+
+@pytest.mark.asyncio
 async def test_enqueue_listing_translation_uses_process_queue_job_id():
     from app.tasks.task_queue import BoundedTaskQueue, LISTING_TRANSLATION_JOB_ID
 
@@ -135,7 +150,11 @@ async def test_startup_refinish_requeues_recent_unfinished_content():
         SimpleNamespace(id="done", metadata_={"fetch_acceptance": "accepted"}),
     ]
     db = MagicMock()
-    db.query.return_value.filter.return_value.order_by.return_value.limit.return_value.all.return_value = rows
+    contents_query = MagicMock()
+    contents_query.filter.return_value.order_by.return_value.limit.return_value.all.return_value = rows
+    jobs_query = MagicMock()
+    jobs_query.filter.return_value.all.return_value = []
+    db.query.side_effect = [contents_query, jobs_query]
 
     with patch("app.database.SessionLocal", return_value=db):
         with patch(
@@ -145,4 +164,48 @@ async def test_startup_refinish_requeues_recent_unfinished_content():
             count = await enqueue_unfinished_content_on_startup()
 
     assert count == 1
-    enqueue.assert_awaited_once_with(["needs-finish"], job_id="startup-refinish")
+    enqueue.assert_awaited_once_with(["needs-finish"], job_id="recovery-refinish-v1")
+
+
+@pytest.mark.asyncio
+async def test_startup_refinish_skips_content_with_existing_finish_job():
+    from app.platform.runtime.lifespan import enqueue_unfinished_content_on_startup
+
+    rows = [SimpleNamespace(id="already-covered", metadata_={})]
+    contents_query = MagicMock()
+    contents_query.filter.return_value.order_by.return_value.limit.return_value.all.return_value = rows
+    jobs_query = MagicMock()
+    jobs_query.filter.return_value.all.return_value = [("already-covered",)]
+    db = MagicMock()
+    db.query.side_effect = [contents_query, jobs_query]
+
+    with patch("app.database.SessionLocal", return_value=db):
+        with patch(
+            "app.tasks.task_queue.task_queue.enqueue_ingest_finish_many",
+            new=AsyncMock(return_value=0),
+        ) as enqueue:
+            count = await enqueue_unfinished_content_on_startup()
+
+    assert count == 0
+    enqueue.assert_awaited_once_with([], job_id="recovery-refinish-v1")
+
+
+@pytest.mark.asyncio
+async def test_periodic_postprocess_refill_only_runs_after_cache_drains():
+    from app.platform.runtime.lifespan import enqueue_due_postprocess_jobs
+
+    process_queue: asyncio.Queue = asyncio.Queue(maxsize=5)
+    mocked_task_queue = SimpleNamespace(_process_queue=process_queue)
+    with patch("app.tasks.task_queue.task_queue", mocked_task_queue):
+        with patch(
+            "app.platform.workers.postprocess_jobs.recover_stale_postprocess_jobs",
+            return_value=0,
+        ):
+            with patch(
+                "app.platform.workers.postprocess_jobs.due_postprocess_jobs",
+                return_value=[("content-1", "finish"), ("content-2", "finish")],
+            ) as due:
+                assert await enqueue_due_postprocess_jobs(limit=5) == 2
+                assert process_queue.qsize() == 2
+                assert await enqueue_due_postprocess_jobs(limit=5) == 0
+                due.assert_called_once_with(limit=5)

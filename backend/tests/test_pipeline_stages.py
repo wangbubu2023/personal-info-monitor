@@ -599,6 +599,52 @@ class TestBuildRawContentObjects:
         mock_extractor.extract.assert_called_once()
 
     @pytest.mark.asyncio
+    async def test_short_cls_structured_body_is_stamped_as_trusted_fulltext(self):
+        from app.domains.ingest.build_content import build_raw_content_objects
+
+        title = "财联社7月28日电，上期所原油主力合约日内跌幅扩大至6%，报531.1元/桶。"
+        html = f"""
+        <html><body>
+          <script id="__NEXT_DATA__" type="application/json">
+          {{
+            "props": {{
+              "pageProps": {{
+                "articleDetail": {{
+                  "id": 2438608,
+                  "title": {json.dumps(title, ensure_ascii=False)},
+                  "content": {json.dumps(title, ensure_ascii=False)},
+                  "ctime": 1785205935
+                }}
+              }}
+            }}
+          }}
+          </script>
+        </body></html>
+        """
+        source = _make_source(type=SourceType.WEBSITE, name="财联社")
+        raw = [
+            _raw(
+                title=title,
+                url="https://www.cls.cn/detail/2438608",
+                content="",
+                html=html,
+                publish_time=None,
+                metadata={"publish_time_estimated": True},
+            )
+        ]
+
+        with _no_reject:
+            results, build_failures = await build_raw_content_objects(raw, source)
+
+        assert build_failures == 0
+        assert len(results) == 1
+        content = results[0]
+        assert content.full_content == f"2026年07月28日 10:32:15\n\n{title}"
+        assert content.metadata_["article_extract_method"] == "structured:cls_next_data"
+        assert content.metadata_["fulltext_status"] == "full"
+        assert content.publish_time.isoformat() == "2026-07-28T02:32:15+00:00"
+
+    @pytest.mark.asyncio
     async def test_publish_time_iso_parsing(self):
         from app.domains.ingest.build_content import build_raw_content_objects
 

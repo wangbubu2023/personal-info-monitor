@@ -90,6 +90,30 @@ class TestContentExtractor:
         assert parts[-1].startswith("Paragraph 5")
 
     @pytest.mark.asyncio
+    async def test_extract_does_not_promote_readability_image_alt_to_article_text(self):
+        from app.domains.ingest.extractor import ContentExtractor
+
+        extractor = ContentExtractor()
+        image_alt = (
+            "A diagram showing that the same architecture from big Google AI models "
+            "can be used on a low-end machine."
+        )
+        html = f"""
+        <html><body><article>
+          <p>{'正文第一段足够长，用于模拟正常新闻内容。' * 12}</p>
+          <p><img src="diagram.png" alt="{image_alt}"></p>
+          <p>{'正文第二段继续提供真实文章信息。' * 12}</p>
+        </article></body></html>
+        """
+
+        with patch.object(extractor, "_extract_with_trafilatura", return_value=""):
+            result = await extractor.extract(html, "https://www.ithome.com/0/982/494.htm")
+
+        assert image_alt not in result
+        assert "正文第一段" in result
+        assert "正文第二段" in result
+
+    @pytest.mark.asyncio
     async def test_extract_prefers_36kr_newsflash_state_over_related_cards(self):
         from app.domains.ingest.extractor import ContentExtractor
 

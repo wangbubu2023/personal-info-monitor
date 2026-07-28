@@ -59,7 +59,7 @@ _ARTICLE_NOISE_LINE_RE = re.compile(
     r"^(?:"
     r"VIDEO|AUDIO|SLIDESHOW|GALLERY|PHOTOS|IMAGE|"
     r"Advertisement|Ads?|Sponsored|Recommended|Related|"
-    r"广告|推荐阅读|延伸阅读|相关阅读"
+    r"广告(?:声明)?(?:[：:].*)?|推荐阅读|延伸阅读|相关阅读"
     r")$",
     re.IGNORECASE,
 )
@@ -156,7 +156,10 @@ def strip_markdown(text: str) -> str:
 
     value = text.replace("\r\n", "\n")
 
-    value = re.sub(r"!\[([^\]]*)\]\([^)]*\)", r"\1", value)
+    # Image alt text is metadata for a visual, not an article paragraph.
+    # Readability/markdownify can otherwise promote copied English alt text
+    # into the stored body even though it is never visible on the source page.
+    value = re.sub(r"!\[[^\]]*\]\([^)]*\)", "", value)
     value = re.sub(r"\[([^\]]+)\]\([^)]*\)", r"\1", value)
     value = re.sub(r"<(https?://[^>]+)>", r"\1", value)
 

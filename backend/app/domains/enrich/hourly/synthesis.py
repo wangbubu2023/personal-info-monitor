@@ -100,11 +100,9 @@ async def llm_synthesize_hourly_digest(
     materials: str,
     task_prompt: str,
 ) -> str:
-    # Reasoning-tuned models (DeepSeek-R1, MiniMax M2.x, Qwen3-thinking) can burn
-    # 1-3k tokens on chain-of-thought before emitting anything useful. Give them
-    # enough headroom so we don't truncate mid-<think> and end up with an empty
-    # answer that fails validation.
-    cap = max(2000, min(8192, int(getattr(runtime, "max_tokens", 1000) or 1000) * 3))
+    # This is a publishing path, not an analysis path.  Keep reasoning disabled
+    # and bound the response to the size of a short briefing.
+    cap = max(900, min(2400, int(getattr(runtime, "max_tokens", 1000) or 1000)))
     prompt = (
         f"你正在生成「每小时快报」，当前是根据结构化事件卡写最终正文。必须遵守下列任务说明。\n\n"
         f"{task_prompt}\n\n"
@@ -127,6 +125,7 @@ async def llm_synthesize_hourly_digest(
         temperature=0.2,
         max_tokens=cap,
         timeout_seconds=150.0,
+        no_think=True,
     )
 
 
@@ -173,7 +172,7 @@ def build_hourly_briefing_digest(
     reason: str | None = None,
 ) -> str:
     sections = _split_event_items(event_items)
-    top = (sections["need_to_know"] or sections["brewing"] or sections["later"])[:1]
+    top = (sections["need_to_know"] or sections["brewing"])[:1]
     if top:
         one_liner = f"一句话：过去一小时真正值得注意的是，{clean_digest_text(str(top[0].get('title') or '一个新信号'))}。"
     else:

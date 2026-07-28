@@ -124,7 +124,7 @@ describe('ReaderPage', () => {
   it('shows toolbar shortcut hints', () => {
     renderReaderPage()
 
-    for (const key of ['K', 'J', 'L']) {
+    for (const key of ['K', 'J', 'L', 'H']) {
       expect(screen.getByText(key)).toBeTruthy()
     }
   })
@@ -139,8 +139,20 @@ describe('ReaderPage', () => {
     const user = userEvent.setup()
     renderReaderPage()
 
-    await user.click(screen.getByRole('button', { name: '更多操作' }))
-    await user.click(await screen.findByText('不重要'))
+    await user.click(screen.getByRole('button', { name: '不重要' }))
     expect(hide).toHaveBeenCalledTimes(1)
+  })
+
+  it('shows important and not-important side by side without markdown export', () => {
+    const { container } = renderReaderPage()
+
+    const important = screen.getByRole('button', { name: '重要' })
+    const notImportant = screen.getByRole('button', { name: '不重要' })
+
+    expect(important.parentElement).toBe(notImportant.parentElement)
+    expect(important.parentElement?.classList.contains('flex')).toBe(true)
+    expect(screen.queryByRole('button', { name: '更多操作' })).toBeNull()
+    expect(screen.queryByText('导出 Markdown')).toBeNull()
+    expect(container.textContent).not.toContain('导出 Markdown')
   })
 })

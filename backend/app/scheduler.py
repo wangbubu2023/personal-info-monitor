@@ -57,6 +57,7 @@ def setup_scheduler():
         purge_expired_runtime_locks,
         requeue_unfinished_content,
         dispatch_pending_fetch_jobs,
+        dispatch_pending_postprocess_jobs,
         run_markdown_export,
     )
     from app.domains.enrich.notifications.daily_digest import send_daily_digest_emails
@@ -152,6 +153,13 @@ def setup_scheduler():
         IntervalTrigger(minutes=1),
         id="dispatch_pending_fetch_jobs",
         name="Dispatch durable pending fetch jobs",
+    )
+
+    _add_durable_job(
+        dispatch_pending_postprocess_jobs,
+        IntervalTrigger(seconds=30),
+        id="dispatch_pending_postprocess_jobs",
+        name="Dispatch durable pending postprocess jobs",
     )
 
     _add_durable_job(

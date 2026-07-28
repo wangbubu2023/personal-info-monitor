@@ -146,6 +146,93 @@ def test_currently_running_pid_discovers_unmanaged_uvicorn(monkeypatch, tmp_path
     assert pid_file.read_text() == "123"
 
 
+def test_install_service_reenables_and_bootstraps_launchagent(monkeypatch, tmp_path, capsys):
+    pim = _load_pim_cli()
+    root = tmp_path / "repo"
+    venv = root / "backend" / ".venv"
+    (venv / "bin").mkdir(parents=True)
+    log_file = tmp_path / "data" / "pim.log"
+    plist_path = tmp_path / "LaunchAgents" / "com.pim.server.plist"
+    calls = []
+
+    monkeypatch.setattr(pim, "ROOT", root)
+    monkeypatch.setattr(pim, "VENV", venv)
+    monkeypatch.setattr(pim, "LOG_FILE", log_file)
+    monkeypatch.setattr(pim, "PLIST_PATH", plist_path)
+    monkeypatch.setattr(pim.os, "getuid", lambda: 501)
+    monkeypatch.setattr(pim, "_wait_for_launchctl_unloaded", lambda _target: True)
+
+    def fake_run(cmd, **kwargs):
+        calls.append((cmd, kwargs))
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(pim.subprocess, "run", fake_run)
+
+    pim.cmd_install_service()
+
+    assert [cmd for cmd, _ in calls] == [
+        ["launchctl", "bootout", "gui/501/com.pim.server"],
+        ["launchctl", "enable", "gui/501/com.pim.server"],
+        ["launchctl", "bootstrap", "gui/501", str(plist_path)],
+        ["launchctl", "print", "gui/501/com.pim.server"],
+    ]
+    assert "LaunchAgent installed" in capsys.readouterr().out
+
+
+def test_install_service_stops_when_launchagent_cannot_be_enabled(monkeypatch, tmp_path):
+    pim = _load_pim_cli()
+    root = tmp_path / "repo"
+    venv = root / "backend" / ".venv"
+    (venv / "bin").mkdir(parents=True)
+
+    monkeypatch.setattr(pim, "ROOT", root)
+    monkeypatch.setattr(pim, "VENV", venv)
+    monkeypatch.setattr(pim, "LOG_FILE", tmp_path / "data" / "pim.log")
+    monkeypatch.setattr(
+        pim,
+        "PLIST_PATH",
+        tmp_path / "LaunchAgents" / "com.pim.server.plist",
+    )
+    monkeypatch.setattr(pim.os, "getuid", lambda: 501)
+    monkeypatch.setattr(pim, "_wait_for_launchctl_unloaded", lambda _target: True)
+
+    def fake_run(cmd, **kwargs):
+        return subprocess.CompletedProcess(
+            cmd,
+            5 if cmd[:2] == ["launchctl", "enable"] else 0,
+            stdout="",
+            stderr="Input/output error",
+        )
+
+    monkeypatch.setattr(pim.subprocess, "run", fake_run)
+
+    with pytest.raises(SystemExit) as exc:
+        pim.cmd_install_service()
+
+    assert exc.value.code == 1
+
+
+def test_wait_for_launchctl_unloaded_polls_until_service_disappears(monkeypatch):
+    pim = _load_pim_cli()
+    return_codes = iter([0, 0, 113])
+    calls = []
+
+    def fake_run(cmd, **kwargs):
+        calls.append((cmd, kwargs))
+        return subprocess.CompletedProcess(
+            cmd,
+            next(return_codes),
+            stdout="",
+            stderr="",
+        )
+
+    monkeypatch.setattr(pim.subprocess, "run", fake_run)
+    monkeypatch.setattr(pim.time, "sleep", lambda _seconds: None)
+
+    assert pim._wait_for_launchctl_unloaded("gui/501/com.pim.server") is True
+    assert len(calls) == 3
+
+
 def test_systemd_restart_skips_when_systemd_unavailable(monkeypatch, capsys):
     pim = _load_pim_cli()
     monkeypatch.setattr(pim.shutil, "which", lambda name: None)

@@ -25,7 +25,7 @@ ever touching Playwright / Chromium directly.
 """
 
 from app.platform.browser.bootstrap import HeadfulBrowserUnavailableError, run_browser_bootstrap
-from app.platform.browser.hosts import is_x_host
+from app.platform.browser.hosts import is_wsj_host, is_x_host
 from app.platform.browser.login_capture import login_and_capture_cookies
 from app.platform.browser.profiles import profiles_root, slugify_profile_name
 from app.platform.browser.session_runtime import (
@@ -42,6 +42,7 @@ __all__ = [
     "browser_validation_probe_url",
     "build_browser_session_runtime",
     "HeadfulBrowserUnavailableError",
+    "is_wsj_host",
     "is_x_host",
     "login_and_capture_cookies",
     "profiles_root",

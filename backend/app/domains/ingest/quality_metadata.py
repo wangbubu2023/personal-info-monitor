@@ -142,10 +142,19 @@ def assess_content_quality(
     title_len = len(title_text)
     paragraphs = _paragraph_count(body)
     blocked = _looks_blocked(metadata, body_len=body_len, summary_len=summary_len)
+    trusted_structured_short = (
+        str(metadata.get("article_extract_method") or "") == "structured:cls_next_data"
+        and body_len >= 20
+        and bool(title_text)
+        and title_text in body
+    )
 
     if blocked:
         status = FULLTEXT_STATUS_BLOCKED
         basis = "blocked"
+    elif trusted_structured_short:
+        status = FULLTEXT_STATUS_FULL
+        basis = "trusted_structured_fulltext"
     elif body_len >= 1200 and paragraphs >= 3:
         status = FULLTEXT_STATUS_FULL
         basis = "full_content"
@@ -182,6 +191,7 @@ def assess_content_quality(
         "title_length": title_len,
         "paragraph_count": paragraphs,
         "blocked": blocked,
+        "trusted_structured_short": trusted_structured_short,
     }
     return ContentQuality(
         fulltext_status=status,

@@ -13,15 +13,12 @@ import {
   ChevronLeft,
   ChevronRight,
   EyeOff,
-  Download,
-  MoreHorizontal,
 } from 'lucide-react';
-import { Dropdown } from 'antd';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useReader } from '../hooks/useReader';
 import SectionNote from '../components/ui/SectionNote';
 import PageLoading from '../components/common/PageLoading';
-import { contentsApi, type ReaderBlock } from '../services/contents';
+import { type ReaderBlock } from '../services/contents';
 import { getReaderNeighbor, recordReaderInteraction } from '../utils/readerFlow';
 import { getReaderLayoutProfile, type ReaderLayoutProfile } from '../utils/readerLayout';
 
@@ -208,12 +205,6 @@ const ReaderPage: React.FC = () => {
     }
   }, [backHref, data, hide, id, navigate, navigateToNeighbor, nextItem]);
 
-  const exportMarkdown = useCallback(async () => {
-    if (!id || !data) return;
-    recordReaderInteraction('click', 'export');
-    await contentsApi.downloadMarkdown(id, displayTitle || data.title);
-  }, [data, displayTitle, id]);
-
   useEffect(() => {
     if (!data) return;
     const handler = (event: KeyboardEvent) => {
@@ -396,29 +387,13 @@ const ReaderPage: React.FC = () => {
                 >
                   <Bookmark size={14} /> {data.favorited ? '已标为重要' : '重要'} <ShortcutHint>L</ShortcutHint>
                 </button>
-                <Dropdown
-                  trigger={['click']}
-                  placement="bottomRight"
-                  menu={{
-                    items: [
-                      { key: 'export', icon: <Download size={14} />, label: '导出 Markdown' },
-                      { type: 'divider' },
-                      { key: 'hide', danger: true, icon: <EyeOff size={14} />, label: '不重要' },
-                    ],
-                    onClick: ({ key }) => {
-                      if (key === 'export') void exportMarkdown();
-                      if (key === 'hide') void hideCurrent('click');
-                    },
-                  }}
+                <button
+                  type="button"
+                  onClick={() => void hideCurrent('click')}
+                  className="flex items-center gap-2 rounded-xl border border-rose-200/80 bg-white/70 px-3.5 py-2 text-[12px] font-semibold text-rose-500 transition-all hover:border-rose-300 hover:bg-rose-50 hover:text-rose-600"
                 >
-                  <button
-                    type="button"
-                    className="flex items-center gap-2 rounded-xl border border-[rgba(88,100,118,0.16)] bg-white/70 px-3.5 py-2 text-[12px] font-semibold text-[#586476] transition-all hover:bg-white hover:text-[#293859]"
-                    aria-label="更多操作"
-                  >
-                    <MoreHorizontal size={15} /> 更多
-                  </button>
-                </Dropdown>
+                  <EyeOff size={14} /> 不重要 <ShortcutHint>H</ShortcutHint>
+                </button>
               </div>
             </div>
           </header>

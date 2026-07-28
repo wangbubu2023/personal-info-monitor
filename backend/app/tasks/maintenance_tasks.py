@@ -120,7 +120,7 @@ async def requeue_unfinished_content():
     """
     from app.platform.runtime.lifespan import enqueue_unfinished_content_on_startup
 
-    await enqueue_unfinished_content_on_startup(job_id="periodic-refinish")
+    await enqueue_unfinished_content_on_startup()
 
 
 async def dispatch_pending_fetch_jobs():
@@ -128,3 +128,10 @@ async def dispatch_pending_fetch_jobs():
     from app.platform.runtime.lifespan import enqueue_due_fetch_jobs
 
     await enqueue_due_fetch_jobs()
+
+
+async def dispatch_pending_postprocess_jobs():
+    """Refill the process cache after workers drain its current durable batch."""
+    from app.platform.runtime.lifespan import enqueue_due_postprocess_jobs
+
+    await enqueue_due_postprocess_jobs()
