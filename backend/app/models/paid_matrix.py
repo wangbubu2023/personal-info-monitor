@@ -3,7 +3,7 @@
 import enum
 import uuid
 
-from sqlalchemy import BigInteger, Boolean, Column, DateTime, Float, ForeignKey, Integer, JSON, String, Text
+from sqlalchemy import BigInteger, Boolean, Column, DateTime, Float, ForeignKey, Index, Integer, JSON, String, Text
 from sqlalchemy.orm import relationship
 
 from app.database import Base, UUIDString
@@ -50,6 +50,7 @@ class LocalCaptureAudit(Base):
     """本地捕获 MVP 净化 ReaderDocument 审计。"""
 
     __tablename__ = "local_capture_audits"
+    __table_args__ = (Index("uq_local_capture_task_token_hash", "task_token_hash", unique=True),)
 
     id = Column(UUIDString, primary_key=True, default=lambda: str(uuid.uuid4()))
     device_id = Column(String(100), nullable=False)
@@ -64,6 +65,7 @@ class DailyCanaryRun(Base):
     """每日 Canary 探针运行记录。"""
 
     __tablename__ = "daily_canary_runs"
+    __table_args__ = (Index("idx_daily_canary_source_date", "source_id", "run_date", unique=True),)
 
     id = Column(UUIDString, primary_key=True, default=lambda: str(uuid.uuid4()))
     source_id = Column(UUIDString, ForeignKey("sources.id", ondelete="CASCADE"), nullable=False)

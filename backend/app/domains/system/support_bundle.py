@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import hashlib
 import io
 import json
+import math
 import os
 import platform
 import re
@@ -20,13 +22,14 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.domains.system.doctor import DoctorService
-from app.models import BrowserSession, Source, SourceFetchLog
+from app.models import BrowserSession, Content, Source, SourceFetchLog
 from app.utils.datetime import utcnow_naive
 
 _LOG_TAIL_BYTES = 128 * 1024
 _MAX_LOG_LINES = 400
 _RECENT_FETCH_LIMIT = 50
 _SOURCE_LIMIT = 50
+_WEB_CLEAN_DIAGNOSTIC_LIMIT = 50
 _SECRET_RE = re.compile(
     r"(?i)(api[_-]?key|authorization|bearer|token|secret|password|cookie|ct0|auth_token)"
     r"([\"'\s:=]+)"
@@ -59,13 +62,149 @@ def _safe_url(value: str | None) -> str | None:
         parsed = urlsplit(value)
     except ValueError:
         return _safe_text(value, limit=300)
-    if parsed.scheme and parsed.netloc:
-        return urlunsplit((parsed.scheme, parsed.netloc, parsed.path[:300], "", ""))
+    if parsed.scheme and parsed.hostname:
+        host = parsed.hostname
+        try:
+            port = parsed.port
+        except ValueError:
+            port = None
+        netloc = f"{host}:{port}" if port is not None else host
+        return urlunsplit((parsed.scheme, netloc, parsed.path[:300], "", ""))
     return _safe_text(value, limit=300)
 
 
 def _enum_value(value: Any) -> Any:
     return getattr(value, "value", value)
+
+
+def _pseudonymous_id(value: Any) -> str:
+    return hashlib.sha256(str(value or "").encode("utf-8")).hexdigest()[:16]
+
+
+def _safe_number(value: Any) -> int | float | None:
+    if isinstance(value, bool):
+        return None
+    if not isinstance(value, (int, float)) or not math.isfinite(float(value)):
+        return None
+    return value
+
+
+def _safe_web_clean_profile(metadata: Any) -> dict[str, Any] | None:
+    if not isinstance(metadata, dict):
+        return None
+    profile = metadata.get("web_clean_profile")
+    if not isinstance(profile, dict):
+        return None
+    allowed = {
+        "version",
+        "extraction_method",
+        "template_id",
+        "quality_status",
+        "quality_score",
+        "text_chars",
+        "paragraph_count",
+        "boilerplate_ratio",
+        "link_density",
+        "shadow",
+        "blocked",
+        "recent_failure_reason",
+    }
+    result: dict[str, Any] = {}
+    for key in allowed:
+        value = profile.get(key)
+        if isinstance(value, float) and not math.isfinite(value):
+            continue
+        if isinstance(value, (str, int, float, bool)) and len(str(value)) <= 160:
+            result[key] = value
+    return result or None
+
+
+def _safe_web_clean_diagnostic(content: Content) -> dict[str, Any] | None:
+    metadata = content.metadata_ if isinstance(content.metadata_, dict) else {}
+    web_clean = metadata.get("web_clean")
+    if not isinstance(web_clean, dict):
+        return None
+    trace = web_clean.get("trace") if isinstance(web_clean.get("trace"), dict) else {}
+    standardizer = trace.get("standardizer") if isinstance(trace.get("standardizer"), dict) else {}
+    safe_standardizer: dict[str, Any] = {}
+    for key in (
+        "input_chars",
+        "output_chars",
+        "truncated",
+        "removed_elements",
+        "removed_attributes",
+        "absolutized_urls",
+        "promoted_lazy_media",
+        "shadow_materialized_count",
+        "shadow_timeout",
+        "input_sha256",
+        "output_sha256",
+    ):
+        value = standardizer.get(key)
+        if isinstance(value, (str, int, float, bool)) and len(str(value)) <= 128:
+            safe_standardizer[key] = value
+
+    safe_candidates: list[dict[str, Any]] = []
+    raw_candidates = trace.get("candidates")
+    if isinstance(raw_candidates, (list, tuple)):
+        for raw in raw_candidates[:12]:
+            if not isinstance(raw, dict):
+                continue
+            candidate: dict[str, Any] = {}
+            for key in ("method", "quality_status", "rejected_reason"):
+                value = raw.get(key)
+                if value is not None:
+                    candidate[key] = _safe_text(value, limit=160)
+            for key in ("score", "text_chars"):
+                value = _safe_number(raw.get(key))
+                if value is not None:
+                    candidate[key] = value
+            signals = raw.get("signals")
+            if isinstance(signals, dict):
+                safe_signals = {
+                    key: value
+                    for key in (
+                        "paragraph_count",
+                        "link_density",
+                        "boilerplate_ratio",
+                        "title_match_score",
+                        "blocked_score",
+                        "listing_score",
+                    )
+                    if (value := _safe_number(signals.get(key))) is not None
+                }
+                if safe_signals:
+                    candidate["signals"] = safe_signals
+            safe_candidates.append(candidate)
+
+    template_errors = trace.get("template_validation_errors")
+    safe_errors = (
+        [_safe_text(item, limit=240) for item in template_errors[:8]]
+        if isinstance(template_errors, (list, tuple))
+        else []
+    )
+    diagnostic = {
+        "content_ref": _pseudonymous_id(content.id),
+        "source_ref": _pseudonymous_id(content.source_id),
+        "fetched_at": content.fetched_at,
+        "version": _safe_text(web_clean.get("version"), limit=40),
+        "extraction_method": _safe_text(web_clean.get("extraction_method"), limit=80),
+        "template_id": _safe_text(web_clean.get("template_id"), limit=120),
+        "quality_status": _safe_text(web_clean.get("quality_status"), limit=80),
+        "quality_score": _safe_number(web_clean.get("quality_score")),
+        "text_chars": _safe_number(web_clean.get("text_chars")),
+        "paragraph_count": _safe_number(web_clean.get("paragraph_count")),
+        "boilerplate_ratio": _safe_number(web_clean.get("boilerplate_ratio")),
+        "link_density": _safe_number(web_clean.get("link_density")),
+        "shadow": bool(web_clean.get("shadow")),
+        "selected_method": _safe_text(trace.get("selected_method"), limit=80),
+        "shadow_materialized_count": _safe_number(trace.get("shadow_materialized_count")),
+        "shadow_timeout": bool(trace.get("shadow_timeout")),
+        "standardizer": safe_standardizer,
+        "candidates": safe_candidates,
+        "template_validation_errors": [item for item in safe_errors if item],
+    }
+    return {key: value for key, value in diagnostic.items() if value not in (None, {}, [])}
 
 
 def _run_git(args: list[str], repo_root: Path) -> str | None:
@@ -250,7 +389,29 @@ def _serialize_source(source: Source) -> dict[str, Any]:
             "suggested_action": source.session_health_suggested_action,
             "validated_at": source.session_health_validated_at,
         },
+        "web_clean_profile": _safe_web_clean_profile(source.metadata_),
     }
+
+
+def _web_clean_diagnostics(db: Session) -> list[dict[str, Any]]:
+    try:
+        rows = (
+            db.query(Content)
+            .order_by(desc(Content.fetched_at))
+            .limit(_WEB_CLEAN_DIAGNOSTIC_LIMIT * 4)
+            .all()
+        )
+        diagnostics: list[dict[str, Any]] = []
+        for content in rows:
+            diagnostic = _safe_web_clean_diagnostic(content)
+            if diagnostic:
+                diagnostics.append(diagnostic)
+            if len(diagnostics) >= _WEB_CLEAN_DIAGNOSTIC_LIMIT:
+                break
+        return diagnostics
+    except SQLAlchemyError as exc:
+        db.rollback()
+        return [{"error": _safe_text(exc, limit=500)}]
 
 
 def _recent_fetches(db: Session) -> list[dict[str, Any]]:
@@ -420,6 +581,7 @@ class SupportBundleService:
             "sources": _source_summary(self.db),
             "recent_fetches": _recent_fetches(self.db),
             "browser_sessions": _browser_sessions(self.db),
+            "web_clean_diagnostics": _web_clean_diagnostics(self.db),
         }
         manifest = {
             "generated_at": summary["runtime"]["generated_at"],
@@ -444,6 +606,7 @@ class SupportBundleService:
                 "failed_sources.json",
                 "recent_fetches.json",
                 "browser_sessions.json",
+                "web_clean_diagnostics.json",
                 "issue_template.md",
             ],
         }
@@ -460,6 +623,7 @@ class SupportBundleService:
             self._write_json(zf, "failed_sources.json", summary["sources"])
             self._write_json(zf, "recent_fetches.json", summary["recent_fetches"])
             self._write_json(zf, "browser_sessions.json", summary["browser_sessions"])
+            self._write_json(zf, "web_clean_diagnostics.json", summary["web_clean_diagnostics"])
             self._write_text(zf, "issue_template.md", _issue_template(summary))
             for arcname, tail in log_entries:
                 self._write_text(zf, arcname, tail)

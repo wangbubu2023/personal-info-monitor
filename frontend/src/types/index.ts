@@ -72,6 +72,18 @@ export interface WebCleanProfile {
   boilerplate_ratio?: number
   link_density?: number
   shadow?: boolean
+  blocked?: boolean
+  recent_failure_reason?: string
+  shadow_diff?: { old_chars?: number; new_chars?: number; char_delta?: number }
+}
+
+export interface WebCleanProbe {
+  template_configured?: boolean
+  template_valid?: boolean
+  template_id?: string
+  template_validation_errors?: string[]
+  preview_error?: string
+  preview?: WebCleanProfile & { blocked?: boolean }
 }
 
 export interface SourceMetadata {
@@ -80,6 +92,7 @@ export interface SourceMetadata {
   rss_health?: RssHealthMeta
   discovery_diagnostics?: DiscoveryDiagnostics
   web_clean_profile?: WebCleanProfile
+  web_clean_probe?: WebCleanProbe
   [key: string]: unknown
 }
 

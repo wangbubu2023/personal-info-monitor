@@ -1,0 +1,771 @@
+diff --git a/backend/app/domains/fetch/web_clean/provenance.py b/backend/app/domains/fetch/web_clean/provenance.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..1ff2f567502a57f67af21851c81823a1613243ad
+--- /dev/null
++++ b/backend/app/domains/fetch/web_clean/provenance.py
+@@ -0,0 +1,47 @@
++"""Trusted attestation checks for production Web Clean shadow exports."""
++
++from __future__ import annotations
++
++import hashlib
++import hmac
++import os
++from typing import Any, Mapping
++
++PROVENANCE_SCHEMA = "pim-web-clean-shadow-export-v1"
++PROVENANCE_GENERATOR = "pim-production-shadow-export"
++PROVENANCE_KEY_ENV = "PIM_WEB_CLEAN_PROVENANCE_HMAC_KEY"
++
++
++def provenance_message(provenance: Mapping[str, Any]) -> bytes:
++    """Build the canonical signed payload without including the secret itself."""
++    fields = (
++        str(provenance.get("schema_version") or ""),
++        str(provenance.get("generated_by") or ""),
++        str(provenance.get("dataset_kind") or ""),
++        str(provenance.get("observations_sha256") or ""),
++        str(provenance.get("generated_at") or ""),
++    )
++    return "\n".join(fields).encode("utf-8")
++
++
++def sign_shadow_provenance(provenance: Mapping[str, Any], *, key: str) -> str:
++    """Return the HMAC used by an external trusted export step."""
++    if not key:
++        raise ValueError("provenance HMAC key is required")
++    return hmac.new(key.encode("utf-8"), provenance_message(provenance), hashlib.sha256).hexdigest()
++
++
++def verify_shadow_provenance(
++    provenance: Mapping[str, Any] | None,
++    *,
++    key: str | None = None,
++) -> bool:
++    """Verify an export attestation against the release-environment trust key."""
++    if not isinstance(provenance, Mapping):
++        return False
++    trusted_key = key if key is not None else os.getenv(PROVENANCE_KEY_ENV, "")
++    supplied = str(provenance.get("attestation_hmac_sha256") or "")
++    if len(trusted_key) < 32 or len(supplied) != 64:
++        return False
++    expected = sign_shadow_provenance(provenance, key=trusted_key)
++    return hmac.compare_digest(expected, supplied)
+diff --git a/backend/app/domains/fetch/web_clean/safety.py b/backend/app/domains/fetch/web_clean/safety.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..c4e5fb7d5e202e5226cf764c54ca8c654266aab7
+--- /dev/null
++++ b/backend/app/domains/fetch/web_clean/safety.py
+@@ -0,0 +1,66 @@
++"""Shared complexity guards for user-configurable Web Clean expressions."""
++
++from __future__ import annotations
++
++import re
++
++import regex as bounded_regex
++from soupsieve import compile as compile_selector
++from soupsieve.util import SelectorSyntaxError
++
++MAX_SELECTOR_LENGTH = 256
++MAX_SELECTOR_COMBINATORS = 12
++MAX_SELECTOR_TOKENS = 64
++MAX_REGEX_LENGTH = 256
++REGEX_TIMEOUT_SECONDS = 0.05
++
++_SELECTOR_TOKEN_RE = re.compile(r"[#.:[\]()=*~|^$>+]|\s+")
++_FORBIDDEN_SELECTOR_RE = re.compile(
++    r":(?:has|contains|-soup-contains|-soup-contains-own)\s*\(",
++    re.IGNORECASE,
++)
++
++
++def selector_error(selector: str) -> str | None:
++    """Return a readable validation error for unsafe/invalid selectors."""
++    value = str(selector or "").strip()
++    if not value:
++        return "selector is empty"
++    token_count = len(_SELECTOR_TOKEN_RE.findall(value))
++    descendant_combinators = len(re.findall(r"\s+", value))
++    combinator_count = descendant_combinators + sum(
++        value.count(token) for token in (">", "+", "~", ",")
++    )
++    if _FORBIDDEN_SELECTOR_RE.search(value):
++        return "selector uses a disallowed expensive pseudo-class"
++    if (
++        len(value) > MAX_SELECTOR_LENGTH
++        or token_count > MAX_SELECTOR_TOKENS
++        or combinator_count > MAX_SELECTOR_COMBINATORS
++    ):
++        return "selector is too complex or too long"
++    try:
++        compile_selector(value)
++    except (SelectorSyntaxError, ValueError, TypeError):
++        return "invalid selector syntax"
++    return None
++
++
++def compile_bounded_regex(pattern: str):
++    """Compile a regex after enforcing the shared length limit."""
++    value = str(pattern or "")
++    if len(value) > MAX_REGEX_LENGTH:
++        raise ValueError("regex is too long")
++    try:
++        return bounded_regex.compile(value)
++    except bounded_regex.error as exc:
++        raise ValueError(f"invalid regex: {exc}") from exc
++
++
++def bounded_regex_search(pattern: str, value: str) -> bool:
++    """Execute a configured regex with a deterministic timeout."""
++    try:
++        compiled = compile_bounded_regex(pattern)
++        return compiled.search(str(value or ""), timeout=REGEX_TIMEOUT_SECONDS) is not None
++    except (TimeoutError, ValueError, TypeError):
++        return False
+diff --git a/backend/scripts/run_web_clean_shadow.py b/backend/scripts/run_web_clean_shadow.py
+new file mode 100755
+index 0000000000000000000000000000000000000000..d82be76dbb354d25c33f66bdfcb35740d4a875cb
+--- /dev/null
++++ b/backend/scripts/run_web_clean_shadow.py
+@@ -0,0 +1,325 @@
++#!/usr/bin/env python3
++"""Aggregate privacy-bounded Web Clean shadow observations.
++
++The input is JSONL produced by an explicitly separate collection/export step.
++This script never fetches URLs, reads credentials, or mutates Content rows.
++"""
++
++from __future__ import annotations
++
++import argparse
++import hashlib
++import json
++import math
++from datetime import datetime, timedelta, timezone
++from pathlib import Path
++from typing import Any
++
++from app.domains.fetch.web_clean.provenance import (
++    PROVENANCE_GENERATOR,
++    PROVENANCE_SCHEMA,
++    verify_shadow_provenance,
++)
++
++_ALLOWED_DATASET_KINDS = {"local_fixture", "staging_shadow", "production_shadow"}
++_HIGH_RISK_REASONS = {
++    "new_empty",
++    "severe_length_loss",
++    "blocked_missed",
++    "quality_regression",
++    "timeout",
++}
++_SENSITIVE_KEYS = {
++    "authorization",
++    "body",
++    "canonical_url",
++    "content",
++    "cookie",
++    "cookies",
++    "full_content",
++    "headers",
++    "html",
++    "raw_html",
++    "summary",
++    "text",
++    "title",
++    "token",
++    "url",
++}
++_SAFE_SCALAR_KEYS = {
++    "observed_at",
++    "old_text_chars",
++    "new_text_chars",
++    "old_quality_status",
++    "new_quality_status",
++    "expected_blocked",
++    "new_blocked",
++    "timeout",
++    "production_affected",
++    "risk_reason",
++    "review_verdict",
++    "extraction_method",
++    "template_id",
++    "quality_score",
++}
++
++
++def _utc(value: Any) -> datetime:
++    if isinstance(value, datetime):
++        return value.astimezone(timezone.utc) if value.tzinfo else value.replace(tzinfo=timezone.utc)
++    return datetime.fromisoformat(str(value).replace("Z", "+00:00")).astimezone(timezone.utc)
++
++
++def _opaque(value: Any, salt: str) -> str:
++    return hashlib.sha256(f"{salt}:{value}".encode()).hexdigest()[:20]
++
++
++def _safe_sample(row: dict[str, Any], *, salt: str) -> dict[str, Any]:
++    result: dict[str, Any] = {}
++    for key, value in row.items():
++        normalized = str(key).lower()
++        if normalized in _SENSITIVE_KEYS or any(
++            marker in normalized for marker in ("secret", "password", "api_key")
++        ):
++            continue
++        if normalized.endswith("_id") or normalized == "id":
++            result[key] = _opaque(value, salt)
++        elif normalized in _SAFE_SCALAR_KEYS and (
++            isinstance(value, (str, int, float, bool)) or value is None
++        ):
++            if isinstance(value, float) and not math.isfinite(value):
++                continue
++            result[key] = str(value)[:160] if isinstance(value, str) else value
++    return result
++
++
++def _non_negative_int(value: Any) -> int:
++    try:
++        parsed = int(value or 0)
++    except (TypeError, ValueError, OverflowError) as exc:
++        raise ValueError("shadow character counts must be integers") from exc
++    return max(0, parsed)
++
++
++def _provenance_valid(
++    provenance: dict[str, Any] | None,
++    *,
++    dataset_kind: str,
++    input_sha256: str | None,
++    provenance_hmac_key: str | None = None,
++) -> bool:
++    if not isinstance(provenance, dict) or not input_sha256:
++        return False
++    return (
++        provenance.get("schema_version") == PROVENANCE_SCHEMA
++        and provenance.get("generated_by") == PROVENANCE_GENERATOR
++        and provenance.get("dataset_kind") == dataset_kind == "production_shadow"
++        and provenance.get("observations_sha256") == input_sha256
++        and verify_shadow_provenance(provenance, key=provenance_hmac_key)
++    )
++
++
++def _risk_reason(row: dict[str, Any]) -> str | None:
++    explicit = str(row.get("risk_reason") or "").strip()
++    if explicit in _HIGH_RISK_REASONS:
++        return explicit
++    old_chars = _non_negative_int(row.get("old_text_chars"))
++    new_chars = _non_negative_int(row.get("new_text_chars"))
++    expected_blocked = bool(row.get("expected_blocked"))
++    detected_blocked = bool(row.get("new_blocked"))
++    if bool(row.get("timeout")):
++        return "timeout"
++    if old_chars >= 200 and new_chars == 0:
++        return "new_empty"
++    if old_chars >= 500 and new_chars < old_chars * 0.35:
++        return "severe_length_loss"
++    if expected_blocked and not detected_blocked:
++        return "blocked_missed"
++    if str(row.get("old_quality_status") or "") in {"good", "full"} and str(
++        row.get("new_quality_status") or ""
++    ) in {"poor", "empty", "blocked"}:
++        return "quality_regression"
++    return None
++
++
++def _longest_consecutive_days(days: set[str]) -> int:
++    ordered = sorted(datetime.fromisoformat(day).date() for day in days)
++    longest = current = 0
++    previous = None
++    for day in ordered:
++        current = current + 1 if previous and day == previous + timedelta(days=1) else 1
++        longest = max(longest, current)
++        previous = day
++    return longest
++
++
++def build_web_clean_shadow_report(
++    observations: list[dict[str, Any]],
++    *,
++    salt: str,
++    dataset_kind: str,
++    retention_days: int = 30,
++    high_risk_limit: int = 50,
++    provenance: dict[str, Any] | None = None,
++    input_sha256: str | None = None,
++    provenance_hmac_key: str | None = None,
++) -> dict[str, Any]:
++    """Build a non-authoritative report from already-collected shadow observations."""
++    if dataset_kind not in _ALLOWED_DATASET_KINDS:
++        raise ValueError(f"dataset_kind must be one of {sorted(_ALLOWED_DATASET_KINDS)}")
++    if retention_days <= 0:
++        raise ValueError("retention_days must be positive")
++    if high_risk_limit <= 0:
++        raise ValueError("high_risk_limit must be positive")
++
++    observed_days: set[str] = set()
++    total_old_chars = 0
++    total_new_chars = 0
++    changed = 0
++    new_empty = 0
++    timeouts = 0
++    shadow_violations = 0
++    high_risk_samples: list[dict[str, Any]] = []
++    total_high_risk = 0
++    reviewed = 0
++
++    for row in observations:
++        if not isinstance(row, dict):
++            raise ValueError("each observation must be an object")
++        observed_at = _utc(row["observed_at"])
++        observed_days.add(observed_at.date().isoformat())
++        old_chars = _non_negative_int(row.get("old_text_chars"))
++        new_chars = _non_negative_int(row.get("new_text_chars"))
++        total_old_chars += old_chars
++        total_new_chars += new_chars
++        changed += int(old_chars != new_chars or row.get("old_quality_status") != row.get("new_quality_status"))
++        new_empty += int(old_chars > 0 and new_chars == 0)
++        timeouts += int(bool(row.get("timeout")))
++        shadow_violations += int(row.get("production_affected") is not False)
++        reason = _risk_reason(row)
++        if reason:
++            total_high_risk += 1
++            reviewed += int(bool(str(row.get("review_verdict") or "").strip()))
++            if len(high_risk_samples) < high_risk_limit:
++                sample = dict(row)
++                sample["risk_reason"] = reason
++                high_risk_samples.append(_safe_sample(sample, salt=salt))
++    consecutive_days = _longest_consecutive_days(observed_days)
++    count = len(observations)
++    isolation_ok = shadow_violations == 0
++    provenance_valid = _provenance_valid(
++        provenance,
++        dataset_kind=dataset_kind,
++        input_sha256=input_sha256,
++        provenance_hmac_key=provenance_hmac_key,
++    )
++    return {
++        "schema_version": "web-clean-shadow-v1",
++        "dataset_kind": dataset_kind,
++        "shadow_only": isolation_ok,
++        "production_affected": not isolation_ok,
++        "provenance": {
++            "valid": provenance_valid,
++            "input_sha256": input_sha256,
++            "schema_version": (
++                str(provenance.get("schema_version") or "")[:80]
++                if isinstance(provenance, dict)
++                else None
++            ),
++            "generated_by": str(provenance.get("generated_by") or "")[:80] if isinstance(provenance, dict) else None,
++            "dataset_kind": str(provenance.get("dataset_kind") or "")[:80] if isinstance(provenance, dict) else None,
++            "observations_sha256": (
++                str(provenance.get("observations_sha256") or "")[:64]
++                if isinstance(provenance, dict)
++                else None
++            ),
++            "generated_at": str(provenance.get("generated_at") or "")[:80] if isinstance(provenance, dict) else None,
++            "attestation_hmac_sha256": (
++                str(provenance.get("attestation_hmac_sha256") or "")[:64]
++                if isinstance(provenance, dict)
++                else None
++            ),
++        },
++        "retention": {
++            "days": retention_days,
++            "delete_after": (datetime.now(timezone.utc) + timedelta(days=retention_days)).isoformat(),
++            "content_policy": (
++                "opaque ids and scalar diagnostics only; URLs, HTML, bodies, "
++                "headers and credentials removed"
++            ),
++        },
++        "window": {
++            "first_day": min(observed_days) if observed_days else None,
++            "last_day": max(observed_days) if observed_days else None,
++            "observed_days": len(observed_days),
++            "consecutive_days": consecutive_days,
++            "minimum_days_met": consecutive_days >= 7,
++        },
++        "observations": {
++            "count": count,
++            "changed": changed,
++            "changed_rate": round(changed / max(1, count), 6),
++            "old_text_chars": total_old_chars,
++            "new_text_chars": total_new_chars,
++            "new_to_old_char_ratio": round(total_new_chars / max(1, total_old_chars), 6),
++            "new_empty_count": new_empty,
++            "timeout_count": timeouts,
++            "shadow_isolation_violations": shadow_violations,
++        },
++        "high_risk_review": {
++            "total_count": total_high_risk,
++            "sample_count": len(high_risk_samples),
++            "reviewed_count": reviewed,
++            "samples": high_risk_samples,
++        },
++        "release_eligible": dataset_kind == "production_shadow"
++        and provenance_valid
++        and consecutive_days >= 7
++        and isolation_ok
++        and reviewed == total_high_risk,
++    }
++
++
++def main() -> int:
++    parser = argparse.ArgumentParser(description="Generate privacy-bounded Web Clean shadow report")
++    parser.add_argument("snapshots", type=Path, help="JSONL scalar observations from a separate Shadow export")
++    parser.add_argument("--output", type=Path, required=True)
++    parser.add_argument("--salt", required=True, help="Non-secret run salt used to pseudonymize identifiers")
++    parser.add_argument("--dataset-kind", choices=sorted(_ALLOWED_DATASET_KINDS), required=True)
++    parser.add_argument(
++        "--provenance-manifest",
++        type=Path,
++        help="Production export attestation; required for a release-eligible production_shadow report",
++    )
++    parser.add_argument("--retention-days", type=int, default=30)
++    parser.add_argument("--high-risk-limit", type=int, default=50)
++    args = parser.parse_args()
++
++    snapshot_bytes = args.snapshots.read_bytes()
++    rows = [
++        json.loads(line)
++        for line in snapshot_bytes.decode("utf-8").splitlines()
++        if line.strip() and not line.lstrip().startswith("#")
++    ]
++    provenance = None
++    if args.provenance_manifest:
++        provenance = json.loads(args.provenance_manifest.read_text(encoding="utf-8"))
++        if not isinstance(provenance, dict):
++            raise ValueError("provenance manifest must be a JSON object")
++    report = build_web_clean_shadow_report(
++        rows,
++        salt=args.salt,
++        dataset_kind=args.dataset_kind,
++        retention_days=args.retention_days,
++        high_risk_limit=args.high_risk_limit,
++        provenance=provenance,
++        input_sha256=hashlib.sha256(snapshot_bytes).hexdigest(),
++    )
++    args.output.parent.mkdir(parents=True, exist_ok=True)
++    args.output.write_text(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
++    print(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True))
++    return 0
++
++
++if __name__ == "__main__":
++    raise SystemExit(main())
+diff --git a/backend/tests/test_web_clean_release_gate.py b/backend/tests/test_web_clean_release_gate.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..a7fcab1f61ea195044cae6d2af7a8f4804ccdee9
+--- /dev/null
++++ b/backend/tests/test_web_clean_release_gate.py
+@@ -0,0 +1,227 @@
++import hashlib
++import json
++from pathlib import Path
++
++from scripts.generate_release_eval_artifact import build_release_artifact
++from scripts.run_web_clean_shadow import build_web_clean_shadow_report
++from app.domains.fetch.web_clean.provenance import sign_shadow_provenance
++
++_TEST_PROVENANCE_KEY = "audit-only-test-key-at-least-32-bytes"
++
++
++def _observations() -> list[dict]:
++    return [
++        {
++            "observed_at": f"2026-07-{day:02d}T08:00:00Z",
++            "content_id": "content-secret",
++            "old_text_chars": 1000,
++            "new_text_chars": 300,
++            "old_quality_status": "good",
++            "new_quality_status": "poor",
++            "production_affected": False,
++            "review_verdict": "accepted",
++            "url": "https://user:password@example.test/story?token=secret",
++            "full_content": "must not leak",
++            "authorization": "Bearer secret",
++        }
++        for day in range(1, 8)
++    ]
++
++
++def _provenance(input_sha256: str) -> dict:
++    provenance = {
++        "schema_version": "pim-web-clean-shadow-export-v1",
++        "generated_by": "pim-production-shadow-export",
++        "dataset_kind": "production_shadow",
++        "observations_sha256": input_sha256,
++        "generated_at": "2026-07-29T00:00:00Z",
++    }
++    provenance["attestation_hmac_sha256"] = sign_shadow_provenance(
++        provenance,
++        key=_TEST_PROVENANCE_KEY,
++    )
++    return provenance
++
++
++def _formal() -> dict:
++    return {
++        "ok": True,
++        "dataset_tier": "formal_eval_1_0",
++        "production_diff": {},
++        "core": {
++            "record_count": 200,
++            "dataset_sha256": "core",
++            "metrics": {"ranking": {}, "calibration": {}},
++        },
++        "event": {
++            "pair_count": 200,
++            "dataset_sha256": "event",
++            "metrics": {
++                "pairwise": {"precision": 0.93, "recall": 0.84},
++                "wrong_merge_rate": 0.02,
++                "missing_merge_rate": 0.07,
++            },
++        },
++    }
++
++
++def _quality_shadow() -> dict:
++    return {
++        "shadow_only": True,
++        "production_affected": False,
++        "window": {"observed_days": 7},
++        "high_risk_review": {"sample_count": 0, "reviewed_count": 0},
++    }
++
++
++def _web_clean_eval() -> dict:
++    return {
++        "version": "web-clean-eval-v2",
++        "ok": True,
++        "gate": {"result": "GO", "blockers": []},
++        "dataset_tier": "web_clean_eval_1_0",
++        "manifest_valid": True,
++        "dataset_sha256": "dataset-sha",
++        "manifest_sha256": "manifest-sha",
++        "metrics": {
++            "sample_count": 150,
++            "must_include_recall": 0.91,
++            "must_exclude_precision": 0.93,
++            "boilerplate_leak_rate": 0.07,
++            "blocked_detection_f1": 0.89,
++            "metadata_accuracy": 0.91,
++            "markdown_structure_score": 0.86,
++            "runtime_p95_ms": 10.0,
++            "label_counts": {
++                "must_include": 1,
++                "must_exclude": 1,
++                "title": 1,
++                "canonical_url": 1,
++                "published_time": 1,
++                "quality_status": 1,
++                "markdown": 1,
++            },
++        },
++    }
++
++
++def _config_and_lock(tmp_path: Path) -> tuple[Path, Path]:
++    config = tmp_path / "config.json"
++    lock = tmp_path / "lock"
++    config.write_text("{}", encoding="utf-8")
++    lock.write_text("locked", encoding="utf-8")
++    return config, lock
++
++
++def test_production_label_without_matching_provenance_is_not_release_eligible():
++    report = build_web_clean_shadow_report(
++        _observations(),
++        salt="audit",
++        dataset_kind="production_shadow",
++    )
++
++    assert report["provenance"]["valid"] is False
++    assert report["release_eligible"] is False
++
++
++def test_shadow_report_accepts_only_matching_export_attestation_and_redacts_samples():
++    raw = "\n".join(json.dumps(row, sort_keys=True) for row in _observations()).encode()
++    digest = hashlib.sha256(raw).hexdigest()
++    report = build_web_clean_shadow_report(
++        _observations(),
++        salt="audit",
++        dataset_kind="production_shadow",
++        provenance=_provenance(digest),
++        input_sha256=digest,
++        provenance_hmac_key=_TEST_PROVENANCE_KEY,
++    )
++
++    assert report["provenance"]["valid"] is True
++    assert report["release_eligible"] is True
++    sample = report["high_risk_review"]["samples"][0]
++    assert sample["content_id"] != "content-secret"
++    assert "url" not in sample
++    assert "full_content" not in sample
++    assert "authorization" not in sample
++
++
++def test_release_gate_rejects_shadow_without_provenance(tmp_path):
++    config, lock = _config_and_lock(tmp_path)
++    shadow = build_web_clean_shadow_report(
++        _observations(),
++        salt="audit",
++        dataset_kind="production_shadow",
++    )
++
++    artifact = build_release_artifact(
++        _formal(),
++        _quality_shadow(),
++        config_path=config,
++        lock_path=lock,
++        performance={"candidate_pool_p95_ms": 20},
++        web_clean=_web_clean_eval(),
++        web_clean_shadow=shadow,
++        approvers=["owner"],
++        commit="abc123",
++    )
++
++    assert artifact["decision"]["result"] == "NO_GO"
++    assert "Web Clean Shadow production provenance is missing or invalid" in artifact["decision"]["blockers"]
++
++
++def test_release_gate_requires_formal_blocked_metadata_and_markdown_metrics(tmp_path):
++    config, lock = _config_and_lock(tmp_path)
++    raw = "\n".join(json.dumps(row, sort_keys=True) for row in _observations()).encode()
++    digest = hashlib.sha256(raw).hexdigest()
++    shadow = build_web_clean_shadow_report(
++        _observations(),
++        salt="audit",
++        dataset_kind="production_shadow",
++        provenance=_provenance(digest),
++        input_sha256=digest,
++        provenance_hmac_key=_TEST_PROVENANCE_KEY,
++    )
++    report = _web_clean_eval()
++    report["metrics"].update(
++        {
++            "blocked_detection_f1": 0.0,
++            "metadata_accuracy": 0.0,
++            "markdown_structure_score": 0.0,
++        }
++    )
++
++    artifact = build_release_artifact(
++        _formal(),
++        _quality_shadow(),
++        config_path=config,
++        lock_path=lock,
++        performance={"candidate_pool_p95_ms": 20},
++        web_clean=report,
++        web_clean_shadow=shadow,
++        approvers=["owner"],
++        commit="abc123",
++        web_clean_provenance_hmac_key=_TEST_PROVENANCE_KEY,
++    )
++
++    blockers = artifact["decision"]["blockers"]
++    assert artifact["decision"]["result"] == "NO_GO"
++    assert any("blocked_detection_f1" in item for item in blockers)
++    assert any("metadata_accuracy" in item for item in blockers)
++    assert any("markdown_structure_score" in item for item in blockers)
++
++
++def test_hash_bound_self_attestation_without_trusted_key_is_rejected():
++    raw = "\n".join(json.dumps(row, sort_keys=True) for row in _observations()).encode()
++    digest = hashlib.sha256(raw).hexdigest()
++    provenance = _provenance(digest)
++
++    report = build_web_clean_shadow_report(
++        _observations(),
++        salt="audit",
++        dataset_kind="production_shadow",
++        provenance=provenance,
++        input_sha256=digest,
++    )
++
++    assert report["provenance"]["valid"] is False
++    assert report["release_eligible"] is False
+diff --git a/backend/tests/test_web_clean_shadow_dom.py b/backend/tests/test_web_clean_shadow_dom.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..dcde00db17d81e2df47e974f36bf8d8d20ead7c7
+--- /dev/null
++++ b/backend/tests/test_web_clean_shadow_dom.py
+@@ -0,0 +1,76 @@
++from types import SimpleNamespace
++from unittest.mock import AsyncMock
++
++import pytest
++
++from app.domains.fetch.collectors import website_shadow_dom
++
++
++@pytest.mark.asyncio
++async def test_shadow_dom_materialization_is_bounded_and_reports_trace(monkeypatch):
++    monkeypatch.setattr(
++        website_shadow_dom,
++        "get_settings",
++        lambda: SimpleNamespace(pim_web_clean_enabled=False, pim_web_clean_shadow=True),
++    )
++    page = SimpleNamespace(evaluate=AsyncMock(return_value={"count": 4, "timedOut": False, "nodes": 90, "chars": 5000}))
++    logger = SimpleNamespace(debug=lambda *args: None)
++
++    count, timed_out = await website_shadow_dom.materialize_shadow_dom(page, logger=logger)
++
++    assert (count, timed_out) == (4, False)
++    script, limits = page.evaluate.await_args.args
++    assert "assignedNodes({flatten: true})" in script
++    assert "duplicates visible article text" in script
++    assert "getComputedStyle" in script
++    assert "node.shadowRoot" in script
++    assert limits["maxDepth"] == 12
++    assert limits["maxNodes"] == 20_000
++    assert limits["maxChars"] == 1_000_000
++
++
++@pytest.mark.asyncio
++async def test_shadow_dom_disabled_does_not_touch_page(monkeypatch):
++    monkeypatch.setattr(
++        website_shadow_dom,
++        "get_settings",
++        lambda: SimpleNamespace(pim_web_clean_enabled=False, pim_web_clean_shadow=False),
++    )
++    page = SimpleNamespace(evaluate=AsyncMock())
++
++    assert await website_shadow_dom.materialize_shadow_dom(page, logger=SimpleNamespace(debug=lambda *args: None)) == (0, False)
++    page.evaluate.assert_not_awaited()
++
++
++@pytest.mark.asyncio
++async def test_shadow_dom_timeout_stamps_diagnostic_marker(monkeypatch):
++    monkeypatch.setattr(
++        website_shadow_dom,
++        "get_settings",
++        lambda: SimpleNamespace(pim_web_clean_enabled=True, pim_web_clean_shadow=False),
++    )
++    page = SimpleNamespace(evaluate=AsyncMock(side_effect=[TimeoutError(), None]))
++    logger = SimpleNamespace(debug=lambda *args: None)
++
++    count, timed_out = await website_shadow_dom.materialize_shadow_dom(page, logger=logger)
++
++    assert (count, timed_out) == (0, True)
++    assert page.evaluate.await_count == 2
++    assert "data-pim-shadow-timeout" in page.evaluate.await_args_list[1].args[0]
++
++
++@pytest.mark.asyncio
++async def test_shadow_dom_result_count_is_clamped(monkeypatch):
++    monkeypatch.setattr(
++        website_shadow_dom,
++        "get_settings",
++        lambda: SimpleNamespace(pim_web_clean_enabled=True, pim_web_clean_shadow=False),
++    )
++    page = SimpleNamespace(evaluate=AsyncMock(return_value={"count": 999999, "timedOut": False}))
++
++    count, timed_out = await website_shadow_dom.materialize_shadow_dom(
++        page,
++        logger=SimpleNamespace(debug=lambda *args: None),
++    )
++
++    assert (count, timed_out) == (128, False)

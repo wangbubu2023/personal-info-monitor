@@ -984,3 +984,83 @@ class TestUpgradeXReaderBody:
                                     body, meta = await _upgrade_x_reader_body(content, {}, "short", db)
                                     assert body == long_text
                                     db.commit.assert_called()
+
+
+def test_web_clean_reader_summary_is_bounded_and_compatible():
+    from app.interfaces.http.contents_reader import _web_clean_reader_summary
+
+    assert _web_clean_reader_summary({}) is None
+    summary = _web_clean_reader_summary(
+        {
+            "web_clean": {
+                "version": "v1",
+                "extraction_method": "readability",
+                "quality_status": "good",
+                "quality_score": 0.91,
+                "text_chars": 1234,
+                "paragraph_count": 8,
+                "shadow": True,
+                "shadow_diff": {"old_chars": 900, "new_chars": 1234, "char_delta": 334},
+                "raw_html": "must not surface",
+                "trace": {
+                    "candidates": [
+                        {"method": "readability", "rejected_reason": None},
+                        {"method": "beautifulsoup", "rejected_reason": "listing_like"},
+                    ],
+                    "template_validation_errors": ["bad selector"],
+                    "standardizer": {
+                        "input_sha256": "a" * 64,
+                        "output_sha256": "b" * 64,
+                        "truncated": False,
+                        "shadow_materialized_count": 2,
+                        "shadow_timeout": True,
+                        "clean_html": "must not surface",
+                    },
+                },
+            }
+        }
+    )
+
+    assert summary["extraction_method"] == "readability"
+    assert summary["rejected_reasons"] == ["listing_like"]
+    assert summary["template_validation_errors"] == ["bad selector"]
+    assert summary["input_sha256"] == "a" * 64
+    assert summary["shadow_materialized_count"] == 2
+    assert "raw_html" not in summary
+    assert "clean_html" not in summary
+
+    blocked = _web_clean_reader_summary({"web_clean": {"quality_status": "captcha"}})
+    assert blocked["blocked"] is True
+
+
+def test_web_clean_reader_summary_strips_untrusted_nested_values_and_url_secrets():
+    from app.interfaces.http.contents_reader import _web_clean_reader_summary
+
+    summary = _web_clean_reader_summary(
+        {
+            "web_clean": {
+                "canonical_url": "https://user:pass@example.com/story?token=secret#fragment",
+                "quality_score": float("nan"),
+                "shadow": "true",
+                "shadow_diff": {
+                    "old_chars": 10,
+                    "new_chars": 20,
+                    "char_delta": 10,
+                    "old_hash": "must-not-surface",
+                    "nested": {"authorization": "Bearer secret"},
+                },
+                "trace": {
+                    "candidates": [{"rejected_reason": "x" * 500}],
+                    "standardizer": {"input_sha256": "a" * 500},
+                },
+            }
+        }
+    )
+
+    assert summary["canonical_url"] == "https://example.com/story"
+    assert "quality_score" not in summary
+    assert "shadow" not in summary
+    assert summary["shadow_diff"] == {"old_chars": 10, "new_chars": 20, "char_delta": 10}
+    assert summary["rejected_reasons"] == ["x" * 300]
+    assert summary["input_sha256"] == "a" * 64
+    assert "secret" not in repr(summary)

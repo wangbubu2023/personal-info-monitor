@@ -72,6 +72,24 @@ def test_postprocess_lease_heartbeat_and_stale_owner_cas(reliable_session):
     )
 
 
+def test_postprocess_idempotency_includes_content_fingerprint(reliable_session):
+    from app.platform.workers.postprocess_jobs import ensure_postprocess_job
+
+    ensure_postprocess_job("content-versioned", "finish:v7:fingerprint-a")
+    ensure_postprocess_job("content-versioned", "finish:v7:fingerprint-a")
+    ensure_postprocess_job("content-versioned", "finish:v7:fingerprint-b")
+
+    with reliable_session() as db:
+        rows = db.query(PostprocessJob).order_by(PostprocessJob.idempotency_key).all()
+        assert len(rows) == 2
+        assert {row.pipeline_version for row in rows} == {"v7"}
+        assert {row.idempotency_key for row in rows} == {
+            "content-versioned:finish:v7:fingerprint-a",
+            "content-versioned:finish:v7:fingerprint-b",
+        }
+
+
+
 @pytest.mark.asyncio
 async def test_scheduler_run_key_deduplicates_side_effect(reliable_session):
     from app.platform.workers.scheduler_ledger import execute_scheduled

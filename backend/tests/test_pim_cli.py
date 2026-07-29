@@ -66,6 +66,23 @@ def test_upgrade_handles_symbolic_ref_failure_as_detached_checkout(monkeypatch):
     pim._ensure_git_ready(no_pull=True)
 
 
+def test_minimal_env_fallback_does_not_reintroduce_legacy_ai_switches(monkeypatch, tmp_path):
+    pim = _load_pim_cli()
+    env_file = tmp_path / ".env"
+
+    monkeypatch.setattr(pim, "ENV_FILE", env_file)
+    monkeypatch.setattr(pim, "ENV_EXAMPLE_FILE", tmp_path / "missing.env.example")
+
+    pim._ensure_env_file()
+
+    payload = env_file.read_text(encoding="utf-8")
+    assert "DATA_DIR=~/.pim/data" in payload
+    assert "FETCH_CONCURRENCY=20" in payload
+    assert "AI_PROCESSING_ENABLED" not in payload
+    assert "ENRICH_SUMMARY_ENABLED" not in payload
+    assert "ENRICH_TRANSLATE_ENABLED" not in payload
+
+
 def test_build_frontend_uses_clean_install(monkeypatch, tmp_path):
     pim = _load_pim_cli()
     frontend = tmp_path / "frontend"

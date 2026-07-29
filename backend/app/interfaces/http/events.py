@@ -450,7 +450,11 @@ async def adjudicate_event_feedback(
 
 
 @router.get("/{event_id}", response_model=EventDetailResponse)
-async def get_event_detail(event_id: str, db: AsyncSession = Depends(get_async_db)):
+async def get_event_detail(
+    event_id: str,
+    full_reports: bool = Query(False),
+    db: AsyncSession = Depends(get_async_db),
+):
     from app.domains.events.operations import resolve_event
 
     resolved = await db.run_sync(lambda session: resolve_event(session, event_id.strip()))
@@ -463,7 +467,7 @@ async def get_event_detail(event_id: str, db: AsyncSession = Depends(get_async_d
         )
     if resolved and resolved.get("kind") == "split":
         raise HTTPException(status_code=409, detail=resolved)
-    detail = await build_event_detail(db, event_id.strip())
+    detail = await build_event_detail(db, event_id.strip(), full_reports=full_reports)
     if not detail:
         raise HTTPException(status_code=404, detail="Event not found")
     return EventDetailResponse(**detail)

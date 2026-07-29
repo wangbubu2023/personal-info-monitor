@@ -13,6 +13,8 @@ that ``patch("app.api.contents_reader.XXX")``) keep working unchanged.
 
 from __future__ import annotations
 
+import math
+from urllib.parse import urlsplit, urlunsplit
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -78,6 +80,111 @@ from app.platform.security.ssrf import assert_public_http_target  # noqa: E402,F
 from app.utils.text import strip_html_tags, truncate_content  # noqa: E402,F401 - patch target
 from app.config import get_settings  # noqa: E402,F401 - patch target
 import aiohttp  # noqa: E402,F401 - patch target
+
+
+def _bounded_text(value: object, *, limit: int) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text[:limit] if text else None
+
+
+def _bounded_number(value: object) -> int | float | None:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    number = float(value)
+    if not math.isfinite(number):
+        return None
+    return int(value) if isinstance(value, int) else number
+
+
+def _safe_diagnostic_url(value: object) -> str | None:
+    text = _bounded_text(value, limit=2048)
+    if not text:
+        return None
+    parsed = urlsplit(text)
+    if parsed.scheme.lower() not in {"http", "https"} or not parsed.hostname:
+        return None
+    host = parsed.hostname
+    try:
+        port = parsed.port
+    except ValueError:
+        return None
+    if port:
+        host = f"{host}:{port}"
+    # Diagnostic payloads do not need query strings, fragments, or userinfo.
+    return urlunsplit((parsed.scheme.lower(), host, parsed.path, "", ""))
+
+
+def _web_clean_reader_summary(metadata: dict) -> dict | None:
+    raw = metadata.get("web_clean") if isinstance(metadata, dict) else None
+    if not isinstance(raw, dict):
+        return None
+    summary: dict[str, object] = {}
+    for key, limit in (
+        ("version", 40),
+        ("extraction_method", 80),
+        ("template_id", 120),
+        ("quality_status", 80),
+    ):
+        value = _bounded_text(raw.get(key), limit=limit)
+        if value is not None:
+            summary[key] = value
+    for key in (
+        "quality_score",
+        "text_chars",
+        "paragraph_count",
+        "boilerplate_ratio",
+        "link_density",
+    ):
+        value = _bounded_number(raw.get(key))
+        if value is not None:
+            summary[key] = value
+    canonical = _safe_diagnostic_url(raw.get("canonical_url"))
+    if canonical:
+        summary["canonical_url"] = canonical
+    if isinstance(raw.get("shadow"), bool):
+        summary["shadow"] = raw["shadow"]
+    blocked_statuses = {"blocked", "login_required", "bot_wall", "captcha"}
+    if summary.get("quality_status") in blocked_statuses:
+        summary["blocked"] = True
+    shadow_diff = raw.get("shadow_diff") if isinstance(raw.get("shadow_diff"), dict) else {}
+    safe_shadow_diff = {
+        key: value
+        for key in ("old_chars", "new_chars", "char_delta")
+        if (value := _bounded_number(shadow_diff.get(key))) is not None
+    }
+    if safe_shadow_diff:
+        summary["shadow_diff"] = safe_shadow_diff
+    summary["blocked"] = raw.get("quality_status") in {
+        "blocked",
+        "login_required",
+        "bot_wall",
+        "captcha",
+    }
+    trace = raw.get("trace") if isinstance(raw.get("trace"), dict) else {}
+    candidates = trace.get("candidates") if isinstance(trace.get("candidates"), (list, tuple)) else []
+    rejected = [
+        str(item.get("rejected_reason"))[:300]
+        for item in candidates
+        if isinstance(item, dict) and item.get("rejected_reason")
+    ]
+    if rejected:
+        summary["rejected_reasons"] = rejected[:8]
+    validation_errors = trace.get("template_validation_errors")
+    if isinstance(validation_errors, (list, tuple)) and validation_errors:
+        summary["template_validation_errors"] = [str(item)[:300] for item in validation_errors[:8]]
+    standardizer = trace.get("standardizer") if isinstance(trace.get("standardizer"), dict) else {}
+    for key in ("input_sha256", "output_sha256", "truncated", "shadow_materialized_count", "shadow_timeout"):
+        if key in {"input_sha256", "output_sha256"}:
+            value = _bounded_text(standardizer.get(key), limit=64)
+        elif key in {"truncated", "shadow_timeout"}:
+            value = standardizer.get(key) if isinstance(standardizer.get(key), bool) else None
+        else:
+            value = _bounded_number(standardizer.get(key))
+        if value is not None:
+            summary[key] = value
+    return summary
 
 
 @router.get("/{content_id}/reader")
@@ -162,6 +269,7 @@ async def get_reader_payload(
         "body_translation_is_summary": False,
         "blocks": blocks,
         "clean_html": clean_html,
+        "web_clean": _web_clean_reader_summary(metadata),
     }
 
 

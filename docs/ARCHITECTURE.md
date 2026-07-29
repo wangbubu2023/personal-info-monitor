@@ -11,7 +11,7 @@
 ## 1. 系统分层
 
 PIM 是一个本地优先的单体应用：一个 FastAPI 后端 + 一个 React/Tauri 前端
-+ 一个 Python CLI（`pimctl`），全部共享同一份 SQLite 数据库。
++ 一个 Python CLI（`pimctl`）。SQLite 仅由后端持有，`pimctl` 只通过 HTTP API 访问后端。
 
 ```mermaid
 flowchart LR

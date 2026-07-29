@@ -68,6 +68,7 @@ const FetchHealthDrawer: React.FC<FetchHealthDrawerProps> = ({
   const rssHealth = s?.metadata?.rss_health
   const discovery = s?.metadata?.discovery_diagnostics
   const webClean = s?.metadata?.web_clean_profile
+  const webCleanProbe = s?.metadata?.web_clean_probe
   const severity = s ? deriveHealthSeverity(s) : 'unknown'
   const sevMeta = HEALTH_SEVERITY_META[severity]
   const cooldownRemaining = formatCooldownRemaining(s?.cooldown_until)
@@ -236,7 +237,9 @@ const FetchHealthDrawer: React.FC<FetchHealthDrawerProps> = ({
               </Descriptions.Item>
               <Descriptions.Item label="正文质量">
                 <Space>
-                  <Tag>{webClean.quality_status ?? 'unknown'}</Tag>
+                  <Tag color={webClean.blocked ? 'orange' : undefined}>
+                    {webClean.quality_status ?? 'unknown'}
+                  </Tag>
                   {webClean.quality_score != null
                     ? `${Math.round(webClean.quality_score * 100)} 分`
                     : '—'}
@@ -254,7 +257,48 @@ const FetchHealthDrawer: React.FC<FetchHealthDrawerProps> = ({
                   ? `${Math.round(webClean.link_density * 100)}%`
                   : '—'}
               </Descriptions.Item>
+              <Descriptions.Item label="访问控制命中">
+                {webClean.blocked ? <Tag color="orange">是</Tag> : <Tag>否</Tag>}
+              </Descriptions.Item>
+              {webClean.recent_failure_reason ? (
+                <Descriptions.Item label="最近失败原因">
+                  {webClean.recent_failure_reason}
+                </Descriptions.Item>
+              ) : null}
+              {webClean.shadow_diff ? (
+                <Descriptions.Item label="Shadow diff">
+                  {webClean.shadow_diff.old_chars ?? 0} → {webClean.shadow_diff.new_chars ?? 0} 字符
+                  （Δ {webClean.shadow_diff.char_delta ?? 0}）
+                </Descriptions.Item>
+              ) : null}
             </Descriptions>
+          ) : null}
+
+          {webCleanProbe ? (
+            <div className="mt-3" data-testid="web-clean-probe">
+              {webCleanProbe.template_valid === false ? (
+                <Alert
+                  type="error"
+                  showIcon
+                  message="网页清洗模板无效"
+                  description={(webCleanProbe.template_validation_errors ?? []).join('；') || '请检查模板配置'}
+                />
+              ) : webCleanProbe.preview ? (
+                <Alert
+                  type={webCleanProbe.preview.blocked ? 'warning' : 'success'}
+                  showIcon
+                  message={`模板探测：${webCleanProbe.template_id ?? '未命名模板'}`}
+                  description={`方法 ${webCleanProbe.preview.extraction_method ?? '—'} · 质量 ${webCleanProbe.preview.quality_status ?? 'unknown'} · ${webCleanProbe.preview.text_chars ?? 0} 字符`}
+                />
+              ) : (
+                <Alert
+                  type="warning"
+                  showIcon
+                  message={`模板已通过校验：${webCleanProbe.template_id ?? '未命名模板'}`}
+                  description={webCleanProbe.preview_error ?? '尚无清洗预览'}
+                />
+              )}
+            </div>
           ) : null}
 
           {/* RSS 健康 / 发现诊断 */}

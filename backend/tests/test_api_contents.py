@@ -6,7 +6,7 @@ import pytest
 from sqlalchemy import select
 
 from app.domains.events.repository import stable_event_id
-from app.models import Content, ContentEvent, ContentEventMembership, InteractionEvent, PersonalItemState, Source
+from app.models import Content, ContentEvent, ContentEventMembership, EventMembershipV1, InteractionEvent, PersonalItemState, Source
 from app.models.source import SourceType
 from app.utils.datetime import utcnow_naive
 
@@ -291,6 +291,65 @@ async def test_export_event_markdown_contains_timeline_without_full_body(client,
     assert "https://example.com/b" in markdown
     assert "Paid body A" not in markdown
     assert "Event 导出默认只包含标题" in markdown
+
+
+@pytest.mark.asyncio
+async def test_export_event_markdown_supports_v1_membership(client, db_session):
+    _, content = await _seed_content(
+        db_session,
+        source_name="V1 Source",
+        source_url="https://example.com/v1",
+        title="V1 Event Story",
+    )
+    event_key = "event:v1-export"
+    event_id = stable_event_id(event_key)
+    db_session.add(
+        ContentEvent(
+            event_id=event_id,
+            event_key=event_key,
+            title="V1 Event",
+            summary="V1 summary",
+            cluster_version="event-v1",
+            source_names=["V1 Source"],
+        )
+    )
+    db_session.add(
+        EventMembershipV1(
+            event_id=event_id,
+            content_id=str(content.id),
+            assignment_version="v1-test",
+            role="primary",
+            shadow_only=False,
+            active=True,
+        )
+    )
+    inactive_content = Content(
+        source_id=content.source_id,
+        external_id="inactive-v1-export",
+        title="Inactive superseded report",
+        original_url="https://example.com/v1/inactive",
+        content_type="article",
+    )
+    db_session.add(inactive_content)
+    await db_session.flush()
+    db_session.add(
+        EventMembershipV1(
+            event_id=event_id,
+            content_id=str(inactive_content.id),
+            assignment_version="v1-test",
+            role="supporting",
+            shadow_only=False,
+            active=False,
+        )
+    )
+    await db_session.commit()
+
+    response = await client.get("/api/contents/events/export-md", params={"event_key": event_key})
+
+    assert response.status_code == 200
+    assert "V1 Event Story" in response.text
+    assert "Inactive superseded report" not in response.text
+    assert f"pim://content/{content.id}" in response.text
 
 
 @pytest.mark.asyncio

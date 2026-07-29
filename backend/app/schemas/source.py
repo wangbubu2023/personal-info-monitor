@@ -47,6 +47,12 @@ def _normalize_source_quality_metadata(meta: Optional[Dict[str, Any]]) -> Option
     if "authority_type" in out and out.get("authority_type") is not None:
         out["authority_type"] = normalize_authority_type(out["authority_type"])[:80]
 
+    if "web_clean_mode" in out and out.get("web_clean_mode") is not None:
+        mode = str(out["web_clean_mode"]).strip().lower()
+        if mode not in {"off", "shadow", "write"}:
+            raise ValueError("metadata.web_clean_mode must be off, shadow, or write")
+        out["web_clean_mode"] = mode
+
     if "web_clean_template" in out and out.get("web_clean_template") is not None:
         template = out["web_clean_template"]
         if not isinstance(template, dict):

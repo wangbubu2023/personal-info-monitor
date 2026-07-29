@@ -158,8 +158,8 @@ class Settings(BaseSettings):
     #: that should only consume imported cookies/browser sessions.
     pim_disable_password_auto_login: bool = False
 
-    # Web Clean Pipeline. The legacy extractor remains authoritative until
-    # explicitly enabled; shadow mode only writes bounded diagnostics.
+    # Web Clean Pipeline master gates. During M0-M4, production writes also
+    # require source.metadata.web_clean_mode="write"; shadow is the safe default.
     pim_web_clean_enabled: bool = False
     pim_web_clean_shadow: bool = True
     pim_web_clean_write_metadata: bool = True

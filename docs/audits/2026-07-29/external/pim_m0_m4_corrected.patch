@@ -1,0 +1,388 @@
+diff --git a/backend/alembic/versions/20260729_0039_m4_audit_hardening.py b/backend/alembic/versions/20260729_0039_m4_audit_hardening.py
+index bab6606d4346f2870b13fccf4673829408c00201..fb1fcc165e991350470e31a88cb6d895a8c4e448 100644
+--- a/backend/alembic/versions/20260729_0039_m4_audit_hardening.py
++++ b/backend/alembic/versions/20260729_0039_m4_audit_hardening.py
+@@ -27,27 +27,31 @@ def upgrade() -> None:
+     bind = op.get_bind()
+     inspector = sa.inspect(bind)
+     if inspector.has_table("local_capture_audits"):
+-        # Keep the oldest audit for a token before making replay uniqueness durable.
+-        bind.execute(
++        duplicate_summary = bind.execute(
+             sa.text(
+                 """
+-                DELETE FROM local_capture_audits
+-                WHERE id IN (
+-                    SELECT id
+-                    FROM (
+-                        SELECT
+-                            id,
+-                            ROW_NUMBER() OVER (
+-                                PARTITION BY task_token_hash
+-                                ORDER BY created_at ASC, id ASC
+-                            ) AS replay_rank
+-                        FROM local_capture_audits
+-                    ) AS ranked_replays
+-                    WHERE replay_rank > 1
+-                )
++                SELECT
++                    COUNT(*) AS duplicate_group_count,
++                    COALESCE(SUM(group_size), 0) AS duplicate_audit_count
++                FROM (
++                    SELECT task_token_hash, COUNT(*) AS group_size
++                    FROM local_capture_audits
++                    WHERE task_token_hash IS NOT NULL
++                    GROUP BY task_token_hash
++                    HAVING COUNT(*) > 1
++                ) AS duplicate_tokens
+                 """
+             )
+-        )
++        ).mappings().one()
++        duplicate_group_count = int(duplicate_summary["duplicate_group_count"] or 0)
++        duplicate_audit_count = int(duplicate_summary["duplicate_audit_count"] or 0)
++        if duplicate_group_count:
++            raise RuntimeError(
++                "Cannot create Local Capture replay uniqueness index: "
++                f"found {duplicate_group_count} duplicate task-token hash group(s) "
++                f"across {duplicate_audit_count} immutable audit row(s); "
++                "remediate explicitly without deleting audit evidence, then retry"
++            )
+         if "uq_local_capture_task_token_hash" not in _indexes("local_capture_audits"):
+             op.create_index(
+                 "uq_local_capture_task_token_hash",
+diff --git a/backend/app/domains/events/repository.py b/backend/app/domains/events/repository.py
+index adc1fd14a4ede506b4cf00fa4cd6a79493df5a40..435349e53a8421f19bb501f2a34712b9585b3a26 100644
+--- a/backend/app/domains/events/repository.py
++++ b/backend/app/domains/events/repository.py
+@@ -563,17 +563,17 @@ async def build_event_detail(
+             {"type": row.event_type, "note": row.note, "created_at": to_iso_z(row.created_at)}
+             for row in feedback
+         ],
+-        "extra": {
+-            "view_mode": "full" if full_reports else "curated",
+-            "report_count": len(timeline),
+-            "cluster_version": event.cluster_version,
+-            "event_state": event.event_state,
+-            "status": event.status,
+-            "canonical_content_id": str(event.canonical_content_id or "") or None,
+-            "dispersion": event.dispersion,
+-            "centroid_version": (event.centroid or {}).get("centroid_version"),
+-            "source_independence": (event.metadata_ or {}).get("source_independence") or {},
+-            "aliases": [
++        "extra": dict(
++            view_mode="full" if full_reports else "curated",
++            report_count=len(timeline),
++            cluster_version=event.cluster_version,
++            event_state=event.event_state,
++            status=event.status,
++            canonical_content_id=str(event.canonical_content_id or "") or None,
++            dispersion=event.dispersion,
++            centroid_version=(event.centroid or {}).get("centroid_version"),
++            source_independence=(event.metadata_ or {}).get("source_independence") or {},
++            aliases=[
+                 {
+                     "type": row.alias_type,
+                     "value": row.alias_value,
+@@ -581,7 +581,7 @@ async def build_event_detail(
+                 }
+                 for row in aliases
+             ],
+-            "operations": [
++            operations=[
+                 {
+                     "id": str(row.id),
+                     "type": row.operation_type,
+@@ -593,5 +593,5 @@ async def build_event_detail(
+                 }
+                 for row in operations
+             ],
+-        },
++        ),
+     }
+diff --git a/backend/app/domains/fetch/local_capture.py b/backend/app/domains/fetch/local_capture.py
+index 53a9e1a8f3f8b1375f6fd4b7087c50f8f98adf0e..5c18e065ac5b5da1d8d1aff8b490b99f9992bcb9 100644
+--- a/backend/app/domains/fetch/local_capture.py
++++ b/backend/app/domains/fetch/local_capture.py
+@@ -25,6 +25,8 @@ from app.utils.datetime import utcnow_naive
+ 
+ TASK_TOKEN_TTL_SECONDS = 300
+ TASK_TOKEN_FUTURE_SKEW_SECONDS = 30
++MAX_READER_DOC_TITLE_CHARS = 512
++MAX_READER_DOC_BODY_CHARS = 2_000_000
+ _TOKEN_VERSION = "v1"
+ 
+ 
+@@ -188,14 +190,26 @@ def process_local_capture(
+     if not verify_task_token(task_token, device_id, origin_url):
+         raise ValueError("Invalid or expired task token for local capture")
+ 
+-    title = str(reader_doc_title or "").strip()
+-    body = str(reader_doc_body or "").strip()
++    raw_title = str(reader_doc_title or "")
++    raw_body = str(reader_doc_body or "")
++    if len(raw_title) > MAX_READER_DOC_TITLE_CHARS:
++        raise ValueError(
++            f"ReaderDocument title exceeds {MAX_READER_DOC_TITLE_CHARS} characters"
++        )
++    if len(raw_body) > MAX_READER_DOC_BODY_CHARS:
++        raise ValueError(
++            f"ReaderDocument body exceeds {MAX_READER_DOC_BODY_CHARS} characters"
++        )
++    title = raw_title.strip()
++    body = raw_body.strip()
+     if not title or not body:
+         raise ValueError("ReaderDocument title and body are required")
+ 
+     canonical_origin = _canonical_origin(origin_url)
+-    content_raw = f"{canonical_origin}:{title}:{body}"
+-    checksum = hashlib.sha256(content_raw.encode("utf-8")).hexdigest()
++    content_digest = hashlib.sha256()
++    for part in (canonical_origin, "\n", title, "\n", body):
++        content_digest.update(part.encode("utf-8"))
++    checksum = content_digest.hexdigest()
+     token_hash = hashlib.sha256(task_token.encode("utf-8")).hexdigest()
+     audit = LocalCaptureAudit(
+         id=str(uuid.uuid4()),
+diff --git a/backend/app/interfaces/http/paid_matrix.py b/backend/app/interfaces/http/paid_matrix.py
+index 6fae58b2bdfd23c411067ed994f84207e748dc41..16ec2bbb116da71e921e5bc9cb37eb98899deb3a 100644
+--- a/backend/app/interfaces/http/paid_matrix.py
++++ b/backend/app/interfaces/http/paid_matrix.py
+@@ -1,12 +1,17 @@
+ """Paid-source, Local Capture, canary, and archive-audit HTTP handlers."""
+ 
+ from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+-from pydantic import BaseModel
++from pydantic import BaseModel, Field
+ from sqlalchemy.orm import Session
+ 
+ from app.database import get_db
+ from app.domains.fetch.auth_zip import MAX_COMPRESSED_ARCHIVE_BYTES, extract_auth_archive_safely
+-from app.domains.fetch.local_capture import issue_local_capture_task_token, process_local_capture
++from app.domains.fetch.local_capture import (
++    MAX_READER_DOC_BODY_CHARS,
++    MAX_READER_DOC_TITLE_CHARS,
++    issue_local_capture_task_token,
++    process_local_capture,
++)
+ from app.domains.fetch.paid_matrix import (
+     ack_session_recovery,
+     complete_session_recovery,
+@@ -40,8 +45,8 @@ class LocalCaptureRequest(BaseModel):
+     device_id: str
+     task_token: str
+     origin_url: str
+-    reader_doc_title: str
+-    reader_doc_body: str
++    reader_doc_title: str = Field(min_length=1, max_length=MAX_READER_DOC_TITLE_CHARS)
++    reader_doc_body: str = Field(min_length=1, max_length=MAX_READER_DOC_BODY_CHARS)
+ 
+ 
+ class DailyCanaryRequest(BaseModel):
+diff --git a/backend/tests/test_m4_audit_hardening_migration.py b/backend/tests/test_m4_audit_hardening_migration.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..08ccdadb588cbde09771f156068dd101bcddc309
+--- /dev/null
++++ b/backend/tests/test_m4_audit_hardening_migration.py
+@@ -0,0 +1,66 @@
++from __future__ import annotations
++
++import importlib.util
++from pathlib import Path
++
++import pytest
++from alembic.migration import MigrationContext
++from alembic.operations import Operations
++from sqlalchemy import Column, DateTime, MetaData, String, Table, create_engine, inspect, text
++
++
++def _load_migration():
++    path = (
++        Path(__file__).resolve().parents[1]
++        / "alembic"
++        / "versions"
++        / "20260729_0039_m4_audit_hardening.py"
++    )
++    spec = importlib.util.spec_from_file_location("m4_audit_hardening", path)
++    assert spec and spec.loader
++    module = importlib.util.module_from_spec(spec)
++    spec.loader.exec_module(module)
++    return module
++
++
++def test_m4_audit_hardening_fails_closed_without_deleting_duplicate_audits(tmp_path):
++    engine = create_engine(f"sqlite:///{tmp_path / 'duplicate-audits.db'}")
++    metadata = MetaData()
++    Table(
++        "local_capture_audits",
++        metadata,
++        Column("id", String(36), primary_key=True),
++        Column("task_token_hash", String(100), nullable=False),
++        Column("created_at", DateTime, nullable=False),
++    )
++    metadata.create_all(engine)
++
++    with engine.begin() as connection:
++        connection.execute(
++            text(
++                """
++                INSERT INTO local_capture_audits (id, task_token_hash, created_at)
++                VALUES
++                    ('audit-1', 'duplicate-token-hash', CURRENT_TIMESTAMP),
++                    ('audit-2', 'duplicate-token-hash', CURRENT_TIMESTAMP)
++                """
++            )
++        )
++        migration = _load_migration()
++        context = MigrationContext.configure(connection)
++        with Operations.context(context):
++            with pytest.raises(
++                RuntimeError,
++                match=r"1 duplicate task-token hash group\(s\).*2 immutable audit row\(s\)",
++            ):
++                migration.upgrade()
++
++        audit_count = connection.execute(
++            text("SELECT COUNT(*) FROM local_capture_audits")
++        ).scalar_one()
++        index_names = {
++            row["name"] for row in inspect(connection).get_indexes("local_capture_audits")
++        }
++
++    assert audit_count == 2
++    assert "uq_local_capture_task_token_hash" not in index_names
+diff --git a/backend/tests/test_m4_local_capture_and_zip.py b/backend/tests/test_m4_local_capture_and_zip.py
+index 5dd822f9a4281bd99be1930853e6bb65f6e8f431..ad1ecc810839ba6b9e71aa38eb26027585292eee 100644
+--- a/backend/tests/test_m4_local_capture_and_zip.py
++++ b/backend/tests/test_m4_local_capture_and_zip.py
+@@ -1,10 +1,13 @@
+ from __future__ import annotations
+ 
++import importlib.util
+ import io
+ import json
++from pathlib import Path
+ import zipfile
+ 
+ import pytest
++from pydantic import ValidationError
+ from sqlalchemy import create_engine
+ from sqlalchemy.orm import Session, sessionmaker
+ 
+@@ -16,6 +19,8 @@ from app.domains.fetch.auth_zip import (
+     validate_and_inspect_zip,
+ )
+ from app.domains.fetch.local_capture import (
++    MAX_READER_DOC_BODY_CHARS,
++    MAX_READER_DOC_TITLE_CHARS,
+     issue_local_capture_task_token,
+     process_local_capture,
+     verify_origin_allowlist,
+@@ -25,6 +30,15 @@ from app.models.auth_assistant import AuthAssistantDevice, AuthAssistantDeviceSt
+ from app.models.source import Source
+ 
+ 
++def _load_local_capture_request_model():
++    path = Path(__file__).resolve().parents[1] / "app" / "interfaces" / "http" / "paid_matrix.py"
++    spec = importlib.util.spec_from_file_location("paid_matrix_http_for_test", path)
++    assert spec and spec.loader
++    module = importlib.util.module_from_spec(spec)
++    spec.loader.exec_module(module)
++    return module.LocalCaptureRequest
++
++
+ @pytest.fixture
+ def sync_db():
+     engine = create_engine("sqlite:///:memory:")
+@@ -92,6 +106,69 @@ def test_m4_03_local_capture_is_server_allowlisted_and_one_time(sync_db: Session
+         issue_local_capture_task_token(sync_db, device_id, origin_url)
+ 
+ 
++def test_m4_03_local_capture_rejects_oversized_reader_documents(sync_db: Session):
++    source = Source(
++        name="Bloomberg Premium",
++        url="https://bloomberg.com",
++        type="website",
++        auth_required=True,
++        enabled=True,
++    )
++    device = AuthAssistantDevice(
++        name="Local Capture Browser",
++        token_hash="capture-size-device-token-hash",
++        status=AuthAssistantDeviceStatus.ACTIVE,
++    )
++    sync_db.add_all([source, device])
++    sync_db.commit()
++
++    device_id = str(device.id)
++    origin_url = "https://www.bloomberg.com/news/articles/2026-07-24"
++    token = issue_local_capture_task_token(sync_db, device_id, origin_url)
++    LocalCaptureRequest = _load_local_capture_request_model()
++    common_request = {
++        "device_id": device_id,
++        "task_token": token,
++        "origin_url": origin_url,
++    }
++
++    with pytest.raises(ValidationError, match="reader_doc_title"):
++        LocalCaptureRequest(
++            **common_request,
++            reader_doc_title="t" * (MAX_READER_DOC_TITLE_CHARS + 1),
++            reader_doc_body="body",
++        )
++    with pytest.raises(ValidationError, match="reader_doc_body"):
++        LocalCaptureRequest(
++            **common_request,
++            reader_doc_title="title",
++            reader_doc_body="b" * (MAX_READER_DOC_BODY_CHARS + 1),
++        )
++
++    with pytest.raises(ValueError, match="title exceeds"):
++        process_local_capture(
++            sync_db,
++            **common_request,
++            reader_doc_title="t" * (MAX_READER_DOC_TITLE_CHARS + 1),
++            reader_doc_body="body",
++        )
++    with pytest.raises(ValueError, match="body exceeds"):
++        process_local_capture(
++            sync_db,
++            **common_request,
++            reader_doc_title="title",
++            reader_doc_body="b" * (MAX_READER_DOC_BODY_CHARS + 1),
++        )
++
++    audit = process_local_capture(
++        sync_db,
++        **common_request,
++        reader_doc_title="title",
++        reader_doc_body="body",
++    )
++    assert audit.reader_doc_checksum
++
++
+ def test_m4_05_auth_zip_safety_guards(sync_db: Session):
+     buf = io.BytesIO()
+     with zipfile.ZipFile(buf, "w") as archive:
+diff --git a/frontend/src/types/openapi.json b/frontend/src/types/openapi.json
+index 023fd8154d515ead189449f8ef70ed376e6268f5..585eea1d48b05d2f97f59f682ddd8ad72e46d1f0 100644
+--- a/frontend/src/types/openapi.json
++++ b/frontend/src/types/openapi.json
+@@ -2855,11 +2855,15 @@
+           },
+           "reader_doc_body": {
+             "title": "Reader Doc Body",
+-            "type": "string"
++            "type": "string",
++            "minLength": 1,
++            "maxLength": 2000000
+           },
+           "reader_doc_title": {
+             "title": "Reader Doc Title",
+-            "type": "string"
++            "type": "string",
++            "minLength": 1,
++            "maxLength": 512
+           },
+           "task_token": {
+             "title": "Task Token",

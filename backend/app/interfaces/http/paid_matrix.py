@@ -1,12 +1,17 @@
-"""Paid-source matrix, Local capture, and Archive extraction HTTP handlers."""
+"""Paid-source, Local Capture, canary, and archive-audit HTTP handlers."""
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.domains.fetch.auth_zip import extract_auth_archive_safely
-from app.domains.fetch.local_capture import process_local_capture
+from app.domains.fetch.auth_zip import MAX_COMPRESSED_ARCHIVE_BYTES, extract_auth_archive_safely
+from app.domains.fetch.local_capture import (
+    MAX_READER_DOC_BODY_CHARS,
+    MAX_READER_DOC_TITLE_CHARS,
+    issue_local_capture_task_token,
+    process_local_capture,
+)
 from app.domains.fetch.paid_matrix import (
     ack_session_recovery,
     complete_session_recovery,
@@ -31,13 +36,17 @@ class SessionTriggerRequest(BaseModel):
     root_cause: str = "MANUAL_TEST_EXPIRATION"
 
 
+class LocalCaptureTokenRequest(BaseModel):
+    device_id: str
+    origin_url: str
+
+
 class LocalCaptureRequest(BaseModel):
     device_id: str
     task_token: str
     origin_url: str
-    reader_doc_title: str
-    reader_doc_body: str
-    allowlist: list[str] | None = None
+    reader_doc_title: str = Field(min_length=1, max_length=MAX_READER_DOC_TITLE_CHARS)
+    reader_doc_body: str = Field(min_length=1, max_length=MAX_READER_DOC_BODY_CHARS)
 
 
 class DailyCanaryRequest(BaseModel):
@@ -57,9 +66,10 @@ def api_record_paid_source(req: PaidSourceRecordRequest, db: Session = Depends(g
         http_status=req.http_status,
     )
     return {
-        "status": "success",
+        "status": "success" if audit.failure_code is None else "failed",
         "audit_id": audit.id,
         "last_readable_success_at": audit.last_readable_success_at.isoformat() if audit.last_readable_success_at else None,
+        "success_rate_7d": audit.success_rate_7d,
         "failure_code": audit.failure_code,
         "recovery_action": audit.recovery_action,
     }
@@ -91,6 +101,15 @@ def api_complete_recovery(audit_id: str, db: Session = Depends(get_db)):
     }
 
 
+@router.post("/local-capture/task-token")
+def api_issue_local_capture_token(req: LocalCaptureTokenRequest, db: Session = Depends(get_db)):
+    try:
+        token = issue_local_capture_task_token(db, req.device_id, req.origin_url)
+    except ValueError as err:
+        raise HTTPException(status_code=400, detail=str(err)) from err
+    return {"task_token": token, "expires_in_seconds": 300}
+
+
 @router.post("/local-capture")
 def api_local_capture(req: LocalCaptureRequest, db: Session = Depends(get_db)):
     try:
@@ -101,7 +120,6 @@ def api_local_capture(req: LocalCaptureRequest, db: Session = Depends(get_db)):
             origin_url=req.origin_url,
             reader_doc_title=req.reader_doc_title,
             reader_doc_body=req.reader_doc_body,
-            allowlist=req.allowlist,
         )
         return {"status": "captured", "audit_id": audit.id, "checksum": audit.reader_doc_checksum}
     except ValueError as err:
@@ -110,12 +128,15 @@ def api_local_capture(req: LocalCaptureRequest, db: Session = Depends(get_db)):
 
 @router.post("/daily-canary")
 def api_daily_canary(req: DailyCanaryRequest, db: Session = Depends(get_db)):
-    canary = run_daily_canary_for_source(
-        db,
-        source_id=req.source_id,
-        sample_body=req.sample_body,
-        run_date_str=req.run_date_str,
-    )
+    try:
+        canary = run_daily_canary_for_source(
+            db,
+            source_id=req.source_id,
+            sample_body=req.sample_body,
+            run_date_str=req.run_date_str,
+        )
+    except ValueError as err:
+        raise HTTPException(status_code=400, detail=str(err)) from err
     return {
         "status": canary.status,
         "canary_id": canary.id,
@@ -123,10 +144,28 @@ def api_daily_canary(req: DailyCanaryRequest, db: Session = Depends(get_db)):
     }
 
 
+async def _validate_upload_size(file: UploadFile, max_bytes: int) -> int:
+    await file.seek(0)
+    total = 0
+    while True:
+        chunk = await file.read(min(1024 * 1024, max_bytes - total + 1))
+        if not chunk:
+            break
+        total += len(chunk)
+        if total > max_bytes:
+            raise HTTPException(status_code=413, detail=f"Uploaded archive exceeds {max_bytes} bytes")
+    await file.seek(0)
+    return total
+
+
 @router.post("/extract-archive")
 async def api_extract_archive(file: UploadFile = File(...), db: Session = Depends(get_db)):
-    bytes_content = await file.read()
-    extraction = extract_auth_archive_safely(db, archive_name=file.filename or "archive.zip", zip_bytes=bytes_content)
+    await _validate_upload_size(file, MAX_COMPRESSED_ARCHIVE_BYTES)
+    extraction = extract_auth_archive_safely(
+        db,
+        archive_name=file.filename or "archive.zip",
+        zip_bytes=file.file,
+    )
     return {
         "status": extraction.status,
         "extraction_id": extraction.id,

@@ -237,6 +237,22 @@ class ProbeService:
                 logger.debug("Failed to attach probe cookie %s: %s", key, exc)
         return jar
 
+    async def fetch_html(
+        self,
+        url: str,
+        *,
+        cookies: Optional[Dict[str, str]] = None,
+        timeout: int = 15,
+    ) -> Optional[str]:
+        """Fetch probe HTML with the same SSRF and host-scoped cookie policy."""
+        if cookies:
+            token = _probe_cookies_var.set(cookies)
+            try:
+                return await self._http_get(url, timeout=timeout)
+            finally:
+                _probe_cookies_var.reset(token)
+        return await self._http_get(url, timeout=timeout)
+
     async def _http_get(self, url: str, timeout: int = 15) -> Optional[str]:
         try:
             ssl_option = False if settings.probe_disable_ssl_verify and settings.debug else None

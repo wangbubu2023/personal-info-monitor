@@ -32,6 +32,10 @@ function safeHttpUrl(value?: string): string {
   }
 }
 
+function formatDiagnosticRatio(value?: number): string {
+  return value == null ? '—' : `${Math.round(value * 100)}%`;
+}
+
 function ShortcutHint({ children }: { children: React.ReactNode }) {
   return (
     <kbd
@@ -397,6 +401,35 @@ const ReaderPage: React.FC = () => {
               </div>
             </div>
           </header>
+
+          {data.web_clean ? (
+            <details
+              className="mt-8 rounded-2xl border border-[rgba(88,100,118,0.14)] bg-white/65 px-5 py-4 text-[13px] text-[#586476]"
+              data-testid="web-clean-diagnostic"
+            >
+              <summary className="cursor-pointer font-semibold text-[#293859]">网页清洗诊断</summary>
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                <div>模式：{data.web_clean.shadow ? 'Shadow' : '已启用'}</div>
+                <div>方法：{data.web_clean.extraction_method || '—'}</div>
+                <div>模板：{data.web_clean.template_id || '通用模板'}</div>
+                <div>质量：{data.web_clean.quality_status || 'unknown'} / {formatDiagnosticRatio(data.web_clean.quality_score)}</div>
+                <div>访问控制：{data.web_clean.blocked ? '命中' : '未命中'}</div>
+                <div>正文：{data.web_clean.text_chars ?? 0} 字符 · {data.web_clean.paragraph_count ?? 0} 段</div>
+                <div>噪音 / 链接：{formatDiagnosticRatio(data.web_clean.boilerplate_ratio)} / {formatDiagnosticRatio(data.web_clean.link_density)}</div>
+                <div>Shadow DOM：{data.web_clean.shadow_materialized_count ?? 0} 个{data.web_clean.shadow_timeout ? '（超时降级）' : ''}</div>
+                <div>HTML 截断：{data.web_clean.truncated ? '是' : '否'}</div>
+              </div>
+              {data.web_clean.shadow_diff ? (
+                <div className="mt-3">旧/新正文：{data.web_clean.shadow_diff.old_chars ?? 0} → {data.web_clean.shadow_diff.new_chars ?? 0} 字符（Δ {data.web_clean.shadow_diff.char_delta ?? 0}）</div>
+              ) : null}
+              {data.web_clean.rejected_reasons?.length ? (
+                <div className="mt-3 break-words text-amber-700">候选拒绝：{data.web_clean.rejected_reasons.join('；')}</div>
+              ) : null}
+              {data.web_clean.template_validation_errors?.length ? (
+                <div className="mt-3 break-words text-rose-600">模板错误：{data.web_clean.template_validation_errors.join('；')}</div>
+              ) : null}
+            </details>
+          ) : null}
 
           <div className={layout.bodyClassName} data-testid="reader-iframe">
             {displayBlocks.length === 0 ? (

@@ -599,6 +599,69 @@ class TestBuildRawContentObjects:
         mock_extractor.extract.assert_called_once()
 
     @pytest.mark.asyncio
+    async def test_enabled_web_clean_preserves_markdown_structure_for_reader(self):
+        from app.domains.fetch.web_clean.contracts import CleanResult
+        from app.domains.ingest.build_content import build_raw_content_objects
+
+        source = _make_source(type=SourceType.WEBSITE)
+        source.metadata_ = {"web_clean_mode": "write"}
+        markdown = (
+            "## Section heading\n\n"
+            "[Source link](https://example.com/source)\n\n"
+            "```python\nprint('kept')\n```"
+        )
+        clean_result = CleanResult(
+            url="https://example.com/article",
+            title="Structured article",
+            author=None,
+            published_time=None,
+            canonical_url=None,
+            site_name=None,
+            language="en",
+            article_html="<article><h2>Section heading</h2></article>",
+            article_text="Section heading\n\nSource link\n\nprint('kept')",
+            article_markdown=markdown,
+            clean_full_html=None,
+            extraction_method="beautifulsoup",
+            template_id=None,
+            quality_status="full",
+            quality_score=0.9,
+            trace={
+                "selected_method": "beautifulsoup",
+                "candidates": [{"method": "beautifulsoup", "rejected_reason": None}],
+            },
+        )
+        mock_extractor = AsyncMock()
+        mock_extractor.extract_clean.return_value = clean_result
+        settings = MagicMock(
+            pim_web_clean_enabled=True,
+            pim_web_clean_shadow=False,
+            pim_web_clean_template_enabled=True,
+            pim_web_clean_max_html_bytes=3_000_000,
+            pim_web_clean_timeout_ms=2_000,
+            pim_web_clean_write_metadata=True,
+        )
+        raw = [
+            _raw(
+                title="Structured article",
+                url="https://example.com/article",
+                content="legacy plain body",
+                html="<article><h2>Section heading</h2></article>",
+            )
+        ]
+
+        with (
+            _no_reject,
+            patch("app.domains.ingest.extractor.ContentExtractor", return_value=mock_extractor),
+            patch("app.domains.ingest.build_content.get_settings", return_value=settings),
+        ):
+            results, build_failures = await build_raw_content_objects(raw, source)
+
+        assert build_failures == 0
+        assert results[0].full_content == markdown
+        assert results[0].summary == "Section heading\n\nSource link\n\nprint('kept')"
+
+    @pytest.mark.asyncio
     async def test_short_cls_structured_body_is_stamped_as_trusted_fulltext(self):
         from app.domains.ingest.build_content import build_raw_content_objects
 
@@ -1457,3 +1520,226 @@ class TestPipelineUtils:
         from app.utils.url import normalize_external_id
 
         assert normalize_external_id(None) is None
+
+
+@pytest.mark.asyncio
+async def test_web_clean_enabled_persists_markdown_while_quality_uses_plain_text():
+    from types import SimpleNamespace
+
+    from app.domains.fetch.web_clean.contracts import CleanResult
+    from app.domains.ingest.build_content import build_raw_content_objects
+
+    source = _make_source(type=SourceType.WEBSITE)
+    source.metadata_ = {"web_clean_mode": "write"}
+    article_text = "Heading\n\nBody paragraph with enough useful context. " * 15
+    article_markdown = "## Heading\n\n[Source](https://example.com/source)\n\n```python\nprint('ok')\n```\n\n" + article_text
+    clean_result = CleanResult(
+        url="https://example.com/story",
+        title="Heading",
+        author=None,
+        published_time=None,
+        canonical_url=None,
+        site_name=None,
+        language=None,
+        article_html="<article><h2>Heading</h2></article>",
+        article_text=article_text,
+        article_markdown=article_markdown,
+        clean_full_html=None,
+        extraction_method="template_selector",
+        template_id="example-v1",
+        quality_status="full",
+        quality_score=0.9,
+        trace={
+            "selected_method": "template_selector",
+            "candidates": [{"method": "template_selector", "rejected_reason": None}],
+        },
+        metadata={"quality_signals": {"paragraph_count": 4, "link_density": 0.1}},
+    )
+    extractor = AsyncMock()
+    extractor.extract_clean.return_value = clean_result
+    settings = SimpleNamespace(
+        pim_web_clean_enabled=True,
+        pim_web_clean_shadow=True,
+        pim_web_clean_template_enabled=True,
+        pim_web_clean_max_html_bytes=3_000_000,
+        pim_web_clean_timeout_ms=8_000,
+        pim_web_clean_write_metadata=True,
+    )
+    raw = [_raw(url="https://example.com/story", content="legacy body", html="<article>legacy body</article>")]
+
+    with (
+        _no_reject,
+        patch("app.domains.ingest.extractor.ContentExtractor", return_value=extractor),
+        patch("app.domains.ingest.build_content.get_settings", return_value=settings),
+    ):
+        results, failures = await build_raw_content_objects(raw, source)
+
+    assert failures == 0
+    assert len(results) == 1
+    assert results[0].full_content == article_markdown
+    assert "[Source](https://example.com/source)" in results[0].full_content
+    assert "```python" in results[0].full_content
+    assert results[0].summary.startswith("Heading")
+    assert results[0].metadata_["web_clean"]["shadow"] is False
+
+
+@pytest.mark.asyncio
+async def test_web_clean_shadow_does_not_replace_legacy_full_content():
+    from types import SimpleNamespace
+
+    from app.domains.fetch.web_clean.contracts import CleanResult
+    from app.domains.ingest.build_content import build_raw_content_objects
+
+    source = _make_source(type=SourceType.WEBSITE)
+    clean_result = CleanResult(
+        url="https://example.com/story",
+        title=None,
+        author=None,
+        published_time=None,
+        canonical_url=None,
+        site_name=None,
+        language=None,
+        article_html="<article>new candidate</article>",
+        article_text="new candidate " * 50,
+        article_markdown="## New candidate\n\n" + ("new candidate " * 50),
+        clean_full_html=None,
+        extraction_method="beautifulsoup",
+        template_id=None,
+        quality_status="good",
+        quality_score=0.8,
+        trace={"selected_method": "beautifulsoup", "candidates": []},
+        metadata={"quality_signals": {"paragraph_count": 3}},
+    )
+    extractor = AsyncMock()
+    extractor.extract_clean.return_value = clean_result
+    settings = SimpleNamespace(
+        pim_web_clean_enabled=False,
+        pim_web_clean_shadow=True,
+        pim_web_clean_template_enabled=False,
+        pim_web_clean_max_html_bytes=3_000_000,
+        pim_web_clean_timeout_ms=8_000,
+        pim_web_clean_write_metadata=True,
+    )
+    legacy = "legacy production body " * 40
+    raw = [_raw(url="https://example.com/story", content=legacy, html="<article>new candidate</article>")]
+
+    with (
+        _no_reject,
+        patch("app.domains.ingest.extractor.ContentExtractor", return_value=extractor),
+        patch("app.domains.ingest.build_content.get_settings", return_value=settings),
+    ):
+        results, failures = await build_raw_content_objects(raw, source)
+
+    assert failures == 0
+    assert results[0].full_content == legacy.strip()
+    assert results[0].metadata_["web_clean"]["shadow"] is True
+    assert "shadow_diff" in results[0].metadata_["web_clean"]
+
+
+@pytest.mark.asyncio
+async def test_web_clean_enabled_rejected_candidate_keeps_legacy_body():
+    from types import SimpleNamespace
+
+    from app.domains.fetch.web_clean.contracts import CleanResult
+    from app.domains.ingest.build_content import build_raw_content_objects
+
+    source = _make_source(type=SourceType.WEBSITE)
+    source.metadata_ = {"web_clean_mode": "write"}
+    clean_result = CleanResult(
+        url="https://example.com/login",
+        title="Login",
+        author=None,
+        published_time=None,
+        canonical_url=None,
+        site_name=None,
+        language=None,
+        article_html="<article>Please sign in</article>",
+        article_text="Please sign in to continue " * 20,
+        article_markdown="Please sign in to continue " * 20,
+        clean_full_html=None,
+        extraction_method="beautifulsoup",
+        template_id=None,
+        quality_status="login_required",
+        quality_score=0.1,
+        trace={
+            "selected_method": "beautifulsoup",
+            "candidates": [{"method": "beautifulsoup", "rejected_reason": "login_required"}],
+        },
+        metadata={"quality_signals": {"paragraph_count": 1}},
+    )
+    extractor = AsyncMock()
+    extractor.extract_clean.return_value = clean_result
+    settings = SimpleNamespace(
+        pim_web_clean_enabled=True,
+        pim_web_clean_shadow=True,
+        pim_web_clean_template_enabled=True,
+        pim_web_clean_max_html_bytes=3_000_000,
+        pim_web_clean_timeout_ms=8_000,
+        pim_web_clean_write_metadata=True,
+    )
+    legacy = "legacy authorized article body " * 40
+    raw = [_raw(url="https://example.com/login", content=legacy, html="<article>Please sign in</article>")]
+
+    with (
+        _no_reject,
+        patch("app.domains.ingest.extractor.ContentExtractor", return_value=extractor),
+        patch("app.domains.ingest.build_content.get_settings", return_value=settings),
+    ):
+        results, failures = await build_raw_content_objects(raw, source)
+
+    assert failures == 0
+    assert results[0].full_content == legacy.strip()
+    assert results[0].metadata_["web_clean"]["quality_status"] == "login_required"
+
+
+@pytest.mark.asyncio
+async def test_web_clean_global_master_does_not_write_without_source_opt_in():
+    from types import SimpleNamespace
+
+    from app.domains.fetch.web_clean.contracts import CleanResult
+    from app.domains.ingest.build_content import build_raw_content_objects
+
+    source = _make_source(type=SourceType.WEBSITE)
+    clean_result = CleanResult(
+        url="https://example.com/story",
+        title="New",
+        author=None,
+        published_time=None,
+        canonical_url=None,
+        site_name=None,
+        language=None,
+        article_html="<article>new</article>",
+        article_text="new clean body " * 50,
+        article_markdown="## New\n\n" + ("new clean body " * 50),
+        clean_full_html=None,
+        extraction_method="beautifulsoup",
+        template_id=None,
+        quality_status="good",
+        quality_score=0.9,
+        trace={"selected_method": "beautifulsoup", "candidates": []},
+        metadata={"quality_signals": {"paragraph_count": 3}},
+    )
+    extractor = AsyncMock()
+    extractor.extract_clean.return_value = clean_result
+    settings = SimpleNamespace(
+        pim_web_clean_enabled=True,
+        pim_web_clean_shadow=True,
+        pim_web_clean_template_enabled=True,
+        pim_web_clean_max_html_bytes=3_000_000,
+        pim_web_clean_timeout_ms=8_000,
+        pim_web_clean_write_metadata=True,
+    )
+    legacy = "legacy body remains authoritative " * 40
+    raw = [_raw(url="https://example.com/story", content=legacy, html="<article>new</article>")]
+
+    with (
+        _no_reject,
+        patch("app.domains.ingest.extractor.ContentExtractor", return_value=extractor),
+        patch("app.domains.ingest.build_content.get_settings", return_value=settings),
+    ):
+        results, failures = await build_raw_content_objects(raw, source)
+
+    assert failures == 0
+    assert results[0].full_content == legacy.strip()
+    assert results[0].metadata_["web_clean"]["shadow"] is True
+    assert results[0].metadata_["web_clean"]["source_mode"] == "shadow"

@@ -34,6 +34,29 @@ export type ReaderBlock =
   | { type: 'footnote'; marker?: string; text: string }
   | { type: 'link'; text: string; href: string }
 
+export interface WebCleanDiagnostic {
+  version?: string
+  extraction_method?: string
+  template_id?: string
+  quality_status?: string
+  quality_score?: number
+  text_chars?: number
+  paragraph_count?: number
+  boilerplate_ratio?: number
+  link_density?: number
+  canonical_url?: string
+  shadow?: boolean
+  blocked?: boolean
+  shadow_diff?: { old_chars?: number; new_chars?: number; char_delta?: number }
+  rejected_reasons?: string[]
+  template_validation_errors?: string[]
+  input_sha256?: string
+  output_sha256?: string
+  truncated?: boolean
+  shadow_materialized_count?: number
+  shadow_timeout?: boolean
+}
+
 export interface ReaderPayload {
   id: string
   source_id: string
@@ -53,6 +76,7 @@ export interface ReaderPayload {
   body_translation_is_summary?: boolean
   blocks?: ReaderBlock[]
   clean_html: string
+  web_clean?: WebCleanDiagnostic | null
 }
 
 export interface ReaderTranslateStreamInit {

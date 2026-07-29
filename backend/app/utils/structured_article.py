@@ -86,7 +86,10 @@ def _loads_json(text: str) -> Any:
     text = (text or "").strip()
     if not text:
         raise ValueError("empty json")
-    return json.loads(text)
+    try:
+        return json.loads(text)
+    except (json.JSONDecodeError, RecursionError) as exc:
+        raise ValueError("invalid or excessively nested json") from exc
 
 
 def _loads_assigned_json_object(text: str, marker: str) -> Any:
@@ -123,13 +126,18 @@ def _loads_assigned_json_object(text: str, marker: str) -> Any:
 
 
 def _iter_json_nodes(value: Any) -> Iterable[Any]:
-    yield value
-    if isinstance(value, dict):
-        for child in value.values():
-            yield from _iter_json_nodes(child)
-    elif isinstance(value, list):
-        for child in value:
-            yield from _iter_json_nodes(child)
+    stack: list[tuple[Any, int]] = [(value, 0)]
+    visited = 0
+    while stack and visited < 10_000:
+        node, depth = stack.pop()
+        visited += 1
+        yield node
+        if depth >= 64:
+            continue
+        if isinstance(node, dict):
+            stack.extend((child, depth + 1) for child in reversed(tuple(node.values())))
+        elif isinstance(node, list):
+            stack.extend((child, depth + 1) for child in reversed(node))
 
 
 def _node_type_names(node: dict[str, Any]) -> set[str]:
@@ -375,6 +383,7 @@ def _extract_from_json_ld(
     *,
     visible_text_chars: int,
     min_ratio: float,
+    rejections: list[dict[str, Any]] | None = None,
 ) -> StructuredArticleExtraction | None:
     for script in soup.select('script[type="application/ld+json"]'):
         raw = script.string or script.get_text() or ""
@@ -395,6 +404,15 @@ def _extract_from_json_ld(
                 continue
             body_key, text = body
             if len(text) < min_chars:
+                if rejections is not None and len(rejections) < 12:
+                    rejections.append(
+                        {
+                            "method": "json_ld",
+                            "body_key": body_key,
+                            "chars": len(text),
+                            "rejected_reason": "too_short",
+                        }
+                    )
                 continue
             flat_ok, flat_signals = _passes_flatness_check(
                 text,
@@ -402,6 +420,15 @@ def _extract_from_json_ld(
                 body_key=body_key,
             )
             if not flat_ok:
+                if rejections is not None and len(rejections) < 12:
+                    rejections.append(
+                        {
+                            "method": "json_ld",
+                            "body_key": body_key,
+                            "chars": len(text),
+                            **flat_signals,
+                        }
+                    )
                 continue
             accepted, ratio_signals = _passes_page_ratio_check(
                 text,
@@ -411,6 +438,16 @@ def _extract_from_json_ld(
                 body_key=body_key,
             )
             if not accepted:
+                if rejections is not None and len(rejections) < 12:
+                    rejections.append(
+                        {
+                            "method": "json_ld",
+                            "body_key": body_key,
+                            "chars": len(text),
+                            **flat_signals,
+                            **ratio_signals,
+                        }
+                    )
                 continue
             candidate = StructuredArticleExtraction(
                 text=text,
@@ -738,6 +775,7 @@ def extract_structured_article(
     html: str,
     *,
     min_chars: int = 120,
+    rejections: list[dict[str, Any]] | None = None,
 ) -> StructuredArticleExtraction | None:
     """Return the best same-page structured article body, if available."""
     if not html:
@@ -752,12 +790,13 @@ def extract_structured_article(
         _extract_from_prismic_next_data,
         _extract_from_next_data,
     ):
-        result = extractor(
-            soup,
-            min_chars,
-            visible_text_chars=visible_text_chars,
-            min_ratio=min_ratio,
-        )
+        kwargs: dict[str, Any] = {
+            "visible_text_chars": visible_text_chars,
+            "min_ratio": min_ratio,
+        }
+        if extractor is _extract_from_json_ld:
+            kwargs["rejections"] = rejections
+        result = extractor(soup, min_chars, **kwargs)
         if result:
             return result
     return None

@@ -1,7 +1,8 @@
 # backend/app/api/sources/probe.py
 """Probe routes: probe_url, probe_source, probe_all_sources."""
 
-from typing import Dict, List, Optional
+import asyncio
+from typing import Any, Dict, List, Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -54,6 +55,78 @@ class ProbeResponse(BaseModel):
     rss_url: Optional[str] = None
     message: str = ""
     sample_count: int = 0
+
+
+async def _web_clean_probe_metadata(source: Source, cookies: Dict[str, str]) -> dict[str, Any] | None:
+    """Validate a configured template and return a body-free clean preview."""
+    source_metadata = source.metadata_ if isinstance(source.metadata_, dict) else {}
+    raw_template = source_metadata.get("web_clean_template")
+    if raw_template is None:
+        return None
+    if not isinstance(raw_template, dict):
+        return {
+            "template_configured": True,
+            "template_valid": False,
+            "template_validation_errors": ["web_clean_template must be an object"],
+        }
+
+    from app.domains.fetch.web_clean import CleanInput, WebDocumentExtractor
+    from app.domains.fetch.web_clean.templates import TemplateValidationError, validate_template
+    from app.domains.sources.probe.service import ProbeService
+    from app.config import get_settings
+
+    try:
+        template = validate_template(raw_template)
+    except (TemplateValidationError, TypeError, ValueError) as exc:
+        errors = list(getattr(exc, "errors", (str(exc),)))
+        return {
+            "template_configured": True,
+            "template_valid": False,
+            "template_validation_errors": [str(item)[:300] for item in errors[:8]],
+        }
+
+    result: dict[str, Any] = {
+        "template_configured": True,
+        "template_valid": True,
+        "template_id": template.id,
+        "template_validation_errors": [],
+    }
+    settings = get_settings()
+    try:
+        html = await ProbeService().fetch_html(
+            source.url,
+            cookies=cookies,
+            timeout=max(1, min(15, int(settings.pim_web_clean_timeout_ms / 1000) + 1)),
+        )
+        if not html:
+            result["preview_error"] = "网页可探测，但未取得可用于清洗预览的 HTML"
+            return result
+        clean = await asyncio.wait_for(
+            WebDocumentExtractor().extract(
+                CleanInput(
+                    url=source.url,
+                    raw_html=html,
+                    source_id=str(source.id),
+                    source_metadata=source_metadata,
+                ),
+                max_html_bytes=settings.pim_web_clean_max_html_bytes,
+            ),
+            timeout=settings.pim_web_clean_timeout_ms / 1000,
+        )
+        result["preview"] = {
+            "extraction_method": clean.extraction_method,
+            "template_id": clean.template_id,
+            "quality_status": clean.quality_status,
+            "quality_score": round(float(clean.quality_score), 4),
+            "text_chars": len(clean.article_text),
+            "paragraph_count": clean.to_metadata(include_trace=False).get("paragraph_count", 0),
+            "blocked": clean.quality_status in {"blocked", "login_required", "bot_wall", "captcha"},
+        }
+    except asyncio.TimeoutError:
+        result["preview_error"] = "网页清洗预览超时"
+    except (ValueError, TypeError, RuntimeError) as exc:
+        result["preview_error"] = str(exc)[:300]
+    return result
 
 
 @router.post("/probe", response_model=ProbeResponse)
@@ -124,6 +197,10 @@ async def probe_source(source_id: UUID, db: AsyncSession = Depends(get_async_db)
         meta["rss_url"] = rss_urls[source.url]
     elif probe_result.rss_url:
         meta["rss_url"] = probe_result.rss_url
+    if stype == "website":
+        web_clean_probe = await _web_clean_probe_metadata(source, cookies)
+        if web_clean_probe is not None:
+            meta["web_clean_probe"] = web_clean_probe
     source.metadata_ = meta
     await db.commit()
     await db.refresh(source)

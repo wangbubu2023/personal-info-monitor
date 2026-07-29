@@ -17,6 +17,7 @@ def test_markdown_preserves_structure_and_absolute_links():
     assert "## Heading" in result
     assert "> Quoted" in result
     assert "[Docs](https://example.com/docs)" in result
+    assert '```python' in result
     assert 'print("ok")' in result
     assert "| Name |" in result
     assert "| PIM |" in result

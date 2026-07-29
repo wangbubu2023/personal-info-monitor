@@ -76,10 +76,15 @@ def test_fresh_sqlite_database_can_upgrade_to_head(tmp_path):
         quality_adjudication_columns = {
             row[1] for row in conn.execute("PRAGMA table_info(quality_adjudications)")
         }
+        brief_snapshot_columns = {
+            row[1] for row in conn.execute("PRAGMA table_info(brief_snapshots)")
+        }
     finally:
         conn.close()
 
-    assert revision == ("20260724_0038",)
+    assert revision == ("20260729_0039",)
+    assert "uq_local_capture_task_token_hash" in indexes
+    assert {"modality_violation_count", "publication_status"} <= brief_snapshot_columns
     assert {
         "paid_source_matrix_audits",
         "session_recovery_audits",

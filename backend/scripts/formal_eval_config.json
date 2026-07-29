@@ -1,5 +1,4 @@
 {
-  "schema_version": "pim-formal-eval-config-v1",
   "core": {
     "classification_threshold": 60.0,
     "minimum_records": 200,
@@ -15,9 +14,20 @@
     "similarity_threshold": 0.28,
     "wrong_merge_rate_max_exclusive": 0.03
   },
+  "schema_version": "pim-formal-eval-config-v1",
   "shadow": {
     "minimum_days": 7,
     "recommended_days": 14,
     "retention_days": 30
+  },
+  "web_clean": {
+    "blocked_detection_f1_min": 0.88,
+    "boilerplate_leak_rate_max": 0.08,
+    "markdown_structure_score_min": 0.85,
+    "metadata_accuracy_min": 0.9,
+    "minimum_samples": 150,
+    "minimum_shadow_days": 7,
+    "must_exclude_precision_min": 0.92,
+    "must_include_recall_min": 0.9
   }
 }

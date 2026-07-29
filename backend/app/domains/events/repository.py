@@ -421,7 +421,12 @@ async def list_today_highlights(db: AsyncSession, target_date: date, *, limit: i
     return selected
 
 
-async def build_event_detail(db: AsyncSession, event_id: str) -> dict[str, Any] | None:
+async def build_event_detail(
+    db: AsyncSession,
+    event_id: str,
+    *,
+    full_reports: bool = False,
+) -> dict[str, Any] | None:
     event = await db.get(ContentEvent, event_id)
     if event is None:
         return None
@@ -461,17 +466,29 @@ async def build_event_detail(db: AsyncSession, event_id: str) -> dict[str, Any] 
         }
         for idx, content in enumerate(contents)
     ]
-    primary_reports = [item for item in timeline if item["role"] == "primary"] or timeline[-1:]
+    if full_reports:
+        visible_timeline = timeline
+    else:
+        selected_ids: set[str] = set()
+        for item in [
+            *(row for row in reversed(timeline) if row["role"] == "primary"),
+            *reversed(timeline),
+        ]:
+            selected_ids.add(item["content_id"])
+            if len(selected_ids) >= 3:
+                break
+        visible_timeline = [item for item in timeline if item["content_id"] in selected_ids]
+    primary_reports = [item for item in visible_timeline if item["role"] == "primary"] or visible_timeline[-1:]
     independent_verification = [
         {
             "key": name,
             "title": name,
-            "content_ids": [item["content_id"] for item in timeline if item["source_name"] == name],
+            "content_ids": [item["content_id"] for item in visible_timeline if item["source_name"] == name],
         }
-        for name in sorted({item["source_name"] for item in timeline})
+        for name in sorted({item["source_name"] for item in visible_timeline})
     ]
     related_discussions = [
-        {"key": "supporting", "title": "关联讨论", "content_ids": [item["content_id"] for item in timeline if item["role"] != "primary"]}
+        {"key": "supporting", "title": "关联讨论", "content_ids": [item["content_id"] for item in visible_timeline if item["role"] != "primary"]}
     ]
 
     snapshots_result = await db.execute(
@@ -522,7 +539,7 @@ async def build_event_detail(db: AsyncSession, event_id: str) -> dict[str, Any] 
         "saved": bool(personal_state.saved),
         "read_later": bool(personal_state.read_later),
         "hidden": bool(personal_state.hidden),
-        "timeline": timeline,
+        "timeline": visible_timeline,
         "snapshots": [
             {
                 "version": row.version,
@@ -546,15 +563,17 @@ async def build_event_detail(db: AsyncSession, event_id: str) -> dict[str, Any] 
             {"type": row.event_type, "note": row.note, "created_at": to_iso_z(row.created_at)}
             for row in feedback
         ],
-        "extra": {
-            "cluster_version": event.cluster_version,
-            "event_state": event.event_state,
-            "status": event.status,
-            "canonical_content_id": str(event.canonical_content_id or "") or None,
-            "dispersion": event.dispersion,
-            "centroid_version": (event.centroid or {}).get("centroid_version"),
-            "source_independence": (event.metadata_ or {}).get("source_independence") or {},
-            "aliases": [
+        "extra": dict(
+            view_mode="full" if full_reports else "curated",
+            report_count=len(timeline),
+            cluster_version=event.cluster_version,
+            event_state=event.event_state,
+            status=event.status,
+            canonical_content_id=str(event.canonical_content_id or "") or None,
+            dispersion=event.dispersion,
+            centroid_version=(event.centroid or {}).get("centroid_version"),
+            source_independence=(event.metadata_ or {}).get("source_independence") or {},
+            aliases=[
                 {
                     "type": row.alias_type,
                     "value": row.alias_value,
@@ -562,7 +581,7 @@ async def build_event_detail(db: AsyncSession, event_id: str) -> dict[str, Any] 
                 }
                 for row in aliases
             ],
-            "operations": [
+            operations=[
                 {
                     "id": str(row.id),
                     "type": row.operation_type,
@@ -574,5 +593,5 @@ async def build_event_detail(db: AsyncSession, event_id: str) -> dict[str, Any] 
                 }
                 for row in operations
             ],
-        },
+        ),
     }

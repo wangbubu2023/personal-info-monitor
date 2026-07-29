@@ -25,6 +25,23 @@ def test_filters_fail_closed_for_unknown_or_unsafe_inputs():
     with pytest.raises(FilterValidationError, match="unknown filter"):
         validate_filters("eval")
     with pytest.raises(FilterValidationError, match="flags"):
-        apply_filters("abc", "replace:('a','b','x')")
+        validate_filters("replace:('a','b','x')")
     with pytest.raises(FilterValidationError, match="too complex"):
         apply_filters("<p>x</p>", f"remove_html:('{' '.join(['div'] * 14)}')")
+
+
+def test_filters_enforce_arity_and_attribute_allowlists():
+    with pytest.raises(FilterValidationError, match="trim expects 0"):
+        validate_filters("trim:('unexpected')")
+    with pytest.raises(FilterValidationError, match="remove_attr expects 1..32"):
+        validate_filters("remove_attr")
+    with pytest.raises(FilterValidationError, match="strip_attr expects a list/tuple"):
+        validate_filters("strip_attr:('href')")
+
+    cleaned = apply_filters(
+        '<a href="https://example.com" title="kept?" onclick="bad()">link</a>',
+        "strip_attr:(['href'])",
+    )
+    assert 'href="https://example.com"' in cleaned
+    assert "title=" not in cleaned
+    assert "onclick=" not in cleaned

@@ -27,13 +27,16 @@ class AssociateEventsRequest(BaseModel):
 
 @router.post("")
 def api_create_topic(req: CreateTopicRequest, db: Session = Depends(get_db)):
-    topic = create_topic(
-        db,
-        title=req.title,
-        description=req.description,
-        creation_type=req.creation_type,
-        rule_spec=req.rule_spec,
-    )
+    try:
+        topic = create_topic(
+            db,
+            title=req.title,
+            description=req.description,
+            creation_type=req.creation_type,
+            rule_spec=req.rule_spec,
+        )
+    except ValueError as err:
+        raise HTTPException(status_code=400, detail=str(err)) from err
     return {"status": "created", "topic_id": topic.id, "title": topic.title}
 
 

@@ -1,0 +1,119 @@
+diff --git a/backend/scripts/generate_release_eval_artifact.py b/backend/scripts/generate_release_eval_artifact.py
+index 58bc090e5545e7005ead1739dd1ed20fec03278a..5d2f579bff9ebeac008dc742dc58159aa5f36dae 100644
+--- a/backend/scripts/generate_release_eval_artifact.py
++++ b/backend/scripts/generate_release_eval_artifact.py
+@@ -6,12 +6,16 @@ from __future__ import annotations
+ import argparse
+ import hashlib
+ import json
++import os
+ import subprocess
+ from datetime import datetime, timezone
+ from pathlib import Path
+ from typing import Any
+ 
+-from app.domains.fetch.web_clean.provenance import verify_shadow_provenance
++from app.domains.fetch.web_clean.provenance import (
++    PROVENANCE_KEY_ENV,
++    verify_shadow_provenance,
++)
+ 
+ ROOT = Path(__file__).resolve().parents[1]
+ REPO = ROOT.parent
+@@ -111,9 +115,12 @@ def _web_clean_blockers(
+         if shadow.get("dataset_kind") != "production_shadow":
+             blockers.append("Web Clean Shadow is not marked as a production-shadow export")
+         provenance = shadow.get("provenance") or {}
+-        if provenance.get("valid") is not True or not verify_shadow_provenance(
+-            provenance,
+-            key=provenance_hmac_key,
++        input_sha256 = str(provenance.get("input_sha256") or "")
++        observations_sha256 = str(provenance.get("observations_sha256") or "")
++        if (
++            not input_sha256
++            or input_sha256 != observations_sha256
++            or not verify_shadow_provenance(provenance, key=provenance_hmac_key)
+         ):
+             blockers.append("Web Clean Shadow production provenance is missing or invalid")
+         if shadow.get("production_affected") is not False or shadow.get("shadow_only") is not True:
+@@ -142,6 +149,7 @@ def build_release_artifact(
+     web_clean_shadow: dict[str, Any] | None = None,
+     approvers: list[str] | None = None,
+     commit: str | None = None,
++    web_clean_provenance_hmac_key: str | None = None,
+ ) -> dict[str, Any]:
+     blockers: list[str] = []
+     config = json.loads(config_path.read_text(encoding="utf-8"))
+@@ -190,6 +198,7 @@ def build_release_artifact(
+             web_clean,
+             web_clean_shadow,
+             web_clean_config,
++            provenance_hmac_key=web_clean_provenance_hmac_key,
+         )
+     )
+     if not performance:
+@@ -258,6 +267,7 @@ def main() -> int:
+         web_clean=_load(args.web_clean_report),
+         web_clean_shadow=_load(args.web_clean_shadow_report),
+         approvers=args.approver,
++        web_clean_provenance_hmac_key=os.getenv(PROVENANCE_KEY_ENV),
+     )
+     args.output.parent.mkdir(parents=True, exist_ok=True)
+     args.output.write_text(json.dumps(artifact, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+diff --git a/backend/tests/test_m2_quality_closure.py b/backend/tests/test_m2_quality_closure.py
+index 17baf6226406719836f28e7c3c51fa767c6383f7..3a86bb4c3d88b974e01217f504d13c28376dab33 100644
+--- a/backend/tests/test_m2_quality_closure.py
++++ b/backend/tests/test_m2_quality_closure.py
+@@ -6,6 +6,7 @@ from pathlib import Path
+ 
+ import pytest
+ 
++from app.domains.fetch.web_clean.provenance import sign_shadow_provenance
+ from app.domains.score.feedback import record_score_feedback_event
+ from app.models import Content, Source
+ from app.models.source import SourceType
+@@ -13,6 +14,8 @@ from scripts.generate_release_eval_artifact import build_release_artifact
+ from scripts.run_quality_shadow import build_shadow_report, prune_expired_shadow_reports
+ from scripts.run_web_clean_shadow import build_web_clean_shadow_report
+ 
++_TEST_PROVENANCE_KEY = "audit-only-test-key-at-least-32-bytes"
++
+ 
+ @pytest.mark.asyncio
+ async def test_quality_feedback_requires_adjudication_before_gold_candidate(client, db_session):
+@@ -135,13 +138,18 @@ def _web_clean_snapshot(day: int, *, reviewed: bool = True) -> dict:
+ 
+ 
+ def _production_provenance(input_sha256: str = "observations-sha") -> dict:
+-    return {
++    provenance = {
+         "schema_version": "pim-web-clean-shadow-export-v1",
+         "generated_by": "pim-production-shadow-export",
+         "dataset_kind": "production_shadow",
+         "observations_sha256": input_sha256,
+         "generated_at": "2026-07-29T00:00:00Z",
+     }
++    provenance["attestation_hmac_sha256"] = sign_shadow_provenance(
++        provenance,
++        key=_TEST_PROVENANCE_KEY,
++    )
++    return provenance
+ 
+ 
+ def test_web_clean_shadow_report_is_provenance_bounded_and_sanitized():
+@@ -262,6 +270,7 @@ def test_release_artifact_go_requires_every_gate(tmp_path):
+         dataset_kind="production_shadow",
+         provenance=_production_provenance(),
+         input_sha256="observations-sha",
++        provenance_hmac_key=_TEST_PROVENANCE_KEY,
+     )
+ 
+     artifact = build_release_artifact(
+@@ -274,6 +283,7 @@ def test_release_artifact_go_requires_every_gate(tmp_path):
+         web_clean_shadow=web_clean_shadow,
+         approvers=["owner"],
+         commit="abc123",
++        web_clean_provenance_hmac_key=_TEST_PROVENANCE_KEY,
+     )
+ 
+     assert artifact["decision"] == {"result": "GO", "blockers": [], "approvers": ["owner"]}

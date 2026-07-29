@@ -86,6 +86,24 @@ class CleanResult:
     trace: dict[str, Any]
     metadata: dict[str, Any] = field(default_factory=dict)
 
+    def production_eligible(self) -> bool:
+        """Return true only for a non-rejected candidate suitable for gated writes."""
+        if not self.article_text or self.quality_status not in {"full", "partial"}:
+            return False
+        if not isinstance(self.trace, dict):
+            return False
+        template_errors = self.trace.get("template_validation_errors")
+        if isinstance(template_errors, (list, tuple)) and template_errors:
+            return False
+        selected_method = self.trace.get("selected_method")
+        candidates = self.trace.get("candidates", ())
+        for candidate in candidates if isinstance(candidates, (list, tuple)) else ():
+            if isinstance(candidate, dict) and candidate.get("method") == selected_method:
+                return not bool(candidate.get("rejected_reason"))
+        # Production replacement must be explainable. Missing or inconsistent
+        # trace data is ineligible rather than silently trusted.
+        return False
+
     def to_metadata(self, *, include_trace: bool = True) -> dict[str, Any]:
         signals = self.metadata.get("quality_signals", {})
         payload: dict[str, Any] = {

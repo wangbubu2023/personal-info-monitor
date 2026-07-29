@@ -9,11 +9,12 @@ from typing import Any, Mapping
 
 from bs4 import BeautifulSoup
 
+from app.utils.publish_time import parse_publish_time_text
 from app.utils.text import html_to_text_preserving_blocks, normalize_article_text
 
 from .contracts import CleanCandidate, CleanInput, CleanResult, CleanTrace
-from .html_standardizer import standardize_html
 from .filters import apply_filters
+from .html_standardizer import standardize_html
 from .markdown import html_to_markdown
 from .quality import score_candidate
 from .structured import extract_structured_document
@@ -221,16 +222,52 @@ class WebDocumentExtractor:
                 rejected_reason="empty",
             )
 
+        validation_errors = tuple(str(item)[:300] for item in validation_errors[:8])
         duration_ms = round((time.perf_counter() - started) * 1000, 3)
+        candidate_trace = [candidate.trace_payload() for candidate in candidates]
+        structured_rejections = structured.get("article_rejections")
+        if isinstance(structured_rejections, list):
+            for rejection in structured_rejections[:8]:
+                if not isinstance(rejection, dict):
+                    continue
+                method = str(rejection.get("method") or "structured")[:80]
+                rejected_reason = str(rejection.get("rejected_reason") or "rejected")[:120]
+                text_chars = max(0, int(rejection.get("chars") or 0))
+                signals = {
+                    key: value
+                    for key, value in rejection.items()
+                    if key not in {"method", "rejected_reason", "chars"}
+                    and isinstance(value, (str, int, float, bool))
+                }
+                candidate_trace.append(
+                    {
+                        "method": f"structured_{method}",
+                        "score": 0.0,
+                        "quality_status": "rejected",
+                        "text_chars": text_chars,
+                        "rejected_reason": rejected_reason,
+                        "signals": signals,
+                    }
+                )
         trace = CleanTrace(
             duration_ms=duration_ms,
             standardizer=standardized.trace,
-            candidates=tuple(candidate.trace_payload() for candidate in candidates),
+            candidates=tuple(candidate_trace),
             selected_method=best.method,
             template_validation_errors=validation_errors,
             shadow_materialized_count=int(standardized.trace.get("shadow_materialized_count") or 0),
+            shadow_timeout=bool(standardized.trace.get("shadow_timeout")),
         ).to_dict()
+        template_published = template_fields.get("published")
         published = structured.get("published_time")
+        published_raw = structured.get("published_time_raw")
+        if template_published:
+            published_raw = str(template_published)
+            published = (
+                template_published
+                if hasattr(template_published, "isoformat")
+                else parse_publish_time_text(published_raw)
+            )
         return CleanResult(
             url=clean_input.url,
             title=str(template_fields.get("title") or structured.get("title") or "").strip() or None,
@@ -249,7 +286,7 @@ class WebDocumentExtractor:
             quality_score=best.score,
             trace=trace,
             metadata={
-                "published_time_raw": structured.get("published_time_raw"),
+                "published_time_raw": published_raw,
                 "image": structured.get("image"),
                 "quality_signals": best.signals,
                 "shadow": bool(standardized.trace.get("shadow")),

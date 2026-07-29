@@ -2,7 +2,7 @@
 
 import uuid
 
-from sqlalchemy import Column, DateTime, ForeignKey, JSON, String, Text
+from sqlalchemy import Column, DateTime, ForeignKey, Index, JSON, String, Text
 from sqlalchemy.orm import relationship
 
 from app.database import Base, UUIDString
@@ -31,6 +31,7 @@ class TopicEventAssociation(Base):
     """Topic 与 ContentEvent 之间的多对多关联维表。"""
 
     __tablename__ = "topic_event_associations"
+    __table_args__ = (Index("idx_topic_event_unique", "topic_id", "event_id", unique=True),)
 
     id = Column(UUIDString, primary_key=True, default=lambda: str(uuid.uuid4()))
     topic_id = Column(UUIDString, ForeignKey("topics.id", ondelete="CASCADE"), nullable=False)

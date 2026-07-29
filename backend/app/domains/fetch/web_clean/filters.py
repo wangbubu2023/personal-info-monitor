@@ -9,15 +9,29 @@ from datetime import datetime
 from pathlib import PurePath
 from typing import Any, Iterable
 
-from bs4 import BeautifulSoup
 import regex as bounded_regex
+from bs4 import BeautifulSoup
 
 from .markdown import html_to_markdown
+from .safety import compile_bounded_regex, selector_error
 
 MAX_FILTERS = 24
 MAX_FILTER_LENGTH = 512
 MAX_OUTPUT_CHARS = 1_000_000
-MAX_REGEX_LENGTH = 256
+FILTER_ARITY: dict[str, tuple[int, int | None]] = {
+    "trim": (0, 0),
+    "replace": (2, 3),
+    "strip_tags": (0, 0),
+    "remove_html": (1, 1),
+    "remove_attr": (1, 32),
+    "strip_attr": (0, 1),
+    "markdown": (0, 0),
+    "date": (0, 1),
+    "join": (0, 1),
+    "list": (0, 0),
+    "table": (0, 0),
+    "safe_name": (0, 0),
+}
 ALLOWED_FILTERS = frozenset(
     {
         "trim", "replace", "strip_tags", "remove_html", "remove_attr", "strip_attr",
@@ -109,25 +123,29 @@ def validate_filters(filters: str | Iterable[str]) -> tuple[str, ...]:
         raise FilterValidationError(f"at most {MAX_FILTERS} filters are allowed")
     for token in tokens:
         name, args = _parse_filter(token)
-        if name == "replace" and args and len(str(args[0])) > MAX_REGEX_LENGTH:
-            raise FilterValidationError("replace pattern is too long")
-        if name == "replace" and args:
+        minimum, maximum = FILTER_ARITY[name]
+        if len(args) < minimum or (maximum is not None and len(args) > maximum):
+            expected = str(minimum) if maximum == minimum else f"{minimum}..{maximum or 'many'}"
+            raise FilterValidationError(f"{name} expects {expected} argument(s)")
+        if name == "replace":
             try:
-                bounded_regex.compile(str(args[0]))
-            except bounded_regex.error as exc:
+                compile_bounded_regex(str(args[0]))
+            except (ValueError, TypeError) as exc:
                 raise FilterValidationError(f"invalid replace pattern: {exc}") from exc
+            flag_text = str(args[2]) if len(args) > 2 else ""
+            if set(flag_text) - {"i", "m", "s"}:
+                raise FilterValidationError("replace flags may only contain i, m, s")
+        if name == "strip_attr" and args and not isinstance(args[0], (list, tuple)):
+            raise FilterValidationError("strip_attr expects a list/tuple allowlist")
     return tuple(tokens)
 
 
 def _remove_html(value: Any, selector: str) -> str:
-    if len(selector) > 256 or selector.count(" ") > 12:
-        raise FilterValidationError("CSS selector is too complex")
+    error = selector_error(selector)
+    if error:
+        raise FilterValidationError(f"CSS selector {error}")
     soup = BeautifulSoup(str(value or ""), "lxml")
-    try:
-        matches = list(soup.select(selector))
-    except Exception as exc:  # soupsieve exposes parser-specific subclasses
-        raise FilterValidationError(f"invalid CSS selector: {selector}") from exc
-    for node in matches:
+    for node in list(soup.select(selector)):
         node.decompose()
     return str(soup)
 
@@ -169,8 +187,6 @@ def apply_filters(value: Any, filters: str | Iterable[str], *, base_url: str = "
         if name == "trim":
             result = str(result or "").strip()
         elif name == "replace":
-            if len(args) < 2:
-                raise FilterValidationError("replace requires pattern and replacement")
             pattern, replacement = str(args[0]), str(args[1])
             flags = 0
             flag_text = str(args[2]) if len(args) > 2 else ""
@@ -189,11 +205,11 @@ def apply_filters(value: Any, filters: str | Iterable[str], *, base_url: str = "
                 )
             except TimeoutError as exc:
                 raise FilterValidationError("replace execution timed out") from exc
+            except bounded_regex.error as exc:
+                raise FilterValidationError(f"replace execution failed: {exc}") from exc
         elif name == "strip_tags":
             result = BeautifulSoup(str(result or ""), "lxml").get_text(" ", strip=True)
         elif name == "remove_html":
-            if not args:
-                raise FilterValidationError("remove_html requires a selector")
             result = _remove_html(result, str(args[0]))
         elif name == "remove_attr":
             result = _remove_attrs(result, [str(item) for item in args])

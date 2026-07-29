@@ -2845,20 +2845,6 @@
       },
       "LocalCaptureRequest": {
         "properties": {
-          "allowlist": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "string"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Allowlist"
-          },
           "device_id": {
             "title": "Device Id",
             "type": "string"
@@ -2869,11 +2855,15 @@
           },
           "reader_doc_body": {
             "title": "Reader Doc Body",
-            "type": "string"
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000000
           },
           "reader_doc_title": {
             "title": "Reader Doc Title",
-            "type": "string"
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
           },
           "task_token": {
             "title": "Task Token",
@@ -2888,6 +2878,24 @@
           "reader_doc_body"
         ],
         "title": "LocalCaptureRequest",
+        "type": "object"
+      },
+      "LocalCaptureTokenRequest": {
+        "properties": {
+          "device_id": {
+            "title": "Device Id",
+            "type": "string"
+          },
+          "origin_url": {
+            "title": "Origin Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "device_id",
+          "origin_url"
+        ],
+        "title": "LocalCaptureTokenRequest",
         "type": "object"
       },
       "ObservationAggregateResponse": {
@@ -7698,6 +7706,16 @@
               "title": "Event Id",
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "full_reports",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Full Reports",
+              "type": "boolean"
+            }
           }
         ],
         "responses": {
@@ -8513,6 +8531,50 @@
           }
         ],
         "summary": "Api Extract Archive",
+        "tags": [
+          "paid-matrix"
+        ]
+      }
+    },
+    "/api/paid-matrix/local-capture/task-token": {
+      "post": {
+        "operationId": "api_issue_local_capture_token_api_paid_matrix_local_capture_task_token_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LocalCaptureTokenRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Api Issue Local Capture Token",
         "tags": [
           "paid-matrix"
         ]

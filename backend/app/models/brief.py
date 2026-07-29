@@ -3,7 +3,7 @@
 import enum
 import uuid
 
-from sqlalchemy import Column, DateTime, ForeignKey, JSON, String, Text
+from sqlalchemy import Column, DateTime, ForeignKey, Index, Integer, JSON, String, Text
 from sqlalchemy.orm import relationship
 
 from app.database import Base, UUIDString
@@ -41,6 +41,7 @@ class BriefSnapshot(Base):
     """周报/月报不可变 Brief 快照实体。"""
 
     __tablename__ = "brief_snapshots"
+    __table_args__ = (Index("idx_brief_period_type_unique", "period_key", "brief_type", unique=True),)
 
     id = Column(UUIDString, primary_key=True, default=lambda: str(uuid.uuid4()))
     period_key = Column(String(50), nullable=False)  # 例如 "2026-W30" 或 "2026-07"
@@ -51,6 +52,8 @@ class BriefSnapshot(Base):
     # Lineage 血统元数据: {"source_event_snapshot_ids": [...], "input_version": 1, "generator_version": "v1.0"}
     lineage_snapshot = Column(JSON, nullable=False, default=dict)
     modality_status = Column(String(30), default="valid", nullable=False)  # valid, violation_flagged, override_approved
+    modality_violation_count = Column(Integer, default=0, nullable=False)
+    publication_status = Column(String(20), default="published", nullable=False)  # published, blocked
 
     created_at = Column(DateTime, default=utcnow_naive, nullable=False)
     updated_at = Column(DateTime, default=utcnow_naive, onupdate=utcnow_naive, nullable=False)

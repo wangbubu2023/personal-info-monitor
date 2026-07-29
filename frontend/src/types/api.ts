@@ -1294,6 +1294,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/paid-matrix/local-capture/task-token": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Api Issue Local Capture Token */
+        post: operations["api_issue_local_capture_token_api_paid_matrix_local_capture_task_token_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/paid-matrix/local-capture": {
         parameters: {
             query?: never;
@@ -3460,8 +3477,6 @@ export interface components {
         };
         /** LocalCaptureRequest */
         LocalCaptureRequest: {
-            /** Allowlist */
-            allowlist?: string[] | null;
             /** Device Id */
             device_id: string;
             /** Origin Url */
@@ -3472,6 +3487,13 @@ export interface components {
             reader_doc_title: string;
             /** Task Token */
             task_token: string;
+        };
+        /** LocalCaptureTokenRequest */
+        LocalCaptureTokenRequest: {
+            /** Device Id */
+            device_id: string;
+            /** Origin Url */
+            origin_url: string;
         };
         /** ObservationAggregateResponse */
         ObservationAggregateResponse: {
@@ -5973,7 +5995,9 @@ export interface operations {
     };
     get_event_detail_api_events__event_id__get: {
         parameters: {
-            query?: never;
+            query?: {
+                full_reports?: boolean;
+            };
             header?: never;
             path: {
                 event_id: string;
@@ -6505,6 +6529,39 @@ export interface operations {
         requestBody: {
             content: {
                 "multipart/form-data": components["schemas"]["Body_api_extract_archive_api_paid_matrix_extract_archive_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    api_issue_local_capture_token_api_paid_matrix_local_capture_task_token_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LocalCaptureTokenRequest"];
             };
         };
         responses: {

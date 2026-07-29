@@ -41,10 +41,12 @@ def api_create_brief(req: CreateBriefRequest, db: Session = Depends(get_db)):
             generator_version=req.generator_version,
         )
         return {
-            "status": "created",
+            "status": "published" if brief.publication_status == "published" else "blocked",
             "brief_id": brief.id,
             "period_key": brief.period_key,
             "modality_status": brief.modality_status,
+            "publication_status": brief.publication_status,
+            "modality_violation_count": brief.modality_violation_count,
             "violation_detected": (audit is not None),
         }
     except ValueError as err:
@@ -60,6 +62,11 @@ def api_override_modality(brief_id: str, req: OverrideModalityRequest, db: Sessi
             override_by=req.override_by,
             override_reason=req.override_reason,
         )
-        return {"status": "override_approved", "brief_id": brief.id, "modality_status": brief.modality_status}
+        return {
+            "status": "override_approved",
+            "brief_id": brief.id,
+            "modality_status": brief.modality_status,
+            "publication_status": brief.publication_status,
+        }
     except ValueError as err:
         raise HTTPException(status_code=404, detail=str(err)) from err

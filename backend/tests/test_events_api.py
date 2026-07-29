@@ -399,3 +399,59 @@ async def test_today_highlights_show_even_when_only_one_event_qualifies(client, 
     assert response.status_code == 200
     assert len(response.json()["items"]) == 1
     assert response.json()["items"][0]["section"] == "need_to_know"
+
+
+@pytest.mark.asyncio
+async def test_event_detail_defaults_to_curated_and_requires_explicit_full_reports(client, db_session):
+    source = Source(name="Curated Source", type=SourceType.WEBSITE, url="https://curated.example.com")
+    event_key = "event:curated-boundary"
+    event_id = stable_event_id(event_key)
+    event = ContentEvent(
+        event_id=event_id,
+        event_key=event_key,
+        title="Curated boundary",
+        summary="Summary",
+        cluster_version="hybrid-v0",
+        independent_source_count=1,
+        source_names=["Curated Source"],
+    )
+    db_session.add_all([source, event])
+    await db_session.flush()
+    contents = []
+    for index in range(5):
+        content = Content(
+            source=source,
+            title=f"Report {index}",
+            summary=f"Summary {index}",
+            original_url=f"https://curated.example.com/{index}",
+            content_type="website",
+            fetched_at=datetime(2026, 7, 11, 8 + index, 0),
+            publish_time=datetime(2026, 7, 11, 8 + index, 0),
+        )
+        contents.append(content)
+        db_session.add(content)
+    await db_session.flush()
+    db_session.add_all([
+        ContentEventMembership(
+            event_id=event_id,
+            content_id=str(content.id),
+            role="primary" if index == 4 else "supporting",
+        )
+        for index, content in enumerate(contents)
+    ])
+    await db_session.commit()
+
+    curated = await client.get(f"/api/events/{event_id}")
+    full = await client.get(f"/api/events/{event_id}", params={"full_reports": True})
+
+    assert curated.status_code == 200
+    assert full.status_code == 200
+    curated_payload = curated.json()
+    full_payload = full.json()
+    assert curated_payload["extra"]["view_mode"] == "curated"
+    assert curated_payload["extra"]["report_count"] == 5
+    assert len(curated_payload["timeline"]) == 3
+    assert curated_payload["timeline"][-1]["title"] == "Report 4"
+    assert full_payload["extra"]["view_mode"] == "full"
+    assert full_payload["extra"]["report_count"] == 5
+    assert [row["title"] for row in full_payload["timeline"]] == [f"Report {index}" for index in range(5)]

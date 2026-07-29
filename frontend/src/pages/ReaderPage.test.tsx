@@ -98,6 +98,41 @@ describe('ReaderPage', () => {
     expect(screen.queryByText('Unsafe link')).toBeNull()
   })
 
+  it('shows bounded Web Clean diagnostics when available', () => {
+    mockUseReader.mockReturnValue({
+      ...mockUseReader(),
+      data: {
+        ...mockUseReader().data,
+        web_clean: {
+          extraction_method: 'template_selector',
+          template_id: 'example-v1',
+          quality_status: 'good',
+          quality_score: 0.91,
+          text_chars: 1234,
+          paragraph_count: 8,
+          boilerplate_ratio: 0.08,
+          link_density: 0.12,
+          shadow: true,
+          shadow_diff: { old_chars: 900, new_chars: 1234, char_delta: 334 },
+          rejected_reasons: ['listing_like'],
+          template_validation_errors: ['bad selector'],
+          shadow_materialized_count: 2,
+          shadow_timeout: true,
+          truncated: false,
+        },
+      },
+    })
+
+    renderReaderPage()
+
+    expect(screen.getByTestId('web-clean-diagnostic')).toBeTruthy()
+    expect(screen.getByText('网页清洗诊断')).toBeTruthy()
+    expect(screen.getByText(/方法：template_selector/)).toBeTruthy()
+    expect(screen.getByText(/旧\/新正文：900 → 1234/)).toBeTruthy()
+    expect(screen.getByText(/候选拒绝：listing_like/)).toBeTruthy()
+    expect(screen.getByText(/模板错误：bad selector/)).toBeTruthy()
+  })
+
   it('uses paid-source layout profiles', () => {
     renderReaderPage()
 

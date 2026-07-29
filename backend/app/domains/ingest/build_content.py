@@ -61,17 +61,19 @@ async def build_raw_content_objects(
         await asyncio.sleep(0)
         try:
             main_text = raw.get("content", "")
+            persisted_full_content: str | None = None
             html = raw.get("html")
             clean_result = None
             structured_result = None
 
-            web_clean_active = bool(
-                html
-                and source_type == "website"
-                and (settings.pim_web_clean_enabled or settings.pim_web_clean_shadow)
-            )
+            source_metadata = dict(source.metadata_ or {})
+            web_clean_mode = str(source_metadata.get("web_clean_mode") or "shadow").strip().lower()
+            if web_clean_mode not in {"off", "shadow", "write"}:
+                web_clean_mode = "off"
+            web_clean_write = bool(settings.pim_web_clean_enabled and web_clean_mode == "write")
+            web_clean_shadow = bool(settings.pim_web_clean_shadow and web_clean_mode in {"shadow", "write"})
+            web_clean_active = bool(html and source_type == "website" and (web_clean_write or web_clean_shadow))
             if web_clean_active:
-                source_metadata = dict(source.metadata_ or {})
                 if not settings.pim_web_clean_template_enabled:
                     source_metadata.pop("web_clean_template", None)
                 try:
@@ -95,8 +97,11 @@ async def build_raw_content_objects(
                 except (ValueError, TypeError, RuntimeError) as exc:
                     logger.warning("Web clean failed for %s: %s", raw.get("url", "?"), exc)
 
-            if settings.pim_web_clean_enabled and clean_result and clean_result.article_text:
-                main_text = clean_result.article_markdown or clean_result.article_text
+            if web_clean_write and clean_result and clean_result.production_eligible():
+                # Keep plain text for quality, summary and rejection checks, but
+                # persist the canonical Markdown so Reader/export retain structure.
+                main_text = clean_result.article_text
+                persisted_full_content = clean_result.article_markdown or clean_result.article_text
             elif html and not main_text:
                 structured_result = await asyncio.to_thread(
                     extract_structured_article,
@@ -109,6 +114,8 @@ async def build_raw_content_objects(
                     main_text = await extractor.extract(html, raw.get("url"))
 
             main_text_clean = await asyncio.to_thread(normalize_article_text, main_text) if main_text else ""
+            if persisted_full_content is None:
+                persisted_full_content = main_text_clean
             title = await asyncio.to_thread(strip_html_tags, raw.get("title", "Untitled"))
 
             # Truncated snippet as placeholder summary (AI will replace it later)
@@ -128,13 +135,14 @@ async def build_raw_content_objects(
                 from app.domains.fetch.web_clean.shadow import build_shadow_diff
 
                 web_clean_meta = clean_result.to_metadata(include_trace=True)
-                web_clean_meta["shadow"] = not settings.pim_web_clean_enabled
-                if not settings.pim_web_clean_enabled:
+                web_clean_meta["shadow"] = not web_clean_write
+                web_clean_meta["source_mode"] = web_clean_mode
+                if not web_clean_write:
                     web_clean_meta["shadow_diff"] = build_shadow_diff(main_text_clean, clean_result)
                 metadata = dict(metadata)
                 metadata["web_clean"] = web_clean_meta
                 source_meta = dict(source.metadata_ or {})
-                source_meta["web_clean_profile"] = {
+                source_profile = {
                     key: web_clean_meta.get(key)
                     for key in (
                         "version",
@@ -150,6 +158,35 @@ async def build_raw_content_objects(
                     )
                     if web_clean_meta.get(key) is not None
                 }
+                blocked_statuses = {"blocked", "login_required", "bot_wall", "captcha"}
+                source_profile["blocked"] = web_clean_meta.get("quality_status") in blocked_statuses
+                trace = web_clean_meta.get("trace") if isinstance(web_clean_meta.get("trace"), dict) else {}
+                selected_method = trace.get("selected_method")
+                candidates = trace.get("candidates") if isinstance(trace.get("candidates"), (list, tuple)) else ()
+                selected_rejection = next(
+                    (
+                        str(item.get("rejected_reason"))[:160]
+                        for item in candidates
+                        if isinstance(item, dict)
+                        and item.get("method") == selected_method
+                        and item.get("rejected_reason")
+                    ),
+                    None,
+                )
+                template_errors = trace.get("template_validation_errors")
+                recent_failure = selected_rejection
+                if not recent_failure and isinstance(template_errors, (list, tuple)) and template_errors:
+                    recent_failure = str(template_errors[0])[:160]
+                if recent_failure:
+                    source_profile["recent_failure_reason"] = recent_failure
+                shadow_diff = web_clean_meta.get("shadow_diff")
+                if isinstance(shadow_diff, dict):
+                    source_profile["shadow_diff"] = {
+                        key: shadow_diff[key]
+                        for key in ("old_chars", "new_chars", "char_delta")
+                        if isinstance(shadow_diff.get(key), int)
+                    }
+                source_meta["web_clean_profile"] = source_profile
                 source.metadata_ = source_meta
             if isinstance(publish_time, str):
                 try:
@@ -194,7 +231,11 @@ async def build_raw_content_objects(
                 original_url=raw.get("url", ""),
                 content_type=source_type,
                 publish_time=publish_time,
-                full_content=truncate_content(main_text_clean, url=raw.get("url", "")) if main_text_clean else None,
+                full_content=(
+                    truncate_content(persisted_full_content, url=raw.get("url", ""))
+                    if persisted_full_content
+                    else None
+                ),
                 metadata_=metadata,
                 keyword_matches=[],
                 fetched_at=utcnow_naive(),

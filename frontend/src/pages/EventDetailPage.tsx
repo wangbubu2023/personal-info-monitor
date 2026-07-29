@@ -11,10 +11,11 @@ const EventDetailPage: React.FC = () => {
   const { eventId = '' } = useParams()
   const queryClient = useQueryClient()
   const [note, setNote] = useState('')
+  const [fullReports, setFullReports] = useState(false)
 
   const { data, isLoading, error } = useQuery({
-    queryKey: ['event-detail', eventId],
-    queryFn: () => digestApi.getEventDetail(eventId),
+    queryKey: ['event-detail', eventId, fullReports],
+    queryFn: () => digestApi.getEventDetail(eventId, fullReports),
     enabled: Boolean(eventId),
     retry: false,
   })
@@ -98,9 +99,20 @@ const EventDetailPage: React.FC = () => {
 
           <section className="mt-7 grid gap-5 lg:grid-cols-[1.2fr_0.8fr]">
             <div>
-              <h2 className="mb-4 flex items-center gap-2 text-[16px] font-semibold text-[#293859]">
-                <Clock size={16} className="text-[#8C866A]" /> 变化时间线
-              </h2>
+              <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                <h2 className="flex items-center gap-2 text-[16px] font-semibold text-[#293859]">
+                  <Clock size={16} className="text-[#8C866A]" /> 变化时间线
+                </h2>
+                {(data.extra?.report_count ?? data.timeline.length) > 3 ? (
+                  <button
+                    type="button"
+                    onClick={() => setFullReports((value) => !value)}
+                    className="rounded-full border border-[rgba(88,100,118,0.14)] bg-white px-3 py-1.5 text-[12px] font-semibold text-[#5f6f82] hover:bg-[#f4f7fa]"
+                  >
+                    {fullReports ? '收起精选' : `查看全部 ${data.extra?.report_count ?? ''} 条`}
+                  </button>
+                ) : null}
+              </div>
               <div className="space-y-3">
                 {data.timeline.map((item) => (
                   <article key={item.content_id} className="rounded-2xl border border-[rgba(88,100,118,0.1)] bg-[#fbfdff] p-4">

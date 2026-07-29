@@ -153,7 +153,7 @@ class ContentExtractor:
         """Extract content using readability-lxml and convert to markdown."""
         try:
             from readability import Document
-            import markdownify
+            from app.domains.fetch.web_clean.markdown import html_to_markdown
 
             doc = Document(html)
             summary_html = doc.summary()
@@ -161,15 +161,8 @@ class ContentExtractor:
             if not summary_html or len(summary_html) < 100:
                 return ""
 
-            # Convert to high-quality markdown
-            # markdownify 0.14+ doesn't allow both strip and convert.
-            # We use 'convert' to define the allowlist.
-            md = markdownify.markdownify(
-                summary_html,
-                heading_style="ATX",
-                bullets="-",
-                convert=["table", "tr", "td", "th", "img", "a", "p", "br", "strong", "em", "code", "pre", "h1", "h2", "h3", "h4", "h5", "h6"]
-            )
+            # Use the same converter/protocol as Web Clean, Reader and export.
+            md = html_to_markdown(summary_html, standardize=False)
 
             if md:
                 logger.debug(f"Extracted {len(md)} chars with Readability+Markdownify")

@@ -229,7 +229,9 @@ pyyaml==6.0.3
 readability-lxml==0.8.4.1
     # via personal-info-monitor-backend
 regex==2026.4.4
-    # via dateparser
+    # via
+    #   dateparser
+    #   personal-info-monitor-backend
 requests==2.33.1
     # via
     #   google-api-core

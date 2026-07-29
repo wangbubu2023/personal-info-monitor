@@ -2,9 +2,6 @@
 
 from __future__ import annotations
 
-import json
-import zipfile
-from io import BytesIO
 from typing import Any
 from urllib.parse import quote
 
@@ -17,6 +14,11 @@ from sqlalchemy.orm import selectinload
 
 from app.database import get_async_db
 from app.domains.fetch.auth.bundle_import import import_auth_bundle
+from app.domains.fetch.auth_zip import (
+    MAX_COMPRESSED_ARCHIVE_BYTES,
+    ArchiveSecurityError,
+    parse_auth_export_zip,
+)
 from app.interfaces.http.configs_common_auth import serialize_auth_config
 from app.models.auth_assistant import (
     AuthAssistantDevice,
@@ -209,8 +211,8 @@ async def import_auth_export_zip_from_assistant(
     db: AsyncSession = Depends(get_async_db),
 ):
     device = await require_auth_assistant_device(db, authorization, x_auth_assistant_token)
-    payload = await file.read()
-    bundles = _read_auth_export_payload(payload)
+    await _validate_upload_size(file, MAX_COMPRESSED_ARCHIVE_BYTES)
+    bundles = _read_auth_export_payload(file.file)
     imported: list[dict[str, Any]] = []
     warnings: list[str] = []
     for bundle in bundles:
@@ -300,26 +302,26 @@ async def _record_import_log(
     )
 
 
-def _read_auth_export_payload(payload: bytes) -> list[dict[str, Any]]:
+async def _validate_upload_size(file: UploadFile, max_bytes: int) -> int:
+    await file.seek(0)
+    total = 0
+    while True:
+        chunk = await file.read(min(1024 * 1024, max_bytes - total + 1))
+        if not chunk:
+            break
+        total += len(chunk)
+        if total > max_bytes:
+            raise HTTPException(status_code=413, detail=f"Uploaded archive exceeds {max_bytes} bytes")
+    await file.seek(0)
+    return total
+
+
+def _read_auth_export_payload(payload) -> list[dict[str, Any]]:
     try:
-        with zipfile.ZipFile(BytesIO(payload)) as archive:
-            manifest = json.loads(archive.read("manifest.json").decode("utf-8"))
-            if manifest.get("kind") != _AUTH_EXPORT_KIND:
-                raise HTTPException(status_code=422, detail="Unsupported auth export kind")
-            bundles: list[dict[str, Any]] = []
-            for item in manifest.get("profiles") or []:
-                profile_path = item.get("file") if isinstance(item, dict) else None
-                if not profile_path:
-                    continue
-                bundle = json.loads(archive.read(profile_path).decode("utf-8"))
-                if bundle.get("kind") == _AUTH_BUNDLE_KIND:
-                    bundles.append(bundle)
-            if not bundles:
-                raise HTTPException(status_code=422, detail="Auth export zip contains no auth bundles")
-            return bundles
-    except KeyError as exc:
-        raise HTTPException(status_code=422, detail=f"Auth export zip missing file: {exc}") from exc
-    except zipfile.BadZipFile as exc:
-        raise HTTPException(status_code=422, detail="Uploaded file is not a valid zip") from exc
-    except json.JSONDecodeError as exc:
-        raise HTTPException(status_code=422, detail="Auth export zip contains invalid JSON") from exc
+        return parse_auth_export_zip(
+            payload,
+            export_kind=_AUTH_EXPORT_KIND,
+            bundle_kind=_AUTH_BUNDLE_KIND,
+        )
+    except ArchiveSecurityError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc

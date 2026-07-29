@@ -380,12 +380,9 @@ def _ensure_env_file():
     ENV_FILE.write_text(
         "DATA_DIR=~/.pim/data\n"
         "FETCH_CONCURRENCY=20\n"
-        # Master LLM kill switch + per-feature ENRICH_* toggles. Default to
-        # "ingest-only" until the user configures API keys; once configured, set
-        # AI_PROCESSING_ENABLED=true and flip individual ENRICH_* gates on.
-        "AI_PROCESSING_ENABLED=false\n"
-        "ENRICH_SUMMARY_ENABLED=false\n"
-        "ENRICH_TRANSLATE_ENABLED=false\n"
+        # Product AI switches are persisted in system_settings.  The only
+        # deployment-level AI switch is PIM_AI_HARD_DISABLE, and it remains
+        # absent by default rather than being silently enabled or disabled here.
     )
     print(f"  Created minimal .env: {ENV_FILE}")
 

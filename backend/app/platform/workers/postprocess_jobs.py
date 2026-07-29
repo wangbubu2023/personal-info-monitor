@@ -50,7 +50,13 @@ def _pipeline_identity(job_id: str | None) -> tuple[str, str]:
 
 def postprocess_idempotency_key(content_id: str, job_id: str | None = None) -> str:
     stage, version = _pipeline_identity(job_id)
-    return f"{content_id}:{stage}:{version}"
+    raw = str(job_id or version)
+    # ``finish:<pipeline-version>:<content-fingerprint>`` is the durable
+    # business identity emitted by StorageStage.  Keep the fingerprint in the
+    # key so a substantive update is not suppressed by an earlier success,
+    # while retaining the actual pipeline version in its dedicated column.
+    identity = raw.removeprefix("finish:") if raw.startswith("finish:") else version
+    return f"{content_id}:{stage}:{identity or version}"
 
 
 def ensure_postprocess_job(content_id: str, job_id: str | None = None) -> None:

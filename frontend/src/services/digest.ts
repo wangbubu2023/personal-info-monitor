@@ -158,6 +158,10 @@ export interface EventDetailResponse {
   independent_verification?: EventEvidenceGroup[]
   related_discussions?: EventEvidenceGroup[]
   feedback: EventFeedbackItem[]
+  extra?: {
+    view_mode?: 'curated' | 'full'
+    report_count?: number
+  }
 }
 
 export interface EventFeedbackCreate {
@@ -220,8 +224,8 @@ export const digestApi = {
     return response.data
   },
 
-  getEventDetail: async (eventId: string): Promise<EventDetailResponse> => {
-    const response = await api.get(`/events/${eventId}`)
+  getEventDetail: async (eventId: string, fullReports = false): Promise<EventDetailResponse> => {
+    const response = await api.get(`/events/${eventId}`, { params: { full_reports: fullReports } })
     return response.data
   },
 

@@ -1,0 +1,4120 @@
+diff --git a/PIM_WEB_CLEANING_PRD.md b/PIM_WEB_CLEANING_PRD.md
+index dce24ce..90b4f4f 100644
+--- a/PIM_WEB_CLEANING_PRD.md
++++ b/PIM_WEB_CLEANING_PRD.md
+@@ -957,3 +957,41 @@ git diff --check
+ 5. 再进入 M1 的 HTML standardizer 与统一 Markdown converter。
+ 
+ 核心原则：**先评测，后替换；先 shadow，后写入；先模板化，后硬编码。**
++
++---
++
++## 21. 实施状态与证据（独立审计，基线 b17e71e + 本地修复补丁）
++
++> 本节区分“仓库工程实现”与“真实验收”。它不以 README、进度台账或 mock/fixture 结果替代生产样本、人工标注、真实登录态、连续 7 天 Shadow 或小流量灰度。缺少正式数据时，发布门禁必须保持 `NO_GO`。
++
++### 21.1 FR-1–FR-10
++
++| 条目 | 工程状态 | 主要代码证据 | 尚未满足的真实验收 |
++|---|---|---|---|
++| FR-1 HTML 标准化 | **已实现并接入候选链；补丁修复安全与兼容缺陷** | `backend/app/domains/fetch/web_clean/html_standardizer.py`；`WebDocumentExtractor.extract_sync()` 在所有候选前调用 | 尚无 PRD 规定的正式跨站 fixture 集；真实编码异常、超大页与站点兼容性仍需数据验证 |
++| FR-2 Shadow DOM | **已实现于 Playwright hydrate 路径；补丁增加递归、slot、深度/节点/字符/时间边界和 trace** | `backend/app/domains/fetch/collectors/website.py`；`website_shadow_dom.py` | 当前审计环境未执行真实浏览器 E2E；closed shadow root 按浏览器边界不可读取 |
++| FR-3 Structured | **已实现并接入；补丁修复多对象 title、canonical、language、rejected trace 与遍历边界** | `web_clean/structured.py`；`app/utils/structured_article.py`；`web_clean/extractors.py` | 尚无正式 schema-rich 多站样本与人工 gold 验收 |
++| FR-4 模板系统 | **部分完成**：source metadata 模板、校验、probe、优先级已接线；安全校验补强 | `web_clean/templates.py`、`filters.py`；`schemas/source.py`；`interfaces/http/sources/probe.py` | **缺 5–10 个内置 host 模板及其相对 generic 的评测收益证据**；因此 M2 不得标完成 |
++| FR-5 Filters DSL | **已实现；补丁改为未知配置、参数个数、selector、regex 与输出上限 fail-closed** | `web_clean/filters.py`；`web_clean/safety.py` | 仍需正式模板集验证实际兼容性，不得以单元测试替代 |
++| FR-6 候选评分 | **已实现并接入；补丁阻止 blocked/rejected 候选写入生产并补 rejected trace** | `web_clean/scoring.py`；`web_clean/extractors.py`；`contracts.CleanResult.production_eligible()`；`ingest/build_content.py` | 阈值效果仍依赖正式标注集与生产 Shadow |
++| FR-7 Markdown | **已实现并统一主要路径；补丁修复入库后被 `strip_markdown` 破坏的问题** | `web_clean/markdown.py`；`platform/export/html_markdown.py`；`ingest/extractor.py`；`ingest/build_content.py` | 当前环境未运行前端浏览器渲染 E2E；复杂脚注的跨站保持仍需正式 fixture |
++| FR-8 入库与 metadata | **已接入；补丁增加 source 级 `off/shadow/write` 门禁并保持旧 fallback** | `ingest/build_content.py`；`CleanResult.to_metadata()` | 真实数据库长稳、metadata 体积与迁移兼容需在受控环境验证；补丁无 schema migration |
++| FR-9 健康/详情/Probe/诊断包 | **补丁后工程闭环基本完成** | `support_bundle.py`；`contents_reader.py`；`sources/probe.py`；前端 `FetchHealthDrawer.tsx`、`ReaderPage.tsx` | 当前环境缺 npm 依赖与浏览器，未完成前端 lint/test/build/E2E；真实操作流仍待验收 |
++| FR-10 Eval/Shadow 门禁 | **补丁后具备 fail-closed 工具链，但真实门禁未通过** | `web_clean/eval.py`；`run_web_clean_eval.py`；`run_web_clean_shadow.py`；`generate_release_eval_artifact.py` | **缺正式 ≥150 样本、manifest/baseline artifact、真实 production provenance、连续 7 天 Shadow 与全部高风险人工复核** |
++
++### 21.2 Milestone 状态
++
++| Milestone | 状态 | 可复核结论 |
++|---|---|---|
++| M0 | **部分实现 / 外部数据阻塞** | contracts、runner、manifest/hash/tier 校验和 fail-closed gate 已有；仓库仍无要求的 30 个 bootstrap fixtures、manifest 与当前 pipeline baseline artifact，不能标完成 |
++| M1 | **工程实现，真实验收未完成** | 标准化、structured、Markdown、candidate scoring 与回归测试已接线；缺正式跨站样本、完整依赖环境和真实浏览器验证 |
++| M2 | **部分实现** | source 模板 DSL、保存校验、probe preview 已接线；缺 5–10 个内置模板及评测收益证据 |
++| M3 | **工程接线完成，灰度验收未完成** | source metadata 必须显式 `web_clean_mode=write` 才允许替换正文；全局开关仅作 master gate，`off/shadow/write` 可回滚；未执行真实单 source 灰度 |
++| M4 | **门禁工程完成 / 真实验收外部阻塞** | release artifact 强制正式 Web Clean Eval、有效 provenance、连续 7 天、零隔离违规、全部高风险复核；仓库没有真实报告，结论必须为 `NO_GO` |
++| M5 | **不具备默认启用条件** | 在 M0 正式数据、M2 内置模板收益、M4 真实 7 天 Shadow 与正式 gate 全部满足前，不得默认启用；继续保留旧 `ContentExtractor` 与全局紧急关闭 |
++
++### 21.3 当前发布判定
++
++- **M5 / 默认启用：NO_GO。**
++- fixture、mock 与本地生成 artifact 只能证明代码路径和 fail-closed 行为，不能证明生产质量指标。
++- 付费与登录态网站仍必须使用既有授权边界；不得引入 archive mirror、绕过 paywall，诊断包不得包含 Cookie、Authorization、API Key、原始 HTML 或默认敏感正文。
+diff --git a/backend/.env.example b/backend/.env.example
+index 57ec30a..ea1beaf 100644
+--- a/backend/.env.example
++++ b/backend/.env.example
+@@ -134,7 +134,7 @@ PIM_WEB_AUTH_REQUIRED=false
+ # PIM_SKIP_PLAYWRIGHT_DEPS=false # ./pim setup 时是否跳过 Linux Chromium 系统依赖安装
+ # PIM_DISABLE_PASSWORD_AUTO_LOGIN=false # VPS/headless 推荐设 true，仅复用导入的 cookie/browser-session，不自动跑密码登录
+ 
+-# Web Clean Pipeline（默认旧正文继续生效，新管线仅 Shadow 记录诊断）
++# Web Clean Pipeline 主门禁（M0-M4 写生产正文还需 source.metadata.web_clean_mode=write；默认 Shadow）
+ PIM_WEB_CLEAN_ENABLED=false
+ PIM_WEB_CLEAN_SHADOW=true
+ PIM_WEB_CLEAN_WRITE_METADATA=true
+diff --git a/backend/app/domains/fetch/collectors/website_shadow_dom.py b/backend/app/domains/fetch/collectors/website_shadow_dom.py
+index 451cbc2..46250f5 100644
+--- a/backend/app/domains/fetch/collectors/website_shadow_dom.py
++++ b/backend/app/domains/fetch/collectors/website_shadow_dom.py
+@@ -1,4 +1,4 @@
+-"""Best-effort Shadow DOM materialization for browser-backed extraction."""
++"""Best-effort, bounded Shadow DOM materialization for browser-backed extraction."""
+ 
+ from __future__ import annotations
+ 
+@@ -7,36 +7,128 @@ from typing import Any
+ 
+ from app.config import get_settings
+ 
+-_MATERIALIZE_SCRIPT = """
+-() => {
+-  let count = 0;
+-  const walk = (root) => {
+-    for (const host of root.querySelectorAll('*')) {
+-      if (!host.shadowRoot || host.querySelector(':scope > [data-pim-shadow-root]')) continue;
+-      const clone = document.createElement('div');
+-      clone.setAttribute('data-pim-shadow-root', 'open');
+-      clone.innerHTML = host.shadowRoot.innerHTML;
+-      host.appendChild(clone);
+-      count += 1;
+-      walk(clone);
++_MAX_ROOTS = 128
++_MAX_NODES = 20_000
++_MAX_DEPTH = 12
++_MAX_CHARS = 1_000_000
++
++_MATERIALIZE_SCRIPT = r"""
++(limits) => {
++  const deadline = performance.now() + limits.deadlineMs;
++  let roots = 0;
++  let nodes = 0;
++  let chars = 0;
++  let timedOut = false;
++  const blockedTags = new Set(['SCRIPT', 'STYLE', 'IFRAME', 'TEMPLATE']);
++
++  const allowed = (depth) => {
++    if (performance.now() > deadline) timedOut = true;
++    return !timedOut && depth <= limits.maxDepth && nodes < limits.maxNodes &&
++      chars < limits.maxChars && roots < limits.maxRoots;
++  };
++
++  const cloneVisible = (node, depth) => {
++    if (!allowed(depth)) return null;
++    nodes += 1;
++    if (node.nodeType === Node.TEXT_NODE) {
++      const value = (node.nodeValue || '').slice(0, Math.max(0, limits.maxChars - chars));
++      chars += value.length;
++      return document.createTextNode(value);
++    }
++    if (node.nodeType !== Node.ELEMENT_NODE || blockedTags.has(node.tagName)) return null;
++    if (node.hidden || ['true', '1'].includes((node.getAttribute('aria-hidden') || '').toLowerCase())) {
++      return null;
+     }
++    const style = window.getComputedStyle(node);
++    if (style.display === 'none' || style.visibility === 'hidden') return null;
++
++    const copy = node.cloneNode(false);
++    const assigned = node.tagName === 'SLOT' ? node.assignedNodes({flatten: true}) : [];
++    // Assigned nodes remain in the host's light DOM and will already be
++    // serialized there. Cloning them again inside the materialized wrapper
++    // duplicates visible article text. Only clone slot fallback children.
++    const children = node.tagName === 'SLOT' && assigned.length
++      ? []
++      : Array.from(node.childNodes);
++    for (const child of children) {
++      const childCopy = cloneVisible(child, depth + 1);
++      if (childCopy) copy.appendChild(childCopy);
++      if (!allowed(depth)) break;
++    }
++
++    if (node.shadowRoot && allowed(depth + 1)) {
++      const shadowCopy = document.createElement('div');
++      shadowCopy.setAttribute('data-pim-shadow-root', 'open');
++      roots += 1;
++      for (const child of Array.from(node.shadowRoot.childNodes)) {
++        const childCopy = cloneVisible(child, depth + 1);
++        if (childCopy) shadowCopy.appendChild(childCopy);
++        if (!allowed(depth)) break;
++      }
++      copy.appendChild(shadowCopy);
++    }
++    return copy;
+   };
+-  walk(document);
+-  return count;
++
++  for (const host of Array.from(document.querySelectorAll('*'))) {
++    if (!allowed(0)) break;
++    if (!host.shadowRoot || host.querySelector(':scope > [data-pim-shadow-root]')) continue;
++    const wrapper = document.createElement('div');
++    wrapper.setAttribute('data-pim-shadow-root', 'open');
++    roots += 1;
++    for (const child of Array.from(host.shadowRoot.childNodes)) {
++      const childCopy = cloneVisible(child, 1);
++      if (childCopy) wrapper.appendChild(childCopy);
++      if (!allowed(0)) break;
++    }
++    host.appendChild(wrapper);
++  }
++
++  document.documentElement.setAttribute('data-pim-shadow-materialized-count', String(roots));
++  document.documentElement.setAttribute('data-pim-shadow-timeout', timedOut ? 'true' : 'false');
++  return {count: roots, timedOut, nodes, chars};
++}
++"""
++
++_STAMP_TIMEOUT_SCRIPT = """
++() => {
++  document.documentElement.setAttribute('data-pim-shadow-timeout', 'true');
++  if (!document.documentElement.hasAttribute('data-pim-shadow-materialized-count')) {
++    document.documentElement.setAttribute('data-pim-shadow-materialized-count', '0');
++  }
+ }
+ """
+ 
+ 
++async def _stamp_timeout(page: Any) -> None:
++    try:
++        await asyncio.wait_for(page.evaluate(_STAMP_TIMEOUT_SCRIPT), timeout=0.5)
++    except Exception:  # noqa: BLE001 — only a best-effort trace marker after browser timeout
++        return
++
++
+ async def materialize_shadow_dom(page: Any, *, logger: Any) -> tuple[int, bool]:
+-    """Clone open Shadow DOM roots into the serialized DOM for extraction."""
++    """Clone open roots/slots into the serialized DOM without blocking fetch."""
+     settings = get_settings()
+     if not (settings.pim_web_clean_enabled or settings.pim_web_clean_shadow):
+         return 0, False
++    limits = {
++        "maxRoots": _MAX_ROOTS,
++        "maxNodes": _MAX_NODES,
++        "maxDepth": _MAX_DEPTH,
++        "maxChars": _MAX_CHARS,
++        "deadlineMs": 2_800,
++    }
+     try:
+-        count = await asyncio.wait_for(page.evaluate(_MATERIALIZE_SCRIPT), timeout=3.0)
+-        return int(count or 0), False
++        result = await asyncio.wait_for(page.evaluate(_MATERIALIZE_SCRIPT, limits), timeout=3.0)
++        if isinstance(result, dict):
++            return max(0, min(_MAX_ROOTS, int(result.get("count") or 0))), bool(
++                result.get("timedOut")
++            )
++        return max(0, min(_MAX_ROOTS, int(result or 0))), False
+     except asyncio.TimeoutError:
+         logger.debug("Shadow DOM materialization timed out")
++        await _stamp_timeout(page)
+         return 0, True
+     except Exception as exc:  # noqa: BLE001 — browser DOMs are best-effort
+         logger.debug("Shadow DOM materialization skipped: %s", exc)
+diff --git a/backend/app/domains/fetch/web_clean/contracts.py b/backend/app/domains/fetch/web_clean/contracts.py
+index a016500..0d04c32 100644
+--- a/backend/app/domains/fetch/web_clean/contracts.py
++++ b/backend/app/domains/fetch/web_clean/contracts.py
+@@ -86,6 +86,24 @@ class CleanResult:
+     trace: dict[str, Any]
+     metadata: dict[str, Any] = field(default_factory=dict)
+ 
++    def production_eligible(self) -> bool:
++        """Return true only for a non-rejected candidate suitable for gated writes."""
++        if not self.article_text or self.quality_status not in {"full", "partial"}:
++            return False
++        if not isinstance(self.trace, dict):
++            return False
++        template_errors = self.trace.get("template_validation_errors")
++        if isinstance(template_errors, (list, tuple)) and template_errors:
++            return False
++        selected_method = self.trace.get("selected_method")
++        candidates = self.trace.get("candidates", ())
++        for candidate in candidates if isinstance(candidates, (list, tuple)) else ():
++            if isinstance(candidate, dict) and candidate.get("method") == selected_method:
++                return not bool(candidate.get("rejected_reason"))
++        # Production replacement must be explainable. Missing or inconsistent
++        # trace data is ineligible rather than silently trusted.
++        return False
++
+     def to_metadata(self, *, include_trace: bool = True) -> dict[str, Any]:
+         signals = self.metadata.get("quality_signals", {})
+         payload: dict[str, Any] = {
+diff --git a/backend/app/domains/fetch/web_clean/eval.py b/backend/app/domains/fetch/web_clean/eval.py
+index 02bef8c..e33f754 100644
+--- a/backend/app/domains/fetch/web_clean/eval.py
++++ b/backend/app/domains/fetch/web_clean/eval.py
+@@ -1,16 +1,40 @@
+-"""Deterministic Web Clean golden-fixture evaluation."""
++"""Deterministic, provenance-aware Web Clean golden-fixture evaluation."""
+ 
+ from __future__ import annotations
+ 
++import hashlib
+ import json
+ import statistics
+ import time
++from datetime import datetime
+ from pathlib import Path
+ from typing import Any, Iterable
+ 
+ from .contracts import CleanInput
+ from .extractors import WebDocumentExtractor
+ 
++_BLOCKED_STATUSES = {"blocked", "login_required", "bot_wall", "captcha"}
++_BOOTSTRAP_THRESHOLDS = {
++    "sample_count_min": 30,
++    "must_include_recall_min": 0.85,
++    "boilerplate_leak_rate_max": 0.15,
++    "blocked_detection_f1_min": 0.80,
++}
++_FORMAL_THRESHOLDS = {
++    "sample_count_min": 150,
++    "must_include_recall_min": 0.90,
++    "must_exclude_precision_min": 0.92,
++    "boilerplate_leak_rate_max": 0.08,
++    "blocked_detection_f1_min": 0.88,
++    "metadata_accuracy_min": 0.90,
++    "markdown_structure_score_min": 0.85,
++    "runtime_multiplier_max": 1.25,
++}
++
++
++def _sha256(path: Path) -> str:
++    return hashlib.sha256(path.read_bytes()).hexdigest()
++
+ 
+ def load_jsonl(path: str | Path) -> list[dict[str, Any]]:
+     dataset_path = Path(path)
+@@ -25,9 +49,7 @@ def load_jsonl(path: str | Path) -> list[dict[str, Any]]:
+     return rows
+ 
+ 
+-def _fixture_html(row: dict[str, Any], dataset_path: Path) -> str:
+-    if isinstance(row.get("html"), str):
+-        return row["html"]
++def _fixture_path(row: dict[str, Any], dataset_path: Path) -> Path:
+     fixture = row.get("html_fixture")
+     if not fixture:
+         raise ValueError(f"{row.get('id', '?')}: html or html_fixture is required")
+@@ -35,13 +57,162 @@ def _fixture_html(row: dict[str, Any], dataset_path: Path) -> str:
+     root = dataset_path.parent.resolve()
+     if root not in path.parents and path != root:
+         raise ValueError(f"{row.get('id', '?')}: fixture escapes dataset directory")
+-    return path.read_text(encoding="utf-8")
++    return path
++
+ 
++def _fixture_html(row: dict[str, Any], dataset_path: Path) -> str:
++    if isinstance(row.get("html"), str):
++        return row["html"]
++    return _fixture_path(row, dataset_path).read_text(encoding="utf-8")
+ 
+-def _ratio(hits: int, total: int, *, empty: float = 1.0) -> float:
++
++def _ratio(hits: int, total: int, *, empty: float = 0.0) -> float:
+     return round(hits / total, 4) if total else empty
+ 
+ 
++def _normalized_time(value: Any) -> str | None:
++    if value is None:
++        return None
++    if hasattr(value, "isoformat"):
++        return value.isoformat()
++    text = str(value).strip()
++    if not text:
++        return None
++    try:
++        return datetime.fromisoformat(text.replace("Z", "+00:00")).isoformat()
++    except ValueError:
++        return text
++
++
++def _markdown_expectations(gold: dict[str, Any]) -> list[str]:
++    values = gold.get("markdown_contains") or gold.get("required_markdown") or []
++    return [str(item) for item in values] if isinstance(values, list) else []
++
++
++def _validate_manifest(
++    dataset: Path,
++    rows: list[dict[str, Any]],
++    manifest_path: Path | None,
++    tier: str | None,
++) -> tuple[dict[str, Any] | None, list[str]]:
++    if manifest_path is None:
++        return None, ["manifest is missing"]
++    if not manifest_path.is_file():
++        return None, ["manifest file is missing"]
++    try:
++        payload = json.loads(manifest_path.read_text(encoding="utf-8"))
++    except (OSError, UnicodeError, json.JSONDecodeError, ValueError) as exc:
++        return None, [f"manifest is unreadable or invalid JSON: {exc}"]
++    if not isinstance(payload, dict):
++        return None, ["manifest must be a JSON object"]
++    errors: list[str] = []
++    dataset_sha = _sha256(dataset)
++    if payload.get("dataset_sha256") != dataset_sha:
++        errors.append("manifest dataset_sha256 does not match")
++    if int(payload.get("sample_count") or -1) != len(rows):
++        errors.append("manifest sample_count does not match")
++    manifest_tier = str(payload.get("dataset_tier") or "")
++    if tier and manifest_tier != tier:
++        errors.append("manifest dataset_tier does not match requested tier")
++    release_tier = tier or manifest_tier
++    if release_tier in {"web_clean_bootstrap", "web_clean_eval_1_0"}:
++        inline_rows = [str(row.get("id") or "?") for row in rows if not row.get("html_fixture")]
++        if inline_rows:
++            errors.append("release-tier rows must use hashed html_fixture files")
++        required_fields = ("id", "url", "source_type", "language", "paywall", "case_type", "gold")
++        missing_contract = [
++            str(row.get("id") or index)
++            for index, row in enumerate(rows, start=1)
++            if any(row.get(field) in (None, "") for field in required_fields)
++        ]
++        if missing_contract:
++            errors.append("release-tier rows are missing required contract fields")
++    if release_tier == "web_clean_eval_1_0":
++        languages = {str(row.get("language") or "").lower() for row in rows}
++        paywalls = {str(row.get("paywall") or "").lower() for row in rows}
++        case_types = {str(row.get("case_type") or "").lower() for row in rows}
++        if not {"zh", "en"}.issubset(languages):
++            errors.append("formal dataset must cover zh and en")
++        if "none" not in paywalls or not (paywalls & {"login_required", "metered", "unknown"}):
++            errors.append("formal dataset must cover non-paywalled and paywall/access-control cases")
++        required_cases = {"article", "spa", "schema_rich", "table", "code"}
++        if not required_cases.issubset(case_types):
++            errors.append("formal dataset is missing required case_type coverage")
++    fixtures = payload.get("fixtures") or {}
++    if not isinstance(fixtures, dict):
++        errors.append("manifest fixtures must be an object")
++    else:
++        referenced = {
++            str(row["html_fixture"])
++            for row in rows
++            if isinstance(row.get("html_fixture"), str) and row.get("html_fixture")
++        }
++        if set(fixtures) != referenced:
++            errors.append("manifest fixture set does not match dataset")
++        for relative, expected_sha in fixtures.items():
++            try:
++                path = _fixture_path({"id": "manifest", "html_fixture": relative}, dataset)
++            except ValueError as exc:
++                errors.append(str(exc))
++                continue
++            if not path.is_file() or _sha256(path) != str(expected_sha):
++                errors.append(f"fixture hash mismatch: {relative}")
++    return payload, errors
++
++
++def _gate_metrics(
++    metrics: dict[str, Any],
++    *,
++    tier: str | None,
++    manifest: dict[str, Any] | None,
++    manifest_errors: list[str],
++) -> list[str]:
++    blockers = list(manifest_errors)
++    labels = metrics.get("label_counts") or {}
++    if tier in {"web_clean_bootstrap", "web_clean_eval_1_0"}:
++        for label in ("must_include", "must_exclude", "quality_status"):
++            if int(labels.get(label) or 0) <= 0:
++                blockers.append(f"release dataset has no {label} labels")
++    if tier == "web_clean_eval_1_0":
++        for label in ("title", "canonical_url", "published_time", "markdown"):
++            if int(labels.get(label) or 0) <= 0:
++                blockers.append(f"formal dataset has no {label} labels")
++    if tier == "web_clean_bootstrap":
++        thresholds = _BOOTSTRAP_THRESHOLDS
++        if metrics["sample_count"] < thresholds["sample_count_min"]:
++            blockers.append("bootstrap sample_count is below 30")
++        if metrics["must_include_recall"] < thresholds["must_include_recall_min"]:
++            blockers.append("bootstrap must_include_recall is below 0.85")
++        if metrics["boilerplate_leak_rate"] > thresholds["boilerplate_leak_rate_max"]:
++            blockers.append("bootstrap boilerplate_leak_rate exceeds 0.15")
++        if metrics["blocked_detection_f1"] < thresholds["blocked_detection_f1_min"]:
++            blockers.append("bootstrap blocked_detection_f1 is below 0.80")
++    elif tier == "web_clean_eval_1_0":
++        thresholds = _FORMAL_THRESHOLDS
++        if metrics["sample_count"] < thresholds["sample_count_min"]:
++            blockers.append("formal sample_count is below 150")
++        if metrics["must_include_recall"] < thresholds["must_include_recall_min"]:
++            blockers.append("formal must_include_recall is below 0.90")
++        if metrics["must_exclude_precision"] < thresholds["must_exclude_precision_min"]:
++            blockers.append("formal must_exclude_precision is below 0.92")
++        if metrics["boilerplate_leak_rate"] > thresholds["boilerplate_leak_rate_max"]:
++            blockers.append("formal boilerplate_leak_rate exceeds 0.08")
++        if metrics["blocked_detection_f1"] < thresholds["blocked_detection_f1_min"]:
++            blockers.append("formal blocked_detection_f1 is below 0.88")
++        if metrics["metadata_accuracy"] < thresholds["metadata_accuracy_min"]:
++            blockers.append("formal metadata_accuracy is below 0.90")
++        if metrics["markdown_structure_score"] < thresholds["markdown_structure_score_min"]:
++            blockers.append("formal markdown_structure_score is below 0.85")
++        baseline = float((manifest or {}).get("baseline_runtime_p95_ms") or 0)
++        if baseline <= 0:
++            blockers.append("formal manifest baseline_runtime_p95_ms is missing")
++        elif metrics["runtime_p95_ms"] > baseline * thresholds["runtime_multiplier_max"]:
++            blockers.append("formal runtime_p95_ms exceeds baseline 1.25x")
++    else:
++        blockers.append("dataset tier is not a release tier")
++    return blockers
++
++
+ def evaluate_rows(rows: Iterable[dict[str, Any]], *, dataset_path: str | Path) -> dict[str, Any]:
+     dataset = Path(dataset_path)
+     extractor = WebDocumentExtractor()
+@@ -49,6 +220,9 @@ def evaluate_rows(rows: Iterable[dict[str, Any]], *, dataset_path: str | Path) -
+     runtimes: list[float] = []
+     include_hits = include_total = exclude_hits = exclude_total = 0
+     title_hits = title_total = status_hits = status_total = 0
++    canonical_hits = canonical_total = published_hits = published_total = 0
++    markdown_hits = markdown_total = min_chars_hits = min_chars_total = 0
++    blocked_tp = blocked_fp = blocked_fn = 0
+ 
+     for row in rows:
+         html = _fixture_html(row, dataset)
+@@ -75,11 +249,29 @@ def evaluate_rows(rows: Iterable[dict[str, Any]], *, dataset_path: str | Path) -
+         if gold.get("title") is not None:
+             title_total += 1
+             title_hits += int(result.title == gold.get("title"))
++        if gold.get("canonical_url") is not None:
++            canonical_total += 1
++            canonical_hits += int(result.canonical_url == gold.get("canonical_url"))
++        if gold.get("published_time") is not None:
++            published_total += 1
++            published_hits += int(_normalized_time(result.published_time) == _normalized_time(gold.get("published_time")))
++        markdown_expectations = _markdown_expectations(gold)
++        markdown_row_hits = sum(1 for item in markdown_expectations if item in result.article_markdown)
++        markdown_hits += markdown_row_hits
++        markdown_total += len(markdown_expectations)
++        if gold.get("min_text_chars") is not None:
++            min_chars_total += 1
++            min_chars_hits += int(len(body) >= int(gold["min_text_chars"]))
+         if gold.get("expected_status") is not None:
+             status_total += 1
+             expected = str(gold["expected_status"])
+             actual = result.quality_status
+-            status_hits += int(actual == expected or (expected == "blocked" and actual in {"login_required", "bot_wall", "captcha"}))
++            expected_blocked = expected in _BLOCKED_STATUSES
++            actual_blocked = actual in _BLOCKED_STATUSES
++            status_hits += int(actual == expected or (expected_blocked and actual_blocked))
++            blocked_tp += int(expected_blocked and actual_blocked)
++            blocked_fp += int(not expected_blocked and actual_blocked)
++            blocked_fn += int(expected_blocked and not actual_blocked)
+         results.append(
+             {
+                 "id": row.get("id"),
+@@ -88,25 +280,88 @@ def evaluate_rows(rows: Iterable[dict[str, Any]], *, dataset_path: str | Path) -
+                 "score": result.quality_score,
+                 "text_chars": len(body),
+                 "runtime_ms": round(runtime_ms, 3),
+-                "must_include_recall": _ratio(row_include, len(must_include)),
+-                "must_exclude_precision": _ratio(row_exclude, len(must_exclude)),
++                "must_include_recall": _ratio(row_include, len(must_include), empty=1.0),
++                "must_exclude_precision": _ratio(row_exclude, len(must_exclude), empty=1.0),
++                "markdown_structure_score": _ratio(markdown_row_hits, len(markdown_expectations), empty=1.0),
+             }
+         )
+ 
+     sorted_runtimes = sorted(runtimes)
+     p95_index = max(0, min(len(sorted_runtimes) - 1, int(len(sorted_runtimes) * 0.95) - 1))
++    blocked_precision = _ratio(blocked_tp, blocked_tp + blocked_fp)
++    blocked_recall = _ratio(blocked_tp, blocked_tp + blocked_fn)
++    blocked_f1 = (
++        round(2 * blocked_precision * blocked_recall / (blocked_precision + blocked_recall), 4)
++        if blocked_precision + blocked_recall
++        else 0.0
++    )
+     metrics = {
+         "sample_count": len(results),
+         "must_include_recall": _ratio(include_hits, include_total),
+         "must_exclude_precision": _ratio(exclude_hits, exclude_total),
+-        "boilerplate_leak_rate": round(1.0 - _ratio(exclude_hits, exclude_total), 4),
++        "boilerplate_leak_rate": round(1.0 - _ratio(exclude_hits, exclude_total), 4) if exclude_total else 0.0,
+         "title_accuracy": _ratio(title_hits, title_total),
++        "canonical_url_accuracy": _ratio(canonical_hits, canonical_total),
++        "published_time_accuracy": _ratio(published_hits, published_total),
++        "metadata_accuracy": _ratio(
++            title_hits + canonical_hits + published_hits,
++            title_total + canonical_total + published_total,
++        ),
+         "quality_status_accuracy": _ratio(status_hits, status_total),
++        "markdown_structure_score": _ratio(markdown_hits, markdown_total),
++        "minimum_text_accuracy": _ratio(min_chars_hits, min_chars_total),
++        "blocked_detection_precision": blocked_precision,
++        "blocked_detection_recall": blocked_recall,
++        "blocked_detection_f1": blocked_f1,
+         "runtime_mean_ms": round(statistics.fmean(runtimes), 3) if runtimes else 0.0,
+         "runtime_p95_ms": round(sorted_runtimes[p95_index], 3) if sorted_runtimes else 0.0,
++        "label_counts": {
++            "must_include": include_total,
++            "must_exclude": exclude_total,
++            "title": title_total,
++            "canonical_url": canonical_total,
++            "published_time": published_total,
++            "quality_status": status_total,
++            "markdown": markdown_total,
++        },
+     }
+-    return {"version": "web-clean-eval-v1", "metrics": metrics, "results": results}
++    return {"version": "web-clean-eval-v2", "metrics": metrics, "results": results}
+ 
+ 
+-def evaluate_jsonl(path: str | Path) -> dict[str, Any]:
+-    return evaluate_rows(load_jsonl(path), dataset_path=path)
++def evaluate_jsonl(
++    path: str | Path,
++    *,
++    manifest_path: str | Path | None = None,
++    tier: str | None = None,
++) -> dict[str, Any]:
++    dataset = Path(path)
++    rows = load_jsonl(dataset)
++    report = evaluate_rows(rows, dataset_path=dataset)
++    manifest, manifest_errors = _validate_manifest(
++        dataset,
++        rows,
++        Path(manifest_path) if manifest_path else None,
++        tier,
++    )
++    resolved_tier = tier or str((manifest or {}).get("dataset_tier") or "local")
++    blockers = _gate_metrics(
++        report["metrics"],
++        tier=resolved_tier,
++        manifest=manifest,
++        manifest_errors=manifest_errors,
++    )
++    report.update(
++        {
++            "ok": not blockers,
++            "dataset_tier": resolved_tier,
++            "dataset_sha256": _sha256(dataset),
++            "manifest_sha256": (
++                _sha256(Path(manifest_path))
++                if manifest_path and Path(manifest_path).is_file()
++                else None
++            ),
++            "manifest_valid": not manifest_errors,
++            "gate": {"result": "GO" if not blockers else "NO_GO", "blockers": blockers},
++        }
++    )
++    return report
+diff --git a/backend/app/domains/fetch/web_clean/extractors.py b/backend/app/domains/fetch/web_clean/extractors.py
+index ed7fdd8..d1470d6 100644
+--- a/backend/app/domains/fetch/web_clean/extractors.py
++++ b/backend/app/domains/fetch/web_clean/extractors.py
+@@ -9,11 +9,12 @@ from typing import Any, Mapping
+ 
+ from bs4 import BeautifulSoup
+ 
++from app.utils.publish_time import parse_publish_time_text
+ from app.utils.text import html_to_text_preserving_blocks, normalize_article_text
+ 
+ from .contracts import CleanCandidate, CleanInput, CleanResult, CleanTrace
+-from .html_standardizer import standardize_html
+ from .filters import apply_filters
++from .html_standardizer import standardize_html
+ from .markdown import html_to_markdown
+ from .quality import score_candidate
+ from .structured import extract_structured_document
+@@ -221,16 +222,52 @@ class WebDocumentExtractor:
+                 rejected_reason="empty",
+             )
+ 
++        validation_errors = tuple(str(item)[:300] for item in validation_errors[:8])
+         duration_ms = round((time.perf_counter() - started) * 1000, 3)
++        candidate_trace = [candidate.trace_payload() for candidate in candidates]
++        structured_rejections = structured.get("article_rejections")
++        if isinstance(structured_rejections, list):
++            for rejection in structured_rejections[:8]:
++                if not isinstance(rejection, dict):
++                    continue
++                method = str(rejection.get("method") or "structured")[:80]
++                rejected_reason = str(rejection.get("rejected_reason") or "rejected")[:120]
++                text_chars = max(0, int(rejection.get("chars") or 0))
++                signals = {
++                    key: value
++                    for key, value in rejection.items()
++                    if key not in {"method", "rejected_reason", "chars"}
++                    and isinstance(value, (str, int, float, bool))
++                }
++                candidate_trace.append(
++                    {
++                        "method": f"structured_{method}",
++                        "score": 0.0,
++                        "quality_status": "rejected",
++                        "text_chars": text_chars,
++                        "rejected_reason": rejected_reason,
++                        "signals": signals,
++                    }
++                )
+         trace = CleanTrace(
+             duration_ms=duration_ms,
+             standardizer=standardized.trace,
+-            candidates=tuple(candidate.trace_payload() for candidate in candidates),
++            candidates=tuple(candidate_trace),
+             selected_method=best.method,
+             template_validation_errors=validation_errors,
+             shadow_materialized_count=int(standardized.trace.get("shadow_materialized_count") or 0),
++            shadow_timeout=bool(standardized.trace.get("shadow_timeout")),
+         ).to_dict()
++        template_published = template_fields.get("published")
+         published = structured.get("published_time")
++        published_raw = structured.get("published_time_raw")
++        if template_published:
++            published_raw = str(template_published)
++            published = (
++                template_published
++                if hasattr(template_published, "isoformat")
++                else parse_publish_time_text(published_raw)
++            )
+         return CleanResult(
+             url=clean_input.url,
+             title=str(template_fields.get("title") or structured.get("title") or "").strip() or None,
+@@ -249,7 +286,7 @@ class WebDocumentExtractor:
+             quality_score=best.score,
+             trace=trace,
+             metadata={
+-                "published_time_raw": structured.get("published_time_raw"),
++                "published_time_raw": published_raw,
+                 "image": structured.get("image"),
+                 "quality_signals": best.signals,
+                 "shadow": bool(standardized.trace.get("shadow")),
+diff --git a/backend/app/domains/fetch/web_clean/filters.py b/backend/app/domains/fetch/web_clean/filters.py
+index 54f4598..3fcb039 100644
+--- a/backend/app/domains/fetch/web_clean/filters.py
++++ b/backend/app/domains/fetch/web_clean/filters.py
+@@ -9,15 +9,29 @@ from datetime import datetime
+ from pathlib import PurePath
+ from typing import Any, Iterable
+ 
+-from bs4 import BeautifulSoup
+ import regex as bounded_regex
++from bs4 import BeautifulSoup
+ 
+ from .markdown import html_to_markdown
++from .safety import compile_bounded_regex, selector_error
+ 
+ MAX_FILTERS = 24
+ MAX_FILTER_LENGTH = 512
+ MAX_OUTPUT_CHARS = 1_000_000
+-MAX_REGEX_LENGTH = 256
++FILTER_ARITY: dict[str, tuple[int, int | None]] = {
++    "trim": (0, 0),
++    "replace": (2, 3),
++    "strip_tags": (0, 0),
++    "remove_html": (1, 1),
++    "remove_attr": (1, 32),
++    "strip_attr": (0, 1),
++    "markdown": (0, 0),
++    "date": (0, 1),
++    "join": (0, 1),
++    "list": (0, 0),
++    "table": (0, 0),
++    "safe_name": (0, 0),
++}
+ ALLOWED_FILTERS = frozenset(
+     {
+         "trim", "replace", "strip_tags", "remove_html", "remove_attr", "strip_attr",
+@@ -109,25 +123,29 @@ def validate_filters(filters: str | Iterable[str]) -> tuple[str, ...]:
+         raise FilterValidationError(f"at most {MAX_FILTERS} filters are allowed")
+     for token in tokens:
+         name, args = _parse_filter(token)
+-        if name == "replace" and args and len(str(args[0])) > MAX_REGEX_LENGTH:
+-            raise FilterValidationError("replace pattern is too long")
+-        if name == "replace" and args:
++        minimum, maximum = FILTER_ARITY[name]
++        if len(args) < minimum or (maximum is not None and len(args) > maximum):
++            expected = str(minimum) if maximum == minimum else f"{minimum}..{maximum or 'many'}"
++            raise FilterValidationError(f"{name} expects {expected} argument(s)")
++        if name == "replace":
+             try:
+-                bounded_regex.compile(str(args[0]))
+-            except bounded_regex.error as exc:
++                compile_bounded_regex(str(args[0]))
++            except (ValueError, TypeError) as exc:
+                 raise FilterValidationError(f"invalid replace pattern: {exc}") from exc
++            flag_text = str(args[2]) if len(args) > 2 else ""
++            if set(flag_text) - {"i", "m", "s"}:
++                raise FilterValidationError("replace flags may only contain i, m, s")
++        if name == "strip_attr" and args and not isinstance(args[0], (list, tuple)):
++            raise FilterValidationError("strip_attr expects a list/tuple allowlist")
+     return tuple(tokens)
+ 
+ 
+ def _remove_html(value: Any, selector: str) -> str:
+-    if len(selector) > 256 or selector.count(" ") > 12:
+-        raise FilterValidationError("CSS selector is too complex")
++    error = selector_error(selector)
++    if error:
++        raise FilterValidationError(f"CSS selector {error}")
+     soup = BeautifulSoup(str(value or ""), "lxml")
+-    try:
+-        matches = list(soup.select(selector))
+-    except Exception as exc:  # soupsieve exposes parser-specific subclasses
+-        raise FilterValidationError(f"invalid CSS selector: {selector}") from exc
+-    for node in matches:
++    for node in list(soup.select(selector)):
+         node.decompose()
+     return str(soup)
+ 
+@@ -169,8 +187,6 @@ def apply_filters(value: Any, filters: str | Iterable[str], *, base_url: str = "
+         if name == "trim":
+             result = str(result or "").strip()
+         elif name == "replace":
+-            if len(args) < 2:
+-                raise FilterValidationError("replace requires pattern and replacement")
+             pattern, replacement = str(args[0]), str(args[1])
+             flags = 0
+             flag_text = str(args[2]) if len(args) > 2 else ""
+@@ -189,11 +205,11 @@ def apply_filters(value: Any, filters: str | Iterable[str], *, base_url: str = "
+                 )
+             except TimeoutError as exc:
+                 raise FilterValidationError("replace execution timed out") from exc
++            except bounded_regex.error as exc:
++                raise FilterValidationError(f"replace execution failed: {exc}") from exc
+         elif name == "strip_tags":
+             result = BeautifulSoup(str(result or ""), "lxml").get_text(" ", strip=True)
+         elif name == "remove_html":
+-            if not args:
+-                raise FilterValidationError("remove_html requires a selector")
+             result = _remove_html(result, str(args[0]))
+         elif name == "remove_attr":
+             result = _remove_attrs(result, [str(item) for item in args])
+diff --git a/backend/app/domains/fetch/web_clean/html_standardizer.py b/backend/app/domains/fetch/web_clean/html_standardizer.py
+index 08c98ba..d62d62a 100644
+--- a/backend/app/domains/fetch/web_clean/html_standardizer.py
++++ b/backend/app/domains/fetch/web_clean/html_standardizer.py
+@@ -2,6 +2,8 @@
+ 
+ from __future__ import annotations
+ 
++import hashlib
++import html as html_lib
+ import re
+ from dataclasses import dataclass
+ from typing import Iterable
+@@ -9,15 +11,32 @@ from urllib.parse import urljoin, urlparse
+ 
+ from bs4 import BeautifulSoup
+ 
+-_DROP_TAGS = ("script", "style", "noscript", "template", "iframe")
++from .safety import selector_error
++
++_DROP_TAGS = ("script", "style", "template", "iframe", "object", "embed", "applet")
+ _NOISE_TAGS = ("nav", "header", "footer", "aside", "form")
+ _NOISE_RE = re.compile(
+     r"(?:^|[-_\s])(?:ad|ads|advert|advertisement|banner|cookie|comment|"
+     r"footer|menu|nav|newsletter|promo|recommend|related|share|sidebar|social)(?:$|[-_\s])",
+     re.IGNORECASE,
+ )
+-_URL_ATTRS = ("href", "src", "poster", "cite")
+-_SAFE_SCHEMES = {"http", "https", "mailto", "tel", ""}
++_URL_ATTR_SCHEMES = {
++    "href": frozenset({"http", "https", "mailto", "tel", ""}),
++    "cite": frozenset({"http", "https", ""}),
++    "src": frozenset({"http", "https", ""}),
++    "poster": frozenset({"http", "https", ""}),
++}
++_LAZY_SRC_ATTRS = ("data-src", "data-lazy-src", "data-original", "data-url")
++_LAZY_SRCSET_ATTRS = ("data-srcset", "data-lazy-srcset")
++_HIDDEN_STYLE_RE = re.compile(
++    r"(?:^|;)\s*(?:display\s*:\s*none|visibility\s*:\s*hidden)(?:\s*!important)?\s*(?:;|$)",
++    re.IGNORECASE,
++)
++_PLACEHOLDER_SRC_RE = re.compile(
++    r"^(?:#|about:blank|data:image/(?:gif|png);base64,|javascript:)",
++    re.IGNORECASE,
++)
++_MAX_URL_CHARS = 2_048
+ 
+ 
+ @dataclass(frozen=True)
+@@ -26,13 +45,52 @@ class StandardizedHTML:
+     trace: dict[str, object]
+ 
+ 
+-def _safe_url(value: str, base_url: str) -> str:
++def _sha256(value: str) -> str:
++    return hashlib.sha256(value.encode("utf-8", errors="ignore")).hexdigest()
++
++
++def _safe_url(
++    value: str,
++    base_url: str,
++    *,
++    allowed_schemes: frozenset[str],
++    allow_fragment: bool = False,
++) -> str:
+     raw = str(value or "").strip()
+-    if not raw or raw.startswith(("#", "data:")):
++    if not raw or len(raw) > _MAX_URL_CHARS:
++        return ""
++    if raw.startswith("#"):
++        if not allow_fragment:
++            return ""
+         return raw
+     absolute = urljoin(base_url, raw)
+     parsed = urlparse(absolute)
+-    return absolute if parsed.scheme.lower() in _SAFE_SCHEMES else ""
++    return (
++        absolute
++        if parsed.scheme.lower() in allowed_schemes and len(absolute) <= _MAX_URL_CHARS
++        else ""
++    )
++
++
++def _safe_base_url(soup: BeautifulSoup, page_url: str) -> str:
++    safe_page_url = str(page_url or "")[:_MAX_URL_CHARS]
++    base = soup.find("base", href=True)
++    if not base:
++        return safe_page_url
++    candidate = urljoin(safe_page_url, str(base.get("href") or "").strip())
++    return (
++        candidate
++        if urlparse(candidate).scheme.lower() in {"http", "https"} and len(candidate) <= _MAX_URL_CHARS
++        else safe_page_url
++    )
++
++
++def _bounded_non_negative_int(value: object, *, maximum: int = 128) -> int:
++    try:
++        parsed = int(str(value or "0"))
++    except (TypeError, ValueError, OverflowError):
++        return 0
++    return max(0, min(parsed, maximum))
+ 
+ 
+ def _absolutize_srcset(value: str, base_url: str) -> str:
+@@ -41,12 +99,51 @@ def _absolutize_srcset(value: str, base_url: str) -> str:
+         parts = item.strip().split()
+         if not parts:
+             continue
+-        url = _safe_url(parts[0], base_url)
++        url = _safe_url(
++            parts[0],
++            base_url,
++            allowed_schemes=frozenset({"http", "https", ""}),
++        )
+         if url:
+             items.append(" ".join([url, *parts[1:]]))
+     return ", ".join(items)
+ 
+ 
++def _materialize_noscript(soup: BeautifulSoup) -> int:
++    materialized = 0
++    for node in list(soup.find_all("noscript")):
++        fragment_html = html_lib.unescape(node.decode_contents())
++        fragment = BeautifulSoup(fragment_html, "lxml")
++        container = fragment.body or fragment
++        children = list(container.contents)
++        for child in children:
++            node.insert_before(child)
++        node.decompose()
++        materialized += 1
++    return materialized
++
++
++def _promote_lazy_media(soup: BeautifulSoup) -> int:
++    promoted = 0
++    for node in soup.find_all(("img", "source", "video", "audio")):
++        current = str(node.get("src") or "").strip()
++        if not current or _PLACEHOLDER_SRC_RE.match(current):
++            for attr in _LAZY_SRC_ATTRS:
++                lazy = str(node.get(attr) or "").strip()
++                if lazy:
++                    node["src"] = lazy
++                    promoted += 1
++                    break
++        if not str(node.get("srcset") or "").strip():
++            for attr in _LAZY_SRCSET_ATTRS:
++                lazy_srcset = str(node.get(attr) or "").strip()
++                if lazy_srcset:
++                    node["srcset"] = lazy_srcset
++                    promoted += 1
++                    break
++    return promoted
++
++
+ def standardize_html(
+     html: str,
+     *,
+@@ -55,20 +152,42 @@ def standardize_html(
+     preserve_noise: bool = False,
+     max_html_bytes: int = 3_000_000,
+ ) -> StandardizedHTML:
+-    raw = str(html or "")
+-    truncated = len(raw.encode("utf-8", errors="ignore")) > max_html_bytes
+-    if truncated:
+-        raw = raw.encode("utf-8", errors="ignore")[:max_html_bytes].decode("utf-8", errors="ignore")
++    original = str(html or "")
++    if max_html_bytes <= 0:
++        raise ValueError("max_html_bytes must be positive")
++    encoded = original.encode("utf-8", errors="ignore")
++    truncated = len(encoded) > max_html_bytes
++    raw = encoded[:max_html_bytes].decode("utf-8", errors="ignore") if truncated else original
+     soup = BeautifulSoup(raw, "lxml")
+-    shadow_materialized_count = len(soup.select("[data-pim-shadow-root]"))
++    effective_base_url = _safe_base_url(soup, base_url)
++    document_base_applied = effective_base_url != str(base_url or "")[:_MAX_URL_CHARS]
++    root = soup.html
++    marker_count = len(soup.select("[data-pim-shadow-root]"))
++    stamped_count = _bounded_non_negative_int(
++        root.get("data-pim-shadow-materialized-count") if root else 0
++    )
++    shadow_materialized_count = max(marker_count, stamped_count)
++    shadow_timeout = bool(root and str(root.get("data-pim-shadow-timeout") or "").lower() == "true")
+     removed_elements = 0
+     removed_attributes = 0
+     absolutized_urls = 0
+     invalid_selectors: list[str] = []
++    materialized_noscript = _materialize_noscript(soup)
++    promoted_lazy_media = _promote_lazy_media(soup)
+ 
++    for base in list(soup.find_all("base")):
++        base.decompose()
++        removed_elements += 1
+     for node in list(soup.find_all(_DROP_TAGS)):
+         node.decompose()
+         removed_elements += 1
++    for node in list(soup.select("[hidden], [aria-hidden='true'], [aria-hidden='1']")):
++        node.decompose()
++        removed_elements += 1
++    for node in list(soup.find_all(style=True)):
++        if _HIDDEN_STYLE_RE.search(str(node.get("style") or "")):
++            node.decompose()
++            removed_elements += 1
+     if not preserve_noise:
+         for node in list(soup.find_all(_NOISE_TAGS)):
+             node.decompose()
+@@ -85,13 +204,13 @@ def standardize_html(
+                 node.decompose()
+                 removed_elements += 1
+ 
+-    for selector in remove_selectors:
+-        try:
+-            matches = list(soup.select(selector))
+-        except (ValueError, TypeError):
+-            invalid_selectors.append(str(selector))
++    for raw_selector in remove_selectors:
++        selector = str(raw_selector or "").strip()
++        error = selector_error(selector)
++        if error:
++            invalid_selectors.append(f"{selector[:240]}: {error}"[:300])
+             continue
+-        for node in matches:
++        for node in list(soup.select(selector)):
+             node.decompose()
+             removed_elements += 1
+ 
+@@ -101,10 +220,15 @@ def standardize_html(
+             if lower == "style" or lower.startswith("on"):
+                 del node.attrs[attr]
+                 removed_attributes += 1
+-        for attr in _URL_ATTRS:
++        for attr, schemes in _URL_ATTR_SCHEMES.items():
+             if node.has_attr(attr):
+                 before = str(node.get(attr) or "")
+-                after = _safe_url(before, base_url)
++                after = _safe_url(
++                    before,
++                    effective_base_url,
++                    allowed_schemes=schemes,
++                    allow_fragment=attr == "href",
++                )
+                 if after:
+                     node[attr] = after
+                     absolutized_urls += int(after != before)
+@@ -113,7 +237,7 @@ def standardize_html(
+                     removed_attributes += 1
+         if node.has_attr("srcset"):
+             before = str(node.get("srcset") or "")
+-            after = _absolutize_srcset(before, base_url)
++            after = _absolutize_srcset(before, effective_base_url)
+             if after:
+                 node["srcset"] = after
+                 absolutized_urls += int(after != before)
+@@ -121,17 +245,42 @@ def standardize_html(
+                 del node.attrs["srcset"]
+                 removed_attributes += 1
+ 
++    for node in soup.select("[data-pim-shadow-root]"):
++        if node.has_attr("data-pim-shadow-root"):
++            del node.attrs["data-pim-shadow-root"]
++            removed_attributes += 1
++    if soup.html:
++        for attr in ("data-pim-shadow-materialized-count", "data-pim-shadow-timeout"):
++            if soup.html.has_attr(attr):
++                del soup.html.attrs[attr]
++                removed_attributes += 1
++    output = str(soup)
++    max_output_bytes = max_html_bytes * 2
++    output_encoded = output.encode("utf-8", errors="ignore")
++    output_truncated = len(output_encoded) > max_output_bytes
++    if output_truncated:
++        # Reparse the bounded prefix so downstream extractors receive repaired
++        # HTML instead of a raw mid-tag byte slice.
++        bounded = output_encoded[:max_output_bytes].decode("utf-8", errors="ignore")
++        output = str(BeautifulSoup(bounded, "lxml"))
+     return StandardizedHTML(
+-        html=str(soup),
++        html=output,
+         trace={
+-            "input_chars": len(html or ""),
+-            "output_chars": len(str(soup)),
++            "input_chars": len(original),
++            "output_chars": len(output),
++            "input_sha256": _sha256(original),
++            "output_sha256": _sha256(output),
+             "truncated": truncated,
++            "output_truncated": output_truncated,
+             "removed_elements": removed_elements,
+             "removed_attributes": removed_attributes,
+             "absolutized_urls": absolutized_urls,
++            "promoted_lazy_media": promoted_lazy_media,
++            "materialized_noscript": materialized_noscript,
+             "invalid_selectors": invalid_selectors,
++            "document_base_applied": document_base_applied,
+             "shadow_materialized_count": shadow_materialized_count,
++            "shadow_timeout": shadow_timeout,
+             "shadow": shadow_materialized_count > 0,
+         },
+     )
+diff --git a/backend/app/domains/fetch/web_clean/structured.py b/backend/app/domains/fetch/web_clean/structured.py
+index 6599367..2bd320a 100644
+--- a/backend/app/domains/fetch/web_clean/structured.py
++++ b/backend/app/domains/fetch/web_clean/structured.py
+@@ -5,7 +5,7 @@ from __future__ import annotations
+ import json
+ from datetime import datetime
+ from typing import Any, Iterable
+-from urllib.parse import urljoin
++from urllib.parse import urljoin, urlparse
+ 
+ from bs4 import BeautifulSoup
+ 
+@@ -16,16 +16,24 @@ ARTICLE_TYPES = {
+     "article", "newsarticle", "blogposting", "scholarlyarticle",
+     "reportagenewsarticle", "socialmediaposting",
+ }
++_MAX_URL_CHARS = 2_048
++_MAX_JSON_NODES = 10_000
++_MAX_JSON_DEPTH = 64
+ 
+ 
+ def _iter_nodes(value: Any) -> Iterable[Any]:
+-    yield value
+-    if isinstance(value, dict):
+-        for child in value.values():
+-            yield from _iter_nodes(child)
+-    elif isinstance(value, list):
+-        for child in value:
+-            yield from _iter_nodes(child)
++    stack: list[tuple[Any, int]] = [(value, 0)]
++    visited = 0
++    while stack and visited < _MAX_JSON_NODES:
++        node, depth = stack.pop()
++        visited += 1
++        yield node
++        if depth >= _MAX_JSON_DEPTH:
++            continue
++        if isinstance(node, dict):
++            stack.extend((child, depth + 1) for child in reversed(tuple(node.values())))
++        elif isinstance(node, list):
++            stack.extend((child, depth + 1) for child in reversed(node))
+ 
+ 
+ def _type_names(node: dict[str, Any]) -> set[str]:
+@@ -44,6 +52,30 @@ def _names(value: Any) -> list[str]:
+     return result
+ 
+ 
++def _url_value(value: Any) -> str | None:
++    if isinstance(value, list):
++        for item in value:
++            resolved = _url_value(item)
++            if resolved:
++                return resolved
++        return None
++    if isinstance(value, dict):
++        value = value.get("url") or value.get("@id")
++    text = str(value or "").strip()
++    return text or None
++
++
++def _safe_absolute_http_url(value: Any, page_url: str) -> str | None:
++    raw = str(value or "").strip()
++    if not raw or len(raw) > _MAX_URL_CHARS:
++        return None
++    absolute = urljoin(str(page_url or "")[:_MAX_URL_CHARS], raw)
++    parsed = urlparse(absolute)
++    if parsed.scheme.lower() not in {"http", "https"} or not parsed.netloc:
++        return None
++    return absolute if len(absolute) <= _MAX_URL_CHARS else None
++
++
+ def extract_structured_document(html: str, *, page_url: str = "") -> dict[str, Any]:
+     soup = BeautifulSoup(html or "", "lxml")
+     page_meta = extract_article_page_metadata(html, page_url=page_url)
+@@ -67,10 +99,16 @@ def extract_structured_document(html: str, *, page_url: str = "") -> dict[str, A
+             "og:url": "canonical_url",
+         }
+         if key in mapping and not payload.get(mapping[key]):
+-            payload[mapping[key]] = urljoin(page_url, value) if mapping[key] in {"image", "canonical_url"} else value
++            payload[mapping[key]] = (
++                _safe_absolute_http_url(value, page_url)
++                if mapping[key] in {"image", "canonical_url"}
++                else value
++            )
+     canonical = soup.select_one('link[rel~="canonical"]')
+     if canonical and canonical.get("href"):
+-        payload["canonical_url"] = urljoin(page_url, str(canonical["href"]))
++        safe_canonical = _safe_absolute_http_url(canonical["href"], page_url)
++        if safe_canonical:
++            payload["canonical_url"] = safe_canonical
+ 
+     for script in soup.select('script[type="application/ld+json"]'):
+         try:
+@@ -81,7 +119,9 @@ def extract_structured_document(html: str, *, page_url: str = "") -> dict[str, A
+             if not isinstance(node, dict) or not (_type_names(node) & ARTICLE_TYPES):
+                 continue
+             payload["schema_nodes"].append(node)
+-            payload.setdefault("title", node.get("headline") or node.get("name"))
++            headline = node.get("headline") or node.get("name")
++            if headline and not payload.get("title"):
++                payload["title"] = str(headline).strip()
+             authors = _names(node.get("author"))
+             if authors and not payload.get("author"):
+                 payload["author"] = ", ".join(authors)
+@@ -94,18 +134,32 @@ def extract_structured_document(html: str, *, page_url: str = "") -> dict[str, A
+             if isinstance(image, dict):
+                 image = image.get("url")
+             if image and not payload.get("image"):
+-                payload["image"] = urljoin(page_url, str(image))
++                payload["image"] = _safe_absolute_http_url(image, page_url)
+             raw_date = node.get("datePublished") or node.get("dateModified")
+             if raw_date and not payload.get("published_time"):
+                 payload["published_time"] = parse_publish_time_text(str(raw_date))
+                 payload["published_time_raw"] = str(raw_date)
+-
+-    structured_body = extract_structured_article(html, min_chars=120)
++            canonical_value = _url_value(node.get("mainEntityOfPage")) or _url_value(node.get("url"))
++            if canonical_value and not payload.get("canonical_url"):
++                payload["canonical_url"] = _safe_absolute_http_url(canonical_value, page_url)
++            language = node.get("inLanguage")
++            if language and not payload.get("language"):
++                payload["language"] = str(language).strip()
++
++    structured_rejections: list[dict[str, Any]] = []
++    structured_body = extract_structured_article(
++        html,
++        min_chars=120,
++        rejections=structured_rejections,
++    )
+     if structured_body:
+         payload["article_text"] = structured_body.text
+         payload["article_method"] = structured_body.method
+         payload["article_signals"] = structured_body.signals
+-        payload.setdefault("title", structured_body.title)
++        if structured_body.title and not payload.get("title"):
++            payload["title"] = structured_body.title
++    if structured_rejections:
++        payload["article_rejections"] = structured_rejections
+     return payload
+ 
+ 
+diff --git a/backend/app/domains/fetch/web_clean/templates.py b/backend/app/domains/fetch/web_clean/templates.py
+index cfe2994..746225a 100644
+--- a/backend/app/domains/fetch/web_clean/templates.py
++++ b/backend/app/domains/fetch/web_clean/templates.py
+@@ -5,18 +5,37 @@ from __future__ import annotations
+ import re
+ from dataclasses import asdict
+ from typing import Any, Mapping
+-from urllib.parse import urlparse
+ 
+ from bs4 import BeautifulSoup
+-from soupsieve.util import SelectorSyntaxError
+ 
+ from .contracts import TemplateSpec
+-from .filters import FilterValidationError, apply_filters, validate_filters
++from .filters import MAX_OUTPUT_CHARS, FilterValidationError, apply_filters, validate_filters
++from .safety import MAX_REGEX_LENGTH, bounded_regex_search, compile_bounded_regex, selector_error
+ from .structured import schema_value
+ 
+-MAX_SELECTOR_LENGTH = 256
+-MAX_REGEX_LENGTH = 256
+ VARIABLE_PREFIXES = ("preset:", "meta:", "selector:", "selectorHtml:", "schema:")
++_TEMPLATE_KEYS = frozenset(
++    {
++        "id",
++        "triggers",
++        "article_html",
++        "title",
++        "author",
++        "published",
++        "remove_html",
++        "markdown_filters",
++        "notes",
++    }
++)
++_LIST_FIELDS = ("triggers", "remove_html", "markdown_filters")
++MAX_EXPRESSION_LENGTH = 2_048
++MAX_TRIGGERS = 32
++MAX_REMOVE_SELECTORS = 64
++MAX_MARKDOWN_FILTERS = 24
++MAX_NOTES_LENGTH = 2_000
++MAX_TRIGGER_LENGTH = 2_048
++MAX_SELECTOR_MATCHES = 128
++_PRESET_KEYS = frozenset({"title", "author", "published", "canonical", "site_name"})
+ 
+ 
+ class TemplateValidationError(ValueError):
+@@ -25,44 +44,65 @@ class TemplateValidationError(ValueError):
+         self.errors = tuple(errors)
+ 
+ 
++def _list_values(value: Mapping[str, Any], key: str) -> tuple[str, ...]:
++    raw = value.get(key, [])
++    if raw is None:
++        return ()
++    if not isinstance(raw, (list, tuple)):
++        raise TemplateValidationError([f"{key} must be an array"])
++    return tuple(str(item).strip() for item in raw if str(item).strip())
++
++
+ def _coerce_template(value: Mapping[str, Any]) -> TemplateSpec:
+     return TemplateSpec(
+         id=str(value.get("id") or "").strip(),
+-        triggers=tuple(str(item) for item in value.get("triggers", []) if str(item).strip()),
++        triggers=_list_values(value, "triggers"),
+         article_html=str(value["article_html"]).strip() if value.get("article_html") else None,
+         title=str(value["title"]).strip() if value.get("title") else None,
+         author=str(value["author"]).strip() if value.get("author") else None,
+         published=str(value["published"]).strip() if value.get("published") else None,
+-        remove_html=tuple(str(item) for item in value.get("remove_html", []) if str(item).strip()),
+-        markdown_filters=tuple(str(item) for item in value.get("markdown_filters", []) if str(item).strip()),
++        remove_html=_list_values(value, "remove_html"),
++        markdown_filters=_list_values(value, "markdown_filters"),
+         notes=str(value["notes"]).strip() if value.get("notes") else None,
+     )
+ 
+ 
+-def _selector_error(selector: str) -> str | None:
+-    if len(selector) > MAX_SELECTOR_LENGTH or selector.count(" ") > 12:
+-        return "selector is too long or complex"
+-    try:
+-        BeautifulSoup("<html></html>", "lxml").select(selector)
+-    except (SelectorSyntaxError, ValueError, TypeError) as exc:
+-        return f"invalid selector: {exc}"
+-    return None
+-
+-
+ def validate_template(value: Mapping[str, Any]) -> TemplateSpec:
+-    spec = _coerce_template(value)
+     errors: list[str] = []
++    unknown = sorted(str(key) for key in value if key not in _TEMPLATE_KEYS)
++    if unknown:
++        errors.append("unknown template fields: " + ", ".join(unknown))
++    limits = {
++        "triggers": MAX_TRIGGERS,
++        "remove_html": MAX_REMOVE_SELECTORS,
++        "markdown_filters": MAX_MARKDOWN_FILTERS,
++    }
++    for field_name in _LIST_FIELDS:
++        raw = value.get(field_name, [])
++        if raw is not None and not isinstance(raw, (list, tuple)):
++            errors.append(f"{field_name} must be an array")
++        elif isinstance(raw, (list, tuple)) and len(raw) > limits[field_name]:
++            errors.append(f"{field_name} has more than {limits[field_name]} entries")
++    if errors:
++        raise TemplateValidationError(errors)
++
++    spec = _coerce_template(value)
+     if not spec.id or len(spec.id) > 120 or not re.fullmatch(r"[A-Za-z0-9._-]+", spec.id):
+         errors.append("id must contain only letters, numbers, '.', '_' or '-'")
++    if spec.notes and len(spec.notes) > MAX_NOTES_LENGTH:
++        errors.append(f"notes is longer than {MAX_NOTES_LENGTH} characters")
+     for trigger in spec.triggers:
++        if len(trigger) > MAX_TRIGGER_LENGTH:
++            errors.append(f"trigger is longer than {MAX_TRIGGER_LENGTH} characters")
++            continue
+         if trigger.startswith("regex:"):
+             pattern = trigger[6:]
+             if len(pattern) > MAX_REGEX_LENGTH:
+                 errors.append("trigger regex is too long")
+             else:
+                 try:
+-                    re.compile(pattern)
+-                except re.error as exc:
++                    compile_bounded_regex(pattern)
++                except (ValueError, TypeError) as exc:
+                     errors.append(f"invalid trigger regex: {exc}")
+         elif trigger.startswith("schema:@") or trigger.startswith(("http://", "https://")):
+             continue
+@@ -72,12 +112,17 @@ def validate_template(value: Mapping[str, Any]) -> TemplateSpec:
+         expression = getattr(spec, field_name)
+         if not expression:
+             continue
++        if len(expression) > MAX_EXPRESSION_LENGTH:
++            errors.append(f"{field_name} expression is too long")
++            continue
+         variable = expression.split("|", 1)[0].strip()
+         if not variable.startswith(VARIABLE_PREFIXES):
+             errors.append(f"{field_name} uses an unknown variable: {variable}")
++        if variable.startswith("preset:") and variable.split(":", 1)[1] not in _PRESET_KEYS:
++            errors.append(f"{field_name} uses an unknown preset: {variable}")
+         if variable.startswith(("selector:", "selectorHtml:")):
+             selector = variable.split(":", 1)[1]
+-            error = _selector_error(selector)
++            error = selector_error(selector)
+             if error:
+                 errors.append(f"{field_name}: {error}")
+         try:
+@@ -85,7 +130,7 @@ def validate_template(value: Mapping[str, Any]) -> TemplateSpec:
+         except FilterValidationError as exc:
+             errors.append(f"{field_name}: {exc}")
+     for selector in spec.remove_html:
+-        error = _selector_error(selector)
++        error = selector_error(selector)
+         if error:
+             errors.append(f"remove_html: {error}")
+     try:
+@@ -103,7 +148,7 @@ def template_matches(spec: TemplateSpec, *, url: str, structured: dict[str, Any]
+     for trigger in spec.triggers:
+         if trigger.startswith(("http://", "https://")) and url.startswith(trigger):
+             return True
+-        if trigger.startswith("regex:") and re.search(trigger[6:], url):
++        if trigger.startswith("regex:") and bounded_regex_search(trigger[6:], url):
+             return True
+         if trigger.startswith("schema:@") and schema_value(structured, trigger[7:]) is not None:
+             return True
+@@ -115,6 +160,21 @@ def _meta_value(soup: BeautifulSoup, key: str) -> Any:
+     return tag.get("content") if tag else None
+ 
+ 
++def _validate_variable_output(value: Any) -> Any:
++    """Reject unexpectedly broad selectors/schema values instead of truncating silently."""
++    values = value if isinstance(value, list) else [value]
++    if len(values) > MAX_SELECTOR_MATCHES:
++        raise TemplateValidationError(
++            [f"variable matched more than {MAX_SELECTOR_MATCHES} values"]
++        )
++    total_chars = 0
++    for item in values:
++        total_chars += len(str(item or ""))
++        if total_chars > MAX_OUTPUT_CHARS:
++            raise TemplateValidationError(["variable output exceeds size limit"])
++    return value
++
++
+ def resolve_variable(
+     expression: str,
+     *,
+@@ -130,13 +190,17 @@ def resolve_variable(
+     elif kind == "meta":
+         value = _meta_value(soup, key)
+     elif kind in {"selector", "selectorHtml"}:
+-        matches = soup.select(key)
++        error = selector_error(key)
++        if error:
++            raise TemplateValidationError([error])
++        matches = soup.select(key, limit=MAX_SELECTOR_MATCHES + 1)
+         values = [str(node) if kind == "selectorHtml" else node.get_text(" ", strip=True) for node in matches]
+         value = values[0] if len(values) == 1 else values
+     elif kind == "schema":
+         value = schema_value(structured, key)
+     else:
+         raise TemplateValidationError([f"unknown variable type: {kind}"])
++    value = _validate_variable_output(value)
+     return apply_filters(value, filters, base_url=base_url) if filters else value
+ 
+ 
+@@ -171,8 +235,10 @@ def render_template(
+ 
+ def template_from_metadata(metadata: Mapping[str, Any] | None) -> TemplateSpec | None:
+     raw = metadata.get("web_clean_template") if isinstance(metadata, Mapping) else None
+-    if not isinstance(raw, Mapping):
++    if raw is None:
+         return None
++    if not isinstance(raw, Mapping):
++        raise TemplateValidationError(["web_clean_template must be an object"])
+     return validate_template(raw)
+ 
+ 
+diff --git a/backend/app/domains/ingest/build_content.py b/backend/app/domains/ingest/build_content.py
+index 29779ca..fd6c44c 100644
+--- a/backend/app/domains/ingest/build_content.py
++++ b/backend/app/domains/ingest/build_content.py
+@@ -61,17 +61,19 @@ async def build_raw_content_objects(
+         await asyncio.sleep(0)
+         try:
+             main_text = raw.get("content", "")
++            persisted_full_content: str | None = None
+             html = raw.get("html")
+             clean_result = None
+             structured_result = None
+ 
+-            web_clean_active = bool(
+-                html
+-                and source_type == "website"
+-                and (settings.pim_web_clean_enabled or settings.pim_web_clean_shadow)
+-            )
++            source_metadata = dict(source.metadata_ or {})
++            web_clean_mode = str(source_metadata.get("web_clean_mode") or "shadow").strip().lower()
++            if web_clean_mode not in {"off", "shadow", "write"}:
++                web_clean_mode = "off"
++            web_clean_write = bool(settings.pim_web_clean_enabled and web_clean_mode == "write")
++            web_clean_shadow = bool(settings.pim_web_clean_shadow and web_clean_mode in {"shadow", "write"})
++            web_clean_active = bool(html and source_type == "website" and (web_clean_write or web_clean_shadow))
+             if web_clean_active:
+-                source_metadata = dict(source.metadata_ or {})
+                 if not settings.pim_web_clean_template_enabled:
+                     source_metadata.pop("web_clean_template", None)
+                 try:
+@@ -95,8 +97,11 @@ async def build_raw_content_objects(
+                 except (ValueError, TypeError, RuntimeError) as exc:
+                     logger.warning("Web clean failed for %s: %s", raw.get("url", "?"), exc)
+ 
+-            if settings.pim_web_clean_enabled and clean_result and clean_result.article_text:
+-                main_text = clean_result.article_markdown or clean_result.article_text
++            if web_clean_write and clean_result and clean_result.production_eligible():
++                # Keep plain text for quality, summary and rejection checks, but
++                # persist the canonical Markdown so Reader/export retain structure.
++                main_text = clean_result.article_text
++                persisted_full_content = clean_result.article_markdown or clean_result.article_text
+             elif html and not main_text:
+                 structured_result = await asyncio.to_thread(
+                     extract_structured_article,
+@@ -109,6 +114,8 @@ async def build_raw_content_objects(
+                     main_text = await extractor.extract(html, raw.get("url"))
+ 
+             main_text_clean = await asyncio.to_thread(normalize_article_text, main_text) if main_text else ""
++            if persisted_full_content is None:
++                persisted_full_content = main_text_clean
+             title = await asyncio.to_thread(strip_html_tags, raw.get("title", "Untitled"))
+ 
+             # Truncated snippet as placeholder summary (AI will replace it later)
+@@ -128,13 +135,14 @@ async def build_raw_content_objects(
+                 from app.domains.fetch.web_clean.shadow import build_shadow_diff
+ 
+                 web_clean_meta = clean_result.to_metadata(include_trace=True)
+-                web_clean_meta["shadow"] = not settings.pim_web_clean_enabled
+-                if not settings.pim_web_clean_enabled:
++                web_clean_meta["shadow"] = not web_clean_write
++                web_clean_meta["source_mode"] = web_clean_mode
++                if not web_clean_write:
+                     web_clean_meta["shadow_diff"] = build_shadow_diff(main_text_clean, clean_result)
+                 metadata = dict(metadata)
+                 metadata["web_clean"] = web_clean_meta
+                 source_meta = dict(source.metadata_ or {})
+-                source_meta["web_clean_profile"] = {
++                source_profile = {
+                     key: web_clean_meta.get(key)
+                     for key in (
+                         "version",
+@@ -150,6 +158,35 @@ async def build_raw_content_objects(
+                     )
+                     if web_clean_meta.get(key) is not None
+                 }
++                blocked_statuses = {"blocked", "login_required", "bot_wall", "captcha"}
++                source_profile["blocked"] = web_clean_meta.get("quality_status") in blocked_statuses
++                trace = web_clean_meta.get("trace") if isinstance(web_clean_meta.get("trace"), dict) else {}
++                selected_method = trace.get("selected_method")
++                candidates = trace.get("candidates") if isinstance(trace.get("candidates"), (list, tuple)) else ()
++                selected_rejection = next(
++                    (
++                        str(item.get("rejected_reason"))[:160]
++                        for item in candidates
++                        if isinstance(item, dict)
++                        and item.get("method") == selected_method
++                        and item.get("rejected_reason")
++                    ),
++                    None,
++                )
++                template_errors = trace.get("template_validation_errors")
++                recent_failure = selected_rejection
++                if not recent_failure and isinstance(template_errors, (list, tuple)) and template_errors:
++                    recent_failure = str(template_errors[0])[:160]
++                if recent_failure:
++                    source_profile["recent_failure_reason"] = recent_failure
++                shadow_diff = web_clean_meta.get("shadow_diff")
++                if isinstance(shadow_diff, dict):
++                    source_profile["shadow_diff"] = {
++                        key: shadow_diff[key]
++                        for key in ("old_chars", "new_chars", "char_delta")
++                        if isinstance(shadow_diff.get(key), int)
++                    }
++                source_meta["web_clean_profile"] = source_profile
+                 source.metadata_ = source_meta
+             if isinstance(publish_time, str):
+                 try:
+@@ -194,7 +231,11 @@ async def build_raw_content_objects(
+                 original_url=raw.get("url", ""),
+                 content_type=source_type,
+                 publish_time=publish_time,
+-                full_content=truncate_content(main_text_clean, url=raw.get("url", "")) if main_text_clean else None,
++                full_content=(
++                    truncate_content(persisted_full_content, url=raw.get("url", ""))
++                    if persisted_full_content
++                    else None
++                ),
+                 metadata_=metadata,
+                 keyword_matches=[],
+                 fetched_at=utcnow_naive(),
+diff --git a/backend/app/domains/ingest/extractor.py b/backend/app/domains/ingest/extractor.py
+index 306e99b..277842b 100644
+--- a/backend/app/domains/ingest/extractor.py
++++ b/backend/app/domains/ingest/extractor.py
+@@ -153,7 +153,7 @@ class ContentExtractor:
+         """Extract content using readability-lxml and convert to markdown."""
+         try:
+             from readability import Document
+-            import markdownify
++            from app.domains.fetch.web_clean.markdown import html_to_markdown
+ 
+             doc = Document(html)
+             summary_html = doc.summary()
+@@ -161,15 +161,8 @@ class ContentExtractor:
+             if not summary_html or len(summary_html) < 100:
+                 return ""
+ 
+-            # Convert to high-quality markdown
+-            # markdownify 0.14+ doesn't allow both strip and convert.
+-            # We use 'convert' to define the allowlist.
+-            md = markdownify.markdownify(
+-                summary_html,
+-                heading_style="ATX",
+-                bullets="-",
+-                convert=["table", "tr", "td", "th", "img", "a", "p", "br", "strong", "em", "code", "pre", "h1", "h2", "h3", "h4", "h5", "h6"]
+-            )
++            # Use the same converter/protocol as Web Clean, Reader and export.
++            md = html_to_markdown(summary_html, standardize=False)
+ 
+             if md:
+                 logger.debug(f"Extracted {len(md)} chars with Readability+Markdownify")
+diff --git a/backend/app/domains/sources/probe/service.py b/backend/app/domains/sources/probe/service.py
+index fe1c88d..0ec363c 100644
+--- a/backend/app/domains/sources/probe/service.py
++++ b/backend/app/domains/sources/probe/service.py
+@@ -237,6 +237,22 @@ class ProbeService:
+                 logger.debug("Failed to attach probe cookie %s: %s", key, exc)
+         return jar
+ 
++    async def fetch_html(
++        self,
++        url: str,
++        *,
++        cookies: Optional[Dict[str, str]] = None,
++        timeout: int = 15,
++    ) -> Optional[str]:
++        """Fetch probe HTML with the same SSRF and host-scoped cookie policy."""
++        if cookies:
++            token = _probe_cookies_var.set(cookies)
++            try:
++                return await self._http_get(url, timeout=timeout)
++            finally:
++                _probe_cookies_var.reset(token)
++        return await self._http_get(url, timeout=timeout)
++
+     async def _http_get(self, url: str, timeout: int = 15) -> Optional[str]:
+         try:
+             ssl_option = False if settings.probe_disable_ssl_verify and settings.debug else None
+diff --git a/backend/app/domains/system/support_bundle.py b/backend/app/domains/system/support_bundle.py
+index 6967f22..5ac58e8 100644
+--- a/backend/app/domains/system/support_bundle.py
++++ b/backend/app/domains/system/support_bundle.py
+@@ -2,8 +2,10 @@
+ 
+ from __future__ import annotations
+ 
++import hashlib
+ import io
+ import json
++import math
+ import os
+ import platform
+ import re
+@@ -20,13 +22,14 @@ from sqlalchemy.orm import Session
+ 
+ from app.config import get_settings
+ from app.domains.system.doctor import DoctorService
+-from app.models import BrowserSession, Source, SourceFetchLog
++from app.models import BrowserSession, Content, Source, SourceFetchLog
+ from app.utils.datetime import utcnow_naive
+ 
+ _LOG_TAIL_BYTES = 128 * 1024
+ _MAX_LOG_LINES = 400
+ _RECENT_FETCH_LIMIT = 50
+ _SOURCE_LIMIT = 50
++_WEB_CLEAN_DIAGNOSTIC_LIMIT = 50
+ _SECRET_RE = re.compile(
+     r"(?i)(api[_-]?key|authorization|bearer|token|secret|password|cookie|ct0|auth_token)"
+     r"([\"'\s:=]+)"
+@@ -59,8 +62,14 @@ def _safe_url(value: str | None) -> str | None:
+         parsed = urlsplit(value)
+     except ValueError:
+         return _safe_text(value, limit=300)
+-    if parsed.scheme and parsed.netloc:
+-        return urlunsplit((parsed.scheme, parsed.netloc, parsed.path[:300], "", ""))
++    if parsed.scheme and parsed.hostname:
++        host = parsed.hostname
++        try:
++            port = parsed.port
++        except ValueError:
++            port = None
++        netloc = f"{host}:{port}" if port is not None else host
++        return urlunsplit((parsed.scheme, netloc, parsed.path[:300], "", ""))
+     return _safe_text(value, limit=300)
+ 
+ 
+@@ -68,6 +77,136 @@ def _enum_value(value: Any) -> Any:
+     return getattr(value, "value", value)
+ 
+ 
++def _pseudonymous_id(value: Any) -> str:
++    return hashlib.sha256(str(value or "").encode("utf-8")).hexdigest()[:16]
++
++
++def _safe_number(value: Any) -> int | float | None:
++    if isinstance(value, bool):
++        return None
++    if not isinstance(value, (int, float)) or not math.isfinite(float(value)):
++        return None
++    return value
++
++
++def _safe_web_clean_profile(metadata: Any) -> dict[str, Any] | None:
++    if not isinstance(metadata, dict):
++        return None
++    profile = metadata.get("web_clean_profile")
++    if not isinstance(profile, dict):
++        return None
++    allowed = {
++        "version",
++        "extraction_method",
++        "template_id",
++        "quality_status",
++        "quality_score",
++        "text_chars",
++        "paragraph_count",
++        "boilerplate_ratio",
++        "link_density",
++        "shadow",
++        "blocked",
++        "recent_failure_reason",
++    }
++    result: dict[str, Any] = {}
++    for key in allowed:
++        value = profile.get(key)
++        if isinstance(value, float) and not math.isfinite(value):
++            continue
++        if isinstance(value, (str, int, float, bool)) and len(str(value)) <= 160:
++            result[key] = value
++    return result or None
++
++
++def _safe_web_clean_diagnostic(content: Content) -> dict[str, Any] | None:
++    metadata = content.metadata_ if isinstance(content.metadata_, dict) else {}
++    web_clean = metadata.get("web_clean")
++    if not isinstance(web_clean, dict):
++        return None
++    trace = web_clean.get("trace") if isinstance(web_clean.get("trace"), dict) else {}
++    standardizer = trace.get("standardizer") if isinstance(trace.get("standardizer"), dict) else {}
++    safe_standardizer: dict[str, Any] = {}
++    for key in (
++        "input_chars",
++        "output_chars",
++        "truncated",
++        "removed_elements",
++        "removed_attributes",
++        "absolutized_urls",
++        "promoted_lazy_media",
++        "shadow_materialized_count",
++        "shadow_timeout",
++        "input_sha256",
++        "output_sha256",
++    ):
++        value = standardizer.get(key)
++        if isinstance(value, (str, int, float, bool)) and len(str(value)) <= 128:
++            safe_standardizer[key] = value
++
++    safe_candidates: list[dict[str, Any]] = []
++    raw_candidates = trace.get("candidates")
++    if isinstance(raw_candidates, (list, tuple)):
++        for raw in raw_candidates[:12]:
++            if not isinstance(raw, dict):
++                continue
++            candidate: dict[str, Any] = {}
++            for key in ("method", "quality_status", "rejected_reason"):
++                value = raw.get(key)
++                if value is not None:
++                    candidate[key] = _safe_text(value, limit=160)
++            for key in ("score", "text_chars"):
++                value = _safe_number(raw.get(key))
++                if value is not None:
++                    candidate[key] = value
++            signals = raw.get("signals")
++            if isinstance(signals, dict):
++                safe_signals = {
++                    key: value
++                    for key in (
++                        "paragraph_count",
++                        "link_density",
++                        "boilerplate_ratio",
++                        "title_match_score",
++                        "blocked_score",
++                        "listing_score",
++                    )
++                    if (value := _safe_number(signals.get(key))) is not None
++                }
++                if safe_signals:
++                    candidate["signals"] = safe_signals
++            safe_candidates.append(candidate)
++
++    template_errors = trace.get("template_validation_errors")
++    safe_errors = (
++        [_safe_text(item, limit=240) for item in template_errors[:8]]
++        if isinstance(template_errors, (list, tuple))
++        else []
++    )
++    diagnostic = {
++        "content_ref": _pseudonymous_id(content.id),
++        "source_ref": _pseudonymous_id(content.source_id),
++        "fetched_at": content.fetched_at,
++        "version": _safe_text(web_clean.get("version"), limit=40),
++        "extraction_method": _safe_text(web_clean.get("extraction_method"), limit=80),
++        "template_id": _safe_text(web_clean.get("template_id"), limit=120),
++        "quality_status": _safe_text(web_clean.get("quality_status"), limit=80),
++        "quality_score": _safe_number(web_clean.get("quality_score")),
++        "text_chars": _safe_number(web_clean.get("text_chars")),
++        "paragraph_count": _safe_number(web_clean.get("paragraph_count")),
++        "boilerplate_ratio": _safe_number(web_clean.get("boilerplate_ratio")),
++        "link_density": _safe_number(web_clean.get("link_density")),
++        "shadow": bool(web_clean.get("shadow")),
++        "selected_method": _safe_text(trace.get("selected_method"), limit=80),
++        "shadow_materialized_count": _safe_number(trace.get("shadow_materialized_count")),
++        "shadow_timeout": bool(trace.get("shadow_timeout")),
++        "standardizer": safe_standardizer,
++        "candidates": safe_candidates,
++        "template_validation_errors": [item for item in safe_errors if item],
++    }
++    return {key: value for key, value in diagnostic.items() if value not in (None, {}, [])}
++
++
+ def _run_git(args: list[str], repo_root: Path) -> str | None:
+     try:
+         result = subprocess.run(
+@@ -250,9 +389,31 @@ def _serialize_source(source: Source) -> dict[str, Any]:
+             "suggested_action": source.session_health_suggested_action,
+             "validated_at": source.session_health_validated_at,
+         },
++        "web_clean_profile": _safe_web_clean_profile(source.metadata_),
+     }
+ 
+ 
++def _web_clean_diagnostics(db: Session) -> list[dict[str, Any]]:
++    try:
++        rows = (
++            db.query(Content)
++            .order_by(desc(Content.fetched_at))
++            .limit(_WEB_CLEAN_DIAGNOSTIC_LIMIT * 4)
++            .all()
++        )
++        diagnostics: list[dict[str, Any]] = []
++        for content in rows:
++            diagnostic = _safe_web_clean_diagnostic(content)
++            if diagnostic:
++                diagnostics.append(diagnostic)
++            if len(diagnostics) >= _WEB_CLEAN_DIAGNOSTIC_LIMIT:
++                break
++        return diagnostics
++    except SQLAlchemyError as exc:
++        db.rollback()
++        return [{"error": _safe_text(exc, limit=500)}]
++
++
+ def _recent_fetches(db: Session) -> list[dict[str, Any]]:
+     try:
+         rows = (
+@@ -420,6 +581,7 @@ class SupportBundleService:
+             "sources": _source_summary(self.db),
+             "recent_fetches": _recent_fetches(self.db),
+             "browser_sessions": _browser_sessions(self.db),
++            "web_clean_diagnostics": _web_clean_diagnostics(self.db),
+         }
+         manifest = {
+             "generated_at": summary["runtime"]["generated_at"],
+@@ -444,6 +606,7 @@ class SupportBundleService:
+                 "failed_sources.json",
+                 "recent_fetches.json",
+                 "browser_sessions.json",
++                "web_clean_diagnostics.json",
+                 "issue_template.md",
+             ],
+         }
+@@ -460,6 +623,7 @@ class SupportBundleService:
+             self._write_json(zf, "failed_sources.json", summary["sources"])
+             self._write_json(zf, "recent_fetches.json", summary["recent_fetches"])
+             self._write_json(zf, "browser_sessions.json", summary["browser_sessions"])
++            self._write_json(zf, "web_clean_diagnostics.json", summary["web_clean_diagnostics"])
+             self._write_text(zf, "issue_template.md", _issue_template(summary))
+             for arcname, tail in log_entries:
+                 self._write_text(zf, arcname, tail)
+diff --git a/backend/app/interfaces/http/contents_reader.py b/backend/app/interfaces/http/contents_reader.py
+index 598ef0f..6e154e3 100644
+--- a/backend/app/interfaces/http/contents_reader.py
++++ b/backend/app/interfaces/http/contents_reader.py
+@@ -13,6 +13,8 @@ that ``patch("app.api.contents_reader.XXX")``) keep working unchanged.
+ 
+ from __future__ import annotations
+ 
++import math
++from urllib.parse import urlsplit, urlunsplit
+ from uuid import UUID
+ 
+ from fastapi import APIRouter, Depends, HTTPException, Query, Request
+@@ -80,6 +82,111 @@ from app.config import get_settings  # noqa: E402,F401 - patch target
+ import aiohttp  # noqa: E402,F401 - patch target
+ 
+ 
++def _bounded_text(value: object, *, limit: int) -> str | None:
++    if value is None:
++        return None
++    text = str(value).strip()
++    return text[:limit] if text else None
++
++
++def _bounded_number(value: object) -> int | float | None:
++    if isinstance(value, bool) or not isinstance(value, (int, float)):
++        return None
++    number = float(value)
++    if not math.isfinite(number):
++        return None
++    return int(value) if isinstance(value, int) else number
++
++
++def _safe_diagnostic_url(value: object) -> str | None:
++    text = _bounded_text(value, limit=2048)
++    if not text:
++        return None
++    parsed = urlsplit(text)
++    if parsed.scheme.lower() not in {"http", "https"} or not parsed.hostname:
++        return None
++    host = parsed.hostname
++    try:
++        port = parsed.port
++    except ValueError:
++        return None
++    if port:
++        host = f"{host}:{port}"
++    # Diagnostic payloads do not need query strings, fragments, or userinfo.
++    return urlunsplit((parsed.scheme.lower(), host, parsed.path, "", ""))
++
++
++def _web_clean_reader_summary(metadata: dict) -> dict | None:
++    raw = metadata.get("web_clean") if isinstance(metadata, dict) else None
++    if not isinstance(raw, dict):
++        return None
++    summary: dict[str, object] = {}
++    for key, limit in (
++        ("version", 40),
++        ("extraction_method", 80),
++        ("template_id", 120),
++        ("quality_status", 80),
++    ):
++        value = _bounded_text(raw.get(key), limit=limit)
++        if value is not None:
++            summary[key] = value
++    for key in (
++        "quality_score",
++        "text_chars",
++        "paragraph_count",
++        "boilerplate_ratio",
++        "link_density",
++    ):
++        value = _bounded_number(raw.get(key))
++        if value is not None:
++            summary[key] = value
++    canonical = _safe_diagnostic_url(raw.get("canonical_url"))
++    if canonical:
++        summary["canonical_url"] = canonical
++    if isinstance(raw.get("shadow"), bool):
++        summary["shadow"] = raw["shadow"]
++    blocked_statuses = {"blocked", "login_required", "bot_wall", "captcha"}
++    if summary.get("quality_status") in blocked_statuses:
++        summary["blocked"] = True
++    shadow_diff = raw.get("shadow_diff") if isinstance(raw.get("shadow_diff"), dict) else {}
++    safe_shadow_diff = {
++        key: value
++        for key in ("old_chars", "new_chars", "char_delta")
++        if (value := _bounded_number(shadow_diff.get(key))) is not None
++    }
++    if safe_shadow_diff:
++        summary["shadow_diff"] = safe_shadow_diff
++    summary["blocked"] = raw.get("quality_status") in {
++        "blocked",
++        "login_required",
++        "bot_wall",
++        "captcha",
++    }
++    trace = raw.get("trace") if isinstance(raw.get("trace"), dict) else {}
++    candidates = trace.get("candidates") if isinstance(trace.get("candidates"), (list, tuple)) else []
++    rejected = [
++        str(item.get("rejected_reason"))[:300]
++        for item in candidates
++        if isinstance(item, dict) and item.get("rejected_reason")
++    ]
++    if rejected:
++        summary["rejected_reasons"] = rejected[:8]
++    validation_errors = trace.get("template_validation_errors")
++    if isinstance(validation_errors, (list, tuple)) and validation_errors:
++        summary["template_validation_errors"] = [str(item)[:300] for item in validation_errors[:8]]
++    standardizer = trace.get("standardizer") if isinstance(trace.get("standardizer"), dict) else {}
++    for key in ("input_sha256", "output_sha256", "truncated", "shadow_materialized_count", "shadow_timeout"):
++        if key in {"input_sha256", "output_sha256"}:
++            value = _bounded_text(standardizer.get(key), limit=64)
++        elif key in {"truncated", "shadow_timeout"}:
++            value = standardizer.get(key) if isinstance(standardizer.get(key), bool) else None
++        else:
++            value = _bounded_number(standardizer.get(key))
++        if value is not None:
++            summary[key] = value
++    return summary
++
++
+ @router.get("/{content_id}/reader")
+ async def get_reader_payload(
+     content_id: UUID,
+@@ -162,6 +269,7 @@ async def get_reader_payload(
+         "body_translation_is_summary": False,
+         "blocks": blocks,
+         "clean_html": clean_html,
++        "web_clean": _web_clean_reader_summary(metadata),
+     }
+ 
+ 
+diff --git a/backend/app/interfaces/http/sources/probe.py b/backend/app/interfaces/http/sources/probe.py
+index 924bfb1..0afd98d 100644
+--- a/backend/app/interfaces/http/sources/probe.py
++++ b/backend/app/interfaces/http/sources/probe.py
+@@ -1,7 +1,8 @@
+ # backend/app/api/sources/probe.py
+ """Probe routes: probe_url, probe_source, probe_all_sources."""
+ 
+-from typing import Dict, List, Optional
++import asyncio
++from typing import Any, Dict, List, Optional
+ from uuid import UUID
+ 
+ from fastapi import APIRouter, Depends, HTTPException
+@@ -56,6 +57,78 @@ class ProbeResponse(BaseModel):
+     sample_count: int = 0
+ 
+ 
++async def _web_clean_probe_metadata(source: Source, cookies: Dict[str, str]) -> dict[str, Any] | None:
++    """Validate a configured template and return a body-free clean preview."""
++    source_metadata = source.metadata_ if isinstance(source.metadata_, dict) else {}
++    raw_template = source_metadata.get("web_clean_template")
++    if raw_template is None:
++        return None
++    if not isinstance(raw_template, dict):
++        return {
++            "template_configured": True,
++            "template_valid": False,
++            "template_validation_errors": ["web_clean_template must be an object"],
++        }
++
++    from app.domains.fetch.web_clean import CleanInput, WebDocumentExtractor
++    from app.domains.fetch.web_clean.templates import TemplateValidationError, validate_template
++    from app.domains.sources.probe.service import ProbeService
++    from app.config import get_settings
++
++    try:
++        template = validate_template(raw_template)
++    except (TemplateValidationError, TypeError, ValueError) as exc:
++        errors = list(getattr(exc, "errors", (str(exc),)))
++        return {
++            "template_configured": True,
++            "template_valid": False,
++            "template_validation_errors": [str(item)[:300] for item in errors[:8]],
++        }
++
++    result: dict[str, Any] = {
++        "template_configured": True,
++        "template_valid": True,
++        "template_id": template.id,
++        "template_validation_errors": [],
++    }
++    settings = get_settings()
++    try:
++        html = await ProbeService().fetch_html(
++            source.url,
++            cookies=cookies,
++            timeout=max(1, min(15, int(settings.pim_web_clean_timeout_ms / 1000) + 1)),
++        )
++        if not html:
++            result["preview_error"] = "网页可探测，但未取得可用于清洗预览的 HTML"
++            return result
++        clean = await asyncio.wait_for(
++            WebDocumentExtractor().extract(
++                CleanInput(
++                    url=source.url,
++                    raw_html=html,
++                    source_id=str(source.id),
++                    source_metadata=source_metadata,
++                ),
++                max_html_bytes=settings.pim_web_clean_max_html_bytes,
++            ),
++            timeout=settings.pim_web_clean_timeout_ms / 1000,
++        )
++        result["preview"] = {
++            "extraction_method": clean.extraction_method,
++            "template_id": clean.template_id,
++            "quality_status": clean.quality_status,
++            "quality_score": round(float(clean.quality_score), 4),
++            "text_chars": len(clean.article_text),
++            "paragraph_count": clean.to_metadata(include_trace=False).get("paragraph_count", 0),
++            "blocked": clean.quality_status in {"blocked", "login_required", "bot_wall", "captcha"},
++        }
++    except asyncio.TimeoutError:
++        result["preview_error"] = "网页清洗预览超时"
++    except (ValueError, TypeError, RuntimeError) as exc:
++        result["preview_error"] = str(exc)[:300]
++    return result
++
++
+ @router.post("/probe", response_model=ProbeResponse)
+ async def probe_url(req: ProbeRequest):
+     _ensure_supported_source_type(req.type)
+@@ -124,6 +197,10 @@ async def probe_source(source_id: UUID, db: AsyncSession = Depends(get_async_db)
+         meta["rss_url"] = rss_urls[source.url]
+     elif probe_result.rss_url:
+         meta["rss_url"] = probe_result.rss_url
++    if stype == "website":
++        web_clean_probe = await _web_clean_probe_metadata(source, cookies)
++        if web_clean_probe is not None:
++            meta["web_clean_probe"] = web_clean_probe
+     source.metadata_ = meta
+     await db.commit()
+     await db.refresh(source)
+diff --git a/backend/app/platform/config/settings.py b/backend/app/platform/config/settings.py
+index 00c80d6..a314372 100644
+--- a/backend/app/platform/config/settings.py
++++ b/backend/app/platform/config/settings.py
+@@ -158,8 +158,8 @@ class Settings(BaseSettings):
+     #: that should only consume imported cookies/browser sessions.
+     pim_disable_password_auto_login: bool = False
+ 
+-    # Web Clean Pipeline. The legacy extractor remains authoritative until
+-    # explicitly enabled; shadow mode only writes bounded diagnostics.
++    # Web Clean Pipeline master gates. During M0-M4, production writes also
++    # require source.metadata.web_clean_mode="write"; shadow is the safe default.
+     pim_web_clean_enabled: bool = False
+     pim_web_clean_shadow: bool = True
+     pim_web_clean_write_metadata: bool = True
+diff --git a/backend/app/platform/export/__init__.py b/backend/app/platform/export/__init__.py
+index f0a64b1..b971c71 100644
+--- a/backend/app/platform/export/__init__.py
++++ b/backend/app/platform/export/__init__.py
+@@ -1,16 +1,24 @@
+ """Platform-level export adapters.
+ 
+-Phase 5 step 11 of the refactor relocates the per-content exporters into the
+-platform layer. As of this step the package contains:
+-
+-* :mod:`app.platform.export.markdown` — canonical home for
+-  :class:`MarkdownExporter`, the YAML-frontmatter Markdown writer used by
+-  ``contents/{id}/export-md`` and the ``maintenance`` task that fans out
+-  bulk exports. Previously lived at ``app.exporters.markdown_exporter``;
+-  the legacy shim was retired by the post-Phase-7 audit after the two
+-  remaining callers were migrated to import from this package directly.
++The package keeps the public ``MarkdownExporter`` import stable while loading
++that optional, frontmatter-backed writer only when callers request it.  This
++lets lightweight shared helpers such as ``html_markdown`` remain usable in
++extraction and evaluation processes that do not perform file exports.
+ """
+ 
+-from app.platform.export.markdown import MarkdownExporter
++from __future__ import annotations
++
++from typing import TYPE_CHECKING, Any
++
++if TYPE_CHECKING:
++    from app.platform.export.markdown import MarkdownExporter
+ 
+ __all__ = ["MarkdownExporter"]
++
++
++def __getattr__(name: str) -> Any:
++    if name == "MarkdownExporter":
++        from app.platform.export.markdown import MarkdownExporter
++
++        return MarkdownExporter
++    raise AttributeError(name)
+diff --git a/backend/app/platform/export/html_markdown.py b/backend/app/platform/export/html_markdown.py
+index 9024372..2cb8e34 100644
+--- a/backend/app/platform/export/html_markdown.py
++++ b/backend/app/platform/export/html_markdown.py
+@@ -6,6 +6,19 @@ import re
+ 
+ from markdownify import markdownify
+ 
++
++def _code_language(element) -> str:
++    """Best-effort language marker from ``<pre><code class=...>``."""
++    code = element.find("code") if hasattr(element, "find") else None
++    classes = code.get("class", []) if code is not None else []
++    for item in classes if isinstance(classes, (list, tuple)) else [classes]:
++        value = str(item or "")
++        for prefix in ("language-", "lang-"):
++            if value.startswith(prefix):
++                return value[len(prefix):][:40]
++    return ""
++
++
+ _CONVERT_TAGS = [
+     "a", "article", "blockquote", "br", "code", "del", "em", "h1", "h2", "h3",
+     "h4", "h5", "h6", "hr", "img", "li", "ol", "p", "pre", "strong", "table",
+@@ -20,6 +33,7 @@ def render_html_markdown(html: str) -> str:
+         heading_style="ATX",
+         bullets="-",
+         convert=_CONVERT_TAGS,
++        code_language_callback=_code_language,
+     )
+     rendered = re.sub(r"[ \t]+\n", "\n", rendered or "")
+     rendered = re.sub(r"\n{3,}", "\n\n", rendered)
+diff --git a/backend/app/schemas/source.py b/backend/app/schemas/source.py
+index 9a5b277..bcdeb55 100644
+--- a/backend/app/schemas/source.py
++++ b/backend/app/schemas/source.py
+@@ -47,6 +47,12 @@ def _normalize_source_quality_metadata(meta: Optional[Dict[str, Any]]) -> Option
+     if "authority_type" in out and out.get("authority_type") is not None:
+         out["authority_type"] = normalize_authority_type(out["authority_type"])[:80]
+ 
++    if "web_clean_mode" in out and out.get("web_clean_mode") is not None:
++        mode = str(out["web_clean_mode"]).strip().lower()
++        if mode not in {"off", "shadow", "write"}:
++            raise ValueError("metadata.web_clean_mode must be off, shadow, or write")
++        out["web_clean_mode"] = mode
++
+     if "web_clean_template" in out and out.get("web_clean_template") is not None:
+         template = out["web_clean_template"]
+         if not isinstance(template, dict):
+diff --git a/backend/app/utils/structured_article.py b/backend/app/utils/structured_article.py
+index e16128c..ac039e1 100644
+--- a/backend/app/utils/structured_article.py
++++ b/backend/app/utils/structured_article.py
+@@ -86,7 +86,10 @@ def _loads_json(text: str) -> Any:
+     text = (text or "").strip()
+     if not text:
+         raise ValueError("empty json")
+-    return json.loads(text)
++    try:
++        return json.loads(text)
++    except (json.JSONDecodeError, RecursionError) as exc:
++        raise ValueError("invalid or excessively nested json") from exc
+ 
+ 
+ def _loads_assigned_json_object(text: str, marker: str) -> Any:
+@@ -123,13 +126,18 @@ def _loads_assigned_json_object(text: str, marker: str) -> Any:
+ 
+ 
+ def _iter_json_nodes(value: Any) -> Iterable[Any]:
+-    yield value
+-    if isinstance(value, dict):
+-        for child in value.values():
+-            yield from _iter_json_nodes(child)
+-    elif isinstance(value, list):
+-        for child in value:
+-            yield from _iter_json_nodes(child)
++    stack: list[tuple[Any, int]] = [(value, 0)]
++    visited = 0
++    while stack and visited < 10_000:
++        node, depth = stack.pop()
++        visited += 1
++        yield node
++        if depth >= 64:
++            continue
++        if isinstance(node, dict):
++            stack.extend((child, depth + 1) for child in reversed(tuple(node.values())))
++        elif isinstance(node, list):
++            stack.extend((child, depth + 1) for child in reversed(node))
+ 
+ 
+ def _node_type_names(node: dict[str, Any]) -> set[str]:
+@@ -375,6 +383,7 @@ def _extract_from_json_ld(
+     *,
+     visible_text_chars: int,
+     min_ratio: float,
++    rejections: list[dict[str, Any]] | None = None,
+ ) -> StructuredArticleExtraction | None:
+     for script in soup.select('script[type="application/ld+json"]'):
+         raw = script.string or script.get_text() or ""
+@@ -395,6 +404,15 @@ def _extract_from_json_ld(
+                 continue
+             body_key, text = body
+             if len(text) < min_chars:
++                if rejections is not None and len(rejections) < 12:
++                    rejections.append(
++                        {
++                            "method": "json_ld",
++                            "body_key": body_key,
++                            "chars": len(text),
++                            "rejected_reason": "too_short",
++                        }
++                    )
+                 continue
+             flat_ok, flat_signals = _passes_flatness_check(
+                 text,
+@@ -402,6 +420,15 @@ def _extract_from_json_ld(
+                 body_key=body_key,
+             )
+             if not flat_ok:
++                if rejections is not None and len(rejections) < 12:
++                    rejections.append(
++                        {
++                            "method": "json_ld",
++                            "body_key": body_key,
++                            "chars": len(text),
++                            **flat_signals,
++                        }
++                    )
+                 continue
+             accepted, ratio_signals = _passes_page_ratio_check(
+                 text,
+@@ -411,6 +438,16 @@ def _extract_from_json_ld(
+                 body_key=body_key,
+             )
+             if not accepted:
++                if rejections is not None and len(rejections) < 12:
++                    rejections.append(
++                        {
++                            "method": "json_ld",
++                            "body_key": body_key,
++                            "chars": len(text),
++                            **flat_signals,
++                            **ratio_signals,
++                        }
++                    )
+                 continue
+             candidate = StructuredArticleExtraction(
+                 text=text,
+@@ -738,6 +775,7 @@ def extract_structured_article(
+     html: str,
+     *,
+     min_chars: int = 120,
++    rejections: list[dict[str, Any]] | None = None,
+ ) -> StructuredArticleExtraction | None:
+     """Return the best same-page structured article body, if available."""
+     if not html:
+@@ -752,12 +790,13 @@ def extract_structured_article(
+         _extract_from_prismic_next_data,
+         _extract_from_next_data,
+     ):
+-        result = extractor(
+-            soup,
+-            min_chars,
+-            visible_text_chars=visible_text_chars,
+-            min_ratio=min_ratio,
+-        )
++        kwargs: dict[str, Any] = {
++            "visible_text_chars": visible_text_chars,
++            "min_ratio": min_ratio,
++        }
++        if extractor is _extract_from_json_ld:
++            kwargs["rejections"] = rejections
++        result = extractor(soup, min_chars, **kwargs)
+         if result:
+             return result
+     return None
+diff --git a/backend/pyproject.toml b/backend/pyproject.toml
+index 8f9ba61..5203e6a 100644
+--- a/backend/pyproject.toml
++++ b/backend/pyproject.toml
+@@ -51,6 +51,7 @@ dependencies = [
+     "httpx>=0.28.1",
+     "tenacity>=8.2.3",
+     "publicsuffix2>=2.20191221",
++    "regex>=2024.11.6",
+     # Email
+     "aiosmtplib>=3.0.1",
+     "jinja2>=3.1.3",
+diff --git a/backend/requirements.txt b/backend/requirements.txt
+index cb3ab64..11feeee 100644
+--- a/backend/requirements.txt
++++ b/backend/requirements.txt
+@@ -229,7 +229,9 @@ pyyaml==6.0.3
+ readability-lxml==0.8.4.1
+     # via personal-info-monitor-backend
+ regex==2026.4.4
+-    # via dateparser
++    # via
++    #   dateparser
++    #   personal-info-monitor-backend
+ requests==2.33.1
+     # via
+     #   google-api-core
+diff --git a/backend/scripts/formal_eval_config.json b/backend/scripts/formal_eval_config.json
+index ae4d924..d2a2ee9 100644
+--- a/backend/scripts/formal_eval_config.json
++++ b/backend/scripts/formal_eval_config.json
+@@ -1,5 +1,4 @@
+ {
+-  "schema_version": "pim-formal-eval-config-v1",
+   "core": {
+     "classification_threshold": 60.0,
+     "minimum_records": 200,
+@@ -15,9 +14,20 @@
+     "similarity_threshold": 0.28,
+     "wrong_merge_rate_max_exclusive": 0.03
+   },
++  "schema_version": "pim-formal-eval-config-v1",
+   "shadow": {
+     "minimum_days": 7,
+     "recommended_days": 14,
+     "retention_days": 30
++  },
++  "web_clean": {
++    "blocked_detection_f1_min": 0.88,
++    "boilerplate_leak_rate_max": 0.08,
++    "markdown_structure_score_min": 0.85,
++    "metadata_accuracy_min": 0.9,
++    "minimum_samples": 150,
++    "minimum_shadow_days": 7,
++    "must_exclude_precision_min": 0.92,
++    "must_include_recall_min": 0.9
+   }
+ }
+diff --git a/backend/scripts/generate_release_eval_artifact.py b/backend/scripts/generate_release_eval_artifact.py
+index 6b06b44..75b144d 100644
+--- a/backend/scripts/generate_release_eval_artifact.py
++++ b/backend/scripts/generate_release_eval_artifact.py
+@@ -1,5 +1,5 @@
+ #!/usr/bin/env python3
+-"""Build a reproducible M2 release artifact and explicit Go/No-Go decision."""
++"""Build a reproducible release artifact and explicit fail-closed decision."""
+ 
+ from __future__ import annotations
+ 
+@@ -39,6 +39,90 @@ def _load(path: Path | None) -> dict[str, Any] | None:
+     return payload
+ 
+ 
++def _web_clean_blockers(
++    report: dict[str, Any] | None,
++    shadow: dict[str, Any] | None,
++    config: dict[str, Any],
++) -> list[str]:
++    blockers: list[str] = []
++    metrics = (report or {}).get("metrics") or {}
++    if not report or not report.get("ok"):
++        blockers.append("formal Web Clean Eval 1.0 is missing or failed")
++    if report and report.get("version") != "web-clean-eval-v2":
++        blockers.append("Web Clean report version is not web-clean-eval-v2")
++    if report and (report.get("gate") or {}).get("result") != "GO":
++        blockers.append("Web Clean report gate is not GO")
++    if report and report.get("dataset_tier") != "web_clean_eval_1_0":
++        blockers.append("Web Clean dataset tier is not web_clean_eval_1_0")
++    if report and report.get("manifest_valid") is not True:
++        blockers.append("Web Clean manifest is missing or invalid")
++    if report and not report.get("dataset_sha256"):
++        blockers.append("Web Clean dataset hash is missing")
++    if report and not report.get("manifest_sha256"):
++        blockers.append("Web Clean manifest hash is missing")
++
++    minimum_samples = int(config.get("minimum_samples", 150))
++    if metrics.get("sample_count", 0) < minimum_samples:
++        blockers.append(f"Web Clean Eval has fewer than {minimum_samples} samples")
++    if metrics:
++        labels = metrics.get("label_counts") or {}
++        required_labels = (
++            "must_include",
++            "must_exclude",
++            "title",
++            "canonical_url",
++            "published_time",
++            "quality_status",
++            "markdown",
++        )
++        for label in required_labels:
++            if labels.get(label, 0) <= 0:
++                blockers.append(f"Web Clean Eval has no {label} labels")
++        if metrics.get("runtime_p95_ms", 0) <= 0:
++            blockers.append("Web Clean runtime_p95_ms is missing or invalid")
++        include_min = float(config.get("must_include_recall_min", 0.90))
++        exclude_min = float(config.get("must_exclude_precision_min", 0.92))
++        leak_max = float(config.get("boilerplate_leak_rate_max", 0.08))
++        blocked_f1_min = float(config.get("blocked_detection_f1_min", 0.88))
++        metadata_min = float(config.get("metadata_accuracy_min", 0.90))
++        markdown_min = float(config.get("markdown_structure_score_min", 0.85))
++        if metrics.get("must_include_recall", 0) < include_min:
++            blockers.append(f"Web Clean must_include_recall is below {include_min}")
++        if metrics.get("must_exclude_precision", 0) < exclude_min:
++            blockers.append(f"Web Clean must_exclude_precision is below {exclude_min}")
++        if metrics.get("boilerplate_leak_rate", 1) > leak_max:
++            blockers.append(f"Web Clean boilerplate_leak_rate exceeds {leak_max}")
++        if metrics.get("blocked_detection_f1", 0) < blocked_f1_min:
++            blockers.append(f"Web Clean blocked_detection_f1 is below {blocked_f1_min}")
++        if metrics.get("metadata_accuracy", 0) < metadata_min:
++            blockers.append(f"Web Clean metadata_accuracy is below {metadata_min}")
++        if metrics.get("markdown_structure_score", 0) < markdown_min:
++            blockers.append(f"Web Clean markdown_structure_score is below {markdown_min}")
++
++    if not shadow:
++        blockers.append("Web Clean 7-day Shadow report is missing")
++    else:
++        if shadow.get("schema_version") != "web-clean-shadow-v1":
++            blockers.append("Web Clean Shadow report version is not web-clean-shadow-v1")
++        if shadow.get("dataset_kind") != "production_shadow":
++            blockers.append("Web Clean Shadow is not marked as a production-shadow export")
++        if (shadow.get("provenance") or {}).get("valid") is not True:
++            blockers.append("Web Clean Shadow production provenance is missing or invalid")
++        if shadow.get("production_affected") is not False or shadow.get("shadow_only") is not True:
++            blockers.append("Web Clean Shadow isolation contract failed")
++        if (shadow.get("observations") or {}).get("shadow_isolation_violations", 0) != 0:
++            blockers.append("Web Clean Shadow contains production-affecting observations")
++        minimum_days = int(config.get("minimum_shadow_days", 7))
++        if shadow.get("window", {}).get("consecutive_days", 0) < minimum_days:
++            blockers.append(f"Web Clean Shadow continuous window is shorter than {minimum_days} days")
++        review = shadow.get("high_risk_review") or {}
++        if review.get("total_count", review.get("sample_count", 0)) > review.get("reviewed_count", 0):
++            blockers.append("high-risk Web Clean Shadow samples remain unreviewed")
++        if shadow.get("release_eligible") is not True:
++            blockers.append("Web Clean Shadow report is not release-eligible")
++    return blockers
++
++
+ def build_release_artifact(
+     formal: dict[str, Any] | None,
+     shadow: dict[str, Any] | None,
+@@ -46,6 +130,8 @@ def build_release_artifact(
+     config_path: Path,
+     lock_path: Path,
+     performance: dict[str, Any] | None = None,
++    web_clean: dict[str, Any] | None = None,
++    web_clean_shadow: dict[str, Any] | None = None,
+     approvers: list[str] | None = None,
+     commit: str | None = None,
+ ) -> dict[str, Any]:
+@@ -53,6 +139,7 @@ def build_release_artifact(
+     config = json.loads(config_path.read_text(encoding="utf-8"))
+     event_config = config.get("event") or {}
+     shadow_config = config.get("shadow") or {}
++    web_clean_config = config.get("web_clean") or {}
+     if not formal or not formal.get("ok"):
+         blockers.append("formal Core/Event Eval 1.0 is missing or failed")
+     if formal and formal.get("dataset_tier") != "formal_eval_1_0":
+@@ -90,6 +177,7 @@ def build_release_artifact(
+             "high_risk_review", {}
+         ).get("reviewed_count", 0):
+             blockers.append("high-risk Shadow samples remain unreviewed")
++    blockers.extend(_web_clean_blockers(web_clean, web_clean_shadow, web_clean_config))
+     if not performance:
+         blockers.append("performance baseline is missing")
+     if not approvers:
+@@ -98,9 +186,10 @@ def build_release_artifact(
+     known_failures = {
+         "core": ((core.get("metrics") or {}).get("known_failures") or []),
+         "event": (event_metrics.get("known_failures") or []),
++        "web_clean": ((web_clean or {}).get("known_failures") or []),
+     }
+     return {
+-        "schema_version": "pim-release-eval-v1",
++        "schema_version": "pim-release-eval-v2",
+         "generated_at": datetime.now(timezone.utc).isoformat(),
+         "provenance": {
+             "commit": commit or _git_commit(),
+@@ -111,13 +200,18 @@ def build_release_artifact(
+             "core_dataset_sha256": core.get("dataset_sha256"),
+             "event_dataset_sha256": event.get("dataset_sha256"),
+             "dataset_tier": (formal or {}).get("dataset_tier"),
++            "web_clean_dataset_sha256": (web_clean or {}).get("dataset_sha256"),
++            "web_clean_manifest_sha256": (web_clean or {}).get("manifest_sha256"),
++            "web_clean_dataset_tier": (web_clean or {}).get("dataset_tier"),
+         },
+         "core_eval": core,
+         "event_eval": event,
++        "web_clean_eval": web_clean,
+         "ranking": ((core.get("metrics") or {}).get("ranking")),
+         "calibration": ((core.get("metrics") or {}).get("calibration")),
+         "production_diff": (formal or {}).get("production_diff"),
+         "shadow_diff": shadow,
++        "web_clean_shadow": web_clean_shadow,
+         "performance_baseline": performance,
+         "known_failures": known_failures,
+         "decision": {
+@@ -132,6 +226,8 @@ def main() -> int:
+     parser = argparse.ArgumentParser(description="Generate PIM release eval artifact")
+     parser.add_argument("--formal-report", type=Path)
+     parser.add_argument("--shadow-report", type=Path)
++    parser.add_argument("--web-clean-report", type=Path)
++    parser.add_argument("--web-clean-shadow-report", type=Path)
+     parser.add_argument("--performance", type=Path)
+     parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
+     parser.add_argument("--lock", type=Path, default=DEFAULT_LOCK)
+@@ -145,6 +241,8 @@ def main() -> int:
+         config_path=args.config,
+         lock_path=args.lock,
+         performance=_load(args.performance),
++        web_clean=_load(args.web_clean_report),
++        web_clean_shadow=_load(args.web_clean_shadow_report),
+         approvers=args.approver,
+     )
+     args.output.parent.mkdir(parents=True, exist_ok=True)
+diff --git a/backend/scripts/run_web_clean_eval.py b/backend/scripts/run_web_clean_eval.py
+old mode 100644
+new mode 100755
+index 1739857..7c0298e
+--- a/backend/scripts/run_web_clean_eval.py
++++ b/backend/scripts/run_web_clean_eval.py
+@@ -1,5 +1,5 @@
+ #!/usr/bin/env python3
+-"""Run Web Clean golden fixtures and emit a reproducible JSON artifact."""
++"""Run deterministic Web Clean fixture evaluation with a fail-closed gate."""
+ 
+ from __future__ import annotations
+ 
+@@ -11,18 +11,20 @@ from app.domains.fetch.web_clean.eval import evaluate_jsonl
+ 
+ 
+ def main() -> int:
+-    parser = argparse.ArgumentParser()
++    parser = argparse.ArgumentParser(description="Run Web Clean evaluation")
+     parser.add_argument("dataset", type=Path)
++    parser.add_argument("--manifest", type=Path)
++    parser.add_argument("--tier", choices=("web_clean_bootstrap", "web_clean_eval_1_0"))
+     parser.add_argument("--output", type=Path)
++    parser.add_argument("--enforce", action="store_true")
+     args = parser.parse_args()
+-    report = evaluate_jsonl(args.dataset)
++    report = evaluate_jsonl(args.dataset, manifest_path=args.manifest, tier=args.tier)
+     rendered = json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
+     if args.output:
+         args.output.parent.mkdir(parents=True, exist_ok=True)
+         args.output.write_text(rendered, encoding="utf-8")
+-    else:
+-        print(rendered, end="")
+-    return 0
++    print(rendered, end="")
++    return 1 if args.enforce and not report["ok"] else 0
+ 
+ 
+ if __name__ == "__main__":
+diff --git a/backend/tests/test_contents_reader.py b/backend/tests/test_contents_reader.py
+index 74ee0d0..8cb1c7c 100644
+--- a/backend/tests/test_contents_reader.py
++++ b/backend/tests/test_contents_reader.py
+@@ -984,3 +984,83 @@ class TestUpgradeXReaderBody:
+                                     body, meta = await _upgrade_x_reader_body(content, {}, "short", db)
+                                     assert body == long_text
+                                     db.commit.assert_called()
++
++
++def test_web_clean_reader_summary_is_bounded_and_compatible():
++    from app.interfaces.http.contents_reader import _web_clean_reader_summary
++
++    assert _web_clean_reader_summary({}) is None
++    summary = _web_clean_reader_summary(
++        {
++            "web_clean": {
++                "version": "v1",
++                "extraction_method": "readability",
++                "quality_status": "good",
++                "quality_score": 0.91,
++                "text_chars": 1234,
++                "paragraph_count": 8,
++                "shadow": True,
++                "shadow_diff": {"old_chars": 900, "new_chars": 1234, "char_delta": 334},
++                "raw_html": "must not surface",
++                "trace": {
++                    "candidates": [
++                        {"method": "readability", "rejected_reason": None},
++                        {"method": "beautifulsoup", "rejected_reason": "listing_like"},
++                    ],
++                    "template_validation_errors": ["bad selector"],
++                    "standardizer": {
++                        "input_sha256": "a" * 64,
++                        "output_sha256": "b" * 64,
++                        "truncated": False,
++                        "shadow_materialized_count": 2,
++                        "shadow_timeout": True,
++                        "clean_html": "must not surface",
++                    },
++                },
++            }
++        }
++    )
++
++    assert summary["extraction_method"] == "readability"
++    assert summary["rejected_reasons"] == ["listing_like"]
++    assert summary["template_validation_errors"] == ["bad selector"]
++    assert summary["input_sha256"] == "a" * 64
++    assert summary["shadow_materialized_count"] == 2
++    assert "raw_html" not in summary
++    assert "clean_html" not in summary
++
++    blocked = _web_clean_reader_summary({"web_clean": {"quality_status": "captcha"}})
++    assert blocked["blocked"] is True
++
++
++def test_web_clean_reader_summary_strips_untrusted_nested_values_and_url_secrets():
++    from app.interfaces.http.contents_reader import _web_clean_reader_summary
++
++    summary = _web_clean_reader_summary(
++        {
++            "web_clean": {
++                "canonical_url": "https://user:pass@example.com/story?token=secret#fragment",
++                "quality_score": float("nan"),
++                "shadow": "true",
++                "shadow_diff": {
++                    "old_chars": 10,
++                    "new_chars": 20,
++                    "char_delta": 10,
++                    "old_hash": "must-not-surface",
++                    "nested": {"authorization": "Bearer secret"},
++                },
++                "trace": {
++                    "candidates": [{"rejected_reason": "x" * 500}],
++                    "standardizer": {"input_sha256": "a" * 500},
++                },
++            }
++        }
++    )
++
++    assert summary["canonical_url"] == "https://example.com/story"
++    assert "quality_score" not in summary
++    assert "shadow" not in summary
++    assert summary["shadow_diff"] == {"old_chars": 10, "new_chars": 20, "char_delta": 10}
++    assert summary["rejected_reasons"] == ["x" * 300]
++    assert summary["input_sha256"] == "a" * 64
++    assert "secret" not in repr(summary)
+diff --git a/backend/tests/test_m2_quality_closure.py b/backend/tests/test_m2_quality_closure.py
+index 0bf2a6e..17baf62 100644
+--- a/backend/tests/test_m2_quality_closure.py
++++ b/backend/tests/test_m2_quality_closure.py
+@@ -11,6 +11,7 @@ from app.models import Content, Source
+ from app.models.source import SourceType
+ from scripts.generate_release_eval_artifact import build_release_artifact
+ from scripts.run_quality_shadow import build_shadow_report, prune_expired_shadow_reports
++from scripts.run_web_clean_shadow import build_web_clean_shadow_report
+ 
+ 
+ @pytest.mark.asyncio
+@@ -114,6 +115,55 @@ def test_shadow_report_is_isolated_retained_and_sanitized():
+     assert "title" not in sample
+ 
+ 
++
++
++def _web_clean_snapshot(day: int, *, reviewed: bool = True) -> dict:
++    return {
++        "observed_at": f"2026-07-{day:02d}T08:00:00Z",
++        "content_id": "content-secret",
++        "source_id": "source-secret",
++        "old_text_chars": 1000,
++        "new_text_chars": 300,
++        "old_quality_status": "good",
++        "new_quality_status": "poor",
++        "production_affected": False,
++        "review_verdict": "accepted" if reviewed else None,
++        "url": "https://private.example/story",
++        "full_content": "must be removed",
++        "authorization": "Bearer must-not-leak",
++    }
++
++
++def _production_provenance(input_sha256: str = "observations-sha") -> dict:
++    return {
++        "schema_version": "pim-web-clean-shadow-export-v1",
++        "generated_by": "pim-production-shadow-export",
++        "dataset_kind": "production_shadow",
++        "observations_sha256": input_sha256,
++        "generated_at": "2026-07-29T00:00:00Z",
++    }
++
++
++def test_web_clean_shadow_report_is_provenance_bounded_and_sanitized():
++    report = build_web_clean_shadow_report(
++        [_web_clean_snapshot(day) for day in range(1, 8)],
++        salt="run-1",
++        dataset_kind="local_fixture",
++    )
++
++    assert report["dataset_kind"] == "local_fixture"
++    assert report["shadow_only"] is True
++    assert report["production_affected"] is False
++    assert report["window"]["minimum_days_met"] is True
++    assert report["window"]["consecutive_days"] == 7
++    assert report["release_eligible"] is False
++    sample = report["high_risk_review"]["samples"][0]
++    assert sample["content_id"] != "content-secret"
++    assert sample["source_id"] != "source-secret"
++    assert "url" not in sample
++    assert "full_content" not in sample
++    assert "authorization" not in sample
++
+ def test_shadow_retention_prunes_only_expired_json(tmp_path):
+     expired = tmp_path / "expired.json"
+     future = tmp_path / "future.json"
+@@ -178,14 +228,156 @@ def test_release_artifact_go_requires_every_gate(tmp_path):
+         "high_risk_review": {"sample_count": 2, "reviewed_count": 2},
+     }
+ 
++    web_clean = {
++        "version": "web-clean-eval-v2",
++        "ok": True,
++        "gate": {"result": "GO", "blockers": []},
++        "dataset_tier": "web_clean_eval_1_0",
++        "manifest_valid": True,
++        "dataset_sha256": "web-clean",
++        "manifest_sha256": "web-clean-manifest",
++        "metrics": {
++            "sample_count": 150,
++            "must_include_recall": 0.91,
++            "must_exclude_precision": 0.93,
++            "boilerplate_leak_rate": 0.07,
++            "blocked_detection_f1": 0.89,
++            "metadata_accuracy": 0.91,
++            "markdown_structure_score": 0.86,
++            "runtime_p95_ms": 10.0,
++            "label_counts": {
++                "must_include": 1,
++                "must_exclude": 1,
++                "title": 1,
++                "canonical_url": 1,
++                "published_time": 1,
++                "quality_status": 1,
++                "markdown": 1,
++            },
++        },
++    }
++    web_clean_shadow = build_web_clean_shadow_report(
++        [_web_clean_snapshot(day) for day in range(1, 8)],
++        salt="run-1",
++        dataset_kind="production_shadow",
++        provenance=_production_provenance(),
++        input_sha256="observations-sha",
++    )
++
+     artifact = build_release_artifact(
+         formal,
+         shadow,
+         config_path=config,
+         lock_path=lock,
+         performance={"candidate_pool_p95_ms": 20},
++        web_clean=web_clean,
++        web_clean_shadow=web_clean_shadow,
+         approvers=["owner"],
+         commit="abc123",
+     )
+ 
+     assert artifact["decision"] == {"result": "GO", "blockers": [], "approvers": ["owner"]}
++
++
++def test_release_artifact_rejects_forged_web_clean_ok_without_v2_gate_or_labels(tmp_path):
++    config = tmp_path / "config.json"
++    lock = tmp_path / "lock"
++    config.write_text("{}", encoding="utf-8")
++    lock.write_text("locked", encoding="utf-8")
++    report = {
++        "ok": True,
++        "dataset_tier": "web_clean_eval_1_0",
++        "manifest_valid": True,
++        "dataset_sha256": "dataset",
++        "manifest_sha256": "manifest",
++        "metrics": {"sample_count": 150},
++    }
++
++    artifact = build_release_artifact(
++        None,
++        None,
++        config_path=config,
++        lock_path=lock,
++        performance=None,
++        web_clean=report,
++        web_clean_shadow=None,
++        approvers=[],
++        commit="abc123",
++    )
++
++    blockers = artifact["decision"]["blockers"]
++    assert "Web Clean report version is not web-clean-eval-v2" in blockers
++    assert "Web Clean report gate is not GO" in blockers
++    assert "Web Clean Eval has no must_include labels" in blockers
++    assert "Web Clean runtime_p95_ms is missing or invalid" in blockers
++
++
++def test_web_clean_shadow_requires_continuous_days_all_reviews_and_isolation():
++    non_contiguous = [_web_clean_snapshot(day) for day in (1, 2, 3, 10, 11, 12, 13)]
++    report = build_web_clean_shadow_report(
++        non_contiguous,
++        salt="run-1",
++        dataset_kind="production_shadow",
++        provenance=_production_provenance(),
++        input_sha256="observations-sha",
++    )
++    assert report["window"]["observed_days"] == 7
++    assert report["window"]["consecutive_days"] == 4
++    assert report["release_eligible"] is False
++
++    many = [_web_clean_snapshot((index % 7) + 1, reviewed=index != 55) for index in range(60)]
++    report = build_web_clean_shadow_report(
++        many,
++        salt="run-1",
++        dataset_kind="production_shadow",
++        high_risk_limit=10,
++        provenance=_production_provenance(),
++        input_sha256="observations-sha",
++    )
++    assert report["high_risk_review"]["total_count"] == 60
++    assert report["high_risk_review"]["sample_count"] == 10
++    assert report["high_risk_review"]["reviewed_count"] == 59
++    assert report["release_eligible"] is False
++
++    violated = [_web_clean_snapshot(day) for day in range(1, 8)]
++    violated[0]["production_affected"] = True
++    report = build_web_clean_shadow_report(
++        violated,
++        salt="run-1",
++        dataset_kind="production_shadow",
++        provenance=_production_provenance(),
++        input_sha256="observations-sha",
++    )
++    assert report["shadow_only"] is False
++    assert report["production_affected"] is True
++    assert report["observations"]["shadow_isolation_violations"] == 1
++    assert report["release_eligible"] is False
++
++
++def test_production_shadow_label_without_export_provenance_cannot_pass():
++    report = build_web_clean_shadow_report(
++        [_web_clean_snapshot(day) for day in range(1, 8)],
++        salt="run-1",
++        dataset_kind="production_shadow",
++    )
++
++    assert report["provenance"]["valid"] is False
++    assert report["release_eligible"] is False
++
++
++def test_web_clean_shadow_never_retains_unsampled_sensitive_rows():
++    observations = [_web_clean_snapshot((index % 7) + 1) for index in range(60)]
++    observations[-1]["full_content"] = "last-row-secret"
++    observations[-1]["quality_score"] = float("nan")
++
++    report = build_web_clean_shadow_report(
++        observations,
++        salt="run-1",
++        dataset_kind="local_fixture",
++        high_risk_limit=2,
++    )
++
++    assert report["high_risk_review"]["total_count"] == 60
++    assert report["high_risk_review"]["sample_count"] == 2
++    assert "last-row-secret" not in json.dumps(report)
++    assert "NaN" not in json.dumps(report)
+diff --git a/backend/tests/test_pipeline_stages.py b/backend/tests/test_pipeline_stages.py
+index 7557759..77f81b4 100644
+--- a/backend/tests/test_pipeline_stages.py
++++ b/backend/tests/test_pipeline_stages.py
+@@ -1457,3 +1457,226 @@ class TestPipelineUtils:
+         from app.utils.url import normalize_external_id
+ 
+         assert normalize_external_id(None) is None
++
++
++@pytest.mark.asyncio
++async def test_web_clean_enabled_persists_markdown_while_quality_uses_plain_text():
++    from types import SimpleNamespace
++
++    from app.domains.fetch.web_clean.contracts import CleanResult
++    from app.domains.ingest.build_content import build_raw_content_objects
++
++    source = _make_source(type=SourceType.WEBSITE)
++    source.metadata_ = {"web_clean_mode": "write"}
++    article_text = "Heading\n\nBody paragraph with enough useful context. " * 15
++    article_markdown = "## Heading\n\n[Source](https://example.com/source)\n\n```python\nprint('ok')\n```\n\n" + article_text
++    clean_result = CleanResult(
++        url="https://example.com/story",
++        title="Heading",
++        author=None,
++        published_time=None,
++        canonical_url=None,
++        site_name=None,
++        language=None,
++        article_html="<article><h2>Heading</h2></article>",
++        article_text=article_text,
++        article_markdown=article_markdown,
++        clean_full_html=None,
++        extraction_method="template_selector",
++        template_id="example-v1",
++        quality_status="full",
++        quality_score=0.9,
++        trace={
++            "selected_method": "template_selector",
++            "candidates": [{"method": "template_selector", "rejected_reason": None}],
++        },
++        metadata={"quality_signals": {"paragraph_count": 4, "link_density": 0.1}},
++    )
++    extractor = AsyncMock()
++    extractor.extract_clean.return_value = clean_result
++    settings = SimpleNamespace(
++        pim_web_clean_enabled=True,
++        pim_web_clean_shadow=True,
++        pim_web_clean_template_enabled=True,
++        pim_web_clean_max_html_bytes=3_000_000,
++        pim_web_clean_timeout_ms=8_000,
++        pim_web_clean_write_metadata=True,
++    )
++    raw = [_raw(url="https://example.com/story", content="legacy body", html="<article>legacy body</article>")]
++
++    with (
++        _no_reject,
++        patch("app.domains.ingest.extractor.ContentExtractor", return_value=extractor),
++        patch("app.domains.ingest.build_content.get_settings", return_value=settings),
++    ):
++        results, failures = await build_raw_content_objects(raw, source)
++
++    assert failures == 0
++    assert len(results) == 1
++    assert results[0].full_content == article_markdown
++    assert "[Source](https://example.com/source)" in results[0].full_content
++    assert "```python" in results[0].full_content
++    assert results[0].summary.startswith("Heading")
++    assert results[0].metadata_["web_clean"]["shadow"] is False
++
++
++@pytest.mark.asyncio
++async def test_web_clean_shadow_does_not_replace_legacy_full_content():
++    from types import SimpleNamespace
++
++    from app.domains.fetch.web_clean.contracts import CleanResult
++    from app.domains.ingest.build_content import build_raw_content_objects
++
++    source = _make_source(type=SourceType.WEBSITE)
++    clean_result = CleanResult(
++        url="https://example.com/story",
++        title=None,
++        author=None,
++        published_time=None,
++        canonical_url=None,
++        site_name=None,
++        language=None,
++        article_html="<article>new candidate</article>",
++        article_text="new candidate " * 50,
++        article_markdown="## New candidate\n\n" + ("new candidate " * 50),
++        clean_full_html=None,
++        extraction_method="beautifulsoup",
++        template_id=None,
++        quality_status="good",
++        quality_score=0.8,
++        trace={"selected_method": "beautifulsoup", "candidates": []},
++        metadata={"quality_signals": {"paragraph_count": 3}},
++    )
++    extractor = AsyncMock()
++    extractor.extract_clean.return_value = clean_result
++    settings = SimpleNamespace(
++        pim_web_clean_enabled=False,
++        pim_web_clean_shadow=True,
++        pim_web_clean_template_enabled=False,
++        pim_web_clean_max_html_bytes=3_000_000,
++        pim_web_clean_timeout_ms=8_000,
++        pim_web_clean_write_metadata=True,
++    )
++    legacy = "legacy production body " * 40
++    raw = [_raw(url="https://example.com/story", content=legacy, html="<article>new candidate</article>")]
++
++    with (
++        _no_reject,
++        patch("app.domains.ingest.extractor.ContentExtractor", return_value=extractor),
++        patch("app.domains.ingest.build_content.get_settings", return_value=settings),
++    ):
++        results, failures = await build_raw_content_objects(raw, source)
++
++    assert failures == 0
++    assert results[0].full_content == legacy.strip()
++    assert results[0].metadata_["web_clean"]["shadow"] is True
++    assert "shadow_diff" in results[0].metadata_["web_clean"]
++
++
++@pytest.mark.asyncio
++async def test_web_clean_enabled_rejected_candidate_keeps_legacy_body():
++    from types import SimpleNamespace
++
++    from app.domains.fetch.web_clean.contracts import CleanResult
++    from app.domains.ingest.build_content import build_raw_content_objects
++
++    source = _make_source(type=SourceType.WEBSITE)
++    source.metadata_ = {"web_clean_mode": "write"}
++    clean_result = CleanResult(
++        url="https://example.com/login",
++        title="Login",
++        author=None,
++        published_time=None,
++        canonical_url=None,
++        site_name=None,
++        language=None,
++        article_html="<article>Please sign in</article>",
++        article_text="Please sign in to continue " * 20,
++        article_markdown="Please sign in to continue " * 20,
++        clean_full_html=None,
++        extraction_method="beautifulsoup",
++        template_id=None,
++        quality_status="login_required",
++        quality_score=0.1,
++        trace={
++            "selected_method": "beautifulsoup",
++            "candidates": [{"method": "beautifulsoup", "rejected_reason": "login_required"}],
++        },
++        metadata={"quality_signals": {"paragraph_count": 1}},
++    )
++    extractor = AsyncMock()
++    extractor.extract_clean.return_value = clean_result
++    settings = SimpleNamespace(
++        pim_web_clean_enabled=True,
++        pim_web_clean_shadow=True,
++        pim_web_clean_template_enabled=True,
++        pim_web_clean_max_html_bytes=3_000_000,
++        pim_web_clean_timeout_ms=8_000,
++        pim_web_clean_write_metadata=True,
++    )
++    legacy = "legacy authorized article body " * 40
++    raw = [_raw(url="https://example.com/login", content=legacy, html="<article>Please sign in</article>")]
++
++    with (
++        _no_reject,
++        patch("app.domains.ingest.extractor.ContentExtractor", return_value=extractor),
++        patch("app.domains.ingest.build_content.get_settings", return_value=settings),
++    ):
++        results, failures = await build_raw_content_objects(raw, source)
++
++    assert failures == 0
++    assert results[0].full_content == legacy.strip()
++    assert results[0].metadata_["web_clean"]["quality_status"] == "login_required"
++
++
++@pytest.mark.asyncio
++async def test_web_clean_global_master_does_not_write_without_source_opt_in():
++    from types import SimpleNamespace
++
++    from app.domains.fetch.web_clean.contracts import CleanResult
++    from app.domains.ingest.build_content import build_raw_content_objects
++
++    source = _make_source(type=SourceType.WEBSITE)
++    clean_result = CleanResult(
++        url="https://example.com/story",
++        title="New",
++        author=None,
++        published_time=None,
++        canonical_url=None,
++        site_name=None,
++        language=None,
++        article_html="<article>new</article>",
++        article_text="new clean body " * 50,
++        article_markdown="## New\n\n" + ("new clean body " * 50),
++        clean_full_html=None,
++        extraction_method="beautifulsoup",
++        template_id=None,
++        quality_status="good",
++        quality_score=0.9,
++        trace={"selected_method": "beautifulsoup", "candidates": []},
++        metadata={"quality_signals": {"paragraph_count": 3}},
++    )
++    extractor = AsyncMock()
++    extractor.extract_clean.return_value = clean_result
++    settings = SimpleNamespace(
++        pim_web_clean_enabled=True,
++        pim_web_clean_shadow=True,
++        pim_web_clean_template_enabled=True,
++        pim_web_clean_max_html_bytes=3_000_000,
++        pim_web_clean_timeout_ms=8_000,
++        pim_web_clean_write_metadata=True,
++    )
++    legacy = "legacy body remains authoritative " * 40
++    raw = [_raw(url="https://example.com/story", content=legacy, html="<article>new</article>")]
++
++    with (
++        _no_reject,
++        patch("app.domains.ingest.extractor.ContentExtractor", return_value=extractor),
++        patch("app.domains.ingest.build_content.get_settings", return_value=settings),
++    ):
++        results, failures = await build_raw_content_objects(raw, source)
++
++    assert failures == 0
++    assert results[0].full_content == legacy.strip()
++    assert results[0].metadata_["web_clean"]["shadow"] is True
++    assert results[0].metadata_["web_clean"]["source_mode"] == "shadow"
+diff --git a/backend/tests/test_probe_service_extended.py b/backend/tests/test_probe_service_extended.py
+index 7545159..cb7325c 100644
+--- a/backend/tests/test_probe_service_extended.py
++++ b/backend/tests/test_probe_service_extended.py
+@@ -751,3 +751,65 @@ class TestIsPrivateAddress:
+ 
+     def test_public(self):
+         assert ProbeService._is_private_address("93.184.216.34") is False
++
++
++@pytest.mark.asyncio
++async def test_web_clean_probe_rejects_invalid_template_without_fetch(monkeypatch):
++    from types import SimpleNamespace
++
++    from app.interfaces.http.sources.probe import _web_clean_probe_metadata
++
++    source = SimpleNamespace(
++        id="source-1",
++        url="https://example.com/story",
++        metadata_={
++            "web_clean_template": {
++                "id": "bad-v1",
++                "article_html": "selectorHtml:article",
++                "unknown": "fail closed",
++            }
++        },
++    )
++    fetch_html = AsyncMock()
++    monkeypatch.setattr(ProbeService, "fetch_html", fetch_html)
++
++    result = await _web_clean_probe_metadata(source, {})
++
++    assert result["template_configured"] is True
++    assert result["template_valid"] is False
++    assert result["template_validation_errors"]
++    fetch_html.assert_not_awaited()
++
++
++@pytest.mark.asyncio
++async def test_web_clean_probe_returns_body_free_preview(monkeypatch):
++    from types import SimpleNamespace
++
++    from app.interfaces.http.sources.probe import _web_clean_probe_metadata
++
++    paragraphs = "".join(
++        f"<p>Paragraph {index} contains useful reporting context and evidence.</p>"
++        for index in range(20)
++    )
++    source = SimpleNamespace(
++        id="source-1",
++        url="https://example.com/story",
++        metadata_={
++            "web_clean_template": {
++                "id": "example-v1",
++                "triggers": ["https://example.com/story"],
++                "article_html": "selectorHtml:article",
++            }
++        },
++    )
++    monkeypatch.setattr(ProbeService, "fetch_html", AsyncMock(return_value=f"<html><body><article>{paragraphs}</article></body></html>"))
++
++    result = await _web_clean_probe_metadata(source, {"session": "host-scoped"})
++
++    assert result["template_valid"] is True
++    assert result["template_id"] == "example-v1"
++    assert result["preview"]["template_id"] == "example-v1"
++    assert result["preview"]["text_chars"] > 200
++    assert "article_text" not in result["preview"]
++    assert "article_markdown" not in result["preview"]
++    assert "html" not in result["preview"]
+diff --git a/backend/tests/test_support_bundle.py b/backend/tests/test_support_bundle.py
+index a3e5e79..63535cb 100644
+--- a/backend/tests/test_support_bundle.py
++++ b/backend/tests/test_support_bundle.py
+@@ -9,7 +9,7 @@ from sqlalchemy import create_engine
+ from sqlalchemy.orm import sessionmaker
+ 
+ from app.database import Base
+-from app.models import BrowserSession, Source, SourceFetchLog
++from app.models import BrowserSession, Content, Source, SourceFetchLog
+ from app.models.browser_session import BrowserSessionStatus
+ from app.models.source import SourceType
+ 
+@@ -45,6 +45,14 @@ def test_support_bundle_exports_redacted_diagnostics(tmp_path, monkeypatch):
+             last_fetched_at=datetime(2026, 7, 8, 8, 10, 0),
+             session_health_status="error",
+             session_health_reason="expired",
++            metadata_={
++                "web_clean_profile": {
++                    "extraction_method": "readability",
++                    "quality_status": "good",
++                    "text_chars": 900,
++                    "cookie": "source-profile-secret",
++                }
++            },
+         )
+         db.add(source)
+         db.flush()
+@@ -59,6 +67,45 @@ def test_support_bundle_exports_redacted_diagnostics(tmp_path, monkeypatch):
+                 fulltext_total=1,
+             )
+         )
++        db.add(
++            Content(
++                source_id=source.id,
++                title="Sensitive title must not be exported",
++                original_url="https://example.com/private?Authorization=content-secret",
++                content_type="website",
++                full_content="private article body API_KEY=body-secret-value",
++                metadata_={
++                    "web_clean": {
++                        "version": "v1",
++                        "extraction_method": "template_selector",
++                        "template_id": "example",
++                        "quality_status": "good",
++                        "quality_score": 0.92,
++                        "text_chars": 1200,
++                        "trace": {
++                            "selected_method": "template_selector",
++                            "standardizer": {
++                                "input_sha256": "a" * 64,
++                                "output_sha256": "b" * 64,
++                                "input_chars": 2000,
++                                "output_chars": 1400,
++                                "raw_html": "Authorization: trace-secret-value",
++                            },
++                            "candidates": [
++                                {
++                                    "method": "template_selector",
++                                    "score": 0.92,
++                                    "quality_status": "good",
++                                    "text_chars": 1200,
++                                    "signals": {"paragraph_count": 8, "raw_text": "body-secret-value"},
++                                }
++                            ],
++                            "template_validation_errors": ["api_key=template-secret-value"],
++                        },
++                    }
++                },
++            )
++        )
+         db.add(
+             BrowserSession(
+                 site_url="https://example.com/login?session=secretquery",
+@@ -86,19 +133,51 @@ def test_support_bundle_exports_redacted_diagnostics(tmp_path, monkeypatch):
+                 "failed_sources.json",
+                 "recent_fetches.json",
+                 "browser_sessions.json",
++                "web_clean_diagnostics.json",
+                 "issue_template.md",
+             }.issubset(names)
+             failed = json.loads(zf.read("failed_sources.json"))
+             browser_sessions = json.loads(zf.read("browser_sessions.json"))
++            web_clean = json.loads(zf.read("web_clean_diagnostics.json"))
+             raw_zip_text = "\n".join(zf.read(name).decode("utf-8") for name in names if name.endswith((".json", ".md")))
+ 
+         assert failed["counts"]["total"] == 1
+         assert failed["failed_sources"][0]["url"] == "https://example.com/feed"
+         assert browser_sessions[0]["site_url"] == "https://example.com/login"
++        assert failed["failed_sources"][0]["web_clean_profile"] == {
++            "extraction_method": "readability",
++            "quality_status": "good",
++            "text_chars": 900,
++        }
++        assert len(web_clean) == 1
++        assert web_clean[0]["content_ref"] != str(source.id)
++        assert web_clean[0]["standardizer"]["input_sha256"] == "a" * 64
++        assert web_clean[0]["candidates"][0]["signals"] == {"paragraph_count": 8}
+         assert "abcdef123456" not in raw_zip_text
+         assert "ghijklmnop" not in raw_zip_text
+         assert "secretquery" not in raw_zip_text
++        assert "body-secret-value" not in raw_zip_text
++        assert "trace-secret-value" not in raw_zip_text
++        assert "template-secret-value" not in raw_zip_text
++        assert "source-profile-secret" not in raw_zip_text
++        assert "Sensitive title" not in raw_zip_text
+         assert "pim.db" not in names
+     finally:
+         db.close()
+         engine.dispose()
++
++
++def test_support_bundle_web_clean_numbers_reject_nan_and_infinity():
++    from app.domains.system.support_bundle import _safe_web_clean_profile
++
++    profile = _safe_web_clean_profile(
++        {
++            "web_clean_profile": {
++                "quality_score": float("nan"),
++                "link_density": float("inf"),
++                "text_chars": 123,
++            }
++        }
++    )
++
++    assert profile == {"text_chars": 123}
+diff --git a/backend/tests/test_web_clean_eval_runner.py b/backend/tests/test_web_clean_eval_runner.py
+index 8abf11f..de828fa 100644
+--- a/backend/tests/test_web_clean_eval_runner.py
++++ b/backend/tests/test_web_clean_eval_runner.py
+@@ -39,3 +39,134 @@ def test_eval_runner_scores_golden_contract(tmp_path):
+     assert report["metrics"]["must_include_recall"] == 1.0
+     assert report["metrics"]["must_exclude_precision"] == 1.0
+     assert report["metrics"]["title_accuracy"] == 1.0
++
++
++def test_eval_release_tier_fails_closed_without_manifest_and_labels(tmp_path):
++    dataset = tmp_path / "bootstrap.jsonl"
++    dataset.write_text(
++        json.dumps(
++            {
++                "id": "inline-not-allowed",
++                "url": "https://example.com/article",
++                "source_type": "website",
++                "language": "en",
++                "paywall": "none",
++                "case_type": "article",
++                "html": "<html><body><article><p>Body text</p></article></body></html>",
++                "gold": {},
++            }
++        )
++        + "\n",
++        encoding="utf-8",
++    )
++
++    report = evaluate_jsonl(dataset, tier="web_clean_bootstrap")
++
++    assert report["ok"] is False
++    assert report["gate"]["result"] == "NO_GO"
++    assert "manifest is missing" in report["gate"]["blockers"]
++    assert report["metrics"]["must_include_recall"] == 0.0
++    assert report["metrics"]["must_exclude_precision"] == 0.0
++    assert "release dataset has no must_include labels" in report["gate"]["blockers"]
++
++
++def test_eval_manifest_hash_and_fixture_contract_are_enforced(tmp_path):
++    import hashlib
++
++    fixture = tmp_path / "article.html"
++    fixture.write_text("<html><body><article><p>Useful body paragraph.</p></article></body></html>", encoding="utf-8")
++    dataset = tmp_path / "bootstrap.jsonl"
++    row = {
++        "id": "web-clean-001",
++        "url": "https://example.com/article",
++        "source_type": "website",
++        "language": "en",
++        "paywall": "none",
++        "case_type": "article",
++        "html_fixture": "article.html",
++        "gold": {
++            "must_include": ["Useful body"],
++            "must_exclude": ["Advertisement"],
++            "expected_status": "good",
++        },
++    }
++    dataset.write_text(json.dumps(row) + "\n", encoding="utf-8")
++    manifest = tmp_path / "manifest.json"
++    manifest.write_text(
++        json.dumps(
++            {
++                "dataset_tier": "web_clean_bootstrap",
++                "sample_count": 1,
++                "dataset_sha256": hashlib.sha256(dataset.read_bytes()).hexdigest(),
++                "fixtures": {"article.html": "0" * 64},
++            }
++        ),
++        encoding="utf-8",
++    )
++
++    report = evaluate_jsonl(dataset, manifest_path=manifest, tier="web_clean_bootstrap")
++
++    assert report["manifest_valid"] is False
++    assert "fixture hash mismatch: article.html" in report["gate"]["blockers"]
++    assert report["gate"]["result"] == "NO_GO"
++
++
++def test_eval_missing_manifest_path_fails_closed_without_exception(tmp_path):
++    dataset = tmp_path / "eval.jsonl"
++    dataset.write_text(
++        json.dumps(
++            {
++                "id": "web-clean-001",
++                "url": "https://example.com/article",
++                "html": "<article><p>Body</p></article>",
++                "gold": {},
++            }
++        )
++        + "\n",
++        encoding="utf-8",
++    )
++
++    report = evaluate_jsonl(
++        dataset,
++        manifest_path=tmp_path / "missing-manifest.json",
++        tier="web_clean_eval_1_0",
++    )
++
++    assert report["ok"] is False
++    assert report["manifest_sha256"] is None
++    assert "manifest file is missing" in report["gate"]["blockers"]
++
++
++def test_formal_gate_enforces_blocked_metadata_and_markdown_metrics():
++    from app.domains.fetch.web_clean.eval import _gate_metrics
++
++    metrics = {
++        "sample_count": 150,
++        "must_include_recall": 0.95,
++        "must_exclude_precision": 0.95,
++        "boilerplate_leak_rate": 0.01,
++        "blocked_detection_f1": 0.87,
++        "metadata_accuracy": 0.89,
++        "markdown_structure_score": 0.84,
++        "runtime_p95_ms": 10.0,
++        "label_counts": {
++            "must_include": 1,
++            "must_exclude": 1,
++            "quality_status": 1,
++            "title": 1,
++            "canonical_url": 1,
++            "published_time": 1,
++            "markdown": 1,
++        },
++    }
++
++    blockers = _gate_metrics(
++        metrics,
++        tier="web_clean_eval_1_0",
++        manifest={"baseline_runtime_p95_ms": 10.0},
++        manifest_errors=[],
++    )
++
++    assert "formal blocked_detection_f1 is below 0.88" in blockers
++    assert "formal metadata_accuracy is below 0.90" in blockers
++    assert "formal markdown_structure_score is below 0.85" in blockers
+diff --git a/backend/tests/test_web_clean_extractors.py b/backend/tests/test_web_clean_extractors.py
+index 1f17fb0..bfb1191 100644
+--- a/backend/tests/test_web_clean_extractors.py
++++ b/backend/tests/test_web_clean_extractors.py
+@@ -29,6 +29,7 @@ def test_extractor_returns_clean_result_trace_and_structured_metadata():
+     metadata = result.to_metadata()
+     assert metadata["text_chars"] == len(result.article_text)
+     assert metadata["quality_score"] == result.quality_score
++    assert result.production_eligible() is True
+ 
+ 
+ def test_template_candidate_can_win_without_disabling_generic_fallbacks():
+@@ -58,3 +59,150 @@ def test_template_candidate_can_win_without_disabling_generic_fallbacks():
+     assert result.template_id == "example-v1"
+     assert result.extraction_method == "template_selector"
+     assert "Paragraph 19" in result.article_text
++
++
++def test_structured_multiple_objects_graph_and_template_published_are_resolved():
++    body = " ".join(["Detailed article evidence and context for extraction."] * 40)
++    html = f"""
++    <html data-pim-shadow-materialized-count="3" data-pim-shadow-timeout="true"><head>
++      <script type="application/ld+json">
++      [
++        {{"@type":"WebSite","name":"Example"}},
++        {{"@graph":[
++          {{"@type":"NewsArticle","headline":"","articleBody":{body!r}}},
++          {{"@type":["Article","NewsArticle"],"headline":"Graph title",
++            "author":[{{"name":"Ada"}},{{"name":"Lin"}}],
++            "mainEntityOfPage":{{"@id":"/canonical-from-graph"}},
++            "datePublished":"2026-07-24T08:00:00Z",
++            "inLanguage":"zh-CN","articleBody":{body!r}}}
++        ]}}
++      ]
++      </script>
++    </head><body><article><h1>Graph title</h1><p>{body}</p></article></body></html>
++    """.replace("'", '"')
++    result = WebDocumentExtractor().extract_sync(
++        CleanInput(
++            url="https://example.com/story/1",
++            raw_html=html,
++            source_metadata={
++                "web_clean_template": {
++                    "id": "graph-v1",
++                    "triggers": ["https://example.com/story"],
++                    "article_html": "selectorHtml:article",
++                    "published": "schema:datePublished",
++                }
++            },
++        )
++    )
++
++    assert result.title == "Graph title"
++    assert result.author == "Ada, Lin"
++    assert result.canonical_url == "https://example.com/canonical-from-graph"
++    assert result.language == "zh-CN"
++    assert result.published_time is not None
++    assert result.published_time.isoformat().startswith("2026-07-24T08:00:00")
++    assert result.trace["shadow_materialized_count"] == 3
++    assert result.trace["shadow_timeout"] is True
++
++
++def test_invalid_template_is_reported_and_generic_fallback_remains_available():
++    body = " ".join(["Fallback article paragraph with useful detail."] * 40)
++    result = WebDocumentExtractor().extract_sync(
++        CleanInput(
++            url="https://example.com/story",
++            raw_html=f"<html><body><article><p>{body}</p></article></body></html>",
++            source_metadata={
++                "web_clean_template": {
++                    "id": "bad-v1",
++                    "article_html": "selectorHtml:article",
++                    "unknown": "must fail closed",
++                }
++            },
++        )
++    )
++
++    assert result.article_text
++    assert result.template_id is None
++    assert result.trace["template_validation_errors"]
++
++
++def test_non_article_candidate_is_never_production_eligible():
++    from app.domains.fetch.web_clean.contracts import CleanResult
++
++    result = CleanResult(
++        url="https://example.com/topics",
++        title="Topics",
++        author=None,
++        published_time=None,
++        canonical_url=None,
++        site_name=None,
++        language=None,
++        article_html="<main>links</main>",
++        article_text="topic link " * 20,
++        article_markdown="topic link " * 20,
++        clean_full_html=None,
++        extraction_method="beautifulsoup",
++        template_id=None,
++        quality_status="non_article",
++        quality_score=0.08,
++        trace={
++            "selected_method": "beautifulsoup",
++            "candidates": [{"method": "beautifulsoup", "rejected_reason": None}],
++        },
++    )
++    assert result.production_eligible() is False
++
++
++def test_rejected_schema_body_is_preserved_in_candidate_trace():
++    body = " ".join(["Generic fallback paragraph with substantial reporting context."] * 40)
++    html = f"""
++    <html><head><script type="application/ld+json">
++    {{"@type":"NewsArticle","headline":"Story","articleBody":"tiny"}}
++    </script></head><body><article><h1>Story</h1><p>{body}</p></article></body></html>
++    """
++
++    result = WebDocumentExtractor().extract_sync(
++        CleanInput(url="https://example.com/story", raw_html=html)
++    )
++
++    rejected = [item for item in result.trace["candidates"] if item.get("rejected_reason")]
++    assert any(
++        item["method"] == "structured_json_ld" and item["rejected_reason"] == "too_short"
++        for item in rejected
++    )
++
++
++def test_structured_urls_reject_non_http_schemes():
++    body = " ".join(["Substantial article paragraph with reporting context."] * 40)
++    html = f"""
++    <html><head>
++      <link rel="canonical" href="javascript:alert(1)">
++      <meta property="og:image" content="data:text/html,secret">
++      <script type="application/ld+json">
++      {{"@type":"NewsArticle","headline":"Story","url":"javascript:alert(2)",
++        "image":"data:text/html,secret","articleBody":{body!r}}}
++      </script>
++    </head><body><article><p>{body}</p></article></body></html>
++    """.replace("'", '"')
++
++    result = WebDocumentExtractor().extract_sync(
++        CleanInput(url="https://example.com/story", raw_html=html)
++    )
++
++    assert result.canonical_url is None
++    assert result.metadata.get("image") is None
++
++
++def test_invalid_template_configuration_is_shadow_only_even_when_generic_candidate_is_good():
++    html = "<html><body><article><h1>Good title</h1>" + "<p>Useful article paragraph.</p>" * 30 + "</article></body></html>"
++    result = WebDocumentExtractor().extract_sync(
++        CleanInput(
++            url="https://example.test/story",
++            raw_html=html,
++            source_metadata={"web_clean_template": {"id": "bad", "unknown": "field"}},
++        )
++    )
++
++    assert result.article_text
++    assert result.trace["template_validation_errors"]
++    assert result.production_eligible() is False
+diff --git a/backend/tests/test_web_clean_filters.py b/backend/tests/test_web_clean_filters.py
+index b270752..d7c69ce 100644
+--- a/backend/tests/test_web_clean_filters.py
++++ b/backend/tests/test_web_clean_filters.py
+@@ -25,6 +25,23 @@ def test_filters_fail_closed_for_unknown_or_unsafe_inputs():
+     with pytest.raises(FilterValidationError, match="unknown filter"):
+         validate_filters("eval")
+     with pytest.raises(FilterValidationError, match="flags"):
+-        apply_filters("abc", "replace:('a','b','x')")
++        validate_filters("replace:('a','b','x')")
+     with pytest.raises(FilterValidationError, match="too complex"):
+         apply_filters("<p>x</p>", f"remove_html:('{' '.join(['div'] * 14)}')")
++
++
++def test_filters_enforce_arity_and_attribute_allowlists():
++    with pytest.raises(FilterValidationError, match="trim expects 0"):
++        validate_filters("trim:('unexpected')")
++    with pytest.raises(FilterValidationError, match="remove_attr expects 1..32"):
++        validate_filters("remove_attr")
++    with pytest.raises(FilterValidationError, match="strip_attr expects a list/tuple"):
++        validate_filters("strip_attr:('href')")
++
++    cleaned = apply_filters(
++        '<a href="https://example.com" title="kept?" onclick="bad()">link</a>',
++        "strip_attr:(['href'])",
++    )
++    assert 'href="https://example.com"' in cleaned
++    assert "title=" not in cleaned
++    assert "onclick=" not in cleaned
+diff --git a/backend/tests/test_web_clean_markdown.py b/backend/tests/test_web_clean_markdown.py
+index d91682b..78c2fc4 100644
+--- a/backend/tests/test_web_clean_markdown.py
++++ b/backend/tests/test_web_clean_markdown.py
+@@ -17,6 +17,7 @@ def test_markdown_preserves_structure_and_absolute_links():
+     assert "## Heading" in result
+     assert "> Quoted" in result
+     assert "[Docs](https://example.com/docs)" in result
++    assert '```python' in result
+     assert 'print("ok")' in result
+     assert "| Name |" in result
+     assert "| PIM |" in result
+diff --git a/backend/tests/test_web_clean_standardizer.py b/backend/tests/test_web_clean_standardizer.py
+index 3a73892..549759e 100644
+--- a/backend/tests/test_web_clean_standardizer.py
++++ b/backend/tests/test_web_clean_standardizer.py
+@@ -31,3 +31,96 @@ def test_standardizer_handles_empty_and_broken_html():
+     assert standardize_html("").html == ""
+     result = standardize_html("<article><p>broken")
+     assert "broken" in result.html
++
++
++def test_standardizer_uses_safe_base_promotes_lazy_media_and_drops_hidden_nodes():
++    result = standardize_html(
++        """
++        <html data-pim-shadow-materialized-count="2" data-pim-shadow-timeout="true">
++          <head><base href="https://cdn.example/assets/"></head>
++          <body>
++            <p hidden>secret hidden copy</p>
++            <p aria-hidden="true">screen-reader hidden copy</p>
++            <img src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP" data-src="photo.jpg">
++            <noscript>&lt;img src="fallback.jpg" alt="fallback"&gt;</noscript>
++            <a href="javascript:alert(1)">bad</a>
++            <a href="story.html">good</a>
++          </body>
++        </html>
++        """,
++        base_url="https://example.com/news/page",
++    )
++
++    assert "secret hidden copy" not in result.html
++    assert "screen-reader hidden copy" not in result.html
++    assert 'src="https://cdn.example/assets/photo.jpg"' in result.html
++    assert 'src="https://cdn.example/assets/fallback.jpg"' in result.html
++    assert 'href="https://cdn.example/assets/story.html"' in result.html
++    assert "javascript:" not in result.html
++    assert "data-pim-shadow-materialized-count" not in result.html
++    assert result.trace["promoted_lazy_media"] == 1
++    assert result.trace["materialized_noscript"] == 1
++    assert result.trace["shadow_materialized_count"] == 2
++    assert result.trace["shadow_timeout"] is True
++    assert len(result.trace["input_sha256"]) == 64
++    assert len(result.trace["output_sha256"]) == 64
++
++
++def test_standardizer_size_cap_and_selector_guard_fail_safe():
++    result = standardize_html(
++        "<article>" + ("x" * 500) + "</article>",
++        remove_selectors=[" ".join(["div"] * 80)],
++        max_html_bytes=64,
++    )
++
++    assert result.trace["truncated"] is True
++    assert result.trace["invalid_selectors"]
++
++
++def test_standardizer_removes_inline_css_hidden_content():
++    result = standardize_html(
++        "<article><p>visible</p><div style='display: none !important'>secret</div>"
++        "<span style='visibility:hidden'>hidden</span></article>",
++        base_url="https://example.com/story",
++    )
++    assert "visible" in result.html
++    assert "secret" not in result.html
++    assert "hidden" not in result.html
++
++
++def test_standardizer_treats_untrusted_shadow_markers_as_bounded_diagnostics():
++    result = standardize_html(
++        '<html data-pim-shadow-materialized-count="not-an-int">'
++        '<head><base href="https://cdn.example/private/path/"></head>'
++        '<body><div data-pim-shadow-root="open">visible</div></body></html>',
++        base_url="https://example.com/story",
++    )
++
++    assert "visible" in result.html
++    assert "data-pim-shadow" not in result.html
++    assert result.trace["shadow_materialized_count"] == 1
++    assert result.trace["document_base_applied"] is True
++    assert "effective_base_url" not in result.trace
++
++
++def test_standardizer_rejects_active_content_urls_and_embedded_objects():
++    result = standardize_html(
++        """
++        <article>
++          <a href="#section">local section</a>
++          <img src="data:text/html,secret">
++          <video poster="javascript:alert(1)"></video>
++          <object data="https://evil.example/payload"></object>
++          <embed src="https://evil.example/plugin">
++          <applet>legacy plugin</applet>
++        </article>
++        """,
++        base_url="https://example.com/story",
++    )
++
++    assert 'href="#section"' in result.html
++    assert "data:text/html" not in result.html
++    assert "javascript:" not in result.html
++    assert "<object" not in result.html
++    assert "<embed" not in result.html
++    assert "<applet" not in result.html
+diff --git a/backend/tests/test_web_clean_templates.py b/backend/tests/test_web_clean_templates.py
+index 8ec293a..0fb47c4 100644
+--- a/backend/tests/test_web_clean_templates.py
++++ b/backend/tests/test_web_clean_templates.py
+@@ -5,6 +5,7 @@ from app.domains.fetch.web_clean.templates import (
+     TemplateValidationError,
+     render_template,
+     template_matches,
++    template_from_metadata,
+     validate_template,
+ )
+ 
+@@ -50,3 +51,55 @@ def test_template_validation_rejects_code_unknown_filters_and_bad_selectors():
+         validate_template({"id": "bad-v1", "article_html": "selectorHtml:div["})
+     with pytest.raises(TemplateValidationError):
+         validate_template({"id": "bad-v1", "title": "preset:title|eval"})
++
++
++def test_template_validation_rejects_unknown_fields_and_non_array_lists():
++    with pytest.raises(TemplateValidationError, match="unknown template fields"):
++        validate_template({"id": "bad-v1", "article_html": "selectorHtml:article", "exec": "oops"})
++    with pytest.raises(TemplateValidationError, match="triggers must be an array"):
++        validate_template({"id": "bad-v1", "triggers": "https://example.com"})
++    with pytest.raises(TemplateValidationError, match="unknown preset"):
++        validate_template({"id": "bad-preset-v1", "title": "preset:not-a-preset"})
++
++
++def test_template_regex_trigger_times_out_fail_closed():
++    spec = validate_template(
++        {
++            "id": "bounded-regex-v1",
++            "triggers": ["regex:^(a+)+$"],
++            "article_html": "selectorHtml:article",
++        }
++    )
++    assert template_matches(spec, url=("a" * 10_000) + "!", structured={}) is False
++
++
++def test_template_validation_bounds_configured_lists_and_notes():
++    with pytest.raises(TemplateValidationError, match="triggers has more than 32"):
++        validate_template({
++            "id": "too-many-triggers",
++            "triggers": [f"https://example.com/{index}" for index in range(33)],
++            "article_html": "selectorHtml:article",
++        })
++    with pytest.raises(TemplateValidationError, match="notes is longer"):
++        validate_template({"id": "notes-too-long", "notes": "x" * 2001})
++    with pytest.raises(TemplateValidationError, match="trigger is longer"):
++        validate_template({
++            "id": "trigger-too-long",
++            "triggers": ["https://example.com/" + ("x" * 2100)],
++            "article_html": "selectorHtml:article",
++        })
++
++
++def test_non_object_template_metadata_fails_closed():
++    with pytest.raises(TemplateValidationError, match="must be an object"):
++        template_from_metadata({"web_clean_template": "selectorHtml:article"})
++
++
++def test_template_selector_output_is_bounded_fail_closed():
++    spec = validate_template(
++        {"id": "too-broad-v1", "article_html": "selectorHtml:p"}
++    )
++    html = "<article>" + "".join(f"<p>{index}</p>" for index in range(129)) + "</article>"
++
++    with pytest.raises(TemplateValidationError, match="more than 128 values"):
++        render_template(spec, html=html, url="https://example.com/story", structured={})
+diff --git a/backend/uv.lock b/backend/uv.lock
+index 7722500..1f68228 100644
+--- a/backend/uv.lock
++++ b/backend/uv.lock
+@@ -1631,6 +1631,7 @@ dependencies = [
+     { name = "patchright" },
+     { name = "playwright" },
+     { name = "publicsuffix2" },
++    { name = "regex" },
+     { name = "pyasn1" },
+     { name = "pydantic" },
+     { name = "pydantic-settings" },
+@@ -1680,6 +1681,7 @@ requires-dist = [
+     { name = "playwright", specifier = ">=1.49.1" },
+     { name = "psycopg", extras = ["binary"], marker = "extra == 'dev'", specifier = ">=3.2.0" },
+     { name = "publicsuffix2", specifier = ">=2.20191221" },
++    { name = "regex", specifier = ">=2024.11.6" },
+     { name = "pyasn1", specifier = ">=0.6.4" },
+     { name = "pydantic", specifier = ">=2.5.3" },
+     { name = "pydantic-settings", specifier = ">=2.1.0" },
+diff --git a/frontend/src/components/SourceList/FetchHealthDrawer.tsx b/frontend/src/components/SourceList/FetchHealthDrawer.tsx
+index 81efe51..2dfcf6d 100644
+--- a/frontend/src/components/SourceList/FetchHealthDrawer.tsx
++++ b/frontend/src/components/SourceList/FetchHealthDrawer.tsx
+@@ -68,6 +68,7 @@ const FetchHealthDrawer: React.FC<FetchHealthDrawerProps> = ({
+   const rssHealth = s?.metadata?.rss_health
+   const discovery = s?.metadata?.discovery_diagnostics
+   const webClean = s?.metadata?.web_clean_profile
++  const webCleanProbe = s?.metadata?.web_clean_probe
+   const severity = s ? deriveHealthSeverity(s) : 'unknown'
+   const sevMeta = HEALTH_SEVERITY_META[severity]
+   const cooldownRemaining = formatCooldownRemaining(s?.cooldown_until)
+@@ -236,7 +237,9 @@ const FetchHealthDrawer: React.FC<FetchHealthDrawerProps> = ({
+               </Descriptions.Item>
+               <Descriptions.Item label="正文质量">
+                 <Space>
+-                  <Tag>{webClean.quality_status ?? 'unknown'}</Tag>
++                  <Tag color={webClean.blocked ? 'orange' : undefined}>
++                    {webClean.quality_status ?? 'unknown'}
++                  </Tag>
+                   {webClean.quality_score != null
+                     ? `${Math.round(webClean.quality_score * 100)} 分`
+                     : '—'}
+@@ -254,9 +257,50 @@ const FetchHealthDrawer: React.FC<FetchHealthDrawerProps> = ({
+                   ? `${Math.round(webClean.link_density * 100)}%`
+                   : '—'}
+               </Descriptions.Item>
++              <Descriptions.Item label="访问控制命中">
++                {webClean.blocked ? <Tag color="orange">是</Tag> : <Tag>否</Tag>}
++              </Descriptions.Item>
++              {webClean.recent_failure_reason ? (
++                <Descriptions.Item label="最近失败原因">
++                  {webClean.recent_failure_reason}
++                </Descriptions.Item>
++              ) : null}
++              {webClean.shadow_diff ? (
++                <Descriptions.Item label="Shadow diff">
++                  {webClean.shadow_diff.old_chars ?? 0} → {webClean.shadow_diff.new_chars ?? 0} 字符
++                  （Δ {webClean.shadow_diff.char_delta ?? 0}）
++                </Descriptions.Item>
++              ) : null}
+             </Descriptions>
+           ) : null}
+ 
++          {webCleanProbe ? (
++            <div className="mt-3" data-testid="web-clean-probe">
++              {webCleanProbe.template_valid === false ? (
++                <Alert
++                  type="error"
++                  showIcon
++                  message="网页清洗模板无效"
++                  description={(webCleanProbe.template_validation_errors ?? []).join('；') || '请检查模板配置'}
++                />
++              ) : webCleanProbe.preview ? (
++                <Alert
++                  type={webCleanProbe.preview.blocked ? 'warning' : 'success'}
++                  showIcon
++                  message={`模板探测：${webCleanProbe.template_id ?? '未命名模板'}`}
++                  description={`方法 ${webCleanProbe.preview.extraction_method ?? '—'} · 质量 ${webCleanProbe.preview.quality_status ?? 'unknown'} · ${webCleanProbe.preview.text_chars ?? 0} 字符`}
++                />
++              ) : (
++                <Alert
++                  type="warning"
++                  showIcon
++                  message={`模板已通过校验：${webCleanProbe.template_id ?? '未命名模板'}`}
++                  description={webCleanProbe.preview_error ?? '尚无清洗预览'}
++                />
++              )}
++            </div>
++          ) : null}
++
+           {/* RSS 健康 / 发现诊断 */}
+           {(rssHealth || discovery) && (
+             <Collapse
+diff --git a/frontend/src/pages/ReaderPage.test.tsx b/frontend/src/pages/ReaderPage.test.tsx
+index 10ac83d..11ec3d9 100644
+--- a/frontend/src/pages/ReaderPage.test.tsx
++++ b/frontend/src/pages/ReaderPage.test.tsx
+@@ -98,6 +98,41 @@ describe('ReaderPage', () => {
+     expect(screen.queryByText('Unsafe link')).toBeNull()
+   })
+ 
++  it('shows bounded Web Clean diagnostics when available', () => {
++    mockUseReader.mockReturnValue({
++      ...mockUseReader(),
++      data: {
++        ...mockUseReader().data,
++        web_clean: {
++          extraction_method: 'template_selector',
++          template_id: 'example-v1',
++          quality_status: 'good',
++          quality_score: 0.91,
++          text_chars: 1234,
++          paragraph_count: 8,
++          boilerplate_ratio: 0.08,
++          link_density: 0.12,
++          shadow: true,
++          shadow_diff: { old_chars: 900, new_chars: 1234, char_delta: 334 },
++          rejected_reasons: ['listing_like'],
++          template_validation_errors: ['bad selector'],
++          shadow_materialized_count: 2,
++          shadow_timeout: true,
++          truncated: false,
++        },
++      },
++    })
++
++    renderReaderPage()
++
++    expect(screen.getByTestId('web-clean-diagnostic')).toBeTruthy()
++    expect(screen.getByText('网页清洗诊断')).toBeTruthy()
++    expect(screen.getByText(/方法：template_selector/)).toBeTruthy()
++    expect(screen.getByText(/旧\/新正文：900 → 1234/)).toBeTruthy()
++    expect(screen.getByText(/候选拒绝：listing_like/)).toBeTruthy()
++    expect(screen.getByText(/模板错误：bad selector/)).toBeTruthy()
++  })
++
+   it('uses paid-source layout profiles', () => {
+     renderReaderPage()
+ 
+diff --git a/frontend/src/pages/ReaderPage.tsx b/frontend/src/pages/ReaderPage.tsx
+index 7042789..fe9104d 100644
+--- a/frontend/src/pages/ReaderPage.tsx
++++ b/frontend/src/pages/ReaderPage.tsx
+@@ -32,6 +32,10 @@ function safeHttpUrl(value?: string): string {
+   }
+ }
+ 
++function formatDiagnosticRatio(value?: number): string {
++  return value == null ? '—' : `${Math.round(value * 100)}%`;
++}
++
+ function ShortcutHint({ children }: { children: React.ReactNode }) {
+   return (
+     <kbd
+@@ -398,6 +402,35 @@ const ReaderPage: React.FC = () => {
+             </div>
+           </header>
+ 
++          {data.web_clean ? (
++            <details
++              className="mt-8 rounded-2xl border border-[rgba(88,100,118,0.14)] bg-white/65 px-5 py-4 text-[13px] text-[#586476]"
++              data-testid="web-clean-diagnostic"
++            >
++              <summary className="cursor-pointer font-semibold text-[#293859]">网页清洗诊断</summary>
++              <div className="mt-4 grid gap-3 sm:grid-cols-2">
++                <div>模式：{data.web_clean.shadow ? 'Shadow' : '已启用'}</div>
++                <div>方法：{data.web_clean.extraction_method || '—'}</div>
++                <div>模板：{data.web_clean.template_id || '通用模板'}</div>
++                <div>质量：{data.web_clean.quality_status || 'unknown'} / {formatDiagnosticRatio(data.web_clean.quality_score)}</div>
++                <div>访问控制：{data.web_clean.blocked ? '命中' : '未命中'}</div>
++                <div>正文：{data.web_clean.text_chars ?? 0} 字符 · {data.web_clean.paragraph_count ?? 0} 段</div>
++                <div>噪音 / 链接：{formatDiagnosticRatio(data.web_clean.boilerplate_ratio)} / {formatDiagnosticRatio(data.web_clean.link_density)}</div>
++                <div>Shadow DOM：{data.web_clean.shadow_materialized_count ?? 0} 个{data.web_clean.shadow_timeout ? '（超时降级）' : ''}</div>
++                <div>HTML 截断：{data.web_clean.truncated ? '是' : '否'}</div>
++              </div>
++              {data.web_clean.shadow_diff ? (
++                <div className="mt-3">旧/新正文：{data.web_clean.shadow_diff.old_chars ?? 0} → {data.web_clean.shadow_diff.new_chars ?? 0} 字符（Δ {data.web_clean.shadow_diff.char_delta ?? 0}）</div>
++              ) : null}
++              {data.web_clean.rejected_reasons?.length ? (
++                <div className="mt-3 break-words text-amber-700">候选拒绝：{data.web_clean.rejected_reasons.join('；')}</div>
++              ) : null}
++              {data.web_clean.template_validation_errors?.length ? (
++                <div className="mt-3 break-words text-rose-600">模板错误：{data.web_clean.template_validation_errors.join('；')}</div>
++              ) : null}
++            </details>
++          ) : null}
++
+           <div className={layout.bodyClassName} data-testid="reader-iframe">
+             {displayBlocks.length === 0 ? (
+               <div className="py-16 text-center text-[15px] font-medium italic text-[#586476]">正文为空。</div>
+diff --git a/frontend/src/services/contents.ts b/frontend/src/services/contents.ts
+index e730e4c..3dc7ec3 100644
+--- a/frontend/src/services/contents.ts
++++ b/frontend/src/services/contents.ts
+@@ -34,6 +34,29 @@ export type ReaderBlock =
+   | { type: 'footnote'; marker?: string; text: string }
+   | { type: 'link'; text: string; href: string }
+ 
++export interface WebCleanDiagnostic {
++  version?: string
++  extraction_method?: string
++  template_id?: string
++  quality_status?: string
++  quality_score?: number
++  text_chars?: number
++  paragraph_count?: number
++  boilerplate_ratio?: number
++  link_density?: number
++  canonical_url?: string
++  shadow?: boolean
++  blocked?: boolean
++  shadow_diff?: { old_chars?: number; new_chars?: number; char_delta?: number }
++  rejected_reasons?: string[]
++  template_validation_errors?: string[]
++  input_sha256?: string
++  output_sha256?: string
++  truncated?: boolean
++  shadow_materialized_count?: number
++  shadow_timeout?: boolean
++}
++
+ export interface ReaderPayload {
+   id: string
+   source_id: string
+@@ -53,6 +76,7 @@ export interface ReaderPayload {
+   body_translation_is_summary?: boolean
+   blocks?: ReaderBlock[]
+   clean_html: string
++  web_clean?: WebCleanDiagnostic | null
+ }
+ 
+ export interface ReaderTranslateStreamInit {
+diff --git a/frontend/src/types/index.ts b/frontend/src/types/index.ts
+index d605347..1012654 100644
+--- a/frontend/src/types/index.ts
++++ b/frontend/src/types/index.ts
+@@ -72,6 +72,18 @@ export interface WebCleanProfile {
+   boilerplate_ratio?: number
+   link_density?: number
+   shadow?: boolean
++  blocked?: boolean
++  recent_failure_reason?: string
++  shadow_diff?: { old_chars?: number; new_chars?: number; char_delta?: number }
++}
++
++export interface WebCleanProbe {
++  template_configured?: boolean
++  template_valid?: boolean
++  template_id?: string
++  template_validation_errors?: string[]
++  preview_error?: string
++  preview?: WebCleanProfile & { blocked?: boolean }
+ }
+ 
+ export interface SourceMetadata {
+@@ -80,6 +92,7 @@ export interface SourceMetadata {
+   rss_health?: RssHealthMeta
+   discovery_diagnostics?: DiscoveryDiagnostics
+   web_clean_profile?: WebCleanProfile
++  web_clean_probe?: WebCleanProbe
+   [key: string]: unknown
+ }
+ 

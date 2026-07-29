@@ -1,16 +1,24 @@
 """Platform-level export adapters.
 
-Phase 5 step 11 of the refactor relocates the per-content exporters into the
-platform layer. As of this step the package contains:
-
-* :mod:`app.platform.export.markdown` — canonical home for
-  :class:`MarkdownExporter`, the YAML-frontmatter Markdown writer used by
-  ``contents/{id}/export-md`` and the ``maintenance`` task that fans out
-  bulk exports. Previously lived at ``app.exporters.markdown_exporter``;
-  the legacy shim was retired by the post-Phase-7 audit after the two
-  remaining callers were migrated to import from this package directly.
+The package keeps the public ``MarkdownExporter`` import stable while loading
+that optional, frontmatter-backed writer only when callers request it.  This
+lets lightweight shared helpers such as ``html_markdown`` remain usable in
+extraction and evaluation processes that do not perform file exports.
 """
 
-from app.platform.export.markdown import MarkdownExporter
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from app.platform.export.markdown import MarkdownExporter
 
 __all__ = ["MarkdownExporter"]
+
+
+def __getattr__(name: str) -> Any:
+    if name == "MarkdownExporter":
+        from app.platform.export.markdown import MarkdownExporter
+
+        return MarkdownExporter
+    raise AttributeError(name)

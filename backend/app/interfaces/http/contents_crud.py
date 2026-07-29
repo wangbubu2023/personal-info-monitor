@@ -15,7 +15,7 @@ from app.interfaces.http.content_shared import _serialize_content
 from app.database import get_async_db
 from app.domains.events.personal_state import record_report_interaction_from_content
 from app.domains.ingest.visibility import visible_content_clause
-from app.models import Content, ContentEvent, ContentEventMembership, Source
+from app.models import Content, ContentEvent, ContentEventMembership, EventMembershipV1, Source
 from app.schemas.content import ContentListResponse, ContentResponse, ContentUpdate, FavoriteBody
 from app.utils.logger import get_logger
 
@@ -231,9 +231,16 @@ async def export_event_markdown(
     event = await db.scalar(select(ContentEvent).where(ContentEvent.event_key == key))
     if event is None:
         raise HTTPException(status_code=404, detail="Event not found")
-    membership_result = await db.execute(
-        select(ContentEventMembership.content_id).where(ContentEventMembership.event_id == event.event_id)
-    )
+    if event.cluster_version != "hybrid-v0":
+        membership_stmt = select(EventMembershipV1.content_id).where(
+            EventMembershipV1.event_id == event.event_id,
+            EventMembershipV1.active.is_(True),
+        )
+    else:
+        membership_stmt = select(ContentEventMembership.content_id).where(
+            ContentEventMembership.event_id == event.event_id
+        )
+    membership_result = await db.execute(membership_stmt)
     content_ids = [row[0] for row in membership_result.all()]
     if not content_ids:
         raise HTTPException(status_code=404, detail="Event has no reports")

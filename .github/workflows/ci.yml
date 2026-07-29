@@ -78,16 +78,38 @@ jobs:
           cd backend
           uv run python scripts/run_formal_eval.py --output artifacts/formal_eval_report.json
 
+      - name: Generate Web Clean formal eval report (fail closed)
+        if: always()
+        run: |
+          cd backend
+          mkdir -p artifacts
+          if test -f tests/fixtures/web_clean_eval_1_0.jsonl \
+            && test -f tests/fixtures/web_clean_eval_1_0_manifest.json; then
+            uv run python scripts/run_web_clean_eval.py \
+              tests/fixtures/web_clean_eval_1_0.jsonl \
+              --tier web_clean_eval_1_0 \
+              --manifest tests/fixtures/web_clean_eval_1_0_manifest.json \
+              --output artifacts/web_clean_eval_report.json
+          else
+            uv run python -c 'import json; from pathlib import Path; Path("artifacts/web_clean_eval_report.json").write_text(json.dumps({"version":"web-clean-eval-v2","ok":False,"dataset_tier":"web_clean_eval_1_0","manifest_valid":False,"gate":{"result":"NO_GO","blockers":["formal Web Clean dataset or manifest is missing"]}}, indent=2) + "\n", encoding="utf-8")'
+          fi
+
       - name: Generate M2 release eval artifact
         if: always()
         run: |
           cd backend
+          web_clean_args=()
+          if test -f artifacts/web_clean_eval_report.json; then
+            web_clean_args=(--web-clean-report artifacts/web_clean_eval_report.json)
+          fi
           if test -f artifacts/formal_eval_report.json; then
             uv run python scripts/generate_release_eval_artifact.py \
               --formal-report artifacts/formal_eval_report.json \
+              "${web_clean_args[@]}" \
               --output artifacts/release_eval_artifact.json
           else
             uv run python scripts/generate_release_eval_artifact.py \
+              "${web_clean_args[@]}" \
               --output artifacts/release_eval_artifact.json
           fi
 

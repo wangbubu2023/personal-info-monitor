@@ -9,6 +9,7 @@ from sqlalchemy.orm import sessionmaker
 from app.database import Base
 from app.models.auth_config import AuthConfig, AuthType
 from app.models.source import Source
+from app.models.paid_matrix import DailyCanaryRun
 from app.domains.fetch.paid_matrix import (
     ack_session_recovery,
     check_readability,
@@ -88,6 +89,15 @@ def test_m4_01_paid_source_readability_validation(sync_db: Session, sample_sourc
     audit3 = record_paid_source_result(sync_db, sample_source.id, valid_body)
     assert audit3.last_readable_success_at is not None
     assert audit3.failure_code is None
+    assert audit3.success_rate_7d == pytest.approx(1 / 3)
+
+    # A long error page must not become a readable success merely because its
+    # body passes the content-length heuristic.
+    audit4 = record_paid_source_result(sync_db, sample_source.id, valid_body, http_status=500)
+    assert audit4.failure_code == "HTTP_500"
+    assert audit4.recovery_action == "INSPECT_NETWORK_AND_PROXY"
+    assert audit4.last_readable_success_at == audit3.last_readable_success_at
+    assert audit4.success_rate_7d == pytest.approx(1 / 4)
 
 
 def test_m4_02_session_recovery_drill_and_mttr(sync_db: Session, sample_auth_config: AuthConfig):
@@ -120,3 +130,14 @@ def test_m4_04_daily_canary_probe(sync_db: Session, sample_source: Source):
     assert canary.run_date == "2026-07-24"
     assert canary.status == "success"
     assert canary.paywall_residual_detected is False
+
+    repeated = run_daily_canary_for_source(
+        sync_db, sample_source.id, valid_body, run_date_str="2026-07-24"
+    )
+    assert repeated.id == canary.id
+    assert repeated.status == "success"
+    assert sync_db.query(DailyCanaryRun).count() == 1
+    with pytest.raises(ValueError, match="immutable"):
+        run_daily_canary_for_source(
+            sync_db, sample_source.id, "Too short", run_date_str="2026-07-24"
+        )

@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -104,4 +104,48 @@ describe('EventDetailPage', () => {
     expect(screen.getByRole('button', { name: /误合/ })).toBeTruthy()
     expect(screen.getByRole('button', { name: /漏合/ })).toBeTruthy()
   })
+
+  it('loads the full timeline only after an explicit user action', async () => {
+    const timeline = Array.from({ length: 5 }, (_, index) => ({
+      content_id: `content-${index}`,
+      title: `Report ${index}`,
+      summary: `Summary ${index}`,
+      source_name: 'Official',
+      url: `https://example.com/${index}`,
+      role: index === 4 ? 'primary' : 'supporting',
+      publish_time: `2026-07-11T${String(8 + index).padStart(2, '0')}:00:00Z`,
+    }))
+    mockGetEventDetail.mockImplementation(async (_eventId: string, fullReports = false) => ({
+      event_id: 'event-1',
+      event_key: 'launch-v4',
+      title: 'Curated boundary',
+      current_conclusion: 'Current conclusion',
+      source_names: ['Official'],
+      independent_source_count: 1,
+      latest_version: 1,
+      user_seen_version: 0,
+      has_updates: true,
+      saved: false,
+      read_later: false,
+      hidden: false,
+      timeline: fullReports ? timeline : timeline.slice(2),
+      snapshots: [],
+      primary_reports: [],
+      independent_verification: [],
+      related_discussions: [],
+      feedback: [],
+      extra: { view_mode: fullReports ? 'full' : 'curated', report_count: 5 },
+    }))
+
+    renderEventDetail()
+
+    const expand = await screen.findByRole('button', { name: '查看全部 5 条' })
+    expect(screen.queryByText('Report 0')).toBeNull()
+    fireEvent.click(expand)
+
+    expect(await screen.findByText('Report 0')).toBeTruthy()
+    expect(mockGetEventDetail).toHaveBeenLastCalledWith('event-1', true)
+    expect(screen.getByRole('button', { name: '收起精选' })).toBeTruthy()
+  })
+
 })

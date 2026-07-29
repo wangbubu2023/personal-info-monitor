@@ -751,3 +751,65 @@ class TestIsPrivateAddress:
 
     def test_public(self):
         assert ProbeService._is_private_address("93.184.216.34") is False
+
+
+@pytest.mark.asyncio
+async def test_web_clean_probe_rejects_invalid_template_without_fetch(monkeypatch):
+    from types import SimpleNamespace
+
+    from app.interfaces.http.sources.probe import _web_clean_probe_metadata
+
+    source = SimpleNamespace(
+        id="source-1",
+        url="https://example.com/story",
+        metadata_={
+            "web_clean_template": {
+                "id": "bad-v1",
+                "article_html": "selectorHtml:article",
+                "unknown": "fail closed",
+            }
+        },
+    )
+    fetch_html = AsyncMock()
+    monkeypatch.setattr(ProbeService, "fetch_html", fetch_html)
+
+    result = await _web_clean_probe_metadata(source, {})
+
+    assert result["template_configured"] is True
+    assert result["template_valid"] is False
+    assert result["template_validation_errors"]
+    fetch_html.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_web_clean_probe_returns_body_free_preview(monkeypatch):
+    from types import SimpleNamespace
+
+    from app.interfaces.http.sources.probe import _web_clean_probe_metadata
+
+    paragraphs = "".join(
+        f"<p>Paragraph {index} contains useful reporting context and evidence.</p>"
+        for index in range(20)
+    )
+    source = SimpleNamespace(
+        id="source-1",
+        url="https://example.com/story",
+        metadata_={
+            "web_clean_template": {
+                "id": "example-v1",
+                "triggers": ["https://example.com/story"],
+                "article_html": "selectorHtml:article",
+            }
+        },
+    )
+    monkeypatch.setattr(ProbeService, "fetch_html", AsyncMock(return_value=f"<html><body><article>{paragraphs}</article></body></html>"))
+
+    result = await _web_clean_probe_metadata(source, {"session": "host-scoped"})
+
+    assert result["template_valid"] is True
+    assert result["template_id"] == "example-v1"
+    assert result["preview"]["template_id"] == "example-v1"
+    assert result["preview"]["text_chars"] > 200
+    assert "article_text" not in result["preview"]
+    assert "article_markdown" not in result["preview"]
+    assert "html" not in result["preview"]
