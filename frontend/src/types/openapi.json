@@ -2854,16 +2854,16 @@
             "type": "string"
           },
           "reader_doc_body": {
-            "title": "Reader Doc Body",
-            "type": "string",
+            "maxLength": 2000000,
             "minLength": 1,
-            "maxLength": 2000000
+            "title": "Reader Doc Body",
+            "type": "string"
           },
           "reader_doc_title": {
-            "title": "Reader Doc Title",
-            "type": "string",
+            "maxLength": 512,
             "minLength": 1,
-            "maxLength": 512
+            "title": "Reader Doc Title",
+            "type": "string"
           },
           "task_token": {
             "title": "Task Token",
@@ -7629,7 +7629,7 @@
     },
     "/api/events/today-highlights": {
       "get": {
-        "description": "Return 3-8 event cards for the PIM Digest page.\n\nEmpty ``items`` means the section should be hidden. The Timeline/资讯 page\nintentionally keeps the full content timeline and does not consume this API.",
+        "description": "Return qualifying event cards from the rolling 48-hour highlights window.\n\nThis endpoint reads persisted Events, not hourly Digest payloads. Empty\n``items`` means no event currently meets the corroboration and heat gates.",
         "operationId": "get_today_highlights_api_events_today_highlights_get",
         "parameters": [
           {
@@ -7653,9 +7653,9 @@
             "name": "limit",
             "required": false,
             "schema": {
-              "default": 8,
-              "maximum": 8,
-              "minimum": 3,
+              "default": 50,
+              "maximum": 50,
+              "minimum": 1,
               "title": "Limit",
               "type": "integer"
             }
@@ -8536,50 +8536,6 @@
         ]
       }
     },
-    "/api/paid-matrix/local-capture/task-token": {
-      "post": {
-        "operationId": "api_issue_local_capture_token_api_paid_matrix_local_capture_task_token_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/LocalCaptureTokenRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "security": [
-          {
-            "APIKeyHeader": []
-          }
-        ],
-        "summary": "Api Issue Local Capture Token",
-        "tags": [
-          "paid-matrix"
-        ]
-      }
-    },
     "/api/paid-matrix/local-capture": {
       "post": {
         "operationId": "api_local_capture_api_paid_matrix_local_capture_post",
@@ -8619,6 +8575,50 @@
           }
         ],
         "summary": "Api Local Capture",
+        "tags": [
+          "paid-matrix"
+        ]
+      }
+    },
+    "/api/paid-matrix/local-capture/task-token": {
+      "post": {
+        "operationId": "api_issue_local_capture_token_api_paid_matrix_local_capture_task_token_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LocalCaptureTokenRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Api Issue Local Capture Token",
         "tags": [
           "paid-matrix"
         ]

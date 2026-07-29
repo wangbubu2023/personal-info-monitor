@@ -1031,10 +1031,10 @@ export interface paths {
         };
         /**
          * Get Today Highlights
-         * @description Return 3-8 event cards for the PIM Digest page.
+         * @description Return qualifying event cards from the rolling 48-hour highlights window.
          *
-         *     Empty ``items`` means the section should be hidden. The Timeline/资讯 page
-         *     intentionally keeps the full content timeline and does not consume this API.
+         *     This endpoint reads persisted Events, not hourly Digest payloads. Empty
+         *     ``items`` means no event currently meets the corroboration and heat gates.
          */
         get: operations["get_today_highlights_api_events_today_highlights_get"];
         put?: never;
@@ -1294,23 +1294,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/paid-matrix/local-capture/task-token": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Api Issue Local Capture Token */
-        post: operations["api_issue_local_capture_token_api_paid_matrix_local_capture_task_token_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/paid-matrix/local-capture": {
         parameters: {
             query?: never;
@@ -1322,6 +1305,23 @@ export interface paths {
         put?: never;
         /** Api Local Capture */
         post: operations["api_local_capture_api_paid_matrix_local_capture_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/paid-matrix/local-capture/task-token": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Api Issue Local Capture Token */
+        post: operations["api_issue_local_capture_token_api_paid_matrix_local_capture_task_token_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -6552,7 +6552,7 @@ export interface operations {
             };
         };
     };
-    api_issue_local_capture_token_api_paid_matrix_local_capture_task_token_post: {
+    api_local_capture_api_paid_matrix_local_capture_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -6561,7 +6561,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["LocalCaptureTokenRequest"];
+                "application/json": components["schemas"]["LocalCaptureRequest"];
             };
         };
         responses: {
@@ -6585,7 +6585,7 @@ export interface operations {
             };
         };
     };
-    api_local_capture_api_paid_matrix_local_capture_post: {
+    api_issue_local_capture_token_api_paid_matrix_local_capture_task_token_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -6594,7 +6594,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["LocalCaptureRequest"];
+                "application/json": components["schemas"]["LocalCaptureTokenRequest"];
             };
         };
         responses: {
