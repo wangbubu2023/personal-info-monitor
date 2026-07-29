@@ -177,7 +177,7 @@ def test_install_service_reenables_and_bootstraps_launchagent(monkeypatch, tmp_p
     monkeypatch.setattr(pim, "LOG_FILE", log_file)
     monkeypatch.setattr(pim, "PLIST_PATH", plist_path)
     monkeypatch.setattr(pim.os, "getuid", lambda: 501)
-    monkeypatch.setattr(pim, "_wait_for_launchctl_unloaded", lambda _target: True)
+    monkeypatch.setattr(pim, "wait_for_launchctl_unloaded", lambda _target: True)
 
     def fake_run(cmd, **kwargs):
         calls.append((cmd, kwargs))
@@ -211,7 +211,7 @@ def test_install_service_stops_when_launchagent_cannot_be_enabled(monkeypatch, t
         tmp_path / "LaunchAgents" / "com.pim.server.plist",
     )
     monkeypatch.setattr(pim.os, "getuid", lambda: 501)
-    monkeypatch.setattr(pim, "_wait_for_launchctl_unloaded", lambda _target: True)
+    monkeypatch.setattr(pim, "wait_for_launchctl_unloaded", lambda _target: True)
 
     def fake_run(cmd, **kwargs):
         return subprocess.CompletedProcess(
@@ -246,7 +246,7 @@ def test_wait_for_launchctl_unloaded_polls_until_service_disappears(monkeypatch)
     monkeypatch.setattr(pim.subprocess, "run", fake_run)
     monkeypatch.setattr(pim.time, "sleep", lambda _seconds: None)
 
-    assert pim._wait_for_launchctl_unloaded("gui/501/com.pim.server") is True
+    assert pim.wait_for_launchctl_unloaded("gui/501/com.pim.server") is True
     assert len(calls) == 3
 
 

@@ -76,6 +76,8 @@ interface OpenLoginFormValues {
   bootstrap_auth_cookies: boolean
 }
 
+const getErrorDetail = (error: unknown): string | undefined =>
+  (error as { response?: { data?: { detail?: string } } })?.response?.data?.detail
 const CredentialsTab: React.FC = () => {
   const queryClient = useQueryClient()
 
@@ -145,10 +147,7 @@ const CredentialsTab: React.FC = () => {
       setOpeningSession(null)
     },
     onError: (err: unknown) => {
-      const detail =
-        typeof err === 'object' && err && 'response' in err
-          ? ((err as any).response?.data?.detail as string | undefined)
-          : undefined
+      const detail = getErrorDetail(err)
       message.error(detail || '登录窗口打开失败，请查看后端日志')
     },
   })
@@ -171,10 +170,7 @@ const CredentialsTab: React.FC = () => {
       })
     },
     onError: (err: unknown) => {
-      const detail =
-        typeof err === 'object' && err && 'response' in err
-          ? ((err as any).response?.data?.detail as string | undefined)
-          : undefined
+      const detail = getErrorDetail(err)
       message.error(detail || '创建失败')
     },
   })
@@ -193,10 +189,7 @@ const CredentialsTab: React.FC = () => {
       }
     },
     onError: (err: unknown) => {
-      const detail =
-        typeof err === 'object' && err && 'response' in err
-          ? ((err as any).response?.data?.detail as string | undefined)
-          : undefined
+      const detail = getErrorDetail(err)
       message.error(detail || '校验失败')
     },
   })
@@ -222,10 +215,7 @@ const CredentialsTab: React.FC = () => {
       }
     },
     onError: (err: unknown) => {
-      const detail =
-        typeof err === 'object' && err && 'response' in err
-          ? ((err as any).response?.data?.detail as string | undefined)
-          : undefined
+      const detail = getErrorDetail(err)
       message.error(detail || '绑定失败')
     },
   })
@@ -303,7 +293,7 @@ const CredentialsTab: React.FC = () => {
       message.success(parts.length ? `已删除（${parts.join('，')}）` : '已删除')
     },
     onError: (error: unknown) => {
-      const detail = (error as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+      const detail = getErrorDetail(error)
       message.error(detail ? `删除失败：${detail}` : '删除失败')
     },
   })

@@ -54,6 +54,7 @@ ROOT = Path(__file__).resolve().parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 from cli.pimctl.bootstrap_url import BootstrapUrlError, build_bootstrap_url, resolve_bootstrap_host
+from cli.pimctl.launch_agent import LaunchAgentError, install_launch_agent, wait_for_launchctl_unloaded
 
 BACKEND = ROOT / "backend"
 FRONTEND = ROOT / "frontend"
@@ -1464,22 +1465,6 @@ def cmd_service_run():
     ], env)
 
 
-def _wait_for_launchctl_unloaded(target: str, *, timeout: float = 5.0) -> bool:
-    """Wait until launchd no longer exposes ``target`` after a bootout."""
-    deadline = time.monotonic() + max(0.0, timeout)
-    while True:
-        result = subprocess.run(
-            ["launchctl", "print", target],
-            capture_output=True,
-            text=True,
-        )
-        if result.returncode != 0:
-            return True
-        if time.monotonic() >= deadline:
-            return False
-        time.sleep(0.05)
-
-
 def cmd_install_service():
     """Install (or reinstall) a macOS LaunchAgent that keeps PIM running in the background.
 
@@ -1495,20 +1480,6 @@ def cmd_install_service():
     launchctl_domain = f"gui/{os.getuid()}"
     launchctl_target = f"{launchctl_domain}/{PLIST_NAME}"
 
-    # Remove any currently loaded copy before overwriting. ``bootout`` is the
-    # supported modern launchctl API and does not leave the label in an
-    # ambiguous legacy-load state.
-    bootout = subprocess.run(
-        ["launchctl", "bootout", launchctl_target],
-        capture_output=True,
-        text=True,
-    )
-    if bootout.returncode == 0 and not _wait_for_launchctl_unloaded(launchctl_target):
-        print("Timed out waiting for the previous LaunchAgent instance to stop.", file=sys.stderr)
-        sys.exit(1)
-
-    # The plist calls `./pim service-run` which exec()s uvicorn in the foreground.
-    # launchd therefore owns the uvicorn process directly and KeepAlive works correctly.
     plist_content = f"""<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
   "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -1539,44 +1510,21 @@ def cmd_install_service():
 """
     PLIST_PATH.write_text(plist_content, encoding="utf-8")
 
-    # A label can remain persistently disabled even after its plist is
-    # recreated. Re-enable it explicitly before bootstrap; otherwise the
-    # legacy ``launchctl load`` command can print an I/O error while still
-    # returning success, causing ``pim up`` to claim the service is running.
-    enabled = subprocess.run(
-        ["launchctl", "enable", launchctl_target],
-        capture_output=True,
-        text=True,
-    )
-    if enabled.returncode != 0:
-        detail = (enabled.stderr or enabled.stdout or "").strip()
-        print(f"launchctl enable failed: {detail or 'unknown error'}", file=sys.stderr)
-        sys.exit(1)
-
-    result = subprocess.run(
-        ["launchctl", "bootstrap", launchctl_domain, str(PLIST_PATH)],
-        capture_output=True,
-        text=True,
-    )
-    if result.returncode != 0:
-        detail = (result.stderr or result.stdout or "").strip()
-        print(f"launchctl bootstrap failed: {detail or 'unknown error'}", file=sys.stderr)
-        sys.exit(1)
-
-    verified = subprocess.run(
-        ["launchctl", "print", launchctl_target],
-        capture_output=True,
-        text=True,
-    )
-    if verified.returncode != 0:
-        detail = (verified.stderr or verified.stdout or "").strip()
-        print(f"LaunchAgent bootstrap could not be verified: {detail or 'unknown error'}", file=sys.stderr)
+    try:
+        install_launch_agent(
+            launchctl_domain=launchctl_domain,
+            launchctl_target=launchctl_target,
+            plist_path=PLIST_PATH,
+            run=subprocess.run,
+            wait_for_unloaded=wait_for_launchctl_unloaded,
+        )
+    except LaunchAgentError as exc:
+        print(str(exc), file=sys.stderr)
         sys.exit(1)
 
     print(f"LaunchAgent installed: {PLIST_PATH}")
     print("PIM is now running in the background and will auto-start on login.")
-    print(f"Logs: {LOG_FILE}")
-    print("To stop: ./pim uninstall-service")
+    print(f"Logs: {LOG_FILE}\nTo stop: ./pim uninstall-service")
 
 
 def cmd_uninstall_service():

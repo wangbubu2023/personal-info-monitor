@@ -8,6 +8,7 @@
     "build": "tsc && vite build",
     "test": "vitest run",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
+    "audit:production": "node scripts/check-production-audit.mjs",
     "generate:api-types": "openapi-typescript src/types/openapi.json -o src/types/api.ts",
     "check:api-types": "npm run generate:api-types && git diff --exit-code -- src/types/api.ts",
     "preview": "vite preview",

@@ -165,7 +165,7 @@ jobs:
         run: cd frontend && npm run e2e
 
       - name: Audit production dependencies
-        run: cd frontend && npm audit --omit=dev
+        run: cd frontend && npm run audit:production
 
   auth-assistant:
     name: Auth Assistant Build & Test
