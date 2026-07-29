@@ -1,6 +1,6 @@
 [package]
 name = "pim-auth-assistant-tauri"
-version = "1.7.0"
+version = "1.7.1"
 description = "PIM Auth Assistant desktop companion"
 authors = ["Personal Info Monitor"]
 edition = "2021"

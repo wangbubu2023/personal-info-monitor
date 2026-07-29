@@ -2,9 +2,16 @@
 
 > 本地优先的个人资讯监控系统。PIM 把 RSS、网站、X、YouTube、Podcast 等来源统一抓取、去重、评分、摘要和归档，并提供 Web UI、桌面端、`pimctl` CLI 与远程部署运维能力。
 
-当前版本：**1.7.0**
+当前版本：**1.7.1**
 
 > 分支提示：`main` 暂时冻结原子库产品入口；原子库相关能力保留在 `dev` 分支继续探索，详见 [`docs/ATOM_FREEZE_MAIN.md`](docs/ATOM_FREEZE_MAIN.md)。
+
+## 1.7.1 重点
+
+- **M0–M4 工程审计与加固**：补齐 Local Capture 安全 envelope、Auth ZIP 导入、Topic/Brief lineage、付费来源过滤与 `0039` 迁移，并对仍缺产品闭环的能力保持诚实标注。
+- **Web Clean 可靠性与可解释性**：增强 HTML 标准化、结构化抽取、有界 Shadow DOM、Markdown 持久化、抓取诊断和模板/过滤器安全边界。
+- **发布证据 fail-closed**：新增 Formal/Shadow runner、HMAC provenance、输入哈希绑定与统一 release gate；缺正式数据、7 天 Shadow 或审批时继续给出 `NO_GO`。
+- **审计证据可追溯**：保存双代理原始报告、补丁、修正记录和独立验收报告，方便后续复核实现与未验证风险。
 
 ## 1.7.0 重点
 
@@ -366,10 +373,10 @@ cd backend
 然后提交、打 tag，并创建 GitHub Release。Web 更新检查依赖 GitHub Releases 的 `latest` 端点，仅推 tag 不会触发“发现新版本”提示。
 
 ```bash
-git commit -m "release: 1.7.0"
-git tag -a v1.7.0 -m "Release 1.7.0"
-git push origin main v1.7.0
-gh release create v1.7.0 --title "v1.7.0" --notes-file /tmp/pim-release-notes.md
+git commit -m "release: 1.7.1"
+git tag -a v1.7.1 -m "Release 1.7.1"
+git push origin main v1.7.1
+gh release create v1.7.1 --title "v1.7.1" --notes-file /tmp/pim-release-notes.md
 ```
 
 发布 GitHub Release 后，`Release Auth Assistant for macOS` workflow 会构建 arm64 DMG、使用

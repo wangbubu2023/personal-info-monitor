@@ -4463,7 +4463,7 @@
   "info": {
     "description": "个人化资讯监控管理系统 API",
     "title": "Personal Information Monitor",
-    "version": "1.7.0"
+    "version": "1.7.1"
   },
   "openapi": "3.1.0",
   "paths": {
