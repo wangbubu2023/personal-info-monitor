@@ -67,6 +67,8 @@ export interface ReaderPayload {
   publish_time?: string
   read_status?: boolean
   favorited?: boolean
+  tags?: string[]
+  lane?: string | null
   body_raw: string
   body_zh: string
   translation_requested?: boolean
@@ -242,6 +244,11 @@ export const contentsApi = {
   /** Set favorite explicitly (idempotent). Pass desired state after reading current item. */
   setFavorite: async (id: string, favorited: boolean): Promise<{ favorited: boolean }> => {
     const response = await api.patch(`/contents/${id}/favorite`, { favorited })
+    return response.data
+  },
+
+  setTags: async (id: string, tags: string[]): Promise<{ tags: string[] }> => {
+    const response = await api.patch(`/contents/${id}/tags`, { tags })
     return response.data
   },
 

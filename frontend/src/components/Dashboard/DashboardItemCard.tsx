@@ -14,7 +14,8 @@ import { motion } from 'framer-motion';
 import { KEYWORD_MONITORING_ENABLED } from '../../config/features';
 import { contentsApi } from '../../services/contents';
 import type { DigestItem } from '../../types';
-import ContentInlineAnnotation from '../annotations/ContentInlineAnnotation';
+import { contentTagKeysFromMetadata } from '../../config/contentTags';
+import ContentTagEditor from '../content/ContentTagEditor';
 import {
   buildDashboardSourcePath,
   buildReaderPath,
@@ -235,6 +236,8 @@ const DashboardItemCard: React.FC<DashboardItemCardProps> = ({
           </p>
         ) : null}
 
+        <ContentTagEditor tags={contentTagKeysFromMetadata(item.metadata)} compact />
+
         <div className="flex flex-wrap items-center gap-2 pt-0.5">
           <button
             type="button"
@@ -259,16 +262,6 @@ const DashboardItemCard: React.FC<DashboardItemCardProps> = ({
             <EyeOff size={13} />
             不重要
           </button>
-        </div>
-
-        <div className="border-t border-[rgba(88,100,118,0.08)] pt-2.5">
-          <ContentInlineAnnotation
-            contentId={item.id}
-            title={item.translated_title || item.title}
-            summary={displayPreview}
-            predictedLane={typeof item.metadata?.lane === 'string' ? item.metadata.lane : null}
-            compact
-          />
         </div>
 
         {hasKeywords && (

@@ -12,17 +12,64 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.interfaces.http.content_shared import _serialize_content
+from app import features
 from app.database import get_async_db
+from app.domains.eval.annotation_recording import (
+    AnnotationTaskImmutableError,
+    record_annotation_label,
+    retract_annotation_task,
+)
 from app.domains.events.personal_state import record_report_interaction_from_content
 from app.domains.ingest.visibility import visible_content_clause
+from app.domains.score.content_tags import content_annotation_context, effective_content_tags
+from app.domains.score.score_vocab import VALID_LANES
 from app.models import Content, ContentEvent, ContentEventMembership, EventMembershipV1, Source
-from app.schemas.content import ContentListResponse, ContentResponse, ContentUpdate, FavoriteBody
+from app.schemas.content import (
+    ContentListResponse,
+    ContentResponse,
+    ContentTagsUpdate,
+    ContentUpdate,
+    FavoriteBody,
+)
 from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
 router = APIRouter()
 MAX_CONTENTS_PAGE_SIZE = 200
+
+
+async def _sync_content_value_annotation(db: AsyncSession, content: Content) -> None:
+    if not features.inline_annotations_enabled():
+        return
+    try:
+        if content.archived:
+            value = "noise"
+        elif content.favorited:
+            value = "must_see"
+        else:
+            await retract_annotation_task(
+                db,
+                task_type="content_value",
+                target_type="content",
+                target_id=str(content.id),
+            )
+            return
+        await record_annotation_label(
+            db,
+            task_type="content_value",
+            target_type="content",
+            target_id=str(content.id),
+            label_payload={"value": value},
+            context_snapshot=content_annotation_context(content),
+            prediction_snapshot={
+                "tags": effective_content_tags(lane=content.lane, metadata=content.metadata_)
+            },
+            reason="product-action",
+        )
+    except AnnotationTaskImmutableError:
+        # Product actions must stay available after a label has become gold.
+        return
 
 
 def _safe_export_filename(title: str | None) -> str:
@@ -213,6 +260,9 @@ async def update_content(
                 evidence={"source": "contents.patch"},
             )
 
+    if any(event_type in {"star", "hide"} for event_type, _ in interaction_events):
+        await _sync_content_value_annotation(db, content)
+
     await db.commit()
     await db.refresh(content)
 
@@ -360,8 +410,49 @@ async def set_favorite(
         action_value=body.favorited,
         evidence={"source": "contents.favorite"},
     )
+    await _sync_content_value_annotation(db, content)
     await db.commit()
     return {"message": "Favorite updated", "favorited": content.favorited}
+
+
+@router.patch("/{content_id}/tags")
+async def set_content_tags(
+    content_id: UUID,
+    body: ContentTagsUpdate,
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Replace visible content tags while keeping Lane as an internal compatibility field."""
+    tags = list(dict.fromkeys(value.strip() for value in body.tags))
+    if len(tags) != len(body.tags) or any(value not in VALID_LANES for value in tags):
+        raise HTTPException(status_code=422, detail="Tags must be unique canonical values")
+    content = await db.scalar(select(Content).filter(Content.id == content_id))
+    if not content:
+        raise HTTPException(status_code=404, detail="Content not found")
+
+    metadata = dict(content.metadata_ or {})
+    previous_lane = content.lane or metadata.get("lane")
+    metadata["user_tags"] = tags
+    metadata["lane"] = tags[0]
+    metadata["lane_source"] = "user"
+    content.metadata_ = metadata
+    content.lane = tags[0]
+
+    if features.inline_annotations_enabled():
+        try:
+            await record_annotation_label(
+                db,
+                task_type="content_tags",
+                target_type="content",
+                target_id=str(content.id),
+                label_payload={"values": tags},
+                context_snapshot=content_annotation_context(content),
+                prediction_snapshot={"previous_lane": previous_lane},
+                reason="product-action",
+            )
+        except AnnotationTaskImmutableError:
+            pass
+    await db.commit()
+    return {"tags": effective_content_tags(lane=content.lane, metadata=content.metadata_)}
 
 
 @router.delete("/{content_id}")

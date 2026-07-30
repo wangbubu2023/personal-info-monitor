@@ -2,13 +2,14 @@ import React, { useEffect, useState } from 'react'
 import { ArrowLeft, CheckCircle2, Loader2 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 
-import { LANE_CHOICES } from '../components/annotations/ContentInlineAnnotation'
+import { CONTENT_TAG_CHOICES } from '../config/contentTags'
 import { useRuntimeFeatures } from '../hooks/useRuntimeFeatures'
 import { annotationsApi, type AnnotationTaskItem } from '../services/annotations'
 
 const TASK_LABELS: Record<string, string> = {
   content_relevance: '内容相关性',
   content_quality: '内容质量',
+  content_format_quality: '格式质量',
   content_fact_density: '事实密度',
   content_lane: '内容分类',
   event_correctness: '事件卡正确性',
@@ -30,13 +31,18 @@ const TASK_CHOICES: Record<string, Array<{ value: string; label: string }>> = {
     { value: 'low', label: '低' },
     { value: 'unclear', label: '不确定' },
   ],
+  content_format_quality: [
+    { value: 'high', label: '高' },
+    { value: 'medium', label: '中' },
+    { value: 'low', label: '低' },
+  ],
   content_fact_density: [
     { value: 'dense', label: '密集' },
     { value: 'moderate', label: '适中' },
     { value: 'sparse', label: '稀少' },
     { value: 'unclear', label: '不确定' },
   ],
-  content_lane: LANE_CHOICES,
+  content_lane: CONTENT_TAG_CHOICES.map(([value, label]) => ({ value, label })),
   event_correctness: [
     { value: 'correct', label: '准确' },
     { value: 'partial', label: '部分准确' },

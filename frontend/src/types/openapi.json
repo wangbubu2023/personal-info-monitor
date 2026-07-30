@@ -447,6 +447,11 @@
             "title": "Pending",
             "type": "integer"
           },
+          "retracted": {
+            "default": 0,
+            "title": "Retracted",
+            "type": "integer"
+          },
           "total": {
             "default": 0,
             "title": "Total",
@@ -1998,6 +2003,25 @@
           "updated_at"
         ],
         "title": "ContentResponse",
+        "type": "object"
+      },
+      "ContentTagsUpdate": {
+        "description": "Replace the user-facing canonical tags for a content item.",
+        "properties": {
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 4,
+            "minItems": 1,
+            "title": "Tags",
+            "type": "array"
+          }
+        },
+        "required": [
+          "tags"
+        ],
+        "title": "ContentTagsUpdate",
         "type": "object"
       },
       "ContentUpdate": {
@@ -10234,6 +10258,63 @@
           }
         ],
         "summary": "Stream Reader Translation",
+        "tags": [
+          "contents"
+        ]
+      }
+    },
+    "/api/contents/{content_id}/tags": {
+      "patch": {
+        "description": "Replace visible content tags while keeping Lane as an internal compatibility field.",
+        "operationId": "set_content_tags_api_contents__content_id__tags_patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "content_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Content Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ContentTagsUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Set Content Tags",
         "tags": [
           "contents"
         ]

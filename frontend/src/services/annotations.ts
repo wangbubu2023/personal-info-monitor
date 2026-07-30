@@ -41,6 +41,7 @@ export interface AnnotationStats {
   needs_adjudication: number
   labeled: number
   adjudicated: number
+  retracted: number
   total: number
   by_task_type: Record<string, number>
 }
@@ -51,7 +52,7 @@ export interface SubmitAnnotationLabel {
   target_id: string
   secondary_target_id?: string
   schema_version?: string
-  label_payload: { value: string; [key: string]: unknown }
+  label_payload: ({ value: string } | { values: string[] }) & Record<string, unknown>
   note?: string
   confidence?: number
   annotator?: string

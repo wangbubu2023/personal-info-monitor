@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from app import features
+from app.database import get_async_db
 from app.domains.atoms.atomizer import atomize_content_async
 from app.domains.atoms.backfill import get_backfill_job, start_backfill
 from app.domains.atoms.reconcile import get_reconcile_job, start_relations_reconcile
@@ -12,6 +15,10 @@ from app.domains.atoms.relations_repository import (
     default_atom_relations_repository,
 )
 from app.domains.atoms.repository import AtomListFilters, default_atom_repository
+from app.domains.eval.annotation_recording import (
+    AnnotationTaskImmutableError,
+    record_annotation_label,
+)
 from app.domains.atoms.types import (
     AtomBackfillRequest,
     AtomBackfillResponse,
@@ -230,20 +237,75 @@ def create_atom(body: AtomCreate) -> AtomRecord:
 
 
 @router.patch("/{atom_id}", response_model=AtomRecord)
-def update_atom(atom_id: str, body: AtomUpdate) -> AtomRecord:
+async def update_atom(
+    atom_id: str,
+    body: AtomUpdate,
+    db: AsyncSession = Depends(get_async_db),
+) -> AtomRecord:
     _require_atoms_enabled()
     record = default_atom_repository().update_atom(atom_id, body)
     if record is None:
         raise HTTPException(status_code=404, detail="Atom not found")
+    if features.inline_annotations_enabled():
+        try:
+            await record_annotation_label(
+                db,
+                task_type="atom_validity",
+                target_type="atom",
+                target_id=record.atom_id,
+                label_payload={"value": "partial"},
+                context_snapshot={
+                    "source_sentence": record.source_sentence,
+                    "payload": record.payload,
+                    "atom_type": record.atom_type,
+                    "domain": record.domain,
+                    "content_id": record.content_id,
+                },
+                prediction_snapshot={
+                    "fact_confidence": record.fact_confidence,
+                    "verified": record.verified,
+                },
+                reason="product-action",
+            )
+            await db.commit()
+        except AnnotationTaskImmutableError:
+            pass
     return record
 
 
 @router.post("/{atom_id}/verify", response_model=AtomRecord)
-def verify_atom(atom_id: str) -> AtomRecord:
+async def verify_atom(
+    atom_id: str,
+    db: AsyncSession = Depends(get_async_db),
+) -> AtomRecord:
     _require_atoms_enabled()
     record = default_atom_repository().update_atom(atom_id, AtomUpdate(verified=True))
     if record is None:
         raise HTTPException(status_code=404, detail="Atom not found")
+    if features.inline_annotations_enabled():
+        try:
+            await record_annotation_label(
+                db,
+                task_type="atom_validity",
+                target_type="atom",
+                target_id=record.atom_id,
+                label_payload={"value": "valid"},
+                context_snapshot={
+                    "source_sentence": record.source_sentence,
+                    "payload": record.payload,
+                    "atom_type": record.atom_type,
+                    "domain": record.domain,
+                    "content_id": record.content_id,
+                },
+                prediction_snapshot={
+                    "fact_confidence": record.fact_confidence,
+                    "verified": True,
+                },
+                reason="product-action",
+            )
+            await db.commit()
+        except AnnotationTaskImmutableError:
+            pass
     return record
 
 

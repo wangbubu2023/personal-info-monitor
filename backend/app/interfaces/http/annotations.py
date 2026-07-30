@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -12,6 +11,10 @@ from sqlalchemy.orm import selectinload
 
 from app import features
 from app.domains.score.score_vocab import VALID_LANES
+from app.domains.eval.annotation_recording import (
+    AnnotationTaskImmutableError,
+    record_annotation_label,
+)
 from app.models import AnnotationAdjudication, AnnotationLabel, AnnotationTask
 from app.platform.persistence.database import get_async_db
 from app.schemas.annotations import (
@@ -32,8 +35,10 @@ _TASK_TARGETS: dict[str, str] = {
     "content_value": "content",
     "content_relevance": "content",
     "content_quality": "content",
+    "content_format_quality": "content",
     "content_fact_density": "content",
     "content_lane": "content",
+    "content_tags": "content",
     "event_correctness": "event",
     "event_membership": "event",
     "event_pair_relation": "event_pair",
@@ -45,6 +50,7 @@ _TASK_VALUES: dict[str, frozenset[str]] = {
     "content_value": frozenset({"must_see", "ok", "noise"}),
     "content_relevance": frozenset({"high", "medium", "low", "unclear"}),
     "content_quality": frozenset({"high", "medium", "low", "unclear"}),
+    "content_format_quality": frozenset({"high", "medium", "low"}),
     "content_fact_density": frozenset({"dense", "moderate", "sparse", "unclear"}),
     "content_lane": frozenset(VALID_LANES),
     "event_correctness": frozenset({"correct", "partial", "incorrect", "unclear"}),
@@ -62,17 +68,6 @@ def require_development_annotations() -> None:
         raise HTTPException(status_code=404, detail="Inline annotations are available only in development profile")
 
 
-def _fingerprint(body: AnnotationLabelCreate) -> str:
-    raw = "\x1f".join(
-        (
-            body.target_type,
-            body.target_id.strip(),
-            (body.secondary_target_id or "").strip(),
-        )
-    )
-    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
-
-
 def _validate_label(task_type: str, target_type: str, payload: dict[str, Any]) -> None:
     expected_target = _TASK_TARGETS.get(task_type)
     if expected_target is None:
@@ -82,6 +77,20 @@ def _validate_label(task_type: str, target_type: str, payload: dict[str, Any]) -
             status_code=422,
             detail=f"{task_type} requires target_type={expected_target}",
         )
+    if task_type == "content_tags":
+        values = payload.get("values")
+        valid = (
+            isinstance(values, list)
+            and 1 <= len(values) <= 4
+            and len(values) == len(set(values))
+            and all(isinstance(value, str) and value in VALID_LANES for value in values)
+        )
+        if not valid:
+            raise HTTPException(
+                status_code=422,
+                detail="content_tags requires 1-4 unique canonical tag values",
+            )
+        return
     value = payload.get("value")
     if value not in _TASK_VALUES[task_type]:
         allowed = ", ".join(sorted(_TASK_VALUES[task_type]))
@@ -139,67 +148,24 @@ async def submit_annotation_label(
     task_type = body.task_type.strip()
     target_id = body.target_id.strip()
     _validate_label(task_type, body.target_type, body.label_payload)
-    fingerprint = _fingerprint(body)
-    statement = (
-        select(AnnotationTask)
-        .options(selectinload(AnnotationTask.labels))
-        .where(
-            AnnotationTask.task_type == task_type,
-            AnnotationTask.target_fingerprint == fingerprint,
-            AnnotationTask.schema_version == body.schema_version,
-        )
-    )
-    task = (await db.execute(statement)).scalar_one_or_none()
-    now = utcnow_naive()
-    if task is None:
-        task = AnnotationTask(
+    try:
+        label, task = await record_annotation_label(
+            db,
             task_type=task_type,
             target_type=body.target_type,
             target_id=target_id,
-            secondary_target_id=(body.secondary_target_id or "").strip() or None,
-            target_fingerprint=fingerprint,
+            secondary_target_id=body.secondary_target_id,
             schema_version=body.schema_version,
-            status="labeled",
-            reason="inline-consumption",
+            label_payload=body.label_payload,
+            note=body.note,
+            confidence=body.confidence,
+            annotator=body.annotator,
             context_snapshot=body.context_snapshot,
             prediction_snapshot=body.prediction_snapshot,
-            created_at=now,
-            updated_at=now,
+            independent=body.independent,
         )
-        db.add(task)
-        await db.flush()
-        previous = None
-    else:
-        if task.status == "adjudicated":
-            raise HTTPException(status_code=409, detail="Adjudicated tasks are immutable")
-        previous = task.labels[-1] if task.labels else None
-        if (
-            previous is not None
-            and previous.label_payload == body.label_payload
-            and (previous.note or "") == (body.note or "")
-            and not body.independent
-        ):
-            return _label_item(previous, task)
-        if body.context_snapshot and not task.context_snapshot:
-            task.context_snapshot = body.context_snapshot
-        if body.prediction_snapshot and not task.prediction_snapshot:
-            task.prediction_snapshot = body.prediction_snapshot
-        task.updated_at = now
-
-    label = AnnotationLabel(
-        task_id=task.id,
-        annotator=body.annotator.strip(),
-        label_payload=body.label_payload,
-        note=(body.note or "").strip() or None,
-        confidence=body.confidence,
-        supersedes_id=None if body.independent or previous is None else previous.id,
-        created_at=now,
-    )
-    db.add(label)
-    if body.independent and previous is not None and previous.label_payload != body.label_payload:
-        task.status = "needs_adjudication"
-    else:
-        task.status = "labeled"
+    except AnnotationTaskImmutableError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     await db.commit()
     await db.refresh(label)
     return _label_item(label, task)
@@ -333,6 +299,7 @@ async def get_annotation_stats(db: AsyncSession = Depends(get_async_db)) -> Anno
         needs_adjudication=statuses.get("needs_adjudication", 0),
         labeled=statuses.get("labeled", 0),
         adjudicated=statuses.get("adjudicated", 0),
+        retracted=statuses.get("retracted", 0),
         total=total,
         by_task_type={str(task_type): int(count) for task_type, count in type_rows},
     )

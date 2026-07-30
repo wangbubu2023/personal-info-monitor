@@ -32,6 +32,7 @@ from app.interfaces.http.content_shared import (
 )
 from app.database import get_async_db
 from app.domains.events.personal_state import record_report_interaction_from_content
+from app.domains.score.content_tags import effective_content_tags
 from app.models import Content
 from app.domains.enrich.reader import body_loader as _body_loader
 from app.domains.enrich.reader import streaming as _streaming
@@ -260,6 +261,8 @@ async def get_reader_payload(
         "publish_time": content.publish_time.isoformat() if content.publish_time else None,
         "read_status": content.read_status,
         "favorited": content.favorited,
+        "tags": effective_content_tags(lane=content.lane, metadata=content.metadata_),
+        "lane": content.lane,
         "body_raw": body_raw,
         "body_zh": display_body,
         "translation_requested": translate,

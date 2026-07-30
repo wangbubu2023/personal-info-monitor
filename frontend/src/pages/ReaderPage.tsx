@@ -22,6 +22,7 @@ import { type ReaderBlock } from '../services/contents';
 import { getReaderNeighbor, recordReaderInteraction } from '../utils/readerFlow';
 import { getReaderLayoutProfile, type ReaderLayoutProfile } from '../utils/readerLayout';
 import ContentInlineAnnotation from '../components/annotations/ContentInlineAnnotation';
+import ContentTagEditor from '../components/content/ContentTagEditor';
 
 function safeHttpUrl(value?: string): string {
   if (!value) return '';
@@ -354,6 +355,8 @@ const ReaderPage: React.FC = () => {
               </div>
               <div className="flex items-center gap-1.5">发布 {data.publish_time || '—'}</div>
             </div>
+
+            <ContentTagEditor contentId={data.id} tags={data.tags || (data.lane ? [data.lane] : [])} editable />
 
             <div className="flex flex-wrap items-center justify-between gap-3 border-y border-[rgba(88,100,118,0.12)] py-4">
               <div className="flex flex-wrap items-center gap-2">

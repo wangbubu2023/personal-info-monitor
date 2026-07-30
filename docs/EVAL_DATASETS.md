@@ -131,4 +131,8 @@ uv run python scripts/run_formal_eval.py
 `docs/DEVELOPMENT_PROFILE.md`。明确的人审标签与必要裁决可通过
 `backend/scripts/export_annotation_eval.py` 导出为带 manifest 的版本化评测资产。
 
+当前持续积累的增量信号包括：内容价值（正式的“重要/不重要”）、内容质量、格式质量、
+内容 Tag、Event 误合/漏合，以及 Atom 编辑/核验。未进行价值操作的内容自然视为一般，
+但不会写入显式 `ok` 标签。
+
 这些源文件不被生成脚本修改。每个生成集的 manifest 都记录源文件 hash、数据集 hash、当前 Git commit、评分版本、标注人和已知限制。

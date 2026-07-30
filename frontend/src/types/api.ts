@@ -1142,6 +1142,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/contents/{content_id}/tags": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Set Content Tags
+         * @description Replace visible content tags while keeping Lane as an internal compatibility field.
+         */
+        patch: operations["set_content_tags_api_contents__content_id__tags_patch"];
+        trace?: never;
+    };
     "/api/dashboard/stats": {
         parameters: {
             query?: never;
@@ -2940,6 +2960,11 @@ export interface components {
              */
             pending: number;
             /**
+             * Retracted
+             * @default 0
+             */
+            retracted: number;
+            /**
              * Total
              * @default 0
              */
@@ -3558,6 +3583,14 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+        };
+        /**
+         * ContentTagsUpdate
+         * @description Replace the user-facing canonical tags for a content item.
+         */
+        ContentTagsUpdate: {
+            /** Tags */
+            tags: string[];
         };
         /**
          * ContentUpdate
@@ -7438,6 +7471,41 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_content_tags_api_contents__content_id__tags_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                content_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ContentTagsUpdate"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {

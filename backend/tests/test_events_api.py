@@ -197,7 +197,8 @@ async def test_today_highlights_apply_active_user_rules(client, db_session):
 
 
 @pytest.mark.asyncio
-async def test_event_detail_returns_timeline_snapshots_and_feedback(client, db_session):
+async def test_event_detail_returns_timeline_snapshots_and_feedback(client, db_session, monkeypatch):
+    monkeypatch.setenv("PIM_RUNTIME_PROFILE", "development")
     source = Source(name="Official", type=SourceType.WEBSITE, url="https://official.example.com")
     event_id = stable_event_id("event:stable")
     content_a = Content(
@@ -257,6 +258,14 @@ async def test_event_detail_returns_timeline_snapshots_and_feedback(client, db_s
         json={"type": "event_wrong_merge", "content_id": str(content_a.id), "note": "不是同一事件"},
     )
     assert feedback_response.status_code == 200
+    annotation_response = await client.get(f"/api/annotations/targets/event/{event_id}")
+    assert annotation_response.status_code == 200
+    correctness = next(
+        item
+        for item in annotation_response.json()["items"]
+        if item["task_type"] == "event_correctness"
+    )
+    assert correctness["latest_label"]["label_payload"] == {"value": "incorrect"}
 
     detail_response = await client.get(f"/api/events/{event_id}")
 

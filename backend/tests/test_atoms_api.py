@@ -98,6 +98,41 @@ async def test_atoms_list_and_get(atoms_api_env, seeded_atoms):
 
 
 @pytest.mark.asyncio
+async def test_atom_edit_and_verify_feed_validity_annotations(
+    atoms_api_env,
+    seeded_atoms,
+    monkeypatch,
+):
+    client, _factory = atoms_api_env
+    atom_id, _content_id = seeded_atoms
+    monkeypatch.setenv("PIM_RUNTIME_PROFILE", "development")
+
+    current = (await client.get(f"/api/atoms/{atom_id}")).json()
+    edited = await client.patch(
+        f"/api/atoms/{atom_id}",
+        json={"payload": current["payload"]},
+    )
+    assert edited.status_code == 200
+    annotation = await client.get(f"/api/annotations/targets/atom/{atom_id}")
+    validity = next(
+        item
+        for item in annotation.json()["items"]
+        if item["task_type"] == "atom_validity"
+    )
+    assert validity["latest_label"]["label_payload"] == {"value": "partial"}
+
+    verified = await client.post(f"/api/atoms/{atom_id}/verify")
+    assert verified.status_code == 200
+    annotation = await client.get(f"/api/annotations/targets/atom/{atom_id}")
+    validity = next(
+        item
+        for item in annotation.json()["items"]
+        if item["task_type"] == "atom_validity"
+    )
+    assert validity["latest_label"]["label_payload"] == {"value": "valid"}
+
+
+@pytest.mark.asyncio
 async def test_relations_crud(atoms_api_env, seeded_atoms):
     client, factory = atoms_api_env
     atom_a, content_id = seeded_atoms

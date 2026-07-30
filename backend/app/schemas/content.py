@@ -13,6 +13,12 @@ class FavoriteBody(BaseModel):
     favorited: bool
 
 
+class ContentTagsUpdate(BaseModel):
+    """Replace the user-facing canonical tags for a content item."""
+
+    tags: List[str] = Field(min_length=1, max_length=4)
+
+
 class ContentBase(BaseModel):
     """Base schema for Content."""
     

@@ -94,6 +94,51 @@ async def test_contents_crud_endpoints(client, db_session):
 
 
 @pytest.mark.asyncio
+async def test_formal_content_actions_and_tags_feed_annotations(client, db_session, monkeypatch):
+    monkeypatch.setenv("PIM_RUNTIME_PROFILE", "development")
+    _, content = await _seed_content(
+        db_session,
+        metadata={"lane": "company_news"},
+    )
+
+    important = await client.patch(
+        f"/api/contents/{content.id}/favorite",
+        json={"favorited": True},
+    )
+    assert important.status_code == 200
+    target = await client.get(f"/api/annotations/targets/content/{content.id}")
+    value_task = next(item for item in target.json()["items"] if item["task_type"] == "content_value")
+    assert value_task["latest_label"]["label_payload"] == {"value": "must_see"}
+
+    unimportant = await client.patch(
+        f"/api/contents/{content.id}",
+        json={"archived": True},
+    )
+    assert unimportant.status_code == 200
+    target = await client.get(f"/api/annotations/targets/content/{content.id}")
+    value_task = next(item for item in target.json()["items"] if item["task_type"] == "content_value")
+    assert value_task["latest_label"]["label_payload"] == {"value": "noise"}
+
+    tags = await client.patch(
+        f"/api/contents/{content.id}/tags",
+        json={"tags": ["macro_finance", "markets"]},
+    )
+    assert tags.status_code == 200
+    assert tags.json()["tags"] == ["macro_finance", "markets"]
+
+    reader = await client.get(f"/api/contents/{content.id}/reader")
+    assert reader.status_code == 200
+    assert reader.json()["tags"] == ["macro_finance", "markets"]
+    assert reader.json()["lane"] == "macro_finance"
+
+    target = await client.get(f"/api/annotations/targets/content/{content.id}")
+    tag_task = next(item for item in target.json()["items"] if item["task_type"] == "content_tags")
+    assert tag_task["latest_label"]["label_payload"] == {
+        "values": ["macro_finance", "markets"],
+    }
+
+
+@pytest.mark.asyncio
 async def test_contents_list_filters_by_source_id(client, db_session):
     source_a, content_a = await _seed_content(db_session, source_name="36kr", title="First article")
     await _seed_content(db_session, source_name="TechCrunch", title="Second article")

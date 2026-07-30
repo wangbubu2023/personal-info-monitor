@@ -92,5 +92,6 @@ class AnnotationStatsResponse(BaseModel):
     needs_adjudication: int = 0
     labeled: int = 0
     adjudicated: int = 0
+    retracted: int = 0
     total: int = 0
     by_task_type: dict[str, int] = Field(default_factory=dict)

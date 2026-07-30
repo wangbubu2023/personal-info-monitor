@@ -87,3 +87,17 @@ async def test_annotation_vocabulary_is_validated(client, monkeypatch):
     }
     response = await client.post("/api/annotations/labels", json=payload)
     assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_content_format_quality_uses_three_level_scale(client, monkeypatch):
+    monkeypatch.setenv("PIM_RUNTIME_PROFILE", "development")
+    payload = {
+        "task_type": "content_format_quality",
+        "target_type": "content",
+        "target_id": "content-format-1",
+        "label_payload": {"value": "medium"},
+    }
+    assert (await client.post("/api/annotations/labels", json=payload)).status_code == 200
+    payload["label_payload"] = {"value": "unclear"}
+    assert (await client.post("/api/annotations/labels", json=payload)).status_code == 422
