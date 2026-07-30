@@ -21,6 +21,7 @@ import PageLoading from '../components/common/PageLoading';
 import { type ReaderBlock } from '../services/contents';
 import { getReaderNeighbor, recordReaderInteraction } from '../utils/readerFlow';
 import { getReaderLayoutProfile, type ReaderLayoutProfile } from '../utils/readerLayout';
+import ContentInlineAnnotation from '../components/annotations/ContentInlineAnnotation';
 
 function safeHttpUrl(value?: string): string {
   if (!value) return '';
@@ -437,6 +438,14 @@ const ReaderPage: React.FC = () => {
             ) : (
               displayBlocks.map((block, index) => renderReaderBlock(block, index, layout))
             )}
+          </div>
+
+          <div className="mt-12">
+            <ContentInlineAnnotation
+              contentId={data.id}
+              title={displayTitle}
+              summary={(data.body_zh || data.body_raw || '').slice(0, 1200)}
+            />
           </div>
         </article>
       </div>

@@ -39,6 +39,14 @@ export default defineConfig({
       '/api': {
         target: process.env.VITE_API_URL || 'http://127.0.0.1:8000',
         changeOrigin: true,
+        // Node's dev proxy does not reliably preserve Fetch Metadata headers.
+        // The browser request to Vite is same-origin, so restore that signal
+        // for PIM's local Web-auth policy at the backend boundary.
+        configure: (proxy) => {
+          proxy.on('proxyReq', (proxyRequest) => {
+            proxyRequest.setHeader('sec-fetch-site', 'same-origin')
+          })
+        },
       },
       '/bootstrap': {
         target: process.env.VITE_API_URL || 'http://127.0.0.1:8000',

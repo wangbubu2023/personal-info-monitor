@@ -341,7 +341,10 @@ def test_bootstrap_url_outputs_one_click_fragment_without_raw_code_prompt(
     monkeypatch.setattr(
         pim.subprocess,
         "check_output",
-        lambda *_args, **_kwargs: "one-time-code+/=\n",
+        lambda *_args, **_kwargs: (
+            '{"logger":"alembic.runtime.migration","message":"Context impl SQLiteImpl."}\n'
+            "one-time-code+/=\n"
+        ),
     )
 
     pim.cmd_bootstrap_url()

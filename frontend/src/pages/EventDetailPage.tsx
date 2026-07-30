@@ -6,6 +6,7 @@ import { motion } from 'framer-motion'
 import { digestApi } from '../services/digest'
 import { formatLocalDateTime } from '../utils/datetime'
 import PageHeroTitle from '../components/common/PageHeroTitle'
+import InlineAnnotationChoices from '../components/annotations/InlineAnnotationChoices'
 
 const EventDetailPage: React.FC = () => {
   const { eventId = '' } = useParams()
@@ -95,6 +96,24 @@ const EventDetailPage: React.FC = () => {
                 <strong>为什么重要：</strong>{data.why_matters}
               </p>
             ) : null}
+            <InlineAnnotationChoices
+              taskType="event_correctness"
+              targetType="event"
+              targetId={data.event_id}
+              label="这张事件卡准确吗"
+              context={{
+                title: data.title,
+                summary: data.current_conclusion,
+                source_names: data.source_names,
+                member_ids: data.timeline.map((item) => item.content_id),
+              }}
+              choices={[
+                { value: 'correct', label: '准确' },
+                { value: 'partial', label: '部分准确' },
+                { value: 'incorrect', label: '错误' },
+                { value: 'unclear', label: '不确定' },
+              ]}
+            />
           </div>
 
           <section className="mt-7 grid gap-5 lg:grid-cols-[1.2fr_0.8fr]">

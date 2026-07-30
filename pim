@@ -18,6 +18,7 @@ Usage:
     ./pim install-service   Install macOS LaunchAgent (auto-starts on login, runs in background)
     ./pim uninstall-service Remove LaunchAgent and stop the service
     ./pim start             Start dev server (backend + frontend Vite :3000)
+    ./pim dev               Alias for local development profile with inline annotations
     ./pim start --prod      Start production server as background process (single :8000)
     ./pim ensure            Idempotently ensure the production server is healthy; start/restart if needed
     ./pim restart           Stop then start the production server
@@ -1147,6 +1148,7 @@ def cmd_start():
             print(f"  API Key: {_mask_secret(api_key)}")
 
         env = _service_env()
+        env["PIM_RUNTIME_PROFILE"] = "development"
         env["PIM_DEV_SERVER"] = "1"
         env["PIM_DEV_FRONTEND_URL"] = "http://127.0.0.1:3000"
 
@@ -1162,7 +1164,10 @@ def cmd_start():
         # Frontend dev server
         if (FRONTEND / "package.json").exists():
             frontend_env = env.copy()
-            frontend_env.setdefault("VITE_API_URL", "http://127.0.0.1:8000")
+            # Keep browser requests same-origin through Vite's /api and
+            # /bootstrap proxies. Direct cross-origin calls lose the local
+            # browser-auth signal and make an otherwise healthy dev UI appear
+            # unauthenticated.
             frontend_env.setdefault("PIM_DEV_HOST", "127.0.0.1")
             procs.append(subprocess.Popen(
                 ["npm", "run", "dev"],
@@ -1560,7 +1565,7 @@ def cmd_bootstrap_url():
         sys.exit(1)
 
     try:
-        code = subprocess.check_output(
+        raw_output = subprocess.check_output(
             [
                 _python(),
                 "-c",
@@ -1574,7 +1579,17 @@ def cmd_bootstrap_url():
             ],
             cwd=str(BACKEND),
             text=True,
-        ).strip()
+        )
+        # Alembic may emit migration log lines to stdout before the bootstrap
+        # code. The issuer always prints the single-use code last, so keep only
+        # the final non-empty line instead of accidentally embedding logs in
+        # the URL fragment.
+        code = next(
+            (line.strip() for line in reversed(raw_output.splitlines()) if line.strip()),
+            "",
+        )
+        if not code:
+            raise subprocess.SubprocessError("bootstrap issuer returned no code")
     except (OSError, subprocess.SubprocessError):
         print("Could not issue bootstrap code. Check backend configuration.", file=sys.stderr)
         sys.exit(1)
@@ -1655,6 +1670,7 @@ COMMANDS = {
     "setup": cmd_setup,
     "upgrade": cmd_upgrade,
     "start": cmd_start,
+    "dev": cmd_start,
     "ensure": cmd_ensure,
     "restart": cmd_restart,
     "stop": cmd_stop,

@@ -79,10 +79,33 @@ def test_fresh_sqlite_database_can_upgrade_to_head(tmp_path):
         brief_snapshot_columns = {
             row[1] for row in conn.execute("PRAGMA table_info(brief_snapshots)")
         }
+        annotation_task_columns = {
+            row[1] for row in conn.execute("PRAGMA table_info(annotation_tasks)")
+        }
     finally:
         conn.close()
 
-    assert revision == ("20260729_0039",)
+    assert revision == ("20260730_0040",)
+    assert {
+        "annotation_tasks",
+        "annotation_labels",
+        "annotation_adjudications",
+    } <= tables
+    assert {
+        "task_type",
+        "target_type",
+        "target_id",
+        "target_fingerprint",
+        "status",
+        "context_snapshot",
+        "prediction_snapshot",
+        "source_dataset",
+    } <= annotation_task_columns
+    assert {
+        "ix_annotation_tasks_status_type",
+        "ix_annotation_tasks_target",
+        "ix_annotation_labels_task_created",
+    } <= indexes
     assert "uq_local_capture_task_token_hash" in indexes
     assert {"modality_violation_count", "publication_status"} <= brief_snapshot_columns
     assert {

@@ -68,6 +68,10 @@ def get_runtime_features() -> Dict[str, Any]:
     from app import features as feat
 
     return {
+        "runtime_profile": feat.runtime_profile(),
+        "development_mode": feat.development_profile_enabled(),
+        "inline_annotations_enabled": feat.inline_annotations_enabled(),
+        "adjudication_queue_enabled": feat.inline_annotations_enabled(),
         "podcast_sources_enabled": feat.PODCAST_SOURCES_ENABLED,
         "keyword_monitoring_enabled": feat.KEYWORD_MONITORING_ENABLED,
         "playwright_enabled": feat.playwright_enabled(),
@@ -77,6 +81,7 @@ def get_runtime_features() -> Dict[str, Any]:
         "atoms_reconcile_enabled": feat.atoms_product_enabled() and feat.atoms_reconcile_enabled(),
         "atoms_knowledge_enabled": feat.atoms_product_enabled() and feat.atoms_knowledge_enabled(),
         "atoms_frozen": not feat.atoms_product_enabled(),
+        "atoms_surface_enabled": feat.atoms_product_enabled(),
     }
 
 

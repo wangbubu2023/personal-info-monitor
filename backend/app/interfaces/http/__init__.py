@@ -9,10 +9,12 @@ remains importable from either path while callers (``app.main``, tests,
 external operator scripts) migrate one at a time.
 """
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 
 from app.interfaces.http import (
     ai_governance,
+    annotations,
+    atoms,
     briefs,
     configs,
     contents,
@@ -29,14 +31,17 @@ from app.interfaces.http import (
     topics,
 )
 from app.platform.auth import verify_api_key
-from app.features import ATOMS_PRODUCT_ENABLED, KEYWORD_MONITORING_ENABLED
+from app.features import KEYWORD_MONITORING_ENABLED, atoms_product_enabled
 
-if ATOMS_PRODUCT_ENABLED:
-    from app.interfaces.http import atoms
+
+def _require_atoms_product_surface() -> None:
+    if not atoms_product_enabled():
+        raise HTTPException(status_code=404, detail="Atoms product surface is not enabled")
 
 api_router = APIRouter(dependencies=[Depends(verify_api_key)])
 
 api_router.include_router(system.router, prefix="/system", tags=["system"])
+api_router.include_router(annotations.router, prefix="/annotations", tags=["annotations"])
 api_router.include_router(ai_governance.router, prefix="/ai", tags=["ai-governance"])
 api_router.include_router(reliability.router, prefix="/system/reliability", tags=["reliability"])
 api_router.include_router(sources.router, prefix="/sources", tags=["sources"])
@@ -48,9 +53,18 @@ api_router.include_router(events.router, prefix="/events", tags=["events"])
 api_router.include_router(personal_monitor.router, prefix="/personal-monitor", tags=["personal-monitor"])
 api_router.include_router(configs.router, prefix="/configs", tags=["configs"])
 api_router.include_router(dashboard.router, prefix="/dashboard", tags=["dashboard"])
-if ATOMS_PRODUCT_ENABLED:
-    api_router.include_router(atoms.router, prefix="/atoms", tags=["atoms"])
-    api_router.include_router(atoms.relations_router, prefix="/atom-relations", tags=["atoms"])
+api_router.include_router(
+    atoms.router,
+    prefix="/atoms",
+    tags=["atoms"],
+    dependencies=[Depends(_require_atoms_product_surface)],
+)
+api_router.include_router(
+    atoms.relations_router,
+    prefix="/atom-relations",
+    tags=["atoms"],
+    dependencies=[Depends(_require_atoms_product_surface)],
+)
 api_router.include_router(score_lab.router, prefix="/score-lab", tags=["score-lab"])
 api_router.include_router(paid_matrix.router, prefix="/paid-matrix", tags=["paid-matrix"])
 api_router.include_router(topics.router, prefix="/topics", tags=["topics"])

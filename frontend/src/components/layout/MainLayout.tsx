@@ -11,11 +11,15 @@ import {
   X,
   Gauge,
   DownloadCloud,
+  Atom,
+  ClipboardCheck,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useQuery } from '@tanstack/react-query';
 import { systemApi } from '../../services/system';
 import { useScoreLabEnabled } from '../../hooks/useScoreLabEnabled';
+import { useRuntimeFeatures } from '../../hooks/useRuntimeFeatures';
+import { annotationsApi } from '../../services/annotations';
 
 interface SidebarItemProps {
   to: string;
@@ -108,6 +112,15 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [dismissedVersion, setDismissedVersion] = useState<string | null>(null);
   const scoreLabEnabled = useScoreLabEnabled();
+  const runtimeFeatures = useRuntimeFeatures();
+  const annotationsEnabled = Boolean(runtimeFeatures?.inline_annotations_enabled);
+  const { data: annotationStats } = useQuery({
+    queryKey: ['annotation-stats'],
+    queryFn: annotationsApi.getStats,
+    enabled: annotationsEnabled,
+    staleTime: 30_000,
+    retry: false,
+  });
   const { data: updateCheck } = useQuery({
     queryKey: ['system-update-check'],
     queryFn: systemApi.checkForUpdates,
@@ -150,6 +163,7 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     { to: '/timeline', label: '全部动态', icon: Clock },
     { to: '/digest', label: '简报', icon: Clock },
     ...(scoreLabEnabled ? [{ to: '/score-lab', label: '评分', icon: Gauge }] : []),
+    ...(runtimeFeatures?.atoms_surface_enabled ? [{ to: '/atoms', label: '原子库', icon: Atom }] : []),
     { to: '/settings', label: '配置', icon: SlidersHorizontal },
   ]
 
@@ -159,6 +173,7 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     if (path === '/settings')
       return location.pathname === '/settings' || location.pathname === '/sources'
     if (path === '/score-lab') return location.pathname === '/score-lab'
+    if (path === '/atoms') return location.pathname === '/atoms'
     return location.pathname === path
   }
 
@@ -286,6 +301,20 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
       </AnimatePresence>
 
       <main className="relative flex-1 overflow-y-auto overflow-x-hidden scroll-smooth bg-[#f5f9fc] shadow-[inset_1px_0_0_rgba(88,100,118,0.06)]">
+        {annotationsEnabled ? (
+          <div className="sticky top-0 z-50 flex min-h-9 items-center justify-between gap-3 border-b border-amber-200/70 bg-amber-50/95 px-4 py-1.5 text-[11px] font-semibold text-amber-900 backdrop-blur-md sm:px-7">
+            <span>Development Profile · 消费中标注已开启</span>
+            {(annotationStats?.pending || annotationStats?.needs_adjudication) ? (
+              <Link
+                to="/review"
+                className="inline-flex items-center gap-1.5 rounded-full border border-amber-300/70 bg-white/80 px-2.5 py-1 hover:bg-white"
+              >
+                <ClipboardCheck size={12} />
+                必须集中处理 {Number(annotationStats?.pending || 0) + Number(annotationStats?.needs_adjudication || 0)}
+              </Link>
+            ) : null}
+          </div>
+        ) : null}
         {children}
       </main>
     </div>

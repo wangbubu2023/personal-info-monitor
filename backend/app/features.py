@@ -57,6 +57,32 @@ _FEATURE_FLAG_DEFAULTS = {
     "ATOMS_KNOWLEDGE_ENABLED": False,
 }
 
+_RUNTIME_PROFILES = {"production", "development", "test"}
+
+
+def runtime_profile() -> str:
+    """Return the active runtime profile.
+
+    Git branches describe code maturity; runtime profiles describe behaviour.
+    Keeping those concerns separate lets the same commit move from ``dev`` to
+    ``main`` without editing product flags during every release.
+    """
+
+    value = (os.environ.get("PIM_RUNTIME_PROFILE") or "production").strip().lower()
+    return value if value in _RUNTIME_PROFILES else "production"
+
+
+def development_profile_enabled() -> bool:
+    """Whether local development-only product surfaces may be exposed."""
+
+    return runtime_profile() == "development"
+
+
+def inline_annotations_enabled() -> bool:
+    """Human annotation is intentionally available only in local development."""
+
+    return development_profile_enabled()
+
 
 def feature_enabled(name: str) -> bool:
     """Return the runtime value of a PIM_FEATURE_* flag.
@@ -126,7 +152,7 @@ def atoms_product_enabled() -> bool:
     ``main`` keeps the implementation and schema for later reuse on ``dev``
     but intentionally does not expose or execute the product surface.
     """
-    return ATOMS_PRODUCT_ENABLED
+    return ATOMS_PRODUCT_ENABLED or development_profile_enabled()
 
 
 def _settings_or_env_feature_enabled(*, setting_key: str, env_name: str) -> bool:

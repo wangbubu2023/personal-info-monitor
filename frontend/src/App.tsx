@@ -12,6 +12,8 @@ const SettingsPage = lazy(() => import('./pages/SettingsPage'))
 const ReaderPage = lazy(() => import('./pages/ReaderPage'))
 const EventDetailPage = lazy(() => import('./pages/EventDetailPage'))
 const ScoreLabPage = lazy(() => import('./pages/ScoreLabPage'))
+const AtomsPage = lazy(() => import('./pages/AtomsPage'))
+const AnnotationReviewPage = lazy(() => import('./pages/AnnotationReviewPage'))
 
 const App: React.FC = () => {
   const [isSpotlightOpen, setIsSpotlightOpen] = useState<boolean>(false)
@@ -48,6 +50,8 @@ const App: React.FC = () => {
             <Route path="/digest" element={<DigestPage />} />
             <Route path="/reader/:id" element={<ReaderPage />} />
             <Route path="/events/:eventId" element={<EventDetailPage />} />
+            <Route path="/atoms" element={<AtomsPage />} />
+            <Route path="/review" element={<AnnotationReviewPage />} />
             {SCORE_LAB_BUILD_ENABLED ? <Route path="/score-lab" element={<ScoreLabPage />} /> : null}
             <Route path="/sources" element={<Navigate to="/settings" replace />} />
             <Route path="/settings" element={<SettingsPage />} />

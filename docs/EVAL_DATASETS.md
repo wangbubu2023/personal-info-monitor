@@ -125,4 +125,10 @@ uv run python scripts/run_formal_eval.py
 - `~/Downloads/eval_export_20260724_074010.zip`
 - `~/Desktop/labels/`
 
+## 持续标注入口
+
+`dev` 的 Development Profile 采用“消费即标注”，不要求日常进入独立工作台。使用说明见
+`docs/DEVELOPMENT_PROFILE.md`。明确的人审标签与必要裁决可通过
+`backend/scripts/export_annotation_eval.py` 导出为带 manifest 的版本化评测资产。
+
 这些源文件不被生成脚本修改。每个生成集的 manifest 都记录源文件 hash、数据集 hash、当前 Git commit、评分版本、标注人和已知限制。

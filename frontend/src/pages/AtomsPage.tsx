@@ -8,6 +8,7 @@ import { atomsApi } from '../services/atoms'
 import { configsApi } from '../services/configs'
 import { systemApi } from '../services/system'
 import type { AtomRecord } from '../types/atoms'
+import InlineAnnotationChoices from '../components/annotations/InlineAnnotationChoices'
 
 const ATOM_TYPES = ['', '信息', '观点', '数据'] as const
 const DOMAINS = [
@@ -365,6 +366,31 @@ const AtomsPage: React.FC = () => {
               <Link to={`/reader/${selected.content_id}`} className="text-xs font-medium text-[#0b6f91] underline">
                 打开 Reader
               </Link>
+            </div>
+            <div className="mt-4 border-y border-[#d8e4ec] py-4">
+              <InlineAnnotationChoices
+                taskType="atom_validity"
+                targetType="atom"
+                targetId={selected.atom_id}
+                label="这个原子可用吗"
+                context={{
+                  source_sentence: selected.source_sentence,
+                  payload: selected.payload,
+                  atom_type: selected.atom_type,
+                  domain: selected.domain,
+                  content_id: selected.content_id,
+                }}
+                prediction={{
+                  fact_confidence: selected.fact_confidence,
+                  verified: selected.verified,
+                }}
+                choices={[
+                  { value: 'valid', label: '有效' },
+                  { value: 'partial', label: '需修正' },
+                  { value: 'invalid', label: '无效' },
+                  { value: 'unclear', label: '不确定' },
+                ]}
+              />
             </div>
             {relationsEnabled && (
               <div className="mt-4 flex gap-2 border-b border-[#d8e4ec] pb-2">

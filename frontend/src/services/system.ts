@@ -22,6 +22,10 @@ export interface QueueStatus {
 }
 
 export interface RuntimeFeatures {
+  runtime_profile: 'production' | 'development' | 'test'
+  development_mode: boolean
+  inline_annotations_enabled: boolean
+  adjudication_queue_enabled: boolean
   podcast_sources_enabled: boolean
   keyword_monitoring_enabled: boolean
   playwright_enabled: boolean
@@ -30,6 +34,8 @@ export interface RuntimeFeatures {
   atoms_relations_enabled: boolean
   atoms_reconcile_enabled?: boolean
   atoms_knowledge_enabled?: boolean
+  atoms_frozen?: boolean
+  atoms_surface_enabled: boolean
 }
 
 export interface UpgradeStatus {
