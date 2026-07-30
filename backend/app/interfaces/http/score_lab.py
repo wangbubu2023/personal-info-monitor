@@ -13,6 +13,7 @@ from sqlalchemy.orm import selectinload
 from app.database import get_async_db
 from app.domains.score.feedback import SCORE_CALIBRATION_EVENT, record_score_feedback_event
 from app.domains.score.score_explain import explain_content_row
+from app.domains.score import score_vocab
 from app.features import KEYWORD_MONITORING_ENABLED
 from app.models import Content, InteractionEvent, Keyword, ScoreFeedback
 from app.schemas.score_lab import (
@@ -20,6 +21,8 @@ from app.schemas.score_lab import (
     ScoreFeedbackCreate,
     ScoreFeedbackItem,
     ScoreFeedbackListResponse,
+    ScoreLaneDefinition,
+    ScoreLaneListResponse,
     ScoreLabContentListResponse,
     ScoreLabContentSummary,
 )
@@ -53,6 +56,7 @@ def _serialize_lab_item(content: Content) -> ScoreLabContentSummary:
         article_score = float(score_raw) if score_raw is not None else None
     except (TypeError, ValueError):
         article_score = None
+    lane = content.lane or _meta_get(meta, "lane")
     return ScoreLabContentSummary(
         id=content.id,
         title=content.title or "",
@@ -63,7 +67,8 @@ def _serialize_lab_item(content: Content) -> ScoreLabContentSummary:
         fetched_at=content.fetched_at,
         article_score=article_score,
         selection_status=content.selection_status or _meta_get(meta, "selection_status"),
-        lane=content.lane or _meta_get(meta, "lane"),
+        lane=lane,
+        lane_label=score_vocab.LANE_LABELS.get(str(lane), str(lane)) if lane else None,
         fetch_acceptance=_meta_get(meta, "fetch_acceptance"),
     )
 
@@ -83,6 +88,26 @@ def _selection_status_expr():
 
 def _lane_expr():
     return func.coalesce(Content.lane, func.json_extract(Content.metadata_, "$.lane"))
+
+
+@router.get("/lanes", response_model=ScoreLaneListResponse)
+async def list_score_lanes():
+    """Return the canonical lane contract consumed by the score lab UI."""
+
+    return ScoreLaneListResponse(
+        items=[
+            ScoreLaneDefinition(
+                **{
+                    **definition,
+                    "label_zh": score_vocab.LANE_LABELS.get(
+                        definition["value"],
+                        definition["label_zh"],
+                    ),
+                }
+            )
+            for definition in score_vocab.LANE_DEFINITIONS
+        ]
+    )
 
 
 @router.get("/contents", response_model=ScoreLabContentListResponse)

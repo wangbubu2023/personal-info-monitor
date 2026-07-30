@@ -46,6 +46,8 @@ from app.domains.enrich.hourly.synthesis import (
     build_digest_from_items,
     build_fallback_digest,
     llm_synthesize_hourly_digest,
+    hourly_digest_prompt_fingerprint,
+    output_echoes_event_schema,
     localize_fallback_clusters,
 )
 from app.domains.enrich.hourly.text_utils import (
@@ -86,6 +88,10 @@ async def generate_previous_hour_digest() -> None:
         db.close()
         return
 
+    # Take one fresh settings snapshot for the whole run.  A previous version
+    # read limits/model/prompt through separate cache lookups, which made it
+    # impossible to prove which prompt a generated hour actually used.
+    runtime_settings = get_system_settings_sync(force_refresh=True)
     writing_state = await resolve_writing_state()
     runtime = None
     if writing_state.effective:
@@ -206,8 +212,21 @@ async def generate_previous_hour_digest() -> None:
             return
 
         # --- Path 1: rules pick/rank events; LLM only writes the final brief.
-        hd = hourly_digest_user_settings()
+        hd = runtime_settings.get("hourly_digest") if isinstance(runtime_settings, dict) else {}
+        hd = hd if isinstance(hd, dict) else {}
         task_prompt = effective_hourly_digest_prompt(hd)
+        prompt_source = "custom" if str(hd.get("prompt") or "").strip() else "builtin"
+        if prompt_source == "builtin" and (
+            str(hd.get("importance_prompt") or "").strip()
+            or str(hd.get("synthesis_prompt") or "").strip()
+        ):
+            prompt_source = "legacy"
+        logger.info(
+            "Hourly digest prompt snapshot: source=%s fingerprint=%s chars=%d",
+            prompt_source,
+            hourly_digest_prompt_fingerprint(task_prompt),
+            len(task_prompt),
+        )
         body = ""
         degrade_reason: str | None = None
 
@@ -221,6 +240,28 @@ async def generate_previous_hour_digest() -> None:
                 task_prompt=task_prompt,
             )
             body = strip_llm_reasoning(body)
+            # DeepSeek occasionally follows the input event-card labels instead
+            # of the user's task prompt.  One deterministic rewrite keeps the
+            # published output stable without changing the user's saved prompt.
+            user_explicitly_requests_labels = any(
+                marker in task_prompt
+                for marker in ("发生了什么：", "为什么重要：", "新信号：", "还缺什么确认：")
+            )
+            if output_echoes_event_schema(body) and not user_explicitly_requests_labels:
+                logger.warning(
+                    "Hourly digest output echoed event-card schema; requesting one style correction "
+                    "(prompt_fingerprint=%s)",
+                    hourly_digest_prompt_fingerprint(task_prompt),
+                )
+                body = await llm_synthesize_hourly_digest(
+                    model_client,
+                    runtime,
+                    title=ctx["title"],
+                    materials=materials,
+                    task_prompt=task_prompt,
+                    style_correction=True,
+                )
+                body = strip_llm_reasoning(body)
         except Exception as e:  # noqa: BLE001 - model/network can raise anything; fall through to path 2
             logger.warning("Hourly digest synthesis path failed (%s): %s", runtime.provider, e)
             degrade_reason = f"模型调用失败（{runtime.provider}）：{e}"
@@ -231,6 +272,7 @@ async def generate_previous_hour_digest() -> None:
             body,
             expected_title=ctx["title"],
             require_reader_link=True,
+            allow_custom_prompt=prompt_source == "custom",
         ):
             body = build_hourly_briefing_digest(
                 ctx["title"],
@@ -243,6 +285,7 @@ async def generate_previous_hour_digest() -> None:
             body,
             expected_title=ctx["title"],
             require_reader_link=True,
+            allow_custom_prompt=prompt_source == "custom",
         ):
             logger.warning("Digest output invalid, storing ranked fallback digest")
             reason = degrade_reason or "综述生成未通过校验或模型输出异常，已回退为分类简版（含本地阅读链接）。"
@@ -307,6 +350,9 @@ _build_synthesis_materials = _synthesis.build_synthesis_materials
 _build_event_briefing_materials = _synthesis.build_event_briefing_materials
 _build_hourly_briefing_digest = _synthesis.build_hourly_briefing_digest
 _llm_synthesize_hourly_digest = _synthesis.llm_synthesize_hourly_digest
+_build_hourly_digest_prompt = _synthesis.build_hourly_digest_prompt
+_hourly_digest_prompt_fingerprint = _synthesis.hourly_digest_prompt_fingerprint
+_output_echoes_event_schema = _synthesis.output_echoes_event_schema
 _build_prompt = _synthesis.build_cluster_prompt_v1
 _build_cluster_item_prompt = _synthesis.build_cluster_item_prompt
 _parse_generated_digest_item = _synthesis.parse_generated_digest_item

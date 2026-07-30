@@ -25,7 +25,7 @@ async def _seed_scored_content(db_session):
         content_type="website",
         publish_time=utcnow_naive(),
         fetched_at=utcnow_naive(),
-        metadata_={"article_score": 72.0, "selection_status": "selected", "lane": "tech_product"},
+        metadata_={"article_score": 72.0, "selection_status": "selected", "lane": "product_news"},
     )
     db_session.add_all([source, content])
     await db_session.commit()
@@ -85,14 +85,14 @@ async def test_score_lab_contents_filters_use_score_columns(client, db_session):
         article_score=83.0,
         final_score=83.0,
         selection_status="selected",
-        lane="tech_product",
+        lane="product_news",
     )
     db_session.add_all([source, content])
     await db_session.commit()
 
     response = await client.get(
         "/api/score-lab/contents",
-        params={"selection_status": "selected", "lane": "tech_product", "min_score": 80},
+        params={"selection_status": "selected", "lane": "product_news", "min_score": 80},
     )
 
     assert response.status_code == 200
@@ -101,7 +101,32 @@ async def test_score_lab_contents_filters_use_score_columns(client, db_session):
     item = next(item for item in items if item["id"] == str(content.id))
     assert item["article_score"] == 83.0
     assert item["selection_status"] == "selected"
-    assert item["lane"] == "tech_product"
+    assert item["lane"] == "product_news"
+    assert item["lane_label"] == "产品新闻"
+
+
+@pytest.mark.asyncio
+async def test_score_lab_lane_contract_is_complete_and_ordered(client):
+    response = await client.get("/api/score-lab/lanes")
+
+    assert response.status_code == 200
+    items = response.json()["items"]
+    assert [item["value"] for item in items] == [
+        "domestic_politics",
+        "public_safety",
+        "geopolitics",
+        "macro_economy",
+        "macro_finance",
+        "markets",
+        "regulation",
+        "industry_news",
+        "company_news",
+        "product_news",
+        "vc_deals",
+        "public_figures",
+        "other",
+    ]
+    assert all(item["label_zh"] and item["label_en"] and item["description"] for item in items)
 
 
 @pytest.mark.asyncio

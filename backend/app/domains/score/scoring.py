@@ -27,7 +27,7 @@ from app.domains.score.score_utils import (
 )
 from app.domains.score.score_vocab import DIMENSION_LABELS, LANE_LABELS
 
-SCORE_VERSION = "pim-score-v2"
+SCORE_VERSION = "pim-score-v2.3"
 
 FULLTEXT_CONFIDENCE = {
     "full": 0.92,

@@ -37,6 +37,34 @@ from app.config import get_settings
 logger = get_logger(__name__)
 
 
+# A shadow candidate is normally diagnostic-only.  There is one important
+# exception: when the production extractor clearly returned a truncated body
+# and Web Clean has a high-confidence full article, retaining the shorter body
+# is strictly worse than promoting the candidate.  Keep this gate deliberately
+# conservative so a merely different extraction is not silently written.
+_WEB_CLEAN_AUTO_PROMOTE_MIN_NEW_CHARS = 1200
+_WEB_CLEAN_AUTO_PROMOTE_MIN_DELTA = 500
+_WEB_CLEAN_AUTO_PROMOTE_MIN_SCORE = 0.85
+_WEB_CLEAN_AUTO_PROMOTE_RATIO = 1.5
+
+
+def _should_auto_promote_web_clean_shadow(old_text: str, clean_result) -> bool:
+    """Return whether a shadow result is an unambiguous truncation repair."""
+    if not clean_result or not clean_result.production_eligible():
+        return False
+    if clean_result.quality_status != "full":
+        return False
+    if float(clean_result.quality_score or 0.0) < _WEB_CLEAN_AUTO_PROMOTE_MIN_SCORE:
+        return False
+
+    old_chars = len(normalize_article_text(old_text or ""))
+    new_chars = len(normalize_article_text(clean_result.article_text or ""))
+    delta = new_chars - old_chars
+    if new_chars < _WEB_CLEAN_AUTO_PROMOTE_MIN_NEW_CHARS or delta < _WEB_CLEAN_AUTO_PROMOTE_MIN_DELTA:
+        return False
+    return old_chars == 0 or new_chars >= old_chars * _WEB_CLEAN_AUTO_PROMOTE_RATIO
+
+
 async def build_raw_content_objects(
     raw_contents: List[dict],
     source: Source,
@@ -73,6 +101,7 @@ async def build_raw_content_objects(
             web_clean_write = bool(settings.pim_web_clean_enabled and web_clean_mode == "write")
             web_clean_shadow = bool(settings.pim_web_clean_shadow and web_clean_mode in {"shadow", "write"})
             web_clean_active = bool(html and source_type == "website" and (web_clean_write or web_clean_shadow))
+            web_clean_promoted = False
             if web_clean_active:
                 if not settings.pim_web_clean_template_enabled:
                     source_metadata.pop("web_clean_template", None)
@@ -102,6 +131,17 @@ async def build_raw_content_objects(
                 # persist the canonical Markdown so Reader/export retain structure.
                 main_text = clean_result.article_text
                 persisted_full_content = clean_result.article_markdown or clean_result.article_text
+            elif (
+                web_clean_shadow
+                and clean_result
+                and _should_auto_promote_web_clean_shadow(main_text, clean_result)
+            ):
+                # Shadow mode is intentionally conservative, but a high-score
+                # full candidate that is materially longer is an unambiguous
+                # repair for an upstream truncated extraction.
+                main_text = clean_result.article_text
+                persisted_full_content = clean_result.article_markdown or clean_result.article_text
+                web_clean_promoted = True
             elif html and not main_text:
                 structured_result = await asyncio.to_thread(
                     extract_structured_article,
@@ -135,9 +175,12 @@ async def build_raw_content_objects(
                 from app.domains.fetch.web_clean.shadow import build_shadow_diff
 
                 web_clean_meta = clean_result.to_metadata(include_trace=True)
-                web_clean_meta["shadow"] = not web_clean_write
+                web_clean_meta["shadow"] = not (web_clean_write or web_clean_promoted)
                 web_clean_meta["source_mode"] = web_clean_mode
-                if not web_clean_write:
+                if web_clean_promoted:
+                    web_clean_meta["auto_promoted"] = True
+                    web_clean_meta["promotion_reason"] = "high_confidence_longer_body"
+                elif not web_clean_write:
                     web_clean_meta["shadow_diff"] = build_shadow_diff(main_text_clean, clean_result)
                 metadata = dict(metadata)
                 metadata["web_clean"] = web_clean_meta

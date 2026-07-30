@@ -15,7 +15,15 @@ export interface ScoreLabContentSummary {
   article_score?: number | null
   selection_status?: string | null
   lane?: string | null
+  lane_label?: string | null
   fetch_acceptance?: string | null
+}
+
+export interface ScoreLaneDefinition {
+  value: string
+  label_zh: string
+  label_en: string
+  description: string
 }
 
 export interface ScoreLabContentListResponse {
@@ -105,6 +113,11 @@ export interface ListScoreLabContentsParams {
 }
 
 export const scoreLabApi = {
+  listLanes: async (): Promise<ScoreLaneDefinition[]> => {
+    const { data } = await api.get<{ items: ScoreLaneDefinition[] }>('/score-lab/lanes')
+    return data.items
+  },
+
   listContents: async (params: ListScoreLabContentsParams = {}): Promise<ScoreLabContentListResponse> => {
     const { data } = await api.get<ScoreLabContentListResponse>('/score-lab/contents', { params })
     return data

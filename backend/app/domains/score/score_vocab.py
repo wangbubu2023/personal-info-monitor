@@ -23,33 +23,58 @@ def _merge(*groups: tuple[str, ...]) -> tuple[str, ...]:
 
 
 # ---------------------------------------------------------------------------
-# Lane keywords — classify article topic (title hit ×2 in score_rules)
+# Lane keywords — classify an article's primary narrative (title hit ×2).
+# Keep broad entities out of the narrow company/product lanes: an article about
+# Apple is not automatically product news, while "Apple launches iPhone" is.
 # ---------------------------------------------------------------------------
 
+_DOMESTIC_POLITICS_TERMS = (
+    "中央政治局", "国务院", "全国人大", "全国政协", "两会", "政府工作报告",
+    "党代会", "全会", "内阁", "议会", "国会", "选举", "大选", "总统选举",
+    "地方政府", "省委", "市委", "州长", "市长", "任命", "免职", "施政",
+    "行政改革", "government reshuffle", "cabinet", "parliament", "congress",
+    "election", "ballot", "domestic politics", "prime minister",
+)
+
+_PUBLIC_SAFETY_TERMS = (
+    "洪灾", "洪水", "山洪", "暴雨", "强降雨", "内涝", "地震", "台风", "山体滑坡",
+    "火灾", "爆炸", "坍塌", "空难", "事故", "救援", "疏散", "应急响应", "公共卫生",
+    "疫情", "传染病", "遇难", "死亡", "失联", "伤亡", "犯罪", "枪击", "恐袭",
+    "evacuat", "flood", "landslide", "earthquake", "typhoon", "wildfire",
+    "fatalities", "killed", "casualties", "public safety", "emergency response",
+    "outbreak", "shooting", "terror attack",
+)
+
 _GEO_TERMS = (
-    # 双边 / 多边
-    "访华", "访美", "访日", "会晤", "峰会", "对话", "会谈", "外交", "大使", "领事",
+    "访华", "访美", "访日", "会晤", "峰会", "外交", "大使", "领事",
     "制裁", "关税", "贸易战", "脱钩", "实体清单", "出口管制", "禁运", "封锁",
     "联合国", "安理会", "北约", "NATO", "G7", "G20", "APEC", "金砖", "上合",
-    "一带一路", "印太", "台海", "两岸", "南海", "东海", "朝鲜", "半岛",
+    "一带一路", "印太", "台海", "两岸", "南海", "东海", "朝鲜半岛",
     "俄乌", "乌克兰", "俄罗斯", "中东", "以巴", "加沙", "伊朗", "叙利亚",
-    "欧盟", "欧洲", "白宫", "国务院", "外交部", "国防部", "五角大楼", "克里姆林宫",
+    "外交部", "五角大楼", "克里姆林宫", "停火", "军事冲突", "领土争端",
     "geopolit", "sanctions", "bilateral", "state visit", "summit", "diplomacy",
-    "tariff", "trade war", "national security", "foreign policy",
-    # 灾害 / 公共安全
-    "洪灾", "洪水", "山洪", "暴雨", "强降雨", "内涝", "地震", "台风", "山体滑坡",
-    "遇难", "死亡", "失联", "伤亡", "evacuat", "flood", "landslide", "earthquake",
-    "typhoon", "fatalities", "killed", "casualties",
+    "tariff", "trade war", "foreign policy", "ceasefire", "territorial dispute",
+)
+
+_MACRO_ECONOMY_TERMS = (
+    "GDP", "CPI", "PPI", "非农", "失业率", "就业", "通胀", "通缩", "滞胀",
+    "经济增长", "经济增速", "经济衰退", "软着陆", "硬着陆", "消费", "零售销售",
+    "工业增加值", "制造业PMI", "PMI", "进出口", "贸易顺差", "贸易逆差",
+    "人口", "出生率", "房地产市场", "房价", "宏观经济",
+    "economic growth", "gdp", "inflation", "unemployment", "payrolls",
+    "retail sales", "industrial output", "recession", "soft landing", "hard landing",
+    "trade surplus", "trade deficit", "macroeconomy",
 )
 
 _MACRO_FINANCE_TERMS = (
     "美联储", "欧央行", "日本央行", "英国央行", "人民银行", "央行", "货币政策",
-    "降息", "加息", "基点", "利率", "国债", "美债", "收益率", "利差",
-    "CPI", "PPI", "GDP", "非农", "失业率", "通胀", "通缩", "滞胀", "软着陆", "硬着陆",
+    "降息", "加息", "基点", "政策利率", "国债", "美债", "收益率", "利差",
     "量化宽松", "QE", "缩表", "QT", "逆回购", "MLF", "LPR", "准备金",
-    "汇率", "人民币", "美元", "日元", "欧元", "离岸", "在岸", "中间价",
-    "fed ", "federal reserve", "ecb", "boj", "boe", "interest rate", "inflation",
-    "monetary policy", "treasury yield", "yield curve", "recession",
+    "汇率", "人民币汇率", "美元指数", "离岸人民币", "在岸人民币", "中间价",
+    "流动性", "信贷周期", "金融稳定", "系统性金融风险",
+    "fed ", "federal reserve", "ecb", "boj", "boe", "interest rate",
+    "monetary policy", "treasury yield", "yield curve", "liquidity",
+    "financial stability", "exchange rate",
 )
 
 _REGULATION_TERMS = (
@@ -61,37 +86,40 @@ _REGULATION_TERMS = (
     "chip act", "芯片法案", "出口管制", "实体清单", "investigation",
 )
 
-_TECH_PRODUCT_TERMS = (
-    # AI / 模型
-    "人工智能", "大模型", "模型", "LLM", "GPT", "Claude", "Gemini", "Llama",
-    "DeepSeek", "通义", "文心", "Kimi", "智谱", "月之暗面", "百川", "MiniMax",
-    "OpenAI", "Anthropic", "Google DeepMind", "xAI", "Mistral", "Cohere",
-    "推理", "训练", "微调", "RAG", "Agent", "多模态", "token", "context window",
-    "model release", "new model", "frontier model", "AI chip", "inference",
-    # 硬件 / 芯片
-    "芯片", "半导体", "光刻", "EUV", "GPU", "NPU", "TPU", "CUDA", "HBM",
-    "台积电", "TSMC", "ASML", "英伟达", "NVIDIA", "AMD", "Intel", "高通", "Qualcomm",
-    "华为", "海思", "中芯", "SMIC", "三星", "SK海力士", "美光", "Micron",
-    # 消费 / 平台
-    "iPhone", "iPad", "Mac", "Android", "鸿蒙", "HarmonyOS", "Windows",
-    "云服务", "云计算", "SaaS", "PaaS", "IaaS", "数据中心", "算力",
-    "上线", "开源", "API", "SDK", "beta", "GA", "preview",
-)
-
 _MARKETS_TERMS = (
     "股价", "股票", "股市", "大盘", "指数", "纳指", "标普", "道指", "恒生", "上证", "深证",
-    "创业板", "科创板", "北交所", "财报", "业绩", "营收", "净利润", "毛利", "指引",
-    "并购", "收购", "IPO", "上市", "退市", "增发", "配股", "回购", "分红",
+    "创业板", "科创板", "北交所", "退市", "增发", "配股", "回购", "分红",
     "涨停", "跌停", "做多", "做空", "牛市", "熊市", "波动", "VIX", "期权", "期货",
-    "ETF", "基金", "私募", "公募", "QFII", "北向", "南向", "融资融券",
-    "earnings", "revenue", "guidance", "merger", "acquisition", "market cap",
-    "stock", "shares", "dividend", "buyback", "IPO", "delisting",
+    "ETF", "公募基金", "QFII", "北向资金", "南向资金", "融资融券", "资金流向",
+    "market cap", "stock", "shares", "dividend", "buyback", "delisting",
+    "market rally", "market selloff", "trading", "investors",
 )
 
-_CORPORATE_TERMS = (
+_INDUSTRY_NEWS_TERMS = (
+    "行业", "产业", "产业链", "供应链", "供需", "产能", "库存周期", "竞争格局",
+    "行业标准", "技术路线", "市场份额", "渗透率", "半导体行业", "汽车行业",
+    "新能源行业", "医药行业", "人工智能行业", "芯片产业", "云计算市场",
+    "industry", "sector outlook", "supply chain", "capacity", "inventory cycle",
+    "industry standard", "competitive landscape", "market share", "penetration rate",
+)
+
+_COMPANY_NEWS_TERMS = (
     "CEO", "CFO", "CTO", "董事长", "总裁", "总经理", "创始人", "辞任", "任命", "接任",
     "裁员", "layoff", "重组", "分拆", "剥离", "战略", "组织架构", "人事变动",
-    "合作", "签约", "战略投资", "合资", "partnership", "restructuring",
+    "合作", "签约", "战略投资", "合资", "财报", "业绩", "营收", "净利润", "毛利",
+    "业绩指引", "并购", "收购", "资产出售", "破产", "诉讼",
+    "partnership", "restructuring", "earnings", "revenue", "guidance",
+    "merger", "acquisition", "bankruptcy", "company strategy",
+)
+
+_PRODUCT_NEWS_TERMS = (
+    "新品", "新产品", "发布", "推出", "上线", "更新", "升级", "停售", "召回",
+    "定价", "降价", "评测", "测评", "新版本", "新一代", "功能更新",
+    "iPhone", "iPad", "MacBook", "Android", "鸿蒙", "HarmonyOS", "Windows",
+    "大模型", "LLM", "GPT", "Claude", "Gemini", "Llama", "DeepSeek", "Kimi",
+    "API", "SDK", "beta", "preview", "product launch", "new product", "releases",
+    "launches", "rolls out", "update", "upgrade", "recall", "pricing", "review",
+    "model release", "new model",
 )
 
 _VC_TERMS = (
@@ -100,14 +128,28 @@ _VC_TERMS = (
     "Series A", "Series B", "Series C", "venture", "raised", "valuation", "funding round",
 )
 
+_PUBLIC_FIGURE_TERMS = (
+    "公众人物", "名人", "明星", "艺人", "演员", "歌手", "运动员", "网红", "主播",
+    "去世", "病逝", "逝世", "婚礼", "结婚", "离婚", "恋情", "健康状况",
+    "个人争议", "公开道歉", "被捕", "获刑", "出庭", "名誉",
+    "celebrity", "public figure", "actor", "actress", "singer", "athlete",
+    "dies", "died", "passes away", "wedding", "divorce", "personal life",
+    "apologizes", "arrested", "sentenced",
+)
+
 LANE_KEYWORDS: dict[str, tuple[str, ...]] = {
+    "domestic_politics": _DOMESTIC_POLITICS_TERMS,
+    "public_safety": _PUBLIC_SAFETY_TERMS,
     "geopolitics": _GEO_TERMS,
+    "macro_economy": _MACRO_ECONOMY_TERMS,
     "macro_finance": _MACRO_FINANCE_TERMS,
-    "regulation": _REGULATION_TERMS,
-    "tech_product": _TECH_PRODUCT_TERMS,
     "markets": _MARKETS_TERMS,
-    "corporate": _CORPORATE_TERMS,
+    "regulation": _REGULATION_TERMS,
+    "industry_news": _INDUSTRY_NEWS_TERMS,
+    "company_news": _COMPANY_NEWS_TERMS,
+    "product_news": _PRODUCT_NEWS_TERMS,
     "vc_deals": _VC_TERMS,
+    "public_figures": _PUBLIC_FIGURE_TERMS,
 }
 
 
@@ -377,16 +419,89 @@ AUTHORITY_TYPE_BONUS: dict[str, float] = {
 
 SOURCE_STARS_AUTHORITY = {1: 4.0, 2: 6.5, 3: 8.5}
 
-LANE_LABELS = {
-    "geopolitics": "地缘外交",
-    "macro_finance": "宏观金融",
-    "regulation": "监管政策",
-    "tech_product": "科技产品",
-    "markets": "市场交易",
-    "corporate": "公司动态",
-    "vc_deals": "创投融资",
-    "other": "综合",
-}
+LANE_DEFINITIONS: tuple[dict[str, str], ...] = (
+    {
+        "value": "domestic_politics",
+        "label_zh": "国内时政",
+        "label_en": "Domestic Politics",
+        "description": "一国内部政治、公共治理、政府人事、选举、施政方向与行政改革。",
+    },
+    {
+        "value": "public_safety",
+        "label_zh": "公共安全",
+        "label_en": "Public Safety",
+        "description": "自然灾害、事故、犯罪、公共卫生、应急响应与重大伤亡事件。",
+    },
+    {
+        "value": "geopolitics",
+        "label_zh": "地缘外交",
+        "label_en": "Geopolitics & Diplomacy",
+        "description": "国家间关系、外交、战争与安全、制裁、国际组织及跨国博弈。",
+    },
+    {
+        "value": "macro_economy",
+        "label_zh": "宏观经济",
+        "label_en": "Macroeconomy",
+        "description": "经济增长、就业、通胀、消费、贸易、人口和经济周期。",
+    },
+    {
+        "value": "macro_finance",
+        "label_zh": "宏观金融",
+        "label_en": "Macro Finance",
+        "description": "央行、利率、货币政策、汇率、债券、流动性与金融稳定。",
+    },
+    {
+        "value": "markets",
+        "label_zh": "市场交易",
+        "label_en": "Financial Markets",
+        "description": "股票、债券、商品、外汇、基金等资产的行情、交易与资金流向。",
+    },
+    {
+        "value": "regulation",
+        "label_zh": "监管政策",
+        "label_en": "Regulation & Policy",
+        "description": "法律法规、监管规则、执法调查、行政许可、准入与合规要求。",
+    },
+    {
+        "value": "industry_news",
+        "label_zh": "行业新闻",
+        "label_en": "Industry News",
+        "description": "行业或产业链的供需、竞争格局、技术路线、产能与结构变化。",
+    },
+    {
+        "value": "company_news",
+        "label_zh": "公司新闻",
+        "label_en": "Company News",
+        "description": "具体公司的经营、财报、组织、管理层、战略、合作与并购。",
+    },
+    {
+        "value": "product_news",
+        "label_zh": "产品新闻",
+        "label_en": "Product News",
+        "description": "具体产品、服务、软件、模型或设备的发布、更新、定价与召回。",
+    },
+    {
+        "value": "vc_deals",
+        "label_zh": "创投融资",
+        "label_en": "Venture Capital & Funding",
+        "description": "创业融资、投资轮次、估值、基金募集和股权投资交易。",
+    },
+    {
+        "value": "public_figures",
+        "label_zh": "公共人物",
+        "label_en": "Public Figures",
+        "description": "公众人物本人作为新闻主体的个人动态、争议、司法、健康与声誉事件。",
+    },
+    {
+        "value": "other",
+        "label_zh": "其它",
+        "label_en": "Other",
+        "description": "无法稳定归入其它类别或信息不足的内容。",
+    },
+)
+
+LANE_LABELS = {item["value"]: item["label_zh"] for item in LANE_DEFINITIONS}
+VALID_LANES = frozenset(LANE_LABELS)
 
 DIMENSION_LABELS = {
     "salience": "显著性",
@@ -521,7 +636,7 @@ def _apply_score_vocab_data(data: dict) -> None:
 def score_vocab_snapshot() -> dict:
     """Return lightweight metadata about the active scoring vocabulary."""
     return {
-        "lane_count": len(LANE_KEYWORDS),
+        "lane_count": len(LANE_DEFINITIONS),
         "entity_tier_counts": {
             "S": len(ENTITY_TIER_S),
             "A": len(ENTITY_TIER_A),

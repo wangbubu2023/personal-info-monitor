@@ -10,6 +10,7 @@ import {
   scoreLabApi,
   type ScoreExplainPayload,
   type ScoreFeedbackDirection,
+  type ScoreLaneDefinition,
   type ScoreLabContentSummary,
 } from '../services/scoreLab'
 
@@ -18,15 +19,6 @@ const STATUS_OPTIONS = [
   { value: 'selected', label: 'selected' },
   { value: 'candidate', label: 'candidate' },
   { value: 'rejected', label: 'rejected' },
-]
-
-const LANE_OPTIONS = [
-  { value: '', label: '全部 lane' },
-  { value: 'geopolitics', label: 'geopolitics' },
-  { value: 'tech_product', label: 'tech_product' },
-  { value: 'markets', label: 'markets' },
-  { value: 'macro_finance', label: 'macro_finance' },
-  { value: 'other', label: 'other' },
 ]
 
 function statusBadge(status?: string | null) {
@@ -237,6 +229,7 @@ const ScoreLabPage: React.FC = () => {
   const scoreLabEnabled = useScoreLabEnabled()
   const [searchParams, setSearchParams] = useSearchParams()
   const [items, setItems] = useState<ScoreLabContentSummary[]>([])
+  const [laneDefinitions, setLaneDefinitions] = useState<ScoreLaneDefinition[]>([])
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -289,6 +282,12 @@ const ScoreLabPage: React.FC = () => {
   useEffect(() => {
     void loadList()
   }, [loadList])
+
+  useEffect(() => {
+    void scoreLabApi.listLanes()
+      .then(setLaneDefinitions)
+      .catch(() => message.error('Lane 分类加载失败'))
+  }, [])
 
   useEffect(() => {
     setSubmittedFeedback(null)
@@ -361,8 +360,15 @@ const ScoreLabPage: React.FC = () => {
         />
         <Select
           value={filters.lane}
-          options={LANE_OPTIONS}
-          className="min-w-[160px]"
+          options={[
+            { value: '', label: '全部分类' },
+            ...laneDefinitions.map((lane) => ({
+              value: lane.value,
+              label: `${lane.label_zh} / ${lane.label_en}`,
+              title: lane.description,
+            })),
+          ]}
+          className="min-w-[220px]"
           onChange={(value) =>
             setSearchParams((prev) => {
               const next = new URLSearchParams(prev)
@@ -455,7 +461,7 @@ const ScoreLabPage: React.FC = () => {
                       {item.title}
                     </Link>
                     <p className="mt-1 text-[11px] text-[#8a96a5]">
-                      {item.source_name || '—'} · {item.lane || '—'}
+                      {item.source_name || '—'} · {item.lane_label || item.lane || '—'}
                     </p>
                   </div>
                 )

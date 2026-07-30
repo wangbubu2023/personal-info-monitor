@@ -166,6 +166,21 @@ class TestIsValidDigestFormat:
             require_reader_link=True,
         )
 
+    def test_custom_prompt_can_choose_its_own_sections(self, monkeypatch):
+        monkeypatch.setenv("PIM_HOURLY_DIGEST_SKIP_FORMAT_VALIDATION", "false")
+        body = (
+            "## 7 月 28 日 9 时简报\n\n"
+            "过去一小时最值得关注的是 AI 安全事件。\n\n"
+            "### 重点\n\n"
+            "摘要与点评。[阅读](/reader/abc)"
+        )
+        assert is_valid_digest_format(
+            body,
+            expected_title="7 月 28 日 9 时简报",
+            require_reader_link=True,
+            allow_custom_prompt=True,
+        )
+
     def test_missing_or_reordered_sections_are_rejected(self, monkeypatch):
         monkeypatch.setenv("PIM_HOURLY_DIGEST_SKIP_FORMAT_VALIDATION", "false")
         body = self._valid_body().replace(

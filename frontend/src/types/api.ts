@@ -1558,6 +1558,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/score-lab/lanes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Score Lanes
+         * @description Return the canonical lane contract consumed by the score lab UI.
+         */
+        get: operations["list_score_lanes_api_score_lab_lanes_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/sources": {
         parameters: {
             query?: never;
@@ -3839,6 +3859,8 @@ export interface components {
             id: string;
             /** Lane */
             lane?: string | null;
+            /** Lane Label */
+            lane_label?: string | null;
             /** Original Url */
             original_url: string;
             /** Publish Time */
@@ -3849,6 +3871,22 @@ export interface components {
             source_name?: string | null;
             /** Title */
             title: string;
+        };
+        /** ScoreLaneDefinition */
+        ScoreLaneDefinition: {
+            /** Description */
+            description: string;
+            /** Label En */
+            label_en: string;
+            /** Label Zh */
+            label_zh: string;
+            /** Value */
+            value: string;
+        };
+        /** ScoreLaneListResponse */
+        ScoreLaneListResponse: {
+            /** Items */
+            items: components["schemas"]["ScoreLaneDefinition"][];
         };
         /** SessionTriggerRequest */
         SessionTriggerRequest: {
@@ -7132,6 +7170,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_score_lanes_api_score_lab_lanes_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScoreLaneListResponse"];
                 };
             };
         };

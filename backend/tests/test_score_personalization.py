@@ -15,7 +15,7 @@ from app.domains.score.personalization import (
 def test_personal_preference_observations_do_not_change_scores():
     profile = PersonalPreferenceProfile(
         source={"source-1": ScopeSignal(score=3.2, count=2)},
-        lane={"tech_product": ScopeSignal(score=1.4, count=1)},
+        lane={"product_news": ScopeSignal(score=1.4, count=1)},
         content_type={"website": ScopeSignal(score=0.5, count=1)},
         total_signals=3,
     )
@@ -24,7 +24,7 @@ def test_personal_preference_observations_do_not_change_scores():
         "article_score": 62.0,
         "final_score": 62.0,
         "score_confidence": 0.9,
-        "lane": "tech_product",
+        "lane": "product_news",
         "selection_status": "candidate",
         "recommendation_reason": {"why_matters": "base"},
     }
@@ -68,7 +68,7 @@ def test_negative_personal_preference_observations_do_not_demote_selected_item()
 def test_personal_preference_observation_keeps_high_signal_as_observation():
     profile = PersonalPreferenceProfile(
         source={"source-1": ScopeSignal(score=20.0, count=10)},
-        lane={"tech_product": ScopeSignal(score=20.0, count=10)},
+        lane={"product_news": ScopeSignal(score=20.0, count=10)},
         content_type={"website": ScopeSignal(score=20.0, count=10)},
         total_signals=30,
     )
@@ -77,7 +77,7 @@ def test_personal_preference_observation_keeps_high_signal_as_observation():
         "article_score": 50.0,
         "final_score": 50.0,
         "score_confidence": 0.9,
-        "lane": "tech_product",
+        "lane": "product_news",
     }
 
     personalized = apply_personal_preference_adjustment(meta, profile, content=content)

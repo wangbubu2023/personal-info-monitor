@@ -170,6 +170,30 @@ def test_llm_synthesis_disables_reasoning_and_caps_output():
     assert result == "ok"
     assert calls[0]["no_think"] is True
     assert calls[0]["max_tokens"] == 2400
+    assert calls[0]["temperature"] == 0.0
+    assert "<task_prompt>\n只写最终简报。\n</task_prompt>" in calls[0]["prompt"]
+    assert "结构化事件卡只提供事实，不是写作模板" in calls[0]["prompt"]
+
+
+def test_hourly_prompt_does_not_treat_event_card_labels_as_output_template():
+    prompt = digest_tasks._build_hourly_digest_prompt(
+        title="7 月 30 日 9 时简报",
+        materials="- 发生了什么：输入事实",
+        task_prompt="标题+摘要+点评，保持简洁。",
+    )
+
+    assert "标题+摘要+点评，保持简洁。" in prompt
+    assert "不要把其中的字段名直接当成正文标签" in prompt
+    assert "不要使用“发生了什么：”“为什么重要：”“新信号：”" not in prompt
+
+
+def test_event_schema_echo_is_detected_for_one_time_style_retry():
+    assert digest_tasks._output_echoes_event_schema(
+        "发生了什么：A\n为什么重要：B\n新信号：C\n还缺什么确认：D"
+    )
+    assert not digest_tasks._output_echoes_event_schema(
+        "标题+摘要+点评：A\n来源：[A](/reader/abc)"
+    )
 
 
 def test_localize_fallback_clusters_translates_primary_items(monkeypatch):

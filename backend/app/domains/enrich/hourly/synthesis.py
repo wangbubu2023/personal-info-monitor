@@ -14,6 +14,7 @@ fidelity:
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import re
 from typing import List, Optional
 
@@ -99,33 +100,84 @@ async def llm_synthesize_hourly_digest(
     title: str,
     materials: str,
     task_prompt: str,
+    style_correction: bool = False,
 ) -> str:
     # This is a publishing path, not an analysis path.  Keep reasoning disabled
     # and bound the response to the size of a short briefing.
     cap = max(900, min(2400, int(getattr(runtime, "max_tokens", 1000) or 1000)))
-    prompt = (
-        f"你正在生成「每小时快报」，当前是根据结构化事件卡写最终正文。必须遵守下列任务说明。\n\n"
-        f"{task_prompt}\n\n"
-        f"---\n"
-        f"结构与格式硬约束：\n"
-        f"- 第一行必须是：`## {title}` ，然后空一行再写正文。\n"
-        f"- 第二段必须以 `一句话：` 开头，概括过去一小时真正值得注意的变化。\n"
-        f"- 之后只使用这三个三级标题：`### 需要你现在知道`、`### 正在发酵`、`### 可稍后看`。\n"
-        f"- `需要你现在知道` 中每个事件写 3 个短句：发生了什么；为什么重要；来源和本地阅读链接。\n"
-        f"- `正在发酵` 中每个事件写 2 个短句：新信号是什么；还缺什么确认。\n"
-        f"- `可稍后看` 只保留 3-5 条，每条一行。\n"
-        f"- 禁止输出代码围栏。\n"
-        f"- 不要输出 <think> 等思考标签；直接写最终简报即可。\n\n"
-        f"结构化事件卡：\n{materials}"
+    prompt = build_hourly_digest_prompt(
+        title=title,
+        materials=materials,
+        task_prompt=task_prompt,
+        style_correction=style_correction,
     )
     return await model_client.generate_text(
         runtime,
         prompt=prompt,
-        system_prompt="你是克制的中文私人秘书，只根据给定事件卡写短快报。",
-        temperature=0.2,
+        system_prompt=(
+            "你是克制的中文私人秘书，只根据给定事件卡写最终简报。"
+            "每次调用都只遵守本次提供的用户任务提示词，不得恢复任何历史 prompt 或旧模板。"
+        ),
+        temperature=0.0,
         max_tokens=cap,
         timeout_seconds=150.0,
         no_think=True,
+    )
+
+
+def hourly_digest_prompt_fingerprint(task_prompt: str) -> str:
+    """Return a short stable identifier for the exact task prompt used."""
+    return hashlib.sha256((task_prompt or "").strip().encode("utf-8")).hexdigest()[:12]
+
+
+def build_hourly_digest_prompt(
+    *,
+    title: str,
+    materials: str,
+    task_prompt: str,
+    style_correction: bool = False,
+) -> str:
+    """Build one canonical prompt for every hourly digest generation.
+
+    The editable task prompt is deliberately isolated from the event-card
+    schema.  Previously the schema labels (``发生了什么`` / ``为什么重要`` /
+    ``新信号``) were presented as output instructions too, so the model could
+    switch between the user's prompt and the retired template from one hour to
+    the next.  Only envelope/safety constraints remain outside the user prompt.
+    """
+
+    task = (task_prompt or "").strip()
+    if not task:
+        task = "请按系统默认的每小时快报任务，直接写最终简报。"
+
+    correction = ""
+    if style_correction:
+        correction = (
+            "\n\n【格式纠偏】上一版把输入事件卡的字段名直接当成了正文模板。"
+            "请完全重写最终简报：不要使用“发生了什么：”“为什么重要：”“新信号：”或"
+            "“还缺什么确认：”作为固定标签，除非用户任务提示词明确要求；按上面的用户任务提示词自然成文。"
+        )
+
+    return (
+        "【本次用户任务提示词（唯一写作规范）】\n"
+        f"<task_prompt>\n{task}\n</task_prompt>\n\n"
+        "【系统级约束（不可与用户任务冲突）】\n"
+        f"- 第一行必须是：`## {title}`，然后空一行再写正文。\n"
+        "- 必须保留三个三级标题：`### 需要你现在知道`、`### 正在发酵`、`### 可稍后看`。\n"
+        "- 素材中的本地 Markdown 链接必须原样使用；禁止改成外站链接。\n"
+        "- 禁止输出代码围栏、思考过程或任何历史 prompt 的示例。\n"
+        "- 结构化事件卡只提供事实，不是写作模板；不要把其中的字段名直接当成正文标签。\n"
+        f"{correction}\n\n"
+        f"【结构化事件卡（仅供取材）】\n{materials}"
+    )
+
+
+def output_echoes_event_schema(body: str) -> bool:
+    """Detect the retired event-card label template in model output."""
+    text = body or ""
+    return all(
+        marker in text
+        for marker in ("发生了什么：", "为什么重要：", "新信号：", "还缺什么确认：")
     )
 
 

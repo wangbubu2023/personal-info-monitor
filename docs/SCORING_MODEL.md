@@ -1,6 +1,6 @@
-# pim-score-v2 运维与升级指南
+# pim-score-v2.3 运维与升级指南
 
-本文说明 PIM 内容评分模型（`pim-score-v2`）的结构、配置入口、调试方法与版本升级步骤。
+本文说明 PIM 内容评分模型（`pim-score-v2.3`）的结构、配置入口、调试方法与版本升级步骤。
 
 **相关代码**
 
@@ -44,7 +44,7 @@ metadata 可追溯字段：
 
 - **摘要清洗**（`summary_clean.py`）：在打分前去掉 RSS/通讯 boilerplate（如 The Verge *Regulator* 订阅引导、「阅读全文」尾句），避免误触发 commerce 降权。翻译路径同样先洗后译。
 - **fetch 验收失败**：写入 `fetch_acceptance=incomplete`，**不计算** `article_score`。
-- **fetch 验收通过**：写入 `score_version=pim-score-v2` 与五维 `dimension_scores`。
+- **fetch 验收通过**：写入 `score_version=pim-score-v2.3` 与五维 `dimension_scores`。
 - **Website/RSS 最低门槛**：标题 + 有效摘要 ≥50 字；正文状态可为 `full` / `partial` / `summary_only`（RSS 仅摘要也可打分，置信度较低）。摘要取 **原文与译文较长者**，避免译文过短误拒。
 
 ### 1.2 单篇分（article_score，0–100）
@@ -69,6 +69,26 @@ metadata 可追溯字段：
 | `rejected` | score < 55 |
 
 `confidence_limited_by_fulltext=true` 表示分数达到入选线但被置信度拦截（通常因 `fulltext_status=title_only`）。
+
+### 1.3 Lane 分类
+
+`lane` 表示文章的首要叙事对象；后端 `/api/score-lab/lanes` 是前后端共享的唯一枚举契约。
+
+| lane | 中文 | English |
+|------|------|---------|
+| `domestic_politics` | 国内时政 | Domestic Politics |
+| `public_safety` | 公共安全 | Public Safety |
+| `geopolitics` | 地缘外交 | Geopolitics & Diplomacy |
+| `macro_economy` | 宏观经济 | Macroeconomy |
+| `macro_finance` | 宏观金融 | Macro Finance |
+| `markets` | 市场交易 | Financial Markets |
+| `regulation` | 监管政策 | Regulation & Policy |
+| `industry_news` | 行业新闻 | Industry News |
+| `company_news` | 公司新闻 | Company News |
+| `product_news` | 产品新闻 | Product News |
+| `vc_deals` | 创投融资 | Venture Capital & Funding |
+| `public_figures` | 公共人物 | Public Figures |
+| `other` | 其它 | Other |
 
 ### 1.4 语料范围（避免正文误伤）
 
@@ -126,9 +146,9 @@ event_score = 0.50 × max(article_score)
 ```json
 {
   "fetch_acceptance": "accepted",
-  "score_version": "pim-score-v2",
+  "score_version": "pim-score-v2.3",
   "scoring_method": "rule",
-  "lane": "tech_product",
+  "lane": "product_news",
   "dimension_scores": {
     "salience": 9.0,
     "reach": 9.0,
@@ -285,6 +305,14 @@ cd backend
 脚本会：清洗 summary → 清除旧 `score_version` 缓存 → 重新 fetch 验收 → 调用 `merge_baseline_scoring_metadata`。  
 前端 Dashboard / 内容列表读取 `metadata.final_score`（与 `article_score` 相同），重跑后刷新页面即可。
 
+如果只需要迁移 lane、不希望改变既有分数和 selection status：
+
+```bash
+cd backend
+.venv/bin/python scripts/reclassify_content_lanes.py          # 默认 dry-run
+.venv/bin/python scripts/reclassify_content_lanes.py --apply  # 审阅转换统计后提交
+```
+
 **注意**：修改 `score_vocab.py` / `score_rules.py` / `summary_clean.py` 后需 **重启后端** 使新 ingest 路径生效；历史行需跑本脚本。
 
 ---
@@ -301,7 +329,7 @@ cd backend
 
 ---
 
-## 8. 已知限制（v2.2）
+## 8. 已知限制（v2.3）
 
 - 不通稿 / 转载去重（多源可能高估）
 - 无 personal_fit、freshness 维
@@ -314,6 +342,7 @@ cd backend
 
 | 日期 | 版本 | 说明 |
 |------|------|------|
+| 2026-07-30 | pim-score-v2.3 | lane 扩展为 13 类；拆分国内时政/公共安全、宏观经济/金融、行业/公司/产品；前后端改用共享 API 契约 |
 | 2026-05-24 | pim-score-v2.2 | subjective 权重归零（0%）；阈值调整 70/55；reach major_entity 子桶（6.5）；词边界保护；用户词扫描范围扩至 2000 字；中文 trigram；LlmSubjectiveScorer 实装；ingest score shim 清除 |
 | 2026-05-21 | pim-score-v2.1 | 固化：commerce/narrow impact caps、灾害下限、headline 语料、摘要清洗、`rescore_contents.py` |
 | 2026-05-21 | pim-score-v2 | 规则五维 + 固定主观分；fetch 验收与打分分离；事件层 corroboration |

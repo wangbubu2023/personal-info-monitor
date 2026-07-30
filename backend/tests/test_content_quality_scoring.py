@@ -65,7 +65,7 @@ def test_scoring_selects_high_quality_matching_source():
         },
         content_metadata={"fulltext_status": "full", "content_quality": 0.9},
         source_metadata={"source_stars": 3},
-        lane="tech_product",
+        lane="product_news",
     )
 
     assert result["selection_status"] == "selected"
@@ -78,7 +78,7 @@ def test_scoring_v2_no_domain_penalty():
         {"salience": 8, "reach": 8, "authority": 8, "depth": 7, "subjective": 5},
         content_metadata={"fulltext_status": "full", "content_quality": 0.9},
         source_metadata={"source_stars": 3},
-        lane="tech_product",
+        lane="product_news",
     )
     assert high["article_score"] >= 70
 
@@ -112,7 +112,7 @@ def test_rule_scoring_stamps_final_score():
 
     assert meta["scoring_method"] == "rule"
     assert meta["score_version"] == SCORE_VERSION
-    assert meta["lane"] == "tech_product"
+    assert meta["lane"] == "product_news"
     assert meta["final_score"] > 0
     assert meta["selection_status"] in {"selected", "candidate", "rejected"}
     assert meta["recommendation_reason"]["why_matters"]

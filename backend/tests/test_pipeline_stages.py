@@ -1637,6 +1637,63 @@ async def test_web_clean_shadow_does_not_replace_legacy_full_content():
 
 
 @pytest.mark.asyncio
+async def test_web_clean_shadow_auto_promotes_clear_truncation_repair():
+    from types import SimpleNamespace
+
+    from app.domains.fetch.web_clean.contracts import CleanResult
+    from app.domains.ingest.build_content import build_raw_content_objects
+
+    source = _make_source(type=SourceType.WEBSITE)
+    clean_text = "完整正文段落。" * 300
+    clean_result = CleanResult(
+        url="https://example.com/story",
+        title="Story",
+        author=None,
+        published_time=None,
+        canonical_url="https://example.com/story",
+        site_name="Example",
+        language="zh",
+        article_html="<article>full</article>",
+        article_text=clean_text,
+        article_markdown=clean_text,
+        clean_full_html=None,
+        extraction_method="trafilatura",
+        template_id=None,
+        quality_status="full",
+        quality_score=0.93,
+        trace={
+            "selected_method": "trafilatura",
+            "candidates": [{"method": "trafilatura", "rejected_reason": None}],
+        },
+        metadata={"quality_signals": {"paragraph_count": 20}},
+    )
+    extractor = AsyncMock()
+    extractor.extract_clean.return_value = clean_result
+    settings = SimpleNamespace(
+        pim_web_clean_enabled=False,
+        pim_web_clean_shadow=True,
+        pim_web_clean_template_enabled=False,
+        pim_web_clean_max_html_bytes=3_000_000,
+        pim_web_clean_timeout_ms=8_000,
+        pim_web_clean_write_metadata=True,
+    )
+    legacy = "截断正文。" * 80
+    raw = [_raw(url="https://example.com/story", content=legacy, html="<article>partial</article>")]
+
+    with (
+        _no_reject,
+        patch("app.domains.ingest.extractor.ContentExtractor", return_value=extractor),
+        patch("app.domains.ingest.build_content.get_settings", return_value=settings),
+    ):
+        results, failures = await build_raw_content_objects(raw, source)
+
+    assert failures == 0
+    assert results[0].full_content == clean_text
+    assert results[0].metadata_["web_clean"]["shadow"] is False
+    assert results[0].metadata_["web_clean"]["auto_promoted"] is True
+
+
+@pytest.mark.asyncio
 async def test_web_clean_enabled_rejected_candidate_keeps_legacy_body():
     from types import SimpleNamespace
 

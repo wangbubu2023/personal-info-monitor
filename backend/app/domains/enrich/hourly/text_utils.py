@@ -227,6 +227,7 @@ def is_valid_digest_format(
     *,
     expected_title: str | None = None,
     require_reader_link: bool = False,
+    allow_custom_prompt: bool = False,
 ) -> bool:
     """Validate the complete public briefing contract before persistence.
 
@@ -251,7 +252,7 @@ def is_valid_digest_format(
         return False
 
     lines = [line.strip() for line in text.splitlines() if line.strip()]
-    if len(lines) < 5:
+    if len(lines) < 2:
         return False
 
     expected_heading = f"## {expected_title.strip()}" if expected_title else None
@@ -260,6 +261,12 @@ def is_valid_digest_format(
             return False
     elif not re.fullmatch(r"##\s+\S.*", lines[0]):
         return False
+
+    # A saved user prompt is authoritative about prose structure.  Keep the
+    # title/link/safety checks above, but do not reject a valid custom layout
+    # merely because it does not use the product's built-in three sections.
+    if allow_custom_prompt:
+        return True
 
     if not lines[1].startswith("一句话："):
         return False

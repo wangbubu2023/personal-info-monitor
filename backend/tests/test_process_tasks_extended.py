@@ -171,13 +171,13 @@ async def test_finish_content_stamps_baseline_score():
 
     assert mock_content.metadata_["fulltext_status"] == "full"
     assert mock_content.metadata_["scoring_method"] == "rule"
-    assert mock_content.metadata_["score_version"] == "pim-score-v2"
-    assert mock_content.metadata_["lane"] == "tech_product"
+    assert mock_content.metadata_["score_version"] == "pim-score-v2.3"
+    assert mock_content.metadata_["lane"] == "product_news"
     assert "final_score" in mock_content.metadata_
     assert mock_content.article_score == mock_content.metadata_["article_score"]
     assert mock_content.final_score == mock_content.metadata_["final_score"]
     assert mock_content.selection_status == mock_content.metadata_["selection_status"]
-    assert mock_content.lane == "tech_product"
+    assert mock_content.lane == "product_news"
     assert "personalization" not in mock_content.metadata_
 
 
@@ -217,7 +217,7 @@ async def test_finish_content_removes_stale_personalization_metadata():
                     from app.domains.ingest.finish import finish_content
                     await finish_content("content-1")
 
-    assert mock_content.metadata_["score_version"] == "pim-score-v2"
+    assert mock_content.metadata_["score_version"] == "pim-score-v2.3"
     assert "personalization" not in mock_content.metadata_
     assert mock_content.final_score == mock_content.metadata_["final_score"]
 

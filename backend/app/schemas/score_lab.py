@@ -20,7 +20,19 @@ class ScoreLabContentSummary(BaseModel):
     article_score: Optional[float] = None
     selection_status: Optional[str] = None
     lane: Optional[str] = None
+    lane_label: Optional[str] = None
     fetch_acceptance: Optional[str] = None
+
+
+class ScoreLaneDefinition(BaseModel):
+    value: str
+    label_zh: str
+    label_en: str
+    description: str
+
+
+class ScoreLaneListResponse(BaseModel):
+    items: list[ScoreLaneDefinition]
 
 
 class ScoreLabContentListResponse(BaseModel):

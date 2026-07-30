@@ -3770,6 +3770,17 @@
             ],
             "title": "Lane"
           },
+          "lane_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lane Label"
+          },
           "original_url": {
             "title": "Original Url",
             "type": "string"
@@ -3820,6 +3831,50 @@
           "original_url"
         ],
         "title": "ScoreLabContentSummary",
+        "type": "object"
+      },
+      "ScoreLaneDefinition": {
+        "properties": {
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "label_en": {
+            "title": "Label En",
+            "type": "string"
+          },
+          "label_zh": {
+            "title": "Label Zh",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "value",
+          "label_zh",
+          "label_en",
+          "description"
+        ],
+        "title": "ScoreLaneDefinition",
+        "type": "object"
+      },
+      "ScoreLaneListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ScoreLaneDefinition"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "ScoreLaneListResponse",
         "type": "object"
       },
       "SessionTriggerRequest": {
@@ -9497,6 +9552,33 @@
           }
         ],
         "summary": "Create Score Feedback",
+        "tags": [
+          "score-lab"
+        ]
+      }
+    },
+    "/api/score-lab/lanes": {
+      "get": {
+        "description": "Return the canonical lane contract consumed by the score lab UI.",
+        "operationId": "list_score_lanes_api_score_lab_lanes_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScoreLaneListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "List Score Lanes",
         "tags": [
           "score-lab"
         ]

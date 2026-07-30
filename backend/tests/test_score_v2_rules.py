@@ -14,7 +14,7 @@ from app.domains.score.score_rules import (
 from app.domains.score.scoring import SCORE_VERSION, calculate_article_score, merge_rule_scoring_metadata
 
 
-def test_lane_classifies_geopolitics_and_tech_independently():
+def test_lane_classifies_geopolitics_and_product_news_independently():
     geo = classify_lane(
         "特朗普访华行程公布",
         "中美外交团队确认会晤安排。",
@@ -26,7 +26,30 @@ def test_lane_classifies_geopolitics_and_tech_independently():
         "",
     )
     assert geo == "geopolitics"
-    assert tech == "tech_product"
+    assert tech == "product_news"
+
+
+def test_lane_classifies_every_canonical_category():
+    cases = {
+        "domestic_politics": ("国务院公布新一轮行政改革", "全国人大将审议相关安排。"),
+        "public_safety": ("多地暴雨引发洪水，救援正在进行", "应急响应已经启动。"),
+        "geopolitics": ("中美举行外交会晤讨论双边关系", "双方也讨论了制裁问题。"),
+        "macro_economy": ("二季度 GDP 增速回升", "就业和零售销售同步改善。"),
+        "macro_finance": ("美联储维持政策利率不变", "市场关注年内降息路径。"),
+        "markets": ("美股大盘上涨，纳指创下新高", "资金继续流入股票 ETF。"),
+        "regulation": ("网信办发布生成式 AI 管理办法", "征求意见稿向社会公开。"),
+        "industry_news": ("半导体行业产能扩张改变供应链格局", "行业库存周期正在见底。"),
+        "company_news": ("Acme 发布财报并宣布裁员重组", "公司下调业绩指引。"),
+        "product_news": ("OpenAI releases new frontier model", "The product update improves reasoning."),
+        "vc_deals": ("Acme 完成 B 轮融资", "红杉领投，本轮估值十亿美元。"),
+        "public_figures": ("知名演员公开道歉", "该公众人物回应近期个人争议。"),
+        "other": ("春季城市阅读书单", "编辑分享本月值得阅读的作品。"),
+    }
+
+    assert {
+        expected: classify_lane(title, summary, "")
+        for expected, (title, summary) in cases.items()
+    } == {expected: expected for expected in cases}
 
 
 def test_salience_balances_geo_and_tech_headlines():
@@ -116,7 +139,7 @@ def test_merge_rule_scoring_metadata_stamps_v2():
     )
     assert meta["score_version"] == SCORE_VERSION
     assert meta["scoring_method"] == "rule"
-    assert meta["lane"] == "tech_product"
+    assert meta["lane"] == "product_news"
     assert "salience" in meta["dimension_scores"]
     assert meta["subjective_meta"]["source"] == "fixed_baseline"
     assert meta["dimension_scores"]["subjective"] == 5.0
@@ -141,7 +164,7 @@ def test_calculate_article_score_selected_threshold():
         },
         content_metadata={"fulltext_status": "full", "content_quality": 0.9},
         source_metadata={"source_stars": 3},
-        lane="tech_product",
+        lane="product_news",
     )
     # New weights: (0.30*9+0.25*9+0.25*8.5+0.20*7)*10 = (2.7+2.25+2.125+1.4)*10 = 84.75
     assert result["selection_status"] == "selected"
@@ -386,7 +409,7 @@ def test_disaster_casualty_headline_scores_higher():
     score = calculate_article_score(
         dims, content_metadata=meta, source_metadata={"source_stars": 2}, lane=lane
     )["article_score"]
-    assert lane == "geopolitics"
+    assert lane == "public_safety"
     assert dims["salience"] >= 9.0
     assert dims["reach"] >= 9.0
     assert dims["depth"] >= 3.0
