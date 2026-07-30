@@ -1,0 +1,152 @@
+{
+  "annotation_policy": {
+    "human_review_required": true,
+    "source": "human-review-sheet-v1",
+    "suggested_labels_are_not_final": true,
+    "valid_labels": [
+      "must_see",
+      "noise",
+      "ok"
+    ]
+  },
+  "annotators": [
+    "shuhuaiwang"
+  ],
+  "config": {
+    "min_records": 200,
+    "min_sources": 10,
+    "note": "Event/rule coverage may be zero until the next annotation pass; this gate verifies installation, hash, and quality labels.",
+    "valid_labels": [
+      "must_see",
+      "noise",
+      "ok"
+    ]
+  },
+  "config_version": "pim-score-v2.3",
+  "coverage": {
+    "duplicate_records": 102,
+    "event_records": 0,
+    "fulltext_quality_records": 400,
+    "rule_records": 0
+  },
+  "dataset": "core_eval_1_0.jsonl",
+  "dataset_sha256": "a8b251aca2d9b84c9dcf74dd11442d3b02e2996f60501d5bc33ab1dccc8476e6",
+  "dataset_tier": "formal_eval_1_0",
+  "deidentification": {
+    "body_limit_chars": 4000,
+    "content_and_source_ids": "deterministic SHA-256 pseudonyms",
+    "emails_phone_numbers_and_token_patterns": "redacted",
+    "reviewed": true,
+    "url_queries_and_fragments": "removed"
+  },
+  "generated_at": "2026-07-30T09:14:25.634454+00:00",
+  "git_commit": "47263b2e65f83a585a6a1722b29ced6531d05224",
+  "label_counts": {
+    "must_see": 15,
+    "noise": 247,
+    "ok": 138
+  },
+  "label_sources": {
+    "human-review-sheet-v1": 400
+  },
+  "limitations": [
+    "Single-annotator labels; future difficult examples should be double-reviewed.",
+    "Paywall stratum is source-level known/likely status because row-level paywall was unavailable.",
+    "Public article text is truncated and URL query strings are removed."
+  ],
+  "maintenance": {
+    "append_only_default": "Prefer adding a new versioned dataset/manifest over silently rewriting old labels.",
+    "history": "Keep prior eval_history metrics so threshold movement is explainable.",
+    "label_change_rule": "Changing an existing label requires annotation_notes explaining why.",
+    "refresh_cadence": "Refresh or extend the dataset after major scoring/dedupe/event/rule changes, or monthly during active eval work."
+  },
+  "metrics": {
+    "covered_sources@20": 9,
+    "duplicate_rate": 0.0025,
+    "freshness_lag_p50": 53.34,
+    "freshness_lag_p90": 992.22,
+    "fulltext_complete_rate": 0.895,
+    "precision@20": 0.85,
+    "source_coverage@20": 0.3462,
+    "source_diversity@20": 9,
+    "title_only_rate": 0.0225,
+    "total": 400,
+    "total_sources": 26
+  },
+  "quality_checks": {
+    "prediction_fields_removed": true,
+    "source_dataset_sha256": "793ab17258040d3b49973587e51e0c9cac377f857d08555ce6d117a4ff611ab3",
+    "split_overlap": 0
+  },
+  "record_count": 400,
+  "release_scope": "algorithm_and_ui_release_gate",
+  "sample_standard": {
+    "agent_sampling_brief": [
+      "In the production PIM environment, export around 500 recent diverse candidates across at least 10 sources.",
+      "Use scripts/export_eval_candidates.py with blank labels; do not invent final labels automatically.",
+      "Run scripts/prelabel_eval_candidates.py only to add suggested_* review hints.",
+      "Create a TSV or HTML review sheet with scripts/review_eval_candidates.py; ask the human to confirm/fix labels.",
+      "Apply the reviewed sheet with --require-reviewed, then validate/install the JSONL and write a manifest.",
+      "If event/rule fields are unavailable, leave coverage in the manifest as zero/pending instead of fabricating fields."
+    ],
+    "coverage_targets": {
+      "event_grouping": "Prefer event_id/event_key when available; report as pending if the production model has not landed yet.",
+      "fulltext_quality": "metadata.fulltext_status/fetch_acceptance must be present across the set.",
+      "near_duplicate": "Include duplicate_group_id/is_duplicate_of/duplicate_of examples.",
+      "rule_coverage": "Prefer rule_id/rule_matches/keyword_matches when available; report as pending if rules are not yet exported."
+    },
+    "labels": {
+      "must_see": "High-signal item a good daily brief should surface.",
+      "noise": "Duplicate, low-signal, promotional, irrelevant, or poor-quality extraction.",
+      "ok": "Relevant or useful, but not necessarily a top daily item."
+    },
+    "maintenance_policy": {
+      "append_only_default": "Prefer adding a new versioned dataset/manifest over silently rewriting old labels.",
+      "history": "Keep prior eval_history metrics so threshold movement is explainable.",
+      "label_change_rule": "Changing an existing label requires annotation_notes explaining why.",
+      "refresh_cadence": "Refresh or extend the dataset after major scoring/dedupe/event/rule changes, or monthly during active eval work."
+    },
+    "minimums": {
+      "label_classes": 2,
+      "records": 200,
+      "sources": 10
+    },
+    "privacy_rules": [
+      "No cookies, API keys, auth headers, browser storage, private tokens, or runtime secrets.",
+      "No private emails, chat logs, personal notes, or non-public user identifiers unless irreversibly redacted.",
+      "Full content must be truncated to the export limit and should only include content the user is allowed to process locally.",
+      "Keep source attribution, title, timestamps, and URL so eval failures remain debuggable."
+    ],
+    "purpose": "Shared, de-identified, human-reviewed quality eval for PIM scoring, fulltext quality, near-duplicate behavior, and future event/rule coverage.",
+    "required_record_fields": [
+      "id",
+      "title",
+      "url",
+      "label",
+      "label_source",
+      "source_id",
+      "source_name",
+      "source_url",
+      "summary",
+      "full_content",
+      "content_type",
+      "publish_time",
+      "fetched_at",
+      "metadata",
+      "source_metadata"
+    ],
+    "version": "core-eval-v1"
+  },
+  "sampling": {
+    "disjoint_splits": true,
+    "method": "deterministic label-stratified split of a 500-row production review set",
+    "source_dataset": "eval_set_v1_4_2026-07-06.jsonl",
+    "split": "formal"
+  },
+  "sampling_interval": "2026-06-29T00:00:00/2026-07-06T10:01:49",
+  "source_count": 26,
+  "split_policy": {
+    "bootstrap": "100-row label-stratified infrastructure gate",
+    "formal": "remaining 400 rows, never used by the bootstrap fixture"
+  }
+}
