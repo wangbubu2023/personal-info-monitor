@@ -3,6 +3,7 @@ import { Form, message } from 'antd'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { sourcesApi } from '../../../services/sources'
 import { type AuthConfig } from '../../../services/configs'
+import type { BrowserSession } from '../../../services/browserSessions'
 import { sourceKeys } from '../../../services/queryKeys'
 import type { Source, SourceCreate, SourceType } from '../../../types'
 import { parseUrlLines } from '../importUtils'
@@ -18,13 +19,8 @@ export interface SourceFormValues extends Omit<SourceCreate, 'extra_urls'> {
   extra_urls_text?: string
   max_fetch_lag_minutes?: number | null
   paywall_enabled?: boolean
-  /** 用户为 website 源选中的已有 auth_config.id；监控源编辑弹窗里的唯一凭据入口。 */
+  /** 用户为 website 源选中的 AuthConfig id 或 browser-session:<id>。 */
   website_auth_config_id?: string
-  /**
-   * "仅 RSS 摘要" 开关：true 时跳过全文抓取（Playwright hydration），只保留
-   * RSS 摘要。写入 metadata.rss_only，用于被 DataDome 等反爬系统挡住的源。
-  */
-  rss_only_enabled?: boolean
   source_stars?: number
   authority_type?: string
   source_weight?: number
@@ -32,22 +28,39 @@ export interface SourceFormValues extends Omit<SourceCreate, 'extra_urls'> {
   x_shared_auth_config_id?: string
   x_legacy_dedicated_auth?: boolean
   x_legacy_auth_name?: string
-  bpc_spoof_ua?: string
-  bpc_spoof_referer?: string
-  bpc_random_ip?: boolean
-  bpc_block_paywalls?: boolean
-  bpc_ephemeral_context?: boolean
 }
 
 interface UseSourceEditorOptions {
   authConfigs: AuthConfig[]
+  browserSessions?: BrowserSession[]
   sourceLimitReached: boolean
   maxSources: number
   defaultSharedXAuthConfigId: string | undefined
 }
 
+export const BROWSER_SESSION_CREDENTIAL_PREFIX = 'browser-session:'
+const LEGACY_WEBSITE_STRATEGY_KEYS = [
+  'rss_only',
+  'bpc_spoof_ua',
+  'bpc_spoof_referer',
+  'bpc_random_ip',
+  'bpc_block_paywalls',
+  'bpc_ephemeral_context',
+] as const
+
+export function browserSessionCredentialValue(id: string): string {
+  return `${BROWSER_SESSION_CREDENTIAL_PREFIX}${id}`
+}
+
+function browserSessionIdFromCredentialValue(value?: string): string | undefined {
+  if (!value?.startsWith(BROWSER_SESSION_CREDENTIAL_PREFIX)) return undefined
+  const id = value.slice(BROWSER_SESSION_CREDENTIAL_PREFIX.length).trim()
+  return id || undefined
+}
+
 export function useSourceEditor({
   authConfigs,
+  browserSessions = [],
   sourceLimitReached,
   maxSources,
   defaultSharedXAuthConfigId,
@@ -148,24 +161,27 @@ export function useSourceEditor({
       extra_urls_text,
       paywall_enabled,
       website_auth_config_id,
-      rss_only_enabled,
       source_stars,
       authority_type,
       source_weight,
       x_cookie_enabled,
       x_shared_auth_config_id,
       max_fetch_lag_minutes,
-      bpc_spoof_ua,
-      bpc_spoof_referer,
-      bpc_random_ip,
-      bpc_block_paywalls,
-      bpc_ephemeral_context,
       metadata: formMetadata,
       ...rest
     } = values
 
     const baseMeta: Record<string, unknown> =
       typeof formMetadata === 'object' && formMetadata !== null ? { ...formMetadata } : {}
+    const clearBrowserSessionBinding = () => {
+      if (editingSource && baseMeta.browser_session_id) {
+        // Source updates merge metadata, so null is the explicit tombstone for
+        // a previously persisted browser-session binding.
+        baseMeta.browser_session_id = null
+      } else {
+        delete baseMeta.browser_session_id
+      }
+    }
     void authority_type
     void max_fetch_lag_minutes
 
@@ -178,59 +194,13 @@ export function useSourceEditor({
       baseMeta.source_weight = 1
     }
 
-    // Persist the "仅 RSS 摘要" toggle as a boolean flag inside metadata. The
-    // hydration fallback only exists on the website collector path (RSS /
-    // YouTube / X / podcast use dedicated collectors without hydration), so
-    // we only emit this flag for website sources and drop it everywhere else
-    // to keep metadata clean.
     if (rest.type === 'website') {
-      if (bpc_ephemeral_context && paywall_enabled) {
-        setSubmitError('强制无痕模式不能与登录凭据复用同时开启，请关闭其中一个选项。')
-        message.error('保存失败：强制无痕模式不能与登录凭据复用同时开启')
-        return
-      }
-
-      if (rss_only_enabled) {
-        baseMeta.rss_only = true
-      } else if (editingSource && baseMeta.rss_only) {
-        // User toggled it off on an existing source → explicitly clear.
-        baseMeta.rss_only = false
-      } else {
-        delete baseMeta.rss_only
-      }
-
-      if (bpc_spoof_ua) {
-        baseMeta.bpc_spoof_ua = bpc_spoof_ua
-      } else {
-        delete baseMeta.bpc_spoof_ua
-      }
-      if (bpc_spoof_referer) {
-        baseMeta.bpc_spoof_referer = bpc_spoof_referer
-      } else {
-        delete baseMeta.bpc_spoof_referer
-      }
-      if (bpc_random_ip) {
-        baseMeta.bpc_random_ip = true
-      } else {
-        delete baseMeta.bpc_random_ip
-      }
-      if (bpc_block_paywalls) {
-        baseMeta.bpc_block_paywalls = true
-      } else {
-        delete baseMeta.bpc_block_paywalls
-      }
-      if (bpc_ephemeral_context) {
-        baseMeta.bpc_ephemeral_context = true
-      } else {
-        delete baseMeta.bpc_ephemeral_context
-      }
+      LEGACY_WEBSITE_STRATEGY_KEYS.forEach((key) => delete baseMeta[key])
+      baseMeta.fetch_strategy_mode = 'auto'
     } else {
-      delete baseMeta.rss_only
-      delete baseMeta.bpc_spoof_ua
-      delete baseMeta.bpc_spoof_referer
-      delete baseMeta.bpc_random_ip
-      delete baseMeta.bpc_block_paywalls
-      delete baseMeta.bpc_ephemeral_context
+      LEGACY_WEBSITE_STRATEGY_KEYS.forEach((key) => delete baseMeta[key])
+      delete baseMeta.fetch_strategy_mode
+      clearBrowserSessionBinding()
     }
 
     const payload: SourceCreate = {
@@ -250,26 +220,40 @@ export function useSourceEditor({
       if (payload.type === 'website') {
         const enablePaywall = Boolean(paywall_enabled)
         if (enablePaywall) {
-          // The editor no longer creates/updates AuthConfig rows — users
-          // manage credentials in the dedicated "登录与凭据" tab. Here we just
-          // bind the source to whichever existing config they picked.
           const selectedId = website_auth_config_id
           if (!selectedId) {
             setSubmitError('请先在「登录与凭据」页为该站点创建凭据，再在下拉框中选择。')
             message.error('保存失败：请选择一份已有的站点凭据')
             return
           }
-          const exists = (authConfigs || []).some((cfg) => cfg.id === selectedId)
-          if (!exists) {
-            setSubmitError('所选凭据已不存在，请到「登录与凭据」页刷新后重选。')
-            message.error('保存失败：所选凭据已不存在')
-            return
+          const browserSessionId = browserSessionIdFromCredentialValue(selectedId)
+          if (browserSessionId) {
+            const session = browserSessions.find(
+              (item) => item.id === browserSessionId && item.status === 'active',
+            )
+            if (!session) {
+              setSubmitError('所选浏览器登录态已失效或不存在，请重新登录后再选择。')
+              message.error('保存失败：所选浏览器登录态不可用')
+              return
+            }
+            payload.auth_required = true
+            payload.auth_config_id = null
+            baseMeta.browser_session_id = session.id
+          } else {
+            const exists = (authConfigs || []).some((cfg) => cfg.id === selectedId)
+            if (!exists) {
+              setSubmitError('所选凭据已不存在，请到「登录与凭据」页刷新后重选。')
+              message.error('保存失败：所选凭据已不存在')
+              return
+            }
+            payload.auth_required = true
+            payload.auth_config_id = selectedId
+            clearBrowserSessionBinding()
           }
-          payload.auth_required = true
-          payload.auth_config_id = selectedId
         } else {
           payload.auth_required = false
           ;(payload as SourceCreate & { auth_config_id: string | null }).auth_config_id = null
+          clearBrowserSessionBinding()
         }
       } else if (payload.type === 'x') {
         const enableXCredential = Boolean(x_cookie_enabled)
@@ -310,15 +294,19 @@ export function useSourceEditor({
 
   const handleEdit = (source: Source) => {
     setSubmitError(null)
+    const linkedBrowserSessionId =
+      typeof source.metadata?.browser_session_id === 'string'
+        ? source.metadata.browser_session_id
+        : undefined
+    const linkedBrowserSession = linkedBrowserSessionId
+      ? browserSessions.find((session) => session.id === linkedBrowserSessionId)
+      : undefined
     const linkedAuth =
       authConfigs?.find((cfg) => cfg.id === source.auth_config_id) ||
       (source.type === 'website' ? matchAuthConfigByHost(source.url, authConfigs || []) : undefined)
     setEditingSource(source)
     const xUsesLegacyDedicatedAuth = Boolean(
       source.type === 'x' && linkedAuth && !linkedAuth.is_shared && isXCookieProfile(linkedAuth)
-    )
-    const rssOnlyFromMeta = Boolean(
-      source.type === 'website' && source.metadata?.rss_only
     )
     form.setFieldsValue({
       ...source,
@@ -329,20 +317,20 @@ export function useSourceEditor({
           ? Number(source.metadata.source_weight)
           : 1,
       extra_urls_text: (source.extra_urls || []).join('\n'),
-      paywall_enabled: Boolean(source.auth_required || source.auth_config_id || linkedAuth),
+      paywall_enabled: Boolean(
+        source.auth_required || source.auth_config_id || linkedAuth || linkedBrowserSession,
+      ),
       website_auth_config_id:
-        source.type === 'website' ? linkedAuth?.id || undefined : undefined,
-      rss_only_enabled: rssOnlyFromMeta,
+        source.type === 'website'
+          ? linkedBrowserSession
+            ? browserSessionCredentialValue(linkedBrowserSession.id)
+            : linkedAuth?.id || undefined
+          : undefined,
       x_cookie_enabled: Boolean(source.type === 'x' && (source.auth_required || source.auth_config_id || linkedAuth)),
       x_shared_auth_config_id:
         source.type === 'x' && linkedAuth?.is_shared ? linkedAuth.id : defaultSharedXAuthConfigId,
       x_legacy_dedicated_auth: xUsesLegacyDedicatedAuth,
       x_legacy_auth_name: xUsesLegacyDedicatedAuth ? linkedAuth?.name || undefined : undefined,
-      bpc_spoof_ua: source.metadata?.bpc_spoof_ua as string | undefined,
-      bpc_spoof_referer: source.metadata?.bpc_spoof_referer as string | undefined,
-      bpc_random_ip: Boolean(source.metadata?.bpc_random_ip),
-      bpc_block_paywalls: Boolean(source.metadata?.bpc_block_paywalls),
-      bpc_ephemeral_context: Boolean(source.metadata?.bpc_ephemeral_context),
     })
     setIsModalOpen(true)
   }
@@ -359,18 +347,12 @@ export function useSourceEditor({
     form.setFieldsValue({
       paywall_enabled: false,
       website_auth_config_id: undefined,
-      rss_only_enabled: false,
       source_stars: 1,
       source_weight: 1,
       x_cookie_enabled: true,
       x_shared_auth_config_id: defaultSharedXAuthConfigId,
       x_legacy_dedicated_auth: false,
       x_legacy_auth_name: undefined,
-      bpc_spoof_ua: undefined,
-      bpc_spoof_referer: undefined,
-      bpc_random_ip: false,
-      bpc_block_paywalls: false,
-      bpc_ephemeral_context: false,
     })
     setIsModalOpen(true)
   }
@@ -385,11 +367,6 @@ export function useSourceEditor({
         x_legacy_dedicated_auth: false,
         x_legacy_auth_name: undefined,
         website_auth_config_id: undefined,
-        bpc_spoof_ua: undefined,
-        bpc_spoof_referer: undefined,
-        bpc_random_ip: false,
-        bpc_block_paywalls: false,
-        bpc_ephemeral_context: false,
       })
       return
     }
@@ -399,11 +376,6 @@ export function useSourceEditor({
       x_legacy_dedicated_auth: false,
       x_legacy_auth_name: undefined,
       website_auth_config_id: undefined,
-      bpc_spoof_ua: undefined,
-      bpc_spoof_referer: undefined,
-      bpc_random_ip: false,
-      bpc_block_paywalls: false,
-      bpc_ephemeral_context: false,
     })
   }
 

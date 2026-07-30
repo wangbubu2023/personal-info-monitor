@@ -11,7 +11,16 @@ from app.api.sources import _helpers as sources_helpers
 from app.domains.fetch.session_health import SessionHealth, record_session_health
 from app.domains.sources.status import set_last_fetch_outcome
 from app.features import PODCAST_DISABLED_DETAIL
-from app.models import BrowserSession, Content, Source
+from app.models import (
+    BrowserSession,
+    Content,
+    ContentEvent,
+    ContentEventSnapshot,
+    EventMembershipV1,
+    FetchJob,
+    PostprocessJob,
+    Source,
+)
 from app.models.browser_session import BrowserSessionMode, BrowserSessionStatus
 from app.models.source_fetch_log import SourceFetchLog
 from app.models.source import SourceType
@@ -225,6 +234,104 @@ async def test_sources_crud_and_list_cache_invalidation(client, db_session, monk
     final_list = await client.get("/api/sources")
     assert final_list.status_code == 200
     assert final_list.json()["total"] == 0
+
+
+@pytest.mark.asyncio
+async def test_delete_source_cleans_non_cascading_dependencies(
+    client, db_session, async_session_factory
+):
+    source = Source(
+        name="Source with history",
+        type=SourceType.WEBSITE,
+        url="https://example.com/history",
+    )
+    db_session.add(source)
+    await db_session.flush()
+    content = Content(
+        source_id=source.id,
+        external_id="story-1",
+        title="Story",
+        original_url="https://example.com/history/story-1",
+        content_type="website",
+    )
+    db_session.add(content)
+    await db_session.flush()
+    event = ContentEvent(
+        event_id="event-delete-source-regression",
+        event_key="event-delete-source-regression",
+        title="Story event",
+        independent_source_count=1,
+        source_names=[source.name],
+        canonical_content_id=content.id,
+    )
+    db_session.add(event)
+    await db_session.flush()
+    db_session.add_all(
+        [
+            ContentEventSnapshot(
+                event_id=event.event_id,
+                version=1,
+                title=event.title,
+                canonical_content_id=content.id,
+            ),
+            EventMembershipV1(
+                event_id=event.event_id,
+                content_id=content.id,
+                assignment_version="v1",
+                explanation={},
+            ),
+            FetchJob(
+                business_key=f"delete-source:{source.id}",
+                source_id=source.id,
+                fetch_kind="manual",
+                due_window=datetime(2026, 7, 29),
+                not_before=datetime(2026, 7, 29),
+                payload={},
+            ),
+            PostprocessJob(
+                idempotency_key=f"delete-content:{content.id}",
+                content_id=content.id,
+                run_after=datetime(2026, 7, 29),
+                payload={},
+            ),
+        ]
+    )
+    await db_session.commit()
+
+    response = await client.delete(f"/api/sources/{source.id}")
+
+    assert response.status_code == 200
+    async with async_session_factory() as verify:
+        assert await verify.scalar(select(Source).where(Source.id == source.id)) is None
+        assert await verify.scalar(select(Content).where(Content.id == content.id)) is None
+        assert (
+            await verify.scalar(
+                select(EventMembershipV1).where(
+                    EventMembershipV1.content_id == content.id
+                )
+            )
+            is None
+        )
+        assert (
+            await verify.scalar(
+                select(PostprocessJob).where(PostprocessJob.content_id == content.id)
+            )
+            is None
+        )
+        assert (
+            await verify.scalar(select(FetchJob).where(FetchJob.source_id == source.id))
+            is None
+        )
+        persisted_event = await verify.get(ContentEvent, event.event_id)
+        assert persisted_event is not None
+        assert persisted_event.canonical_content_id is None
+        snapshot = await verify.scalar(
+            select(ContentEventSnapshot).where(
+                ContentEventSnapshot.event_id == event.event_id
+            )
+        )
+        assert snapshot is not None
+        assert snapshot.canonical_content_id is None
 
 
 @pytest.mark.asyncio

@@ -4,6 +4,7 @@ import type { SortOrder } from 'antd/es/table/interface'
 import { useQuery, useQueries } from '@tanstack/react-query'
 import { listSources } from '../../../services/sources'
 import { configsApi } from '../../../services/configs'
+import { browserSessionsApi } from '../../../services/browserSessions'
 import { sourceKeys } from '../../../services/queryKeys'
 import { sourceTypeFilterOptions } from '../../../config/sourceTypes'
 import { getAxiosErrorMessage } from '../../../utils/apiError'
@@ -86,6 +87,11 @@ export function useSourceList() {
     queryFn: configsApi.listAuthConfigs,
   })
 
+  const { data: browserSessions } = useQuery({
+    queryKey: ['browser-sessions'],
+    queryFn: browserSessionsApi.list,
+  })
+
   const { data: systemSettings } = useQuery({
     queryKey: ['system-settings'],
     queryFn: configsApi.getSettings,
@@ -129,6 +135,7 @@ export function useSourceList() {
     isFetching,
     refetchSources,
     authConfigs,
+    browserSessions,
     systemSettings,
     sourceCount,
     maxSources,

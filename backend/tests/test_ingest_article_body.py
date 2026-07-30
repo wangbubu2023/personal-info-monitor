@@ -92,3 +92,33 @@ async def test_fetch_public_article_body_falls_back_when_structured_body_is_summ
     assert text.startswith("Real article paragraph")
     assert resolved_url == "https://example.com/article"
     mock_extractor_cls.return_value.extract.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_fetch_public_article_body_automatically_retries_http_403():
+    body = "Recovered article body with enough reporting detail and context. " * 8
+    html = f"""
+    <html><head>
+      <script type="application/ld+json">
+      {{"@type": "NewsArticle", "articleBody": "{body}"}}
+      </script>
+    </head><body></body></html>
+    """
+    fetch_mock = AsyncMock(
+        side_effect=[
+            PublicHttpTextResult(403, "https://example.com/article", ""),
+            PublicHttpTextResult(200, "https://example.com/article", html),
+        ]
+    )
+
+    with patch(
+        "app.domains.fetch.article_body.fetch_public_http_text",
+        fetch_mock,
+    ):
+        text, resolved_url = await fetch_public_article_body(
+            "https://example.com/article"
+        )
+
+    assert text.startswith("Recovered article body")
+    assert resolved_url == "https://example.com/article"
+    assert fetch_mock.await_count == 2

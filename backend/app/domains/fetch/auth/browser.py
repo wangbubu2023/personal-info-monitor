@@ -24,7 +24,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Source
-from app.models.auth_config import AuthConfig
+from app.models.auth_config import AuthConfig, AuthStatus
 from app.models.browser_session import BrowserSession
 from app.platform.browser.hosts import _X_HOSTS, is_x_host
 from app.utils.datetime import to_iso_z, utcnow_naive
@@ -67,7 +67,7 @@ async def ensure_x_shared_auth_config(
     exists we reuse it rather than multiplying rows.
     """
 
-    from app.models.auth_config import AuthStatus, AuthType
+    from app.models.auth_config import AuthType
 
     if not is_x_host(site_host):
         return None
@@ -86,7 +86,10 @@ async def ensure_x_shared_auth_config(
         site_url=site_url or "https://x.com",
         auth_type=AuthType.COOKIE,
         is_shared=True,
-        status=AuthStatus.ACTIVE,
+        # This row is only a landing spot until a capture supplies the two
+        # collector-critical X cookies. Do not advertise an empty placeholder
+        # as an active credential.
+        status=AuthStatus.INVALID,
         login_selectors={},
     )
     db.add(config)
@@ -101,14 +104,15 @@ def sync_cookies_to_auth_config(
     site_host: str,
     *,
     min_cookies: int = 1,
+    required_cookie_names: tuple[str, ...] = (),
 ) -> bool:
     """Write host-matching cookies from a browser context into ``auth_config``.
 
     Returns True if the config's ``credentials`` payload was actually
-    modified. ``min_cookies=1`` lets the X flow land even a partial cookie
-    set (just ``auth_token`` + ``ct0`` is enough for the X collector); the
-    paywall sites typically need far more and use the validate path's
-    stricter threshold.
+    modified. ``required_cookie_names`` prevents a large guest/anonymous jar
+    from replacing authenticated credentials merely because it satisfies the
+    numeric threshold. Paywall sites can continue using ``min_cookies`` while
+    X requires its two collector-critical cookie names.
     """
 
     if not auth_config or not cookies:
@@ -126,7 +130,13 @@ def sync_cookies_to_auth_config(
         if host_matches(site_host, domain):
             cookie_dict[name] = str(value)
 
-    if not cookie_dict or len(cookie_dict) < min_cookies:
+    normalized_names = {name.lower() for name in cookie_dict}
+    required = {str(name).strip().lower() for name in required_cookie_names if str(name).strip()}
+    if (
+        not cookie_dict
+        or len(cookie_dict) < min_cookies
+        or not required.issubset(normalized_names)
+    ):
         return False
 
     existing = decrypt_auth_credentials(auth_config)
@@ -134,6 +144,7 @@ def sync_cookies_to_auth_config(
     existing["cookie_mode"] = "manual"
     existing["cookie_updated_at"] = utcnow_naive().isoformat() + "Z"
     auth_config.credentials = encrypt_data(existing)
+    auth_config.status = AuthStatus.ACTIVE
     auth_config.last_validated_at = utcnow_naive()
     return True
 

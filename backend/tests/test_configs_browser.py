@@ -16,7 +16,10 @@ from app.api.configs_browser import HeadfulBrowserUnavailableError, _browser_err
 from app.auth import verify_api_key
 from app.database import Base, get_async_db
 from app.main import app
+from app.models.auth_config import AuthConfig, AuthStatus, AuthType
 from app.models.browser_session import BrowserSession, BrowserSessionMode, BrowserSessionStatus
+from app.platform.auth.credentials import decrypt_auth_credentials
+from app.platform.security.encryption import encrypt_data
 
 
 # ---------------------------------------------------------------------------
@@ -227,6 +230,134 @@ class TestOpenBrowserSessionLogin:
         assert resp.status_code == 422
         assert "X 登录必须使用可视化浏览器" in resp.json()["detail"]
         mock_boot.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_x_guest_cookies_do_not_mark_active_or_overwrite_credentials(
+        self,
+        client: AsyncClient,
+        _db_factory,
+        tmp_path,
+    ):
+        original_credentials = {
+            "cookies": {"auth_token": "existing-auth", "ct0": "existing-ct0"},
+            "cookie_mode": "manual",
+        }
+        async with _db_factory() as db:
+            auth_config = AuthConfig(
+                name="X 浏览器会话",
+                site_url="https://x.com",
+                auth_type=AuthType.COOKIE,
+                is_shared=True,
+                status=AuthStatus.ACTIVE,
+                credentials=encrypt_data(original_credentials),
+            )
+            db.add(auth_config)
+            await db.flush()
+            session = BrowserSession(
+                site_url="https://x.com",
+                site_host="x.com",
+                profile_name="x-com",
+                user_data_dir=str(tmp_path / "x-com"),
+                storage_state_path=str(tmp_path / "x-com" / "storage_state.json"),
+                auth_config_id=auth_config.id,
+                status=BrowserSessionStatus.NEEDS_LOGIN,
+            )
+            db.add(session)
+            await db.commit()
+            session_id = session.id
+            auth_config_id = auth_config.id
+
+        guest_cookies = [
+            {"name": "guest_id", "value": "guest", "domain": ".x.com"},
+            {"name": "personalization_id", "value": "anon", "domain": ".x.com"},
+        ]
+        with patch("app.api.configs_browser.extract_auth_cookies_for_host", return_value={}), \
+             patch(
+                 "app.api.configs_browser.run_browser_bootstrap",
+                 new_callable=AsyncMock,
+                 return_value={
+                     "final_url": "https://x.com/",
+                     "title": "X",
+                     "cookie_count": len(guest_cookies),
+                     "cookies": guest_cookies,
+                 },
+             ):
+            resp = await client.post(
+                f"/api/configs/browser-sessions/{session_id}/open-login",
+                json={"headless": False},
+            )
+
+        assert resp.status_code == 200
+        payload = resp.json()
+        assert payload["status"] == "needs_login"
+        assert payload["cookies_synced"] is False
+        assert payload["bootstrap"]["auth_ready"] is False
+        assert payload["bootstrap"]["missing_required_cookies"] == ["auth_token", "ct0"]
+        assert "auth_token" in payload["last_error"]
+        assert "ct0" in payload["last_error"]
+
+        async with _db_factory() as db:
+            stored = await db.get(AuthConfig, auth_config_id)
+            assert stored is not None
+            assert decrypt_auth_credentials(stored) == original_credentials
+
+    @pytest.mark.asyncio
+    async def test_x_required_cookies_mark_active_and_sync(
+        self,
+        client: AsyncClient,
+        _db_factory,
+        tmp_path,
+    ):
+        async with _db_factory() as db:
+            session = BrowserSession(
+                site_url="https://x.com",
+                site_host="x.com",
+                profile_name="x-com",
+                user_data_dir=str(tmp_path / "x-com"),
+                storage_state_path=str(tmp_path / "x-com" / "storage_state.json"),
+                status=BrowserSessionStatus.NEEDS_LOGIN,
+            )
+            db.add(session)
+            await db.commit()
+            session_id = session.id
+
+        auth_cookies = [
+            {"name": "auth_token", "value": "fresh-auth", "domain": ".x.com"},
+            {"name": "ct0", "value": "fresh-ct0", "domain": ".x.com"},
+            {"name": "guest_id", "value": "guest", "domain": ".x.com"},
+        ]
+        with patch("app.api.configs_browser.extract_auth_cookies_for_host", return_value={}), \
+             patch(
+                 "app.api.configs_browser.run_browser_bootstrap",
+                 new_callable=AsyncMock,
+                 return_value={
+                     "final_url": "https://x.com/home",
+                     "title": "Home / X",
+                     "cookie_count": len(auth_cookies),
+                     "cookies": auth_cookies,
+                 },
+             ):
+            resp = await client.post(
+                f"/api/configs/browser-sessions/{session_id}/open-login",
+                json={"headless": False},
+            )
+
+        assert resp.status_code == 200
+        payload = resp.json()
+        assert payload["status"] == "active"
+        assert payload["cookies_synced"] is True
+        assert payload["bootstrap"]["auth_ready"] is True
+        assert payload["bootstrap"]["missing_required_cookies"] == []
+
+        async with _db_factory() as db:
+            stored_session = await db.get(BrowserSession, session_id)
+            assert stored_session is not None
+            stored = await db.get(AuthConfig, stored_session.auth_config_id)
+            assert stored is not None
+            assert stored.status == AuthStatus.ACTIVE
+            cookies = decrypt_auth_credentials(stored)["cookies"]
+            assert cookies["auth_token"] == "fresh-auth"
+            assert cookies["ct0"] == "fresh-ct0"
 
     @pytest.mark.asyncio
     async def test_headful_display_error_is_actionable(self, client: AsyncClient, _db_factory, tmp_path):

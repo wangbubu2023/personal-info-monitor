@@ -22,7 +22,11 @@ from app.utils.http import permissive_session_kwargs
 from app.utils.datetime import utcnow_naive
 from app.utils.logger import get_logger
 from app.utils.text import normalize_article_text, truncate_content
-from app.domains.fetch.collectors.bpc_strategies import get_spoofed_headers
+from app.domains.fetch.collectors.bpc_strategies import (
+    automatic_retry_profiles,
+    get_spoofed_headers,
+    normalize_fetch_strategy_metadata,
+)
 
 logger = get_logger(__name__)
 
@@ -58,36 +62,60 @@ async def fetch_public_article_body(original_url: str, metadata: dict | None = N
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
         "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
     )
-    bpc_headers = get_spoofed_headers(metadata or {}, ua_default)
-
-    headers = {
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Accept-Language": "en-US,en;q=0.9",
-        **bpc_headers,
-    }
     timeout = aiohttp.ClientTimeout(total=20, connect=8, sock_read=12)
+    base_metadata = normalize_fetch_strategy_metadata(metadata)
+    attempts: list[tuple[str, dict]] = [("normal", base_metadata)]
 
-    try:
-        async with aiohttp.ClientSession(
-            **permissive_session_kwargs(timeout=timeout, headers=headers)
-        ) as session:
-            response = await fetch_public_http_text(session, url, text_errors="ignore")
-            if response.status != 200:
-                return "", ""
-            html_text = response.text
-            final_url = response.url
-    except (aiohttp.ClientError, TimeoutError, UnicodeDecodeError, ValueError) as exc:
-        logger.debug("Public article fetch failed for %s: %s", url, exc)
-        return "", ""
+    for attempt_index, (strategy_name, attempt_metadata) in enumerate(attempts):
+        headers = {
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.9",
+            **get_spoofed_headers(attempt_metadata, ua_default),
+        }
+        failure_reason = ""
+        try:
+            async with aiohttp.ClientSession(
+                **permissive_session_kwargs(timeout=timeout, headers=headers)
+            ) as session:
+                response = await fetch_public_http_text(session, url, text_errors="ignore")
+                if response.status != 200:
+                    failure_reason = f"http_status_{response.status}"
+                    html_text = ""
+                    final_url = ""
+                else:
+                    html_text = response.text
+                    final_url = response.url
+        except (aiohttp.ClientError, TimeoutError, UnicodeDecodeError, ValueError) as exc:
+            logger.debug("Public article fetch failed for %s: %s", url, exc)
+            return "", ""
 
-    if len(html_text) < 500:
-        return "", ""
+        if html_text and len(html_text) >= 500:
+            extracted = await _extract_article_text(html_text, final_url)
+            clean_text = normalize_article_text(extracted or "").strip()
+            if len(clean_text) >= 120:
+                if strategy_name != "normal":
+                    logger.info(
+                        "Automatic public article fallback %s succeeded for %s",
+                        strategy_name,
+                        url,
+                    )
+                return clean_text, final_url
+            failure_reason = "html_parse_empty"
+        elif not failure_reason:
+            failure_reason = "html_parse_empty"
 
-    extracted = await _extract_article_text(html_text, final_url)
-    clean_text = normalize_article_text(extracted or "").strip()
-    if len(clean_text) < 120:
-        return "", ""
-    return clean_text, final_url
+        if attempt_index == 0:
+            # This second-hop fetch is HTTP-only, so browser-context profiles
+            # would be duplicate requests here. The first automatic profile is
+            # the only one whose header changes can have an effect.
+            profiles = automatic_retry_profiles(
+                base_metadata,
+                has_authenticated_session=False,
+                reason=failure_reason,
+            )
+            if profiles:
+                attempts.append(profiles[0])
+    return "", ""
 
 
 async def fetch_cookie_article_body(

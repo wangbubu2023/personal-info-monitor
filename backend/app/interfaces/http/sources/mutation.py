@@ -4,11 +4,19 @@
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select
+from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_async_db
-from app.models import Source
+from app.models import (
+    Content,
+    ContentEvent,
+    ContentEventSnapshot,
+    EventMembershipV1,
+    FetchJob,
+    PostprocessJob,
+    Source,
+)
 from app.schemas.source import SourceCreate, SourceUpdate
 from . import _helpers
 from ._helpers import (
@@ -25,6 +33,32 @@ from ._helpers import (
 )
 
 router = APIRouter()
+
+
+async def delete_source_dependencies(db: AsyncSession, source_id: UUID | str) -> None:
+    """Remove rows that do not cascade when a source and its contents are deleted."""
+
+    content_ids = select(Content.id).where(Content.source_id == source_id).scalar_subquery()
+    await db.execute(
+        update(ContentEvent)
+        .where(ContentEvent.canonical_content_id.in_(content_ids))
+        .values(canonical_content_id=None)
+    )
+    await db.execute(
+        update(ContentEventSnapshot)
+        .where(ContentEventSnapshot.canonical_content_id.in_(content_ids))
+        .values(canonical_content_id=None)
+    )
+    await db.execute(
+        delete(EventMembershipV1).where(EventMembershipV1.content_id.in_(content_ids))
+    )
+    await db.execute(
+        delete(PostprocessJob).where(PostprocessJob.content_id.in_(content_ids))
+    )
+    await db.execute(delete(FetchJob).where(FetchJob.source_id == source_id))
+    # Delete contents explicitly after clearing non-cascading references. The
+    # remaining content relations use ON DELETE CASCADE.
+    await db.execute(delete(Content).where(Content.source_id == source_id))
 
 
 @router.post("")
@@ -125,6 +159,7 @@ async def delete_source(source_id: UUID, db: AsyncSession = Depends(get_async_db
     source = result.scalar_one_or_none()
     if not source or not _source_is_visible(source):
         raise HTTPException(status_code=404, detail="Source not found")
+    await delete_source_dependencies(db, source_id)
     await db.delete(source)
     await db.commit()
     _invalidate_source_cache()

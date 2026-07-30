@@ -26,7 +26,7 @@ from app.platform.browser.bootstrap import (
     _BROWSER_USER_AGENT,
     _require_playwright,
 )
-from app.platform.browser.hosts import is_wsj_host, is_x_host
+from app.platform.browser.hosts import is_wsj_host, is_x_host, missing_x_auth_cookies
 from app.platform.observability.logger import get_logger
 from app.platform.browser.playwright_runtime import (
     async_playwright,
@@ -426,16 +426,9 @@ async def _run_x_cookie_validation(
             cookies_now = await context.cookies()
             final_url = page.url or probe_url
             title = await page.title()
-            cookie_names = {
-                str(c.get("name") or "").lower()
-                for c in cookies_now
-                if host_matches(normalize_host(c.get("domain", "")), "x.com")
-                or host_matches(normalize_host(c.get("domain", "")), "twitter.com")
-            }
-            has_auth_token = "auth_token" in cookie_names
-            has_ct0 = "ct0" in cookie_names
+            missing = missing_x_auth_cookies(cookies_now)
             bounced_to_login = "/i/flow/login" in final_url or "/login" in final_url
-            if has_auth_token and has_ct0 and not bounced_to_login:
+            if not missing and not bounced_to_login:
                 return {
                     "status": BrowserSessionStatus.ACTIVE,
                     "message": f"会话有效（auth_token + ct0 已就绪，共 {len(cookies_now)} 个 cookie）",
@@ -445,11 +438,6 @@ async def _run_x_cookie_validation(
                     "paragraph_count": 0,
                     "cookies": cookies_now,
                 }
-            missing: List[str] = []
-            if not has_auth_token:
-                missing.append("auth_token")
-            if not has_ct0:
-                missing.append("ct0")
             if bounced_to_login:
                 msg = "未登录（被重定向到 X 登录页）"
             else:

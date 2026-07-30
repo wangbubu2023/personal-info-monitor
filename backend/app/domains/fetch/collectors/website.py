@@ -438,7 +438,14 @@ class WebsiteCollector(BaseCollector):
             return contents
 
         metadata = source.metadata_ or {}
-        rss_limit = int(metadata.get("rss_article_hydrate_limit", 20))
+        # Logged-in hydration is deliberately serial/paced to avoid looking
+        # like a bot burst. Keep its default bounded; twenty wrapper
+        # navigations can otherwise turn a quick fetch into a several-minute
+        # task. Operators can still opt into a larger limit per source.
+        default_rss_limit = (
+            3 if _helpers.browser_session_auth_ready(browser_session or {}) else 20
+        )
+        rss_limit = int(metadata.get("rss_article_hydrate_limit", default_rss_limit))
         hydrated_contents, diag = await self._hydrate_direct_articles(
             source,
             direct_contents,
@@ -677,6 +684,65 @@ class WebsiteCollector(BaseCollector):
         return None
 
     async def _fetch_article_html(
+        self,
+        article_url: str,
+        cookies: Dict[str, str],
+        source_url: str,
+        browser_session: Optional[Dict[str, Any]] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> Tuple[Optional[str], Optional[str], Optional[str]]:
+        """Fetch an article, automatically escalating only after a diagnosed block."""
+
+        base_metadata = metadata if isinstance(metadata, dict) else {}
+        result = await self._fetch_article_html_once(
+            article_url,
+            cookies,
+            source_url,
+            browser_session=browser_session,
+            metadata=base_metadata,
+        )
+        if result[0]:
+            return result
+        if _helpers.is_google_news_wrapper(article_url):
+            # Header/script compatibility profiles cannot decode an aggregator
+            # wrapper and would only repeat the same expensive navigation.
+            return result
+
+        has_authenticated_session = bool(
+            cookies
+            or _helpers.browser_session_auth_ready(browser_session or {})
+            or _helpers.storage_state_path_for_playwright(browser_session or {})
+        )
+        profiles = bpc_strategies.automatic_retry_profiles(
+            base_metadata,
+            has_authenticated_session=has_authenticated_session,
+            reason=result[2],
+        )
+        for strategy_name, strategy_metadata in profiles:
+            self.logger.info(
+                "Automatic fetch fallback %s after %s for %s",
+                strategy_name,
+                result[2],
+                article_url,
+            )
+            retried = await self._fetch_article_html_once(
+                article_url,
+                cookies,
+                source_url,
+                browser_session=browser_session,
+                metadata=strategy_metadata,
+            )
+            if retried[0]:
+                self.logger.info(
+                    "Automatic fetch fallback %s succeeded for %s",
+                    strategy_name,
+                    article_url,
+                )
+                return retried
+            result = retried
+        return result
+
+    async def _fetch_article_html_once(
         self,
         article_url: str,
         cookies: Dict[str, str],
@@ -987,6 +1053,68 @@ class WebsiteCollector(BaseCollector):
             )[:500]
         return f"Playwright 浏览器启动失败：{raw}"[:500]
 
+    async def _fetch_with_automatic_browser_strategies(
+        self,
+        source: Source,
+        *,
+        reason: str,
+        has_authenticated_session: bool,
+    ) -> List[Dict[str, Any]]:
+        """Try bounded browser compatibility profiles and record the verdict."""
+
+        original_metadata = dict(source.metadata_ or {})
+        profiles = bpc_strategies.automatic_retry_profiles(
+            original_metadata,
+            has_authenticated_session=has_authenticated_session,
+            reason=reason,
+        )
+        attempted: list[str] = []
+        try:
+            for strategy_name, strategy_metadata in profiles:
+                attempted.append(strategy_name)
+                self.logger.info(
+                    "Automatic listing fallback %s after %s for %s",
+                    strategy_name,
+                    reason,
+                    source.url,
+                )
+                source.metadata_ = strategy_metadata
+                contents = await self._fetch_with_playwright(source)
+                if contents:
+                    source.metadata_ = {
+                        **original_metadata,
+                        "automatic_fetch_diagnostics": {
+                            "trigger": reason,
+                            "strategy": strategy_name,
+                            "outcome": "succeeded",
+                            "updated_at": utcnow_naive().isoformat() + "Z",
+                        },
+                    }
+                    return contents
+        finally:
+            current_diag = (
+                source.metadata_.get("automatic_fetch_diagnostics")
+                if isinstance(source.metadata_, dict)
+                else None
+            )
+            if not (
+                isinstance(current_diag, dict)
+                and current_diag.get("outcome") == "succeeded"
+            ):
+                source.metadata_ = original_metadata
+
+        if attempted:
+            source.metadata_ = {
+                **original_metadata,
+                "automatic_fetch_diagnostics": {
+                    "trigger": reason,
+                    "strategies": attempted,
+                    "outcome": "exhausted",
+                    "updated_at": utcnow_naive().isoformat() + "Z",
+                },
+            }
+        return []
+
     # ------------------------------------------------------------------
     # Top-level orchestration.
     # ------------------------------------------------------------------
@@ -996,13 +1124,12 @@ class WebsiteCollector(BaseCollector):
         await self._check_ssrf(source.url)
         self.logger.info(f"Fetching website: {source.url}")
 
-        metadata = source.metadata_ or {}
-        # Opt-in "仅 RSS 摘要" mode. When the operator flips this flag on a
-        # source (typically because DataDome / Cloudflare bot-walls have
-        # invalidated the Playwright hydration path), we skip all browser-based
-        # article fetches and return the RSS summaries as-is. AI
-        # summarization/translation still run downstream — we just don't
-        # pretend we can pull full bodies.
+        metadata = bpc_strategies.normalize_fetch_strategy_metadata(source.metadata_)
+        if metadata != (source.metadata_ or {}):
+            source.metadata_ = metadata
+        # Emergency/internal manual mode retained for compatibility. Product
+        # sources default to automatic strategy selection and never require a
+        # user to choose RSS-only or browser-compatibility switches.
         rss_only = bool(metadata.get("rss_only"))
 
         auth = self.get_runtime_auth(source)
@@ -1011,6 +1138,9 @@ class WebsiteCollector(BaseCollector):
         has_cookies = bool(cookies)
         has_browser_session = _helpers.browser_session_auth_ready(browser_session)
         has_storage_export = bool(_helpers.storage_state_path_for_playwright(browser_session))
+        has_authenticated_session = bool(
+            has_cookies or has_browser_session or has_storage_export
+        )
         if auth and auth.get("auth_type") == "password" and not has_cookies:
             self.logger.info(
                 "Password auth configured without cookies; RSS-only mode may still miss paywalled content"
@@ -1038,6 +1168,7 @@ class WebsiteCollector(BaseCollector):
                 self.logger.info(f"Using Economist fallback RSS feed: {rss_url}")
 
         hydrate_rss = not rss_only
+        wsj_fallback_attempted = False
 
         # Try RSS first.
         if rss_url:
@@ -1059,6 +1190,7 @@ class WebsiteCollector(BaseCollector):
             # WSJ feed endpoints often become stale; use a fresh fallback feed.
             fallback_url = _helpers.wsj_fallback_rss(original_url)
             if fallback_url:
+                wsj_fallback_attempted = True
                 self.logger.warning(f"Configured RSS appears stale for {original_url}; trying WSJ fallback feed")
                 fallback_source = _helpers.source_with_url(source, fallback_url)
                 try:
@@ -1096,6 +1228,30 @@ class WebsiteCollector(BaseCollector):
                     )
                 return contents
 
+        # WSJ root/topic sources often have no discoverable first-party RSS.
+        # Try the existing Google News site feed before the broad sitemap,
+        # which contains section and author pages as well as actual articles.
+        fallback_url = _helpers.wsj_fallback_rss(source.url)
+        if fallback_url and not wsj_fallback_attempted:
+            self.logger.info("Using WSJ fallback RSS feed: %s", fallback_url)
+            fallback_source = _helpers.source_with_url(source, fallback_url)
+            try:
+                fallback_contents = await self.rss_collector.fetch(fallback_source)
+                fallback_contents = self._filter_unwanted_wsj_items(
+                    source.url, fallback_contents
+                )
+            except FetchFailureError as exc:
+                self.logger.warning(
+                    "WSJ fallback RSS fetch failed for %s: %s", fallback_url, exc
+                )
+                fallback_contents = []
+            if fallback_contents:
+                if hydrate_rss:
+                    return await self._maybe_hydrate_rss_contents(
+                        source, fallback_contents, cookies, browser_session
+                    )
+                return fallback_contents
+
         # rss_only: once we've exhausted all RSS options, bail out instead of
         # falling back to Playwright/static scraping. The operator explicitly
         # opted into RSS-only behavior; returning [] here just means "no new
@@ -1121,6 +1277,12 @@ class WebsiteCollector(BaseCollector):
         # Check if JS rendering is needed.
         if metadata.get("needs_js", False):
             contents = await self._fetch_with_playwright(source)
+            if not contents:
+                contents = await self._fetch_with_automatic_browser_strategies(
+                    source,
+                    reason="dynamic_empty",
+                    has_authenticated_session=has_authenticated_session,
+                )
             return await self._maybe_hydrate_public_listing_contents(
                 source,
                 contents,
@@ -1148,7 +1310,19 @@ class WebsiteCollector(BaseCollector):
             )
             contents = await self._fetch_with_playwright(source, raise_on_error=True)
             if not contents:
-                raise
+                contents = await self._fetch_with_automatic_browser_strategies(
+                    source,
+                    reason=exc.failure.code.value,
+                    has_authenticated_session=has_authenticated_session,
+                )
+                if not contents:
+                    raise
+        if not contents:
+            contents = await self._fetch_with_automatic_browser_strategies(
+                source,
+                reason="html_parse_empty",
+                has_authenticated_session=has_authenticated_session,
+            )
         return await self._maybe_hydrate_public_listing_contents(
             source,
             contents,

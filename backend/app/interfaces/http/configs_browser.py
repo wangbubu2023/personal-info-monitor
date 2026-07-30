@@ -30,7 +30,9 @@ from app.domains.fetch.auth import (
 )
 from app.platform.browser import (
     HeadfulBrowserUnavailableError,
+    X_REQUIRED_AUTH_COOKIES,
     is_x_host,
+    missing_x_auth_cookies,
     profiles_root,
     run_browser_bootstrap,
     run_browser_validation,
@@ -169,8 +171,15 @@ async def open_browser_session_login(
             headless=req.headless,
             dwell_seconds=req.dwell_seconds,
         )
-        session.status = BrowserSessionStatus.ACTIVE
-        session.last_error = None
+        x_session = is_x_host(session.site_host)
+        missing_required = missing_x_auth_cookies(boot.get("cookies")) if x_session else []
+        capture_acceptable = not x_session or not missing_required
+        if not capture_acceptable:
+            session.status = BrowserSessionStatus.NEEDS_LOGIN
+            session.last_error = f"缺少关键 cookie：{', '.join(missing_required)}"
+        else:
+            session.status = BrowserSessionStatus.ACTIVE
+            session.last_error = None
         session.last_validated_at = utcnow_naive()
         session.storage_state_path = str(Path(session.user_data_dir) / "storage_state.json")
         meta = dict(session.metadata_ or {})
@@ -180,7 +189,11 @@ async def open_browser_session_login(
             "title": boot.get("title"),
             "cookie_count": boot.get("cookie_count"),
             "headless": req.headless,
+            "message": session.last_error,
         }
+        if x_session:
+            meta["last_bootstrap"]["auth_ready"] = capture_acceptable
+            meta["last_bootstrap"]["missing_required_cookies"] = missing_required
         session.metadata_ = meta
 
         # Sync the fresh cookies straight into the linked auth_config so the
@@ -188,11 +201,18 @@ async def open_browser_session_login(
         # a separate "validate" click. Particularly important for X where
         # the collector only reads from auth_config.credentials.
         cookies_synced = False
-        if auth_config and session.auth_config_id and req.sync_cookies_to_auth_config:
+        if (
+            auth_config
+            and session.auth_config_id
+            and req.sync_cookies_to_auth_config
+            and capture_acceptable
+        ):
             cookies_synced = sync_cookies_to_auth_config(
                 auth_config,
                 boot.get("cookies"),
                 session.site_host,
+                min_cookies=2 if x_session else 1,
+                required_cookie_names=X_REQUIRED_AUTH_COOKIES if x_session else (),
             )
         payload_extra_sync = cookies_synced
 
@@ -202,6 +222,10 @@ async def open_browser_session_login(
         # Never leak raw cookies back to the frontend — drop them before
         # returning.
         boot_public = {k: v for k, v in boot.items() if k != "cookies"}
+        boot_public["message"] = session.last_error
+        if x_session:
+            boot_public["auth_ready"] = capture_acceptable
+            boot_public["missing_required_cookies"] = missing_required
         payload["bootstrap"] = boot_public
         payload["cookies_synced"] = payload_extra_sync
         return payload
@@ -359,6 +383,7 @@ async def validate_browser_session(
             validation.get("cookies"),
             session.site_host,
             min_cookies=2 if x_sync else 3,
+            required_cookie_names=X_REQUIRED_AUTH_COOKIES if x_sync else (),
         )
 
     await db.commit()

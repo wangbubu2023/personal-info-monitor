@@ -15,12 +15,16 @@ import type { FormInstance } from 'antd'
 import { Link } from 'react-router-dom'
 import type { Source, SourceType } from '../../types'
 import type { AuthConfig } from '../../services/configs'
+import type { BrowserSession } from '../../services/browserSessions'
 import { PODCAST_SOURCES_ENABLED } from '../../config/features'
 import { SOURCE_TYPE_CATALOG } from '../../config/sourceTypes'
 import { getAuthConfigDisplayName, normalizeHost } from '../../utils/sourceAuth'
 import { validateSourceUrlInput } from '../../utils/sourceUrl'
 import SectionNote from '../ui/SectionNote'
-import type { SourceFormValues } from './hooks/useSourceEditor'
+import {
+  browserSessionCredentialValue,
+  type SourceFormValues,
+} from './hooks/useSourceEditor'
 
 const { Option } = Select
 
@@ -29,6 +33,7 @@ interface SourceEditorModalProps {
   editingSource: Source | null
   form: FormInstance
   authConfigs: AuthConfig[]
+  browserSessions: BrowserSession[]
   sharedXAuthConfigs: AuthConfig[]
   isSubmitting: boolean
   submitError?: string | null
@@ -42,6 +47,7 @@ const SourceEditorModal: React.FC<SourceEditorModalProps> = ({
   editingSource,
   form,
   authConfigs,
+  browserSessions,
   sharedXAuthConfigs,
   isSubmitting,
   submitError,
@@ -67,6 +73,13 @@ const SourceEditorModal: React.FC<SourceEditorModalProps> = ({
       return true
     })
   }, [authConfigs])
+  const activeWebsiteBrowserSessions = React.useMemo(() => {
+    return (browserSessions || []).filter((session) => {
+      if (session.status !== 'active') return false
+      const host = normalizeHost(session.site_host || session.site_url)
+      return host !== 'x.com' && host !== 'twitter.com'
+    })
+  }, [browserSessions])
   return (
     <Modal
       title={editingSource ? '编辑监控源' : '添加监控源'}
@@ -263,7 +276,21 @@ const SourceEditorModal: React.FC<SourceEditorModalProps> = ({
                               )
                             })
                           : websiteAuthConfigs
-                        const hasMatching = matchingConfigs.length > 0
+                        const matchingBrowserSessions = sourceHost
+                          ? activeWebsiteBrowserSessions.filter((session) => {
+                              const sessionHost = normalizeHost(
+                                session.site_host || session.site_url,
+                              )
+                              if (!sessionHost) return false
+                              return (
+                                sourceHost === sessionHost ||
+                                sourceHost.endsWith(`.${sessionHost}`) ||
+                                sessionHost.endsWith(`.${sourceHost}`)
+                              )
+                            })
+                          : activeWebsiteBrowserSessions
+                        const hasMatching =
+                          matchingConfigs.length > 0 || matchingBrowserSessions.length > 0
                         return (
                           <>
                             <SectionNote style={{ marginBottom: 12 }}>
@@ -282,12 +309,22 @@ const SourceEditorModal: React.FC<SourceEditorModalProps> = ({
                                     : '当前站点暂无已保存凭据，请先到「登录与凭据」创建'
                                 }
                                 notFoundContent="没有匹配的站点凭据"
-                                options={matchingConfigs.map((config) => ({
-                                  value: config.id,
-                                  label: `${getAuthConfigDisplayName(config)}${
-                                    config.cookie_count ? ` · ${config.cookie_count} 项 Cookie` : ''
-                                  }${config.bound_source_count ? ` · 已被 ${config.bound_source_count} 个源使用` : ''}`,
-                                }))}
+                                options={[
+                                  ...matchingBrowserSessions.map((session) => ({
+                                    value: browserSessionCredentialValue(session.id),
+                                    label: `${session.site_host} · 浏览器登录态 · 已验证${
+                                      session.bound_sources
+                                        ? ` · 已被 ${session.bound_sources} 个源使用`
+                                        : ''
+                                    }`,
+                                  })),
+                                  ...matchingConfigs.map((config) => ({
+                                    value: config.id,
+                                    label: `${getAuthConfigDisplayName(config)}${
+                                      config.cookie_count ? ` · ${config.cookie_count} 项 Cookie` : ''
+                                    }${config.bound_source_count ? ` · 已被 ${config.bound_source_count} 个源使用` : ''}`,
+                                  })),
+                                ]}
                               />
                             </Form.Item>
                             {!hasMatching ? (
@@ -343,72 +380,15 @@ const SourceEditorModal: React.FC<SourceEditorModalProps> = ({
 
         <Form.Item shouldUpdate noStyle>
           {() => {
-            // "仅 RSS 摘要" 只适用于 website 源：其他类型（rss/x/youtube/podcast）
-            // 走独立 collector，不会走 hydration 路径，开关放出来反而误导。
             if (form.getFieldValue('type') !== 'website') return null
             return (
               <>
-                <Form.Item
-                  name="rss_only_enabled"
-                  label="仅抓取 RSS 摘要（跳过全文）"
-                  valuePropName="checked"
-                  initialValue={false}
-                  tooltip="开启后，监控源只使用已配置或自动发现的 RSS Feed，不再用 Playwright 抓取正文。适合被 DataDome / Cloudflare 等反爬系统拦截、短期内暂无法稳定穿透的付费墙站点。"
-                >
-                  <Switch checkedChildren="开启" unCheckedChildren="关闭" />
-                </Form.Item>
-                <Form.Item shouldUpdate noStyle>
-                  {() => {
-                    if (!form.getFieldValue('rss_only_enabled')) return null
-                    return (
-                      <SectionNote style={{ marginBottom: 12 }}>
-                        当前源只保留 RSS 摘要，不再尝试用浏览器抓取正文。AI 总结/翻译仍会照常运行，
-                        只是没有完整文章正文可用。随时可关闭此选项恢复默认抓取。
-                      </SectionNote>
-                    )
-                  }}
-                </Form.Item>
-                <Divider style={{ marginTop: 8, marginBottom: 12 }}>高级穿透（BPC 策略）</Divider>
+                <Divider style={{ marginTop: 8, marginBottom: 12 }}>抓取策略</Divider>
                 <SectionNote style={{ marginBottom: 12 }}>
-                  以下高级策略建议仅在目标网站触发了严格反爬（如验证码或付费拦截）时按需开启，避免对正常站点产生不必要的负面干扰。
+                  系统会先使用稳定、低干扰的方式抓取；遇到动态渲染、访问限制或正文缺失时，
+                  再自动尝试 RSS、已绑定的登录态、浏览器渲染和兼容策略。无需手动选择技术参数，
+                  最终结果和失败原因会显示在信源状态中。
                 </SectionNote>
-                <Form.Item name="bpc_spoof_ua" label="伪装 User-Agent">
-                  <Select allowClear placeholder="默认（真实浏览器 UA）">
-                    <Option value="googlebot">Googlebot (部分付费墙对搜索引擎放行)</Option>
-                    <Option value="bingbot">Bingbot</Option>
-                  </Select>
-                </Form.Item>
-                <Form.Item name="bpc_spoof_referer" label="伪装 Referer">
-                  <Select allowClear placeholder="默认（无或当前域名）">
-                    <Option value="google">从 Google 搜索跳转过来</Option>
-                    <Option value="facebook">从 Facebook 跳转过来</Option>
-                    <Option value="twitter">从 Twitter 跳转过来</Option>
-                  </Select>
-                </Form.Item>
-                <Form.Item
-                  name="bpc_random_ip"
-                  valuePropName="checked"
-                  initialValue={false}
-                  tooltip="自动伪造 X-Forwarded-For 随机 IP。主要针对根据 IP 限流计量的站点。"
-                >
-                  <Switch checkedChildren="开启 IP 伪装" unCheckedChildren="关闭 IP 伪装" />
-                </Form.Item>
-                <Form.Item
-                  name="bpc_block_paywalls"
-                  valuePropName="checked"
-                  initialValue={false}
-                  tooltip="直接在浏览器内核拦截常见付费墙提供商的 JavaScript 脚本（如 Piano.io, Tinypass）。"
-                >
-                  <Switch checkedChildren="开启 SaaS 拦截" unCheckedChildren="关闭 SaaS 拦截" />
-                </Form.Item>
-                <Form.Item
-                  name="bpc_ephemeral_context"
-                  valuePropName="checked"
-                  initialValue={false}
-                  tooltip="为每次抓取创建一个干净的无痕模式，不保留任何 Cookie 和存储。适用于重置免费试读篇数（需关闭上述登录凭据复用功能）。"
-                >
-                  <Switch checkedChildren="强制无痕模式" unCheckedChildren="复用缓存与状态" />
-                </Form.Item>
               </>
             )
           }}

@@ -107,6 +107,7 @@ const SourceListContainer: React.FC = () => {
     isFetching,
     refetchSources,
     authConfigs,
+    browserSessions,
     sourceCount,
     maxSources,
     remainingSources,
@@ -122,6 +123,7 @@ const SourceListContainer: React.FC = () => {
 
   const editorState = useSourceEditor({
     authConfigs: authConfigs || [],
+    browserSessions: browserSessions || [],
     sourceLimitReached,
     maxSources,
     defaultSharedXAuthConfigId,
@@ -680,6 +682,7 @@ const SourceListContainer: React.FC = () => {
           editingSource={editingSource}
           form={form}
           authConfigs={authConfigs || []}
+          browserSessions={browserSessions || []}
           sharedXAuthConfigs={sharedXAuthConfigs}
           isSubmitting={createMutation.isPending || updateMutation.isPending}
           submitError={submitError}

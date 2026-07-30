@@ -62,14 +62,140 @@ describe('useSourceEditor', () => {
     expect(result.current.matchAuthConfigByHost('https://example.com', [])).toBeUndefined()
   })
 
-  // ---------------------------------------------------------------------
-  // rss_only metadata toggle
-  //
-  // These tests verify the "仅 RSS 摘要" switch round-trips correctly
-  // through metadata.rss_only so operators can disable Playwright
-  // hydration for DataDome-walled sites without losing the config.
-  // ---------------------------------------------------------------------
-  it('writes metadata.rss_only=true when rss_only_enabled is on (create)', async () => {
+  it('binds an active browser session through source metadata', async () => {
+    const { sourcesApi } = await import('../../../services/sources')
+    const browserSession = {
+      id: 'session-wsj',
+      site_url: 'https://www.wsj.com/',
+      site_host: 'wsj.com',
+      profile_name: 'wsj',
+      session_mode: 'persistent_profile',
+      status: 'active',
+      metadata_: {},
+    } as any
+    const { result } = renderHook(
+      () => useSourceEditor({
+        authConfigs: [],
+        browserSessions: [browserSession],
+        sourceLimitReached: false,
+        maxSources: 200,
+        defaultSharedXAuthConfigId: undefined,
+      }),
+      { wrapper },
+    )
+
+    await act(async () => {
+      await result.current.handleSubmit({
+        name: 'WSJ',
+        type: 'website',
+        url: 'https://www.wsj.com/',
+        enabled: true,
+        fetch_interval: 60,
+        use_keyword_filter: false,
+        auth_required: false,
+        paywall_enabled: true,
+        website_auth_config_id: 'browser-session:session-wsj',
+      } as any)
+    })
+
+    const payload = (sourcesApi.create as any).mock.calls[0][0]
+    expect(payload.auth_required).toBe(true)
+    expect(payload.auth_config_id).toBeNull()
+    expect(payload.metadata.browser_session_id).toBe('session-wsj')
+  })
+
+  it('hydrates a linked browser session into the website credential field', () => {
+    const browserSession = {
+      id: 'session-wsj',
+      site_url: 'https://www.wsj.com/',
+      site_host: 'wsj.com',
+      profile_name: 'wsj',
+      session_mode: 'persistent_profile',
+      status: 'active',
+      metadata_: {},
+    } as any
+    const { result } = renderHook(
+      () => useSourceEditor({
+        authConfigs: [],
+        browserSessions: [browserSession],
+        sourceLimitReached: false,
+        maxSources: 200,
+        defaultSharedXAuthConfigId: undefined,
+      }),
+      { wrapper },
+    )
+
+    act(() => {
+      result.current.handleEdit({
+        id: 'src-wsj',
+        name: 'WSJ',
+        type: 'website',
+        url: 'https://www.wsj.com/',
+        enabled: true,
+        fetch_interval: 60,
+        use_keyword_filter: false,
+        auth_required: true,
+        auth_config_id: null,
+        extra_urls: [],
+        metadata: { browser_session_id: 'session-wsj' },
+      } as any)
+    })
+
+    expect(result.current.form.getFieldValue('paywall_enabled')).toBe(true)
+    expect(result.current.form.getFieldValue('website_auth_config_id')).toBe(
+      'browser-session:session-wsj',
+    )
+  })
+
+  it('clears a persisted browser session binding when website credentials are disabled', async () => {
+    const { sourcesApi } = await import('../../../services/sources')
+    const { result } = renderHook(
+      () => useSourceEditor({
+        authConfigs: [],
+        sourceLimitReached: false,
+        maxSources: 200,
+        defaultSharedXAuthConfigId: undefined,
+      }),
+      { wrapper },
+    )
+
+    act(() => {
+      result.current.handleEdit({
+        id: 'src-wsj',
+        name: 'WSJ',
+        type: 'website',
+        url: 'https://www.wsj.com/',
+        enabled: true,
+        fetch_interval: 60,
+        use_keyword_filter: false,
+        auth_required: true,
+        auth_config_id: null,
+        extra_urls: [],
+        metadata: { browser_session_id: 'session-wsj' },
+      } as any)
+    })
+
+    await act(async () => {
+      await result.current.handleSubmit({
+        name: 'WSJ',
+        type: 'website',
+        url: 'https://www.wsj.com/',
+        enabled: true,
+        fetch_interval: 60,
+        use_keyword_filter: false,
+        auth_required: true,
+        paywall_enabled: false,
+        metadata: { browser_session_id: 'session-wsj' },
+      } as any)
+    })
+
+    const payload = (sourcesApi.update as any).mock.calls[0][1]
+    expect(payload.auth_required).toBe(false)
+    expect(payload.auth_config_id).toBeNull()
+    expect(payload.metadata.browser_session_id).toBeNull()
+  })
+
+  it('forces website sources into automatic fetch strategy mode', async () => {
     const { sourcesApi } = await import('../../../services/sources')
     const { result } = renderHook(
       () => useSourceEditor({ authConfigs: [], sourceLimitReached: false, maxSources: 200, defaultSharedXAuthConfigId: undefined }),
@@ -85,12 +211,25 @@ describe('useSourceEditor', () => {
         use_keyword_filter: false,
         auth_required: false,
         paywall_enabled: false,
-        rss_only_enabled: true,
+        metadata: {
+          rss_only: true,
+          bpc_spoof_ua: 'googlebot',
+          bpc_spoof_referer: 'google',
+          bpc_random_ip: true,
+          bpc_block_paywalls: true,
+          bpc_ephemeral_context: true,
+        },
       } as any)
     })
     expect(sourcesApi.create).toHaveBeenCalledTimes(1)
     const payload = (sourcesApi.create as any).mock.calls[0][0]
-    expect(payload.metadata).toMatchObject({ rss_only: true })
+    expect(payload.metadata.fetch_strategy_mode).toBe('auto')
+    expect(payload.metadata).not.toHaveProperty('rss_only')
+    expect(payload.metadata).not.toHaveProperty('bpc_spoof_ua')
+    expect(payload.metadata).not.toHaveProperty('bpc_spoof_referer')
+    expect(payload.metadata).not.toHaveProperty('bpc_random_ip')
+    expect(payload.metadata).not.toHaveProperty('bpc_block_paywalls')
+    expect(payload.metadata).not.toHaveProperty('bpc_ephemeral_context')
   })
 
   it('writes source quality metadata from editor fields', async () => {
@@ -123,38 +262,13 @@ describe('useSourceEditor', () => {
     expect(payload.metadata).not.toHaveProperty('domain_focus')
   })
 
-  it('omits metadata.rss_only when toggle is off on new source', async () => {
+  it('strips website strategy metadata for non-website source types', async () => {
     const { sourcesApi } = await import('../../../services/sources')
     const { result } = renderHook(
       () => useSourceEditor({ authConfigs: [], sourceLimitReached: false, maxSources: 200, defaultSharedXAuthConfigId: undefined }),
       { wrapper },
     )
     await act(async () => {
-      await result.current.handleSubmit({
-        name: 'Plain',
-        type: 'website',
-        url: 'https://example.com',
-        enabled: true,
-        fetch_interval: 60,
-        use_keyword_filter: false,
-        auth_required: false,
-        paywall_enabled: false,
-        rss_only_enabled: false,
-      } as any)
-    })
-    const payload = (sourcesApi.create as any).mock.calls[0][0]
-    expect(payload.metadata).not.toHaveProperty('rss_only')
-  })
-
-  it('strips metadata.rss_only for non-website source types', async () => {
-    const { sourcesApi } = await import('../../../services/sources')
-    const { result } = renderHook(
-      () => useSourceEditor({ authConfigs: [], sourceLimitReached: false, maxSources: 200, defaultSharedXAuthConfigId: undefined }),
-      { wrapper },
-    )
-    await act(async () => {
-      // Even if the form value somehow leaks onto an rss source (e.g. user
-      // switched types after flipping the toggle), metadata stays clean.
       await result.current.handleSubmit({
         name: 'Some RSS',
         type: 'rss',
@@ -163,151 +277,19 @@ describe('useSourceEditor', () => {
         fetch_interval: 60,
         use_keyword_filter: false,
         auth_required: false,
-        rss_only_enabled: true,
+        metadata: {
+          rss_only: true,
+          fetch_strategy_mode: 'auto',
+          bpc_spoof_ua: 'googlebot',
+          bpc_block_paywalls: true,
+        },
       } as any)
     })
     const payload = (sourcesApi.create as any).mock.calls[0][0]
     expect(payload.metadata).not.toHaveProperty('rss_only')
-  })
-
-  it('writes BPC metadata for website sources', async () => {
-    const { sourcesApi } = await import('../../../services/sources')
-    const { result } = renderHook(
-      () => useSourceEditor({ authConfigs: [], sourceLimitReached: false, maxSources: 200, defaultSharedXAuthConfigId: undefined }),
-      { wrapper },
-    )
-    await act(async () => {
-      await result.current.handleSubmit({
-        name: 'Strict Site',
-        type: 'website',
-        url: 'https://example.com',
-        enabled: true,
-        fetch_interval: 60,
-        use_keyword_filter: false,
-        auth_required: false,
-        paywall_enabled: false,
-        bpc_spoof_ua: 'googlebot',
-        bpc_spoof_referer: 'google',
-        bpc_random_ip: true,
-        bpc_block_paywalls: true,
-        bpc_ephemeral_context: true,
-      } as any)
-    })
-
-    const payload = (sourcesApi.create as any).mock.calls[0][0]
-    expect(payload.metadata).toMatchObject({
-      bpc_spoof_ua: 'googlebot',
-      bpc_spoof_referer: 'google',
-      bpc_random_ip: true,
-      bpc_block_paywalls: true,
-      bpc_ephemeral_context: true,
-    })
-  })
-
-  it('strips BPC metadata for non-website source types', async () => {
-    const { sourcesApi } = await import('../../../services/sources')
-    const { result } = renderHook(
-      () => useSourceEditor({ authConfigs: [], sourceLimitReached: false, maxSources: 200, defaultSharedXAuthConfigId: undefined }),
-      { wrapper },
-    )
-    await act(async () => {
-      await result.current.handleSubmit({
-        name: 'RSS',
-        type: 'rss',
-        url: 'https://example.com/feed.xml',
-        enabled: true,
-        fetch_interval: 60,
-        use_keyword_filter: false,
-        auth_required: false,
-        metadata: {
-          bpc_spoof_ua: 'googlebot',
-          bpc_block_paywalls: true,
-        },
-        bpc_spoof_ua: 'bingbot',
-        bpc_spoof_referer: 'twitter',
-        bpc_random_ip: true,
-        bpc_block_paywalls: true,
-        bpc_ephemeral_context: true,
-      } as any)
-    })
-
-    const payload = (sourcesApi.create as any).mock.calls[0][0]
+    expect(payload.metadata).not.toHaveProperty('fetch_strategy_mode')
     expect(payload.metadata).not.toHaveProperty('bpc_spoof_ua')
-    expect(payload.metadata).not.toHaveProperty('bpc_spoof_referer')
-    expect(payload.metadata).not.toHaveProperty('bpc_random_ip')
     expect(payload.metadata).not.toHaveProperty('bpc_block_paywalls')
-    expect(payload.metadata).not.toHaveProperty('bpc_ephemeral_context')
-  })
-
-  it('rejects BPC ephemeral mode when website credentials are enabled', async () => {
-    const { sourcesApi } = await import('../../../services/sources')
-    const { result } = renderHook(
-      () => useSourceEditor({ authConfigs: [], sourceLimitReached: false, maxSources: 200, defaultSharedXAuthConfigId: undefined }),
-      { wrapper },
-    )
-    await act(async () => {
-      await result.current.handleSubmit({
-        name: 'Credential Site',
-        type: 'website',
-        url: 'https://example.com',
-        enabled: true,
-        fetch_interval: 60,
-        use_keyword_filter: false,
-        auth_required: false,
-        paywall_enabled: true,
-        bpc_ephemeral_context: true,
-      } as any)
-    })
-
-    expect(sourcesApi.create).not.toHaveBeenCalled()
-    expect(result.current.submitError).toContain('强制无痕模式不能与登录凭据复用同时开启')
-  })
-
-  it('clears BPC form fields when switching a new source to X', () => {
-    const { result } = renderHook(
-      () => useSourceEditor({ authConfigs: [], sourceLimitReached: false, maxSources: 200, defaultSharedXAuthConfigId: undefined }),
-      { wrapper },
-    )
-    act(() => {
-      result.current.handleAdd()
-      result.current.form.setFieldsValue({
-        bpc_spoof_ua: 'googlebot',
-        bpc_spoof_referer: 'google',
-        bpc_random_ip: true,
-        bpc_block_paywalls: true,
-        bpc_ephemeral_context: true,
-      })
-      result.current.handleTypeChange('x')
-    })
-
-    expect(result.current.form.getFieldValue('bpc_spoof_ua')).toBeUndefined()
-    expect(result.current.form.getFieldValue('bpc_spoof_referer')).toBeUndefined()
-    expect(result.current.form.getFieldValue('bpc_random_ip')).toBe(false)
-    expect(result.current.form.getFieldValue('bpc_block_paywalls')).toBe(false)
-    expect(result.current.form.getFieldValue('bpc_ephemeral_context')).toBe(false)
-  })
-
-  it('handleEdit hydrates rss_only_enabled from metadata.rss_only', () => {
-    const { result } = renderHook(
-      () => useSourceEditor({ authConfigs: [], sourceLimitReached: false, maxSources: 200, defaultSharedXAuthConfigId: undefined }),
-      { wrapper },
-    )
-    act(() => {
-      result.current.handleEdit({
-        id: 'src-1',
-        name: 'NYT',
-        type: 'website',
-        url: 'https://www.nytimes.com',
-        enabled: true,
-        fetch_interval: 60,
-        use_keyword_filter: false,
-        auth_required: false,
-        auth_config_id: null,
-        extra_urls: [],
-        metadata: { rss_only: true },
-      } as any)
-    })
-    expect(result.current.form.getFieldValue('rss_only_enabled')).toBe(true)
   })
 
   it('handleEdit hydrates source quality fields from metadata', () => {
@@ -392,60 +374,4 @@ describe('useSourceEditor', () => {
     expect(payload.metadata.max_fetch_lag_minutes).toBe(120)
   })
 
-  it('handleEdit defaults rss_only_enabled to false when metadata is silent', () => {
-    const { result } = renderHook(
-      () => useSourceEditor({ authConfigs: [], sourceLimitReached: false, maxSources: 200, defaultSharedXAuthConfigId: undefined }),
-      { wrapper },
-    )
-    act(() => {
-      result.current.handleEdit({
-        id: 'src-2',
-        name: 'Generic',
-        type: 'website',
-        url: 'https://example.com',
-        enabled: true,
-        fetch_interval: 60,
-        use_keyword_filter: false,
-        auth_required: false,
-        auth_config_id: null,
-        extra_urls: [],
-        metadata: {},
-      } as any)
-    })
-    expect(result.current.form.getFieldValue('rss_only_enabled')).toBe(false)
-  })
-
-  it('handleEdit hydrates BPC metadata fields', () => {
-    const { result } = renderHook(
-      () => useSourceEditor({ authConfigs: [], sourceLimitReached: false, maxSources: 200, defaultSharedXAuthConfigId: undefined }),
-      { wrapper },
-    )
-    act(() => {
-      result.current.handleEdit({
-        id: 'src-bpc',
-        name: 'Strict Site',
-        type: 'website',
-        url: 'https://example.com',
-        enabled: true,
-        fetch_interval: 60,
-        use_keyword_filter: false,
-        auth_required: false,
-        auth_config_id: null,
-        extra_urls: [],
-        metadata: {
-          bpc_spoof_ua: 'googlebot',
-          bpc_spoof_referer: 'google',
-          bpc_random_ip: true,
-          bpc_block_paywalls: true,
-          bpc_ephemeral_context: true,
-        },
-      } as any)
-    })
-
-    expect(result.current.form.getFieldValue('bpc_spoof_ua')).toBe('googlebot')
-    expect(result.current.form.getFieldValue('bpc_spoof_referer')).toBe('google')
-    expect(result.current.form.getFieldValue('bpc_random_ip')).toBe(true)
-    expect(result.current.form.getFieldValue('bpc_block_paywalls')).toBe(true)
-    expect(result.current.form.getFieldValue('bpc_ephemeral_context')).toBe(true)
-  })
 })

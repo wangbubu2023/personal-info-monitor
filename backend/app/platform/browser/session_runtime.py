@@ -9,7 +9,8 @@ ready to drive an authenticated headless fetch.
 
 * ``status == active``
 * the mode-specific artefact exists (persistent profile directory or storage_state file)
-* validation cookies + paragraph counts > 0
+* validation cookies > 0 and, except for site-specific login probes such as
+  WSJ, paragraph counts > 0
 * last validation < ``BROWSER_SESSION_AUTH_TTL_DAYS`` ago
 
 ``auth_warning`` is a human-readable explanation of why ``auth_ready`` is
@@ -22,8 +23,9 @@ from datetime import timedelta
 from pathlib import Path
 from uuid import UUID
 
-from app.utils.datetime import utcnow_naive
+from app.platform.browser.hosts import is_wsj_host
 from app.platform.observability.logger import get_logger
+from app.utils.datetime import utcnow_naive
 
 logger = get_logger(__name__)
 
@@ -78,12 +80,15 @@ def build_browser_session_runtime(db, source) -> dict | None:
     )
     validation_cookie_count = int(last_validation.get("cookie_count") or 0)
     validation_paragraph_count = int(last_validation.get("paragraph_count") or 0)
+    paragraph_validation_ready = bool(
+        validation_paragraph_count > 0 or is_wsj_host(session.site_host)
+    )
     auth_ready = bool(
         str(status).lower() == "active"
         and session_artifact_exists
         and validation_fresh
         and validation_cookie_count > 0
-        and validation_paragraph_count > 0
+        and paragraph_validation_ready
     )
 
     auth_warning = None
@@ -99,7 +104,7 @@ def build_browser_session_runtime(db, source) -> dict | None:
         auth_warning = f"浏览器会话正文校验已超过 {BROWSER_SESSION_AUTH_TTL_DAYS} 天，需要重新校验"
     elif validation_cookie_count <= 0:
         auth_warning = "浏览器会话校验未捕获站点 cookies，需要重新登录"
-    elif validation_paragraph_count <= 0:
+    elif not paragraph_validation_ready:
         auth_warning = "浏览器会话校验未确认可读取正文段落，需要重新校验"
     elif storage_state_path and not storage_state_exists:
         auth_warning = "浏览器会话 storage_state.json 不存在，将仅使用 Chrome profile"

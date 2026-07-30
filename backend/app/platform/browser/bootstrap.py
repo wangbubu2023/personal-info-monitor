@@ -147,7 +147,10 @@ async def run_browser_bootstrap(
                 # Headful: treat ``dwell_seconds`` as the upper bound. Wait
                 # until the user is visibly "done" — either the browser
                 # context closes, or every page the user was using has been
-                # closed. macOS Chrome (especially via Patchright's real
+                # closed. A single page closing is deliberately not enough:
+                # OAuth/CAPTCHA flows often close a helper popup before the
+                # main page has received and persisted the final auth cookies.
+                # macOS Chrome (especially via Patchright's real
                 # ``channel="chrome"``) likes to linger in the background
                 # after the last window is closed, so the ``context.close``
                 # event alone is not enough; we poll ``context.pages`` and
@@ -178,12 +181,6 @@ async def run_browser_bootstrap(
                 timeout_s = max(dwell_seconds, 30)
                 close_event = asyncio.Event()
                 context.on("close", lambda *_: close_event.set())
-                for _pg in list(context.pages):
-                    _pg.on("close", lambda *_: close_event.set())
-                context.on(
-                    "page",
-                    lambda pg: pg.on("close", lambda *_: close_event.set()),
-                )
 
                 cookie_poll_task = asyncio.create_task(_cookie_poll_loop())
 

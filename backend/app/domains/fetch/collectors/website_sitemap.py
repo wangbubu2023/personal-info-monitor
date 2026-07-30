@@ -14,6 +14,7 @@ from urllib.parse import urlparse
 from xml.etree import ElementTree
 
 from app.models import Source
+from app.platform.browser.hosts import is_wsj_host
 
 from . import website_helpers as _helpers
 
@@ -95,6 +96,7 @@ def parse_sitemap_entries(xml_text: str, source: Source) -> tuple[list[RawConten
     if _local(root.tag) != "urlset":
         return [], []
 
+    source_is_wsj = is_wsj_host(urlparse(source.url).hostname)
     for url_node in root:
         if _local(url_node.tag) != "url":
             continue
@@ -106,7 +108,14 @@ def parse_sitemap_entries(xml_text: str, source: Source) -> tuple[list[RawConten
             continue
         lastmod = next((child.text for child in url_node if _local(child.tag) == "lastmod"), None)
         publication_date = _first_descendant_text(url_node, "publication_date")
-        title = _first_descendant_text(url_node, "title") or url_title(url)
+        news_title = _first_descendant_text(url_node, "title")
+        # WSJ's generic sitemap contains section/author/topic pages whose URL
+        # tails look article-shaped. Only its news sitemap title is a reliable
+        # article signal; generating a title from the URL created empty
+        # keyword-only Reader entries.
+        if source_is_wsj and not news_title:
+            continue
+        title = news_title or url_title(url)
         entries.append(
             {
                 "external_id": url,
@@ -181,7 +190,20 @@ async def maybe_fetch_via_sitemap(
     source.metadata_ = diag_meta
     if not contents:
         return []
-    return await hydrate_public_listing(source, contents, cookies, browser_session)
+    hydrated = await hydrate_public_listing(source, contents, cookies, browser_session)
+    hydrated = [
+        item
+        for item in hydrated
+        if str(item.get("content") or "").strip() or str(item.get("summary") or "").strip()
+    ]
+    diagnostics["hydrated_kept"] = len(hydrated)
+    diagnostics["dropped_unhydrated"] = len(contents) - len(hydrated)
+    diag_meta = dict(source.metadata_ if isinstance(source.metadata_, dict) else {})
+    diag_meta["sitemap_diagnostics"] = diagnostics
+    source.metadata_ = diag_meta
+    if hydrated:
+        return hydrated
+    return [] if metadata.get("sitemap_urls") else None
 
 
 __all__ = [

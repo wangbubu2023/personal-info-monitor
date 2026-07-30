@@ -13,6 +13,8 @@ export interface BrowserSessionBootstrapMeta {
   fallback_reason?: string
   paragraph_count?: number
   message?: string
+  auth_ready?: boolean
+  missing_required_cookies?: string[]
 }
 
 export interface BrowserSession {
@@ -38,6 +40,9 @@ export interface BrowserSession {
     final_url?: string
     title?: string
     cookie_count?: number
+    auth_ready?: boolean
+    missing_required_cookies?: string[]
+    message?: string
   }
   validation?: {
     message?: string
@@ -46,6 +51,7 @@ export interface BrowserSession {
     final_url?: string
   }
   bound_sources?: number
+  cookies_synced?: boolean
 }
 
 export interface BrowserSessionCreate {

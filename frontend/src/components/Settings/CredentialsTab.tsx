@@ -143,7 +143,19 @@ const CredentialsTab: React.FC = () => {
     onSuccess: async (res) => {
       await invalidate()
       const cookies = res.bootstrap?.cookie_count ?? 0
-      message.success(`登录窗口已关闭，抓取到 ${cookies} 个 cookie；请用付费文章 URL 校验正文后再视为可用`)
+      if (res.status === 'active') {
+        message.success(
+          res.bootstrap?.auth_ready === true
+            ? `X 登录态已就绪，关键 Cookie 已安全同步（共抓取 ${cookies} 个 cookie）`
+            : `登录窗口已关闭，抓取到 ${cookies} 个 cookie；请用付费文章 URL 校验正文后再视为可用`,
+        )
+      } else {
+        message.warning(
+          res.bootstrap?.message ||
+            res.last_error ||
+            `登录态未就绪（共抓取 ${cookies} 个 cookie），请重新登录`,
+        )
+      }
       setOpeningSession(null)
     },
     onError: (err: unknown) => {

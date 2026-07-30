@@ -1426,6 +1426,44 @@ class TestRssOnlyMode:
         assert entries[0]["title"] == "Markets big story"
         assert entries[0]["publish_time"].isoformat() == "2026-07-04T14:52:56.276000"
 
+    def test_wsj_generic_sitemap_drops_keyword_only_directory_pages(self):
+        collector = WebsiteCollector()
+        source = _make_source(url="https://www.wsj.com")
+        xml = """<?xml version="1.0" encoding="UTF-8"?>
+        <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+          <url>
+            <loc>https://www.wsj.com/economy/central-banking</loc>
+            <lastmod>2026-07-04T14:52:56Z</lastmod>
+          </url>
+        </urlset>
+        """
+
+        entries, nested = collector._parse_sitemap_entries(xml, source)
+
+        assert entries == []
+        assert nested == []
+
+    def test_wsj_news_sitemap_keeps_entries_with_news_title(self):
+        collector = WebsiteCollector()
+        source = _make_source(url="https://www.wsj.com")
+        xml = """<?xml version="1.0" encoding="UTF-8"?>
+        <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+                xmlns:news="http://www.google.com/schemas/sitemap-news/0.9">
+          <url>
+            <loc>https://www.wsj.com/economy/a-real-story-123</loc>
+            <news:news>
+              <news:title>A real WSJ story</news:title>
+              <news:publication_date>2026-07-04T14:52:56Z</news:publication_date>
+            </news:news>
+          </url>
+        </urlset>
+        """
+
+        entries, nested = collector._parse_sitemap_entries(xml, source)
+
+        assert nested == []
+        assert [item["title"] for item in entries] == ["A real WSJ story"]
+
     def test_parse_sitemap_time_normalises_offset_to_utc_naive(self):
         collector = WebsiteCollector()
 
@@ -1443,7 +1481,11 @@ class TestRssOnlyMode:
         collector = WebsiteCollector()
         source = _make_source(
             url="https://paywalled.example.com",
-            metadata_={"rss_only": True, "rss_url": "https://paywalled.example.com/feed"},
+            metadata_={
+                "fetch_strategy_mode": "manual",
+                "rss_only": True,
+                "rss_url": "https://paywalled.example.com/feed",
+            },
         )
         items = self._rss_items()
 
@@ -1556,7 +1598,7 @@ class TestRssOnlyMode:
         collector = WebsiteCollector()
         source = _make_source(
             url="https://paywalled.example.com",
-            metadata_={"rss_only": True},  # no rss_url
+            metadata_={"fetch_strategy_mode": "manual", "rss_only": True},  # no rss_url
         )
 
         rss_fetch_mock = AsyncMock(return_value=[])
@@ -1792,6 +1834,95 @@ class TestRssOnlyMode:
         assert hydrate_arg["metadata"]["discovered_via"] == "sitemap"
         assert hydrate_arg["publish_time"].year == 2026
         assert source.metadata_["sitemap_diagnostics"]["kept"] == 1
+
+    @pytest.mark.asyncio
+    async def test_sitemap_drops_candidates_that_hydration_cannot_fill(self):
+        collector = WebsiteCollector()
+        source = _make_source(url="https://open.example.com")
+        sitemap_xml = """<?xml version="1.0" encoding="UTF-8"?>
+        <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+          <url>
+            <loc>https://open.example.com/articles/story-123</loc>
+          </url>
+        </urlset>
+        """
+        empty_candidate = {
+            "url": "https://open.example.com/articles/story-123",
+            "title": "story 123",
+            "content": "",
+        }
+
+        with patch.object(
+            collector,
+            "_fetch_sitemap_xml",
+            new=AsyncMock(side_effect=[sitemap_xml, None, None]),
+        ), patch.object(
+            collector,
+            "_maybe_hydrate_public_listing_contents",
+            new=AsyncMock(return_value=[empty_candidate]),
+        ):
+            result = await collector._maybe_fetch_via_sitemap(
+                source, cookies={}, browser_session=None
+            )
+
+        assert result is None
+        assert source.metadata_["sitemap_diagnostics"]["hydrated_kept"] == 0
+        assert source.metadata_["sitemap_diagnostics"]["dropped_unhydrated"] == 1
+
+    @pytest.mark.asyncio
+    async def test_wsj_without_discovered_feed_uses_fallback_rss_before_sitemap(self):
+        collector = WebsiteCollector()
+        source = _make_source(url="https://www.wsj.com")
+        fallback_items = [
+            {
+                "url": "https://www.wsj.com/economy/a-real-story-123",
+                "title": "A real story",
+                "content": "A useful RSS summary",
+                "publish_time": utcnow_naive(),
+            }
+        ]
+        rss_fetch = AsyncMock(return_value=fallback_items)
+        hydrate = AsyncMock(return_value=fallback_items)
+        sitemap = AsyncMock(return_value=[])
+
+        with patch.object(collector, "_check_ssrf", new_callable=AsyncMock), \
+             patch.object(collector, "get_runtime_auth", return_value=None), \
+             patch.object(collector, "get_runtime_cookies", return_value={}), \
+             patch.object(collector, "get_runtime_browser_session", return_value=None), \
+             patch.object(collector.rss_collector, "discover_feed_url", new=AsyncMock(return_value=None)), \
+             patch.object(collector.rss_collector, "fetch", new=rss_fetch), \
+             patch.object(collector, "_maybe_hydrate_rss_contents", new=hydrate), \
+             patch.object(collector, "_maybe_fetch_via_sitemap", new=sitemap):
+            result = await collector.fetch(source)
+
+        assert result == fallback_items
+        assert "news.google.com/rss/search" in rss_fetch.await_args.args[0].url
+        sitemap.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_authenticated_rss_hydration_defaults_to_three_articles(self):
+        collector = WebsiteCollector()
+        source = _make_source(url="https://www.wsj.com")
+        items = [
+            {
+                "url": f"https://www.wsj.com/articles/story-{index}",
+                "title": f"Story {index}",
+                "content": "RSS summary",
+            }
+            for index in range(6)
+        ]
+        hydrate = AsyncMock(return_value=(items, {"attempted": 3, "hydrated": 0}))
+
+        with patch.object(collector, "_hydrate_direct_articles", new=hydrate):
+            result = await collector._maybe_hydrate_rss_contents(
+                source,
+                items,
+                cookies={},
+                browser_session={"auth_ready": True, "user_data_dir": "/tmp/wsj"},
+            )
+
+        assert result == items
+        assert hydrate.await_args.kwargs["hydrate_limit_override"] == 3
 
     @pytest.mark.asyncio
     async def test_sitemap_discovery_can_be_disabled(self):

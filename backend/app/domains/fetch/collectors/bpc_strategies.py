@@ -1,7 +1,8 @@
-"""Bypass Paywalls Clean (BPC) inspired strategies for Fetch Layer.
+"""Compatibility strategies used by the automatic website fetch fallback.
 
-Provides utilities for spoofing User-Agent/Referer, rotating X-Forwarded-For IPs,
-and blocking common SaaS paywall scripts via Playwright route interception.
+These are implementation details, not user preferences.  Normal requests must
+always run first; a bounded compatibility profile is only tried after the
+collector has positively observed an access/shell failure.
 """
 
 import random
@@ -31,6 +32,24 @@ BLOCKED_PAYWALL_DOMAINS_AND_PATTERNS = (
     r"blueconic\.net",
 )
 
+_AUTOMATIC_RETRY_REASONS = {
+    "bot_wall",
+    "dynamic_empty",
+    "html_parse_empty",
+    "http_403",
+    "http_status_403",
+    "shell_page",
+}
+
+_STRATEGY_KEYS = {
+    "bpc_spoof_ua",
+    "bpc_spoof_referer",
+    "bpc_random_ip",
+    "bpc_block_paywalls",
+    "bpc_ephemeral_context",
+}
+_LEGACY_MANUAL_KEYS = _STRATEGY_KEYS | {"rss_only"}
+
 
 def _clean_header_value(value: Any, *, max_len: int = 512) -> str:
     text = str(value or "").strip()
@@ -42,7 +61,12 @@ def _clean_header_value(value: Any, *, max_len: int = 512) -> str:
 
 
 def generate_random_ip() -> str:
-    """Generate a random plausible IP address for X-Forwarded-For."""
+    """Generate a legacy X-Forwarded-For value.
+
+    This does not change the network egress address.  It remains only for
+    backwards compatibility with stored metadata and is intentionally absent
+    from the automatic strategy profiles.
+    """
     first_octet = random.choice(
         [octet for octet in range(1, 224) if octet not in {10, 127, 169, 172, 192}]
     )
@@ -83,6 +107,79 @@ def get_spoofed_headers(metadata: dict[str, Any], default_ua: str) -> dict[str, 
         headers["X-Forwarded-For"] = generate_random_ip()
 
     return headers
+
+
+def automatic_retry_profiles(
+    metadata: dict[str, Any] | None,
+    *,
+    has_authenticated_session: bool,
+    reason: str | None,
+) -> list[tuple[str, dict[str, Any]]]:
+    """Return bounded, ordered fallback profiles for a diagnosed failure.
+
+    Authenticated sessions retain their cookies and browser storage. Anonymous
+    requests may additionally try a clean context. Rate limits, login errors,
+    CAPTCHAs and network failures are deliberately excluded: changing headers
+    does not fix them and can make the target site more suspicious.
+    """
+
+    base = dict(metadata) if isinstance(metadata, dict) else {}
+    if base.get("fetch_strategy_mode", "auto") != "auto":
+        return []
+    if str(reason or "") not in _AUTOMATIC_RETRY_REASONS:
+        return []
+
+    # Old per-strategy switches must not silently leak into every attempt.
+    # Custom block patterns remain available to the automatic interceptor.
+    for key in _STRATEGY_KEYS:
+        base.pop(key, None)
+
+    if has_authenticated_session:
+        variants = (
+            ("search_referrer", {"bpc_spoof_referer": "google"}),
+            ("subscription_script_block", {"bpc_block_paywalls": True}),
+        )
+    else:
+        variants = (
+            (
+                "crawler_compatibility",
+                {
+                    "bpc_spoof_ua": "googlebot",
+                    "bpc_spoof_referer": "google",
+                },
+            ),
+            (
+                "clean_browser_context",
+                {
+                    "bpc_spoof_ua": "googlebot",
+                    "bpc_spoof_referer": "google",
+                    "bpc_block_paywalls": True,
+                    "bpc_ephemeral_context": True,
+                },
+            ),
+        )
+    return [(name, {**base, **overrides}) for name, overrides in variants]
+
+
+def normalize_fetch_strategy_metadata(
+    metadata: dict[str, Any] | None,
+) -> dict[str, Any]:
+    """Migrate legacy user-facing switches to the automatic strategy mode.
+
+    ``manual`` remains an internal compatibility escape hatch for tests and
+    emergency operations, but the product UI no longer creates it.
+    """
+
+    normalized = dict(metadata) if isinstance(metadata, dict) else {}
+    mode = str(normalized.get("fetch_strategy_mode") or "auto").strip().lower()
+    if mode == "manual":
+        return normalized
+    if mode not in {"auto", "off"}:
+        mode = "auto"
+    for key in _LEGACY_MANUAL_KEYS:
+        normalized.pop(key, None)
+    normalized["fetch_strategy_mode"] = mode
+    return normalized
 
 
 def requires_bpc_playwright(metadata: dict[str, Any] | None) -> bool:
