@@ -771,6 +771,56 @@ def _extract_from_36kr_newsflash_state(
     return None
 
 
+def _extract_from_wallstreetcn_article_body(
+    soup: BeautifulSoup,
+    min_chars: int,
+    *,
+    visible_text_chars: int,
+    min_ratio: float,
+) -> StructuredArticleExtraction | None:
+    """Extract the server-rendered body of a public 华尔街见闻 article.
+
+    The current site is Svelte-rendered and ships the article itself in
+    ``section._articleBody_*``.  Generic readability sees the fixed header,
+    author row, related links, and app-install prompt as one document; member
+    URLs, meanwhile, return an HTTP error shell with no such section.  Keeping
+    this selector scoped to the canonical public body makes both cases
+    explicit: public articles get only their paragraphs and inaccessible ones
+    do not masquerade as articles.
+    """
+    del visible_text_chars, min_ratio
+    section = soup.select_one("article > section[class*='articleBody']")
+    if section is None:
+        return None
+    text = normalize_article_text(html_to_text_preserving_blocks(str(section)))
+    if len(text) < min_chars:
+        return None
+    title_node = soup.select_one("article > header h1") or soup.select_one("h1")
+    title = _clean_candidate_text(title_node.get_text(" ", strip=True)) if title_node else None
+    signals: dict[str, Any] = {
+        "body_key": "article > section._articleBody_*",
+        "chars": len(text),
+        "site": "wallstreetcn",
+    }
+    time_node = soup.select_one("article > header time[datetime]") or soup.select_one("time[datetime]")
+    raw_time = str(time_node.get("datetime") or "").strip() if time_node else ""
+    if raw_time:
+        try:
+            published = datetime.fromisoformat(raw_time.replace("Z", "+00:00"))
+            if published.tzinfo is None:
+                published = published.replace(tzinfo=timezone.utc)
+            signals["published_time"] = published.astimezone(timezone.utc).isoformat()
+            signals["published_time_raw"] = raw_time
+        except ValueError:
+            pass
+    return StructuredArticleExtraction(
+        text=text,
+        method="wallstreetcn_article_body",
+        title=title or None,
+        signals=signals,
+    )
+
+
 def extract_structured_article(
     html: str,
     *,
@@ -786,6 +836,7 @@ def extract_structured_article(
     for extractor in (
         _extract_from_cls_next_data,
         _extract_from_36kr_newsflash_state,
+        _extract_from_wallstreetcn_article_body,
         _extract_from_json_ld,
         _extract_from_prismic_next_data,
         _extract_from_next_data,
@@ -808,6 +859,17 @@ def extract_article_page_metadata(html: str, *, page_url: str | None = None) -> 
         return {}
     soup = BeautifulSoup(html, "lxml")
     metadata = _json_ld_metadata(soup, page_url)
+    wallstreetcn = _extract_from_wallstreetcn_article_body(
+        soup,
+        1,
+        visible_text_chars=0,
+        min_ratio=0,
+    )
+    if wallstreetcn:
+        published = wallstreetcn.signals.get("published_time")
+        if published:
+            metadata["published_time"] = datetime.fromisoformat(str(published))
+            metadata["published_time_raw"] = wallstreetcn.signals.get("published_time_raw")
     script = soup.select_one("script#__NEXT_DATA__")
     if script:
         try:

@@ -112,6 +112,16 @@ class TestParseArticleCandidate:
         assert result is not None
         assert result["metadata"]["publish_time_estimated"] is True
 
+    def test_skips_wallstreetcn_member_articles_without_public_body(self):
+        html = """
+        <article>
+            <h2>会员专享文章标题足够长</h2>
+            <a href='https://wallstreetcn.com/member/articles/3778067'>会员文章</a>
+            <p>列表页摘要不应让不可访问页面进入抓取队列。</p>
+        </article>
+        """
+        assert self._parse(html, _make_source("https://wallstreetcn.com/")) is None
+
 
 # ---------------------------------------------------------------------------
 # append_fallback_links

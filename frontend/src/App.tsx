@@ -11,7 +11,6 @@ const DigestPage = lazy(() => import('./pages/DigestPage'))
 const SettingsPage = lazy(() => import('./pages/SettingsPage'))
 const ReaderPage = lazy(() => import('./pages/ReaderPage'))
 const EventDetailPage = lazy(() => import('./pages/EventDetailPage'))
-const EventsPage = lazy(() => import('./pages/EventsPage'))
 const ScoreLabPage = lazy(() => import('./pages/ScoreLabPage'))
 const AtomsPage = lazy(() => import('./pages/AtomsPage'))
 const AnnotationReviewPage = lazy(() => import('./pages/AnnotationReviewPage'))
@@ -50,7 +49,7 @@ const App: React.FC = () => {
             <Route path="/timeline" element={<HomePage />} />
             <Route path="/digest" element={<DigestPage />} />
             <Route path="/reader/:id" element={<ReaderPage />} />
-            <Route path="/events" element={<EventsPage />} />
+            <Route path="/events" element={<Navigate to="/" replace />} />
             <Route path="/events/:eventId" element={<EventDetailPage />} />
             <Route path="/atoms" element={<AtomsPage />} />
             <Route path="/review" element={<AnnotationReviewPage />} />

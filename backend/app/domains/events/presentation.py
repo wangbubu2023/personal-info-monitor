@@ -64,14 +64,15 @@ def classify_event_section(
     incremental: float,
     confidence: float,
     corroboration_tier: str | None,
+    independent_source_count: int = 0,
 ) -> str:
-    if is_need_to_know_event(
+    if independent_source_count >= TODAY_HIGHLIGHT_MIN_INDEPENDENT_SOURCES and is_need_to_know_event(
         importance=importance,
         incremental=incremental,
         confidence=confidence,
     ):
         return "need_to_know"
-    if incremental >= 45 or corroboration_tier in {"single_low", "single_high"}:
+    if independent_source_count >= TODAY_HIGHLIGHT_MIN_INDEPENDENT_SOURCES and incremental >= 45:
         return "brewing"
     return "later"
 

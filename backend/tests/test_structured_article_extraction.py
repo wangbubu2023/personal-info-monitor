@@ -234,6 +234,38 @@ def test_rejects_long_flat_plaintext_json_ld_body():
     assert result is None
 
 
+def test_extracts_wallstreetcn_public_article_body_without_related_links():
+    html = """
+    <html><body>
+      <article>
+        <header>
+          <h1>东鹏饮料上半年收入增长16%</h1>
+          <time datetime="2026-07-31T07:53:59.000Z">15:53</time>
+        </header>
+        <section class="_articleBody_15gzr_1 article">
+          <p>东鹏饮料仍在增长，但驱动力正在从单一大单品转向更多品类共同拉动。</p>
+          <p>上半年，公司实现营业收入124.43亿元，同比增长15.9%；归母净利润28.67亿元，同比增长20.7%。</p>
+          <p>新品推广和渠道扩张仍需要较高投入，公司将继续提升单点销售产出。</p>
+        </section>
+      </article>
+      <section>相关文章：这不是当前文章正文，不能混入提取结果。</section>
+    </body></html>
+    """
+
+    result = extract_structured_article(html, min_chars=80)
+
+    assert result is not None
+    assert result.method == "wallstreetcn_article_body"
+    assert result.title == "东鹏饮料上半年收入增长16%"
+    assert "营业收入124.43亿元" in result.text
+    assert "相关文章" not in result.text
+    assert result.signals["published_time"] == "2026-07-31T07:53:59+00:00"
+
+    metadata = extract_article_page_metadata(html, page_url="https://wallstreetcn.com/articles/3778418")
+    assert metadata["published_time"].isoformat() == "2026-07-31T07:53:59+00:00"
+    assert metadata["published_time_raw"] == "2026-07-31T07:53:59.000Z"
+
+
 def test_extracts_36kr_newsflash_detail_without_next_item():
     html = """
     <html><body>

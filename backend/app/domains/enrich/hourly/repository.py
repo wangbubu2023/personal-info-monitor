@@ -355,6 +355,7 @@ def build_hourly_digest_event_briefing_items(
             incremental=incremental,
             confidence=confidence,
             corroboration_tier=cluster.get("corroboration_tier"),
+            independent_source_count=int(cluster.get("independent_source_count") or 0),
         )
         # A fresh single-source cluster gets a high incremental score by
         # construction. Do not let that alone promote a very low-importance

@@ -136,7 +136,7 @@ async def test_today_highlights_use_persisted_events_from_rolling_48_hours(clien
 
 
 @pytest.mark.asyncio
-async def test_event_feed_includes_recent_single_source_events(client, db_session):
+async def test_event_feed_excludes_recent_single_source_watch_items(client, db_session):
     now = utcnow_naive()
     recent = _add_highlight_event(
         db_session,
@@ -162,9 +162,8 @@ async def test_event_feed_includes_recent_single_source_events(client, db_sessio
     assert response.status_code == 200
     payload = response.json()
     assert payload["hours"] == 24
-    assert payload["total"] == 1
-    assert payload["items"][0]["event_id"] == recent.event_id
-    assert payload["items"][0]["independent_source_count"] == 1
+    assert payload["total"] == 0
+    assert payload["items"] == []
 
 
 @pytest.mark.asyncio

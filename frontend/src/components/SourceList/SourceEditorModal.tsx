@@ -347,8 +347,6 @@ const SourceEditorModal: React.FC<SourceEditorModalProps> = ({
           }}
         </Form.Item>
 
-        <Divider style={{ marginTop: 8, marginBottom: 12 }}>高级设置（可选）</Divider>
-
         <Divider style={{ marginTop: 8, marginBottom: 12 }}>信源质量</Divider>
 
         <SectionNote style={{ marginBottom: 12 }}>
@@ -363,8 +361,8 @@ const SourceEditorModal: React.FC<SourceEditorModalProps> = ({
           <Select
             options={[
               { value: 3, label: '三星 · 官方信源 / 权威媒体 / 一手信源' },
-              { value: 2, label: '二星 · 垂直媒体 / 认证作者' },
-              { value: 1, label: '一星 · 聚合信源 / 泛资讯 / 个人作者' },
+              { value: 2, label: '二星 · 普通媒体 / 优质自媒体' },
+              { value: 1, label: '一星 · 聚合媒体 / 泛资讯平台 / 普通个人作者' },
             ]}
           />
         </Form.Item>

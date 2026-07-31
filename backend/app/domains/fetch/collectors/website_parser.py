@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlparse
 
 from bs4 import BeautifulSoup
 
@@ -21,6 +21,13 @@ from app.utils.publish_time import parse_publish_time_text
 from .website_helpers import looks_like_article_url
 
 logger = get_logger(__name__)
+
+
+def _is_wallstreetcn_member_article(url: str) -> bool:
+    """Member-only WSCN URLs return an error shell without article content."""
+    parsed = urlparse(url)
+    host = (parsed.hostname or "").lower()
+    return host in {"wallstreetcn.com", "www.wallstreetcn.com"} and parsed.path.startswith("/member/articles/")
 
 
 def _parse_datetime_attr(value: str) -> datetime:
@@ -49,6 +56,9 @@ def parse_article_candidate(
         if url.startswith("/"):
             url = urljoin(source.url, url)
     if not title or not url:
+        return None
+    if _is_wallstreetcn_member_article(url):
+        logger.info("Skipping inaccessible WallstreetCN member article during parse: %s", url)
         return None
 
     content_elem = article.select_one(content_selector)
@@ -130,6 +140,8 @@ def append_fallback_links(
         if not title or len(title) < 12 or url in seen:
             continue
         if not looks_like_article_url(source.url, url):
+            continue
+        if _is_wallstreetcn_member_article(url):
             continue
 
         candidate_check = {"title": title, "url": url, "content": ""}

@@ -44,8 +44,8 @@ const EventDetailPage: React.FC = () => {
   if (error || !data) {
     return (
       <div className="mx-auto max-w-page px-6 py-10">
-        <Link to="/events" className="inline-flex items-center gap-2 text-sm font-medium text-[#5f6f82] hover:text-[#49A8C9]">
-          <ArrowLeft size={16} /> 返回事件
+        <Link to="/" className="inline-flex items-center gap-2 text-sm font-medium text-[#5f6f82] hover:text-[#49A8C9]">
+          <ArrowLeft size={16} /> 返回今日重点
         </Link>
         <div className="mt-8 rounded-2xl border border-red-200 bg-red-50 p-6 text-red-700">事件不存在或暂不可用。</div>
       </div>
@@ -55,8 +55,8 @@ const EventDetailPage: React.FC = () => {
   return (
     <div className="min-h-screen bg-[#f5f9fc] pb-24">
       <div className="mx-auto max-w-page px-6 py-6 sm:px-8 lg:px-10">
-        <Link to="/events" className="mb-5 inline-flex items-center gap-2 text-sm font-medium text-[#5f6f82] hover:text-[#49A8C9]">
-          <ArrowLeft size={16} /> 返回事件
+        <Link to="/" className="mb-5 inline-flex items-center gap-2 text-sm font-medium text-[#5f6f82] hover:text-[#49A8C9]">
+          <ArrowLeft size={16} /> 返回今日重点
         </Link>
         <PageHeroTitle titleZh="事件详情" titleEn="Event Detail" />
 

@@ -599,6 +599,30 @@ class TestBuildRawContentObjects:
         mock_extractor.extract.assert_called_once()
 
     @pytest.mark.asyncio
+    async def test_wallstreetcn_structured_article_uses_page_heading_as_title(self):
+        from app.domains.ingest.build_content import build_raw_content_objects
+
+        source = _make_source()
+        body = "华尔街见闻正文内容。" * 30
+        raw = [_raw(
+            title="正文标题 作者 10:28",
+            content="",
+            html=(
+                "<article><header><h1>正文标题</h1>"
+                "<time datetime='2026-07-31T07:53:59.000Z'>07:53</time></header>"
+                f"<section class='articleBody'>{body}</section></article>"
+            ),
+        )]
+
+        with _no_reject, patch("app.domains.ingest.extractor.ContentExtractor") as MockExt:
+            MockExt.return_value = AsyncMock()
+            results, failures = await build_raw_content_objects(raw, source)
+
+        assert failures == 0
+        assert results[0].title == "正文标题"
+        assert results[0].full_content == body
+
+    @pytest.mark.asyncio
     async def test_enabled_web_clean_preserves_markdown_structure_for_reader(self):
         from app.domains.fetch.web_clean.contracts import CleanResult
         from app.domains.ingest.build_content import build_raw_content_objects

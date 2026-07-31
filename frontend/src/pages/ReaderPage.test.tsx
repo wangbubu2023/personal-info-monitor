@@ -143,10 +143,10 @@ describe('ReaderPage', () => {
     const user = userEvent.setup()
     renderReaderPage()
 
-    await user.keyboard('l')
+    await user.keyboard('h')
     expect(setLiked).toHaveBeenCalledWith(true)
 
-    await user.keyboard('h')
+    await user.keyboard('l')
     expect(hide).toHaveBeenCalledTimes(1)
   })
 

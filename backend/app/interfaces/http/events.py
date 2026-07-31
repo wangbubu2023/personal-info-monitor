@@ -386,7 +386,7 @@ async def get_event_feed(
     offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_async_db),
 ):
-    """Expose recent persisted events, including single-source watch events."""
+    """Expose recent corroborated events; provisional watch items stay internal."""
 
     items, total = await list_recent_events(
         db,

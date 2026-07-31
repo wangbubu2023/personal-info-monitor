@@ -157,6 +157,11 @@ async def build_raw_content_objects(
             if persisted_full_content is None:
                 persisted_full_content = main_text_clean
             title = await asyncio.to_thread(strip_html_tags, raw.get("title", "Untitled"))
+            # WallstreetCN listing cards append the author and clock time to
+            # their text title.  Once a public article page has been
+            # structured successfully, its ``h1`` is the canonical title.
+            if structured_result and structured_result.method == "wallstreetcn_article_body" and structured_result.title:
+                title = await asyncio.to_thread(strip_html_tags, structured_result.title)
 
             # Truncated snippet as placeholder summary (AI will replace it later)
             summary = None

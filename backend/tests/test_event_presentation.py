@@ -5,13 +5,14 @@ from app.domains.events.presentation import (
 )
 
 
-def test_single_source_event_can_be_must_see_at_seventy():
+def test_single_source_cluster_stays_out_of_event_sections():
     assert classify_event_section(
         importance=70,
         incremental=72,
         confidence=92,
         corroboration_tier="single_high",
-    ) == "need_to_know"
+        independent_source_count=1,
+    ) == "later"
 
 
 def test_event_below_seventy_remains_brewing():
@@ -20,6 +21,7 @@ def test_event_below_seventy_remains_brewing():
         incremental=72,
         confidence=92,
         corroboration_tier="single_high",
+        independent_source_count=2,
     ) == "brewing"
 
 

@@ -13,7 +13,6 @@ import {
   DownloadCloud,
   Atom,
   ClipboardCheck,
-  Network,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useQuery } from '@tanstack/react-query';
@@ -162,7 +161,6 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const navItems = [
     { to: '/', label: '今日重点', icon: Newspaper },
     { to: '/timeline', label: '全部动态', icon: Clock },
-    { to: '/events', label: '事件', icon: Network },
     { to: '/digest', label: '简报', icon: Clock },
     ...(scoreLabEnabled ? [{ to: '/score-lab', label: '评分', icon: Gauge }] : []),
     ...(runtimeFeatures?.atoms_surface_enabled ? [{ to: '/atoms', label: '原子库', icon: Atom }] : []),
@@ -172,7 +170,6 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const isNavActive = (path: string) => {
     if (path === '/') return location.pathname === '/'
     if (path === '/timeline') return location.pathname === '/timeline'
-    if (path === '/events') return location.pathname === '/events' || location.pathname.startsWith('/events/')
     if (path === '/settings')
       return location.pathname === '/settings' || location.pathname === '/sources'
     if (path === '/score-lab') return location.pathname === '/score-lab'

@@ -428,7 +428,12 @@ async def list_recent_events(
     limit: int = 100,
     offset: int = 0,
 ) -> tuple[list[dict[str, Any]], int]:
-    """Return recent persisted Events without the highlights quality gates."""
+    """Return recent corroborated events.
+
+    A single report is a watch item, not an event.  Provisional records are
+    still retained by the engine so a later independent report can attach, but
+    are intentionally excluded from every reader-facing event surface.
+    """
 
     from app.domains.events.config import event_config, event_v1_today_read_enabled
 
@@ -442,6 +447,7 @@ async def list_recent_events(
     filters = (
         ContentEvent.cluster_version == cluster_version,
         ContentEvent.status.in_(["active", "cooling", "reopened"]),
+        ContentEvent.independent_source_count >= TODAY_HIGHLIGHT_MIN_INDEPENDENT_SOURCES,
         activity_at >= cutoff,
     )
     total = int(

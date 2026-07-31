@@ -221,16 +221,16 @@ const ReaderPage: React.FC = () => {
 
       if (key === 'j') {
         event.preventDefault();
-        navigateToNeighbor(1, 'keyboard');
+        navigateToNeighbor(-1, 'keyboard');
       } else if (key === 'k') {
         event.preventDefault();
-        navigateToNeighbor(-1, 'keyboard');
+        navigateToNeighbor(1, 'keyboard');
       } else if (key === 'l') {
         event.preventDefault();
-        void toggleLiked('keyboard');
+        void hideCurrent('keyboard');
       } else if (key === 'h') {
         event.preventDefault();
-        void hideCurrent('keyboard');
+        void toggleLiked('keyboard');
       }
     };
 
@@ -278,20 +278,20 @@ const ReaderPage: React.FC = () => {
                 disabled={!previousItem}
                 onClick={() => navigateToNeighbor(-1, 'click')}
                 className="flex h-8 items-center justify-center gap-1.5 rounded-lg px-2 text-[#586476] transition-all hover:bg-white hover:text-[#293859] disabled:cursor-not-allowed disabled:opacity-35"
-                aria-label="上一篇（K）"
+                aria-label="上一篇（J）"
               >
                 <ChevronLeft size={16} />
-                <ShortcutHint>K</ShortcutHint>
+                <ShortcutHint>J</ShortcutHint>
               </button>
               <button
                 type="button"
                 disabled={!nextItem}
                 onClick={() => navigateToNeighbor(1, 'click')}
                 className="flex h-8 items-center justify-center gap-1.5 rounded-lg px-2 text-[#586476] transition-all hover:bg-white hover:text-[#293859] disabled:cursor-not-allowed disabled:opacity-35"
-                aria-label="下一篇（J）"
+                aria-label="下一篇（K）"
               >
                 <ChevronRight size={16} />
-                <ShortcutHint>J</ShortcutHint>
+                <ShortcutHint>K</ShortcutHint>
               </button>
             </div>
           </div>
@@ -393,14 +393,14 @@ const ReaderPage: React.FC = () => {
                       : 'border-[rgba(88,100,118,0.16)] bg-white/70 text-[#586476] hover:bg-white hover:text-[#293859]'
                   }`}
                 >
-                  <Bookmark size={14} /> {data.favorited ? '已标为重要' : '重要'} <ShortcutHint>L</ShortcutHint>
+                  <Bookmark size={14} /> {data.favorited ? '已标为重要' : '重要'} <ShortcutHint>H</ShortcutHint>
                 </button>
                 <button
                   type="button"
                   onClick={() => void hideCurrent('click')}
                   className="flex items-center gap-2 rounded-xl border border-rose-200/80 bg-white/70 px-3.5 py-2 text-[12px] font-semibold text-rose-500 transition-all hover:border-rose-300 hover:bg-rose-50 hover:text-rose-600"
                 >
-                  <EyeOff size={14} /> 不重要 <ShortcutHint>H</ShortcutHint>
+                  <EyeOff size={14} /> 不重要 <ShortcutHint>L</ShortcutHint>
                 </button>
               </div>
             </div>
