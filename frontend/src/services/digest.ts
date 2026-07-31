@@ -104,6 +104,12 @@ export interface TodayHighlightsResponse {
   items: TodayHighlightEvent[]
 }
 
+export interface EventFeedResponse {
+  items: TodayHighlightEvent[]
+  total: number
+  hours: number
+}
+
 export interface EventTimelineItem {
   content_id: string
   title: string
@@ -221,6 +227,11 @@ export const digestApi = {
   // Get qualifying persisted events from the rolling 48-hour highlights window.
   getTodayHighlights: async (date: string): Promise<TodayHighlightsResponse> => {
     const response = await api.get('/events/today-highlights', { params: { date } })
+    return response.data
+  },
+
+  getEventFeed: async (hours = 168, limit = 100): Promise<EventFeedResponse> => {
+    const response = await api.get('/events/feed', { params: { hours, limit } })
     return response.data
   },
 

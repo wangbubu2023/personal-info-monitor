@@ -30,6 +30,8 @@ export interface AnnotationTaskItem {
   context_snapshot: Record<string, unknown>
   prediction_snapshot: Record<string, unknown>
   source_dataset?: string | null
+  review_bucket?: 'central' | 'migration' | 'deferred' | null
+  labels: AnnotationLabelItem[]
   latest_label?: AnnotationLabelItem | null
   label_count: number
   created_at?: string | null
@@ -44,6 +46,9 @@ export interface AnnotationStats {
   retracted: number
   total: number
   by_task_type: Record<string, number>
+  central_review: number
+  taxonomy_migration: number
+  deferred: number
 }
 
 export interface SubmitAnnotationLabel {
@@ -79,10 +84,13 @@ export const annotationsApi = {
     return response.data
   },
 
-  getReviewQueue: async (limit = 100): Promise<{ items: AnnotationTaskItem[]; total: number }> => {
-    const response = await api.get<{ items: AnnotationTaskItem[]; total: number }>(
+  getReviewQueue: async (
+    bucket: 'central' | 'migration' | 'deferred' | 'all' = 'central',
+    limit = 200,
+  ): Promise<{ items: AnnotationTaskItem[]; total: number; bucket_counts: Record<string, number> }> => {
+    const response = await api.get<{ items: AnnotationTaskItem[]; total: number; bucket_counts: Record<string, number> }>(
       '/annotations/review-queue',
-      { params: { status: 'actionable', limit } },
+      { params: { status: 'actionable', bucket, limit } },
     )
     return response.data
   },

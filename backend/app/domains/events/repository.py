@@ -421,6 +421,99 @@ async def list_today_highlights(db: AsyncSession, target_date: date, *, limit: i
     return selected
 
 
+async def list_recent_events(
+    db: AsyncSession,
+    *,
+    hours: int = 168,
+    limit: int = 100,
+    offset: int = 0,
+) -> tuple[list[dict[str, Any]], int]:
+    """Return recent persisted Events without the highlights quality gates."""
+
+    from app.domains.events.config import event_config, event_v1_today_read_enabled
+
+    cluster_version = event_config().cluster_version if event_v1_today_read_enabled() else "hybrid-v0"
+    activity_at = func.coalesce(
+        ContentEvent.last_material_update_at,
+        ContentEvent.last_seen_at,
+        ContentEvent.updated_at,
+    )
+    cutoff = utcnow_naive() - timedelta(hours=max(1, int(hours)))
+    filters = (
+        ContentEvent.cluster_version == cluster_version,
+        ContentEvent.status.in_(["active", "cooling", "reopened"]),
+        activity_at >= cutoff,
+    )
+    total = int(
+        (
+            await db.execute(
+                select(func.count(ContentEvent.event_id)).where(*filters)
+            )
+        ).scalar()
+        or 0
+    )
+    result = await db.execute(
+        select(ContentEvent)
+        .where(*filters)
+        .order_by(
+            activity_at.desc(),
+            ContentEvent.importance_score.desc(),
+            ContentEvent.event_id,
+        )
+        .offset(max(0, int(offset)))
+        .limit(max(1, min(200, int(limit or 100))))
+    )
+    items: list[dict[str, Any]] = []
+    for event in result.scalars().all():
+        snapshot = (
+            await db.execute(
+                select(ContentEventSnapshot)
+                .where(ContentEventSnapshot.event_id == event.event_id)
+                .order_by(ContentEventSnapshot.version.desc())
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        explanation = snapshot.explanation if snapshot and isinstance(snapshot.explanation, dict) else {}
+        primary_content_id = str(
+            (snapshot.canonical_content_id if snapshot else None)
+            or event.canonical_content_id
+            or ""
+        ) or None
+        read_state = await get_event_read_state(db, event.event_id)
+        items.append(
+            {
+                "event_id": event.event_id,
+                "event_key": event.event_key,
+                "section": event.event_state,
+                "title": snapshot.title if snapshot else event.title,
+                "summary": snapshot.summary if snapshot else event.summary,
+                "why_matters": (
+                    explanation.get("selection_reason")
+                    or (snapshot.why_matters if snapshot else None)
+                    or (event.metadata_ or {}).get("why_matters")
+                ),
+                "what_changed": (
+                    explanation.get("what_changed_since_last_read")
+                    or (snapshot.what_changed if snapshot else None)
+                    or (event.metadata_ or {}).get("what_changed")
+                ),
+                "independent_source_count": int(event.independent_source_count or 0),
+                "source_names": event.source_names or [],
+                "updated_at": to_iso_z(
+                    event.last_material_update_at or event.last_seen_at or event.updated_at
+                ),
+                "importance_score": event.importance_score,
+                "confidence_score": event.confidence_score,
+                "primary_content_id": primary_content_id,
+                "snapshot_version": int(snapshot.version if snapshot else event.latest_snapshot_version or 0),
+                "latest_version": read_state.latest_version,
+                "user_seen_version": read_state.user_seen_version,
+                "has_updates": read_state.has_updates,
+            }
+        )
+    return items, total
+
+
 async def build_event_detail(
     db: AsyncSession,
     event_id: str,

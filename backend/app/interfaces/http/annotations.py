@@ -114,8 +114,32 @@ def _label_item(label: AnnotationLabel, task: AnnotationTask) -> AnnotationLabel
     )
 
 
+def _review_bucket(task: AnnotationTask) -> str | None:
+    """Separate true decisions from migrations and already-deferred uncertainty."""
+
+    if task.status not in {"pending", "needs_adjudication"}:
+        return None
+    reason = str(task.reason or "").strip().lower()
+    if task.status == "needs_adjudication" or reason in {
+        "conflict",
+        "conflicting_annotations",
+        "conflicting imported human labels",
+        "unlabeled",
+    }:
+        return "central"
+    if task.task_type in {"content_lane", "content_tags"} and (
+        task.source_dataset == "lane_eval_v0_1_needs_review.jsonl"
+        or "taxonomy" in reason
+    ):
+        return "migration"
+    if reason == "unclear":
+        return "deferred"
+    return "central"
+
+
 def _task_item(task: AnnotationTask) -> AnnotationTaskItem:
     latest = task.labels[-1] if task.labels else None
+    labels = [_label_item(label, task) for label in task.labels]
     return AnnotationTaskItem(
         id=str(task.id),
         task_type=task.task_type,
@@ -129,7 +153,9 @@ def _task_item(task: AnnotationTask) -> AnnotationTaskItem:
         context_snapshot=task.context_snapshot if isinstance(task.context_snapshot, dict) else {},
         prediction_snapshot=task.prediction_snapshot if isinstance(task.prediction_snapshot, dict) else {},
         source_dataset=task.source_dataset,
-        latest_label=_label_item(latest, task) if latest else None,
+        review_bucket=_review_bucket(task),
+        labels=labels,
+        latest_label=labels[-1] if latest else None,
         label_count=len(task.labels),
         created_at=to_iso_z(task.created_at),
         updated_at=to_iso_z(task.updated_at),
@@ -205,6 +231,7 @@ async def get_target_annotations(
 )
 async def get_annotation_review_queue(
     status: str = Query("actionable", pattern="^(actionable|pending|needs_adjudication|all)$"),
+    bucket: str = Query("central", pattern="^(central|migration|deferred|all)$"),
     task_type: str | None = None,
     limit: int = Query(100, ge=1, le=500),
     offset: int = Query(0, ge=0),
@@ -218,25 +245,31 @@ async def get_annotation_review_queue(
     if task_type:
         filters.append(AnnotationTask.task_type == task_type.strip())
 
-    count_statement = select(func.count(AnnotationTask.id))
     list_statement = select(AnnotationTask).options(selectinload(AnnotationTask.labels))
     if filters:
-        count_statement = count_statement.where(*filters)
         list_statement = list_statement.where(*filters)
-    total = int((await db.execute(count_statement)).scalar() or 0)
-    tasks = (
+    tasks = list(
         (
             await db.execute(
-                list_statement
-                .order_by(AnnotationTask.priority.desc(), AnnotationTask.created_at.asc())
-                .offset(offset)
-                .limit(limit)
+                list_statement.order_by(AnnotationTask.priority.desc(), AnnotationTask.created_at.asc())
             )
         )
         .scalars()
         .all()
     )
-    return AnnotationReviewQueueResponse(items=[_task_item(task) for task in tasks], total=total)
+    bucket_counts = {"central": 0, "migration": 0, "deferred": 0}
+    for task in tasks:
+        task_bucket = _review_bucket(task)
+        if task_bucket:
+            bucket_counts[task_bucket] += 1
+    selected = tasks if bucket == "all" else [task for task in tasks if _review_bucket(task) == bucket]
+    total = len(selected)
+    selected = selected[offset : offset + limit]
+    return AnnotationReviewQueueResponse(
+        items=[_task_item(task) for task in selected],
+        total=total,
+        bucket_counts=bucket_counts,
+    )
 
 
 @router.post(
@@ -293,6 +326,22 @@ async def get_annotation_stats(db: AsyncSession = Depends(get_async_db)) -> Anno
         )
     ).all()
     statuses = {str(status): int(count) for status, count in status_rows}
+    actionable_tasks = list(
+        (
+            await db.execute(
+                select(AnnotationTask).where(
+                    AnnotationTask.status.in_(("pending", "needs_adjudication"))
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    bucket_counts = {"central": 0, "migration": 0, "deferred": 0}
+    for task in actionable_tasks:
+        bucket = _review_bucket(task)
+        if bucket:
+            bucket_counts[bucket] += 1
     total = sum(statuses.values())
     return AnnotationStatsResponse(
         pending=statuses.get("pending", 0),
@@ -302,4 +351,7 @@ async def get_annotation_stats(db: AsyncSession = Depends(get_async_db)) -> Anno
         retracted=statuses.get("retracted", 0),
         total=total,
         by_task_type={str(task_type): int(count) for task_type, count in type_rows},
+        central_review=bucket_counts["central"],
+        taxonomy_migration=bucket_counts["migration"],
+        deferred=bucket_counts["deferred"],
     )

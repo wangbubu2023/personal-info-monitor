@@ -6,6 +6,7 @@ import { motion } from 'framer-motion'
 import { digestApi } from '../services/digest'
 import { formatLocalDateTime } from '../utils/datetime'
 import PageHeroTitle from '../components/common/PageHeroTitle'
+import InlineAnnotationChoices from '../components/annotations/InlineAnnotationChoices'
 
 const EventDetailPage: React.FC = () => {
   const { eventId = '' } = useParams()
@@ -43,8 +44,8 @@ const EventDetailPage: React.FC = () => {
   if (error || !data) {
     return (
       <div className="mx-auto max-w-page px-6 py-10">
-        <Link to="/digest" className="inline-flex items-center gap-2 text-sm font-medium text-[#5f6f82] hover:text-[#49A8C9]">
-          <ArrowLeft size={16} /> 返回简报
+        <Link to="/events" className="inline-flex items-center gap-2 text-sm font-medium text-[#5f6f82] hover:text-[#49A8C9]">
+          <ArrowLeft size={16} /> 返回事件
         </Link>
         <div className="mt-8 rounded-2xl border border-red-200 bg-red-50 p-6 text-red-700">事件不存在或暂不可用。</div>
       </div>
@@ -54,8 +55,8 @@ const EventDetailPage: React.FC = () => {
   return (
     <div className="min-h-screen bg-[#f5f9fc] pb-24">
       <div className="mx-auto max-w-page px-6 py-6 sm:px-8 lg:px-10">
-        <Link to="/digest" className="mb-5 inline-flex items-center gap-2 text-sm font-medium text-[#5f6f82] hover:text-[#49A8C9]">
-          <ArrowLeft size={16} /> 返回简报
+        <Link to="/events" className="mb-5 inline-flex items-center gap-2 text-sm font-medium text-[#5f6f82] hover:text-[#49A8C9]">
+          <ArrowLeft size={16} /> 返回事件
         </Link>
         <PageHeroTitle titleZh="事件详情" titleEn="Event Detail" />
 
@@ -90,6 +91,27 @@ const EventDetailPage: React.FC = () => {
               </div>
             </div>
             <p className="text-[15px] leading-relaxed text-[#293859]">{data.current_conclusion}</p>
+            <div className="rounded-2xl border border-[#49A8C9]/15 bg-[#f7fbfd] px-4 py-3">
+              <InlineAnnotationChoices
+                taskType="event_correctness"
+                targetType="event"
+                targetId={data.event_id}
+                label="这张事件卡准确吗"
+                compact
+                context={{
+                  title: data.title,
+                  summary: data.current_conclusion,
+                  source_names: data.source_names,
+                  member_ids: data.timeline.map((item) => item.content_id),
+                }}
+                choices={[
+                  { value: 'correct', label: '准确' },
+                  { value: 'partial', label: '部分准确' },
+                  { value: 'incorrect', label: '错误' },
+                  { value: 'unclear', label: '不确定' },
+                ]}
+              />
+            </div>
             {data.why_matters ? (
               <p className="rounded-2xl border border-[#8C866A]/18 bg-[#8C866A]/8 p-4 text-[14px] leading-relaxed text-[#6f684f]">
                 <strong>为什么重要：</strong>{data.why_matters}

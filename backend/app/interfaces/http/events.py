@@ -18,7 +18,7 @@ from app.domains.eval.annotation_recording import (
     record_annotation_label,
 )
 from app.domains.events.personal_state import mark_event_seen, update_event_state
-from app.domains.events.repository import build_event_detail, list_today_highlights
+from app.domains.events.repository import build_event_detail, list_recent_events, list_today_highlights
 from app.domains.score.feedback import (
     EVENT_CLUSTER_FEEDBACK_EVENTS,
     adjudicate_quality_feedback,
@@ -38,6 +38,7 @@ from app.models import (
 )
 from app.schemas.events import (
     EventDetailResponse,
+    EventFeedResponse,
     EventFeedbackCreate,
     EventFeedbackItem,
     EventLifecycleCreate,
@@ -376,6 +377,24 @@ async def get_today_highlights(
     target_date = datetime.strptime(digest_date, "%Y-%m-%d").date() if digest_date else today_in_user_timezone()
     items = await list_today_highlights(db, target_date, limit=limit)
     return TodayHighlightsResponse(date=target_date.isoformat(), items=items)
+
+
+@router.get("/feed", response_model=EventFeedResponse)
+async def get_event_feed(
+    hours: int = Query(168, ge=1, le=24 * 90),
+    limit: int = Query(100, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Expose recent persisted events, including single-source watch events."""
+
+    items, total = await list_recent_events(
+        db,
+        hours=hours,
+        limit=limit,
+        offset=offset,
+    )
+    return EventFeedResponse(items=items, total=total, hours=hours)
 
 
 @router.get("/quality-feedback/queue", response_model=list[QualityFeedbackQueueItem])

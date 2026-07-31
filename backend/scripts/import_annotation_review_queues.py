@@ -147,7 +147,11 @@ def build_tasks(queue_dir: Path) -> list[tuple[AnnotationTask, list[AnnotationLa
             value = str(source.get("event_correctness") or "").strip()
             if value:
                 labels.append((f"imported-{source.get('tier') or index}", value))
-        status = "needs_adjudication" if row.get("review_reason") == "conflict" else "pending"
+        status = (
+            "needs_adjudication"
+            if row.get("review_reason") in {"conflict", "conflicting_annotations"}
+            else "pending"
+        )
         tasks.append(
             _task(
                 task_type="event_correctness",
@@ -182,6 +186,27 @@ def import_tasks(queue_dir: Path, *, apply: bool) -> dict[str, int]:
             ).scalar_one_or_none()
             if existing:
                 summary["existing"] += 1
+                existing_task = db.get(AnnotationTask, existing)
+                if existing_task and task.status == "needs_adjudication":
+                    existing_task.status = "needs_adjudication"
+                    existing_task.priority = max(float(existing_task.priority or 0), float(task.priority or 0))
+                    existing_task.updated_at = utcnow_naive()
+                    existing_labels = {
+                        (
+                            str(label.annotator),
+                            str((label.label_payload or {}).get("value") or ""),
+                        )
+                        for label in existing_task.labels
+                    }
+                    for label in labels:
+                        key = (
+                            str(label.annotator),
+                            str((label.label_payload or {}).get("value") or ""),
+                        )
+                        if key not in existing_labels:
+                            label.task = existing_task
+                            db.add(label)
+                            existing_labels.add(key)
                 continue
             db.add(task)
             db.add_all(labels)

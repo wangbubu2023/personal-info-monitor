@@ -400,6 +400,13 @@
       },
       "AnnotationReviewQueueResponse": {
         "properties": {
+          "bucket_counts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Bucket Counts",
+            "type": "object"
+          },
           "items": {
             "items": {
               "$ref": "#/components/schemas/AnnotationTaskItem"
@@ -432,6 +439,16 @@
             "title": "By Task Type",
             "type": "object"
           },
+          "central_review": {
+            "default": 0,
+            "title": "Central Review",
+            "type": "integer"
+          },
+          "deferred": {
+            "default": 0,
+            "title": "Deferred",
+            "type": "integer"
+          },
           "labeled": {
             "default": 0,
             "title": "Labeled",
@@ -450,6 +467,11 @@
           "retracted": {
             "default": 0,
             "title": "Retracted",
+            "type": "integer"
+          },
+          "taxonomy_migration": {
+            "default": 0,
+            "title": "Taxonomy Migration",
             "type": "integer"
           },
           "total": {
@@ -488,6 +510,13 @@
             "title": "Label Count",
             "type": "integer"
           },
+          "labels": {
+            "items": {
+              "$ref": "#/components/schemas/AnnotationLabelItem"
+            },
+            "title": "Labels",
+            "type": "array"
+          },
           "latest_label": {
             "anyOf": [
               {
@@ -517,6 +546,17 @@
               }
             ],
             "title": "Reason"
+          },
+          "review_bucket": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Review Bucket"
           },
           "schema_version": {
             "title": "Schema Version",
@@ -2689,6 +2729,29 @@
           "title"
         ],
         "title": "EventEvidenceGroup",
+        "type": "object"
+      },
+      "EventFeedResponse": {
+        "properties": {
+          "hours": {
+            "default": 168,
+            "title": "Hours",
+            "type": "integer"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/TodayHighlightEvent"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "total": {
+            "default": 0,
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "title": "EventFeedResponse",
         "type": "object"
       },
       "EventFeedbackCreate": {
@@ -6667,6 +6730,17 @@
               "default": "actionable",
               "pattern": "^(actionable|pending|needs_adjudication|all)$",
               "title": "Status",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "bucket",
+            "required": false,
+            "schema": {
+              "default": "central",
+              "pattern": "^(central|migration|deferred|all)$",
+              "title": "Bucket",
               "type": "string"
             }
           },
@@ -10785,6 +10859,80 @@
           }
         ],
         "summary": "Get Event Diagnostics",
+        "tags": [
+          "events"
+        ]
+      }
+    },
+    "/api/events/feed": {
+      "get": {
+        "description": "Expose recent persisted events, including single-source watch events.",
+        "operationId": "get_event_feed_api_events_feed_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "hours",
+            "required": false,
+            "schema": {
+              "default": 168,
+              "maximum": 2160,
+              "minimum": 1,
+              "title": "Hours",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventFeedResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Get Event Feed",
         "tags": [
           "events"
         ]

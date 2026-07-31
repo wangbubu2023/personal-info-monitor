@@ -13,6 +13,7 @@ import {
   DownloadCloud,
   Atom,
   ClipboardCheck,
+  Network,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useQuery } from '@tanstack/react-query';
@@ -161,6 +162,7 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const navItems = [
     { to: '/', label: '今日重点', icon: Newspaper },
     { to: '/timeline', label: '全部动态', icon: Clock },
+    { to: '/events', label: '事件', icon: Network },
     { to: '/digest', label: '简报', icon: Clock },
     ...(scoreLabEnabled ? [{ to: '/score-lab', label: '评分', icon: Gauge }] : []),
     ...(runtimeFeatures?.atoms_surface_enabled ? [{ to: '/atoms', label: '原子库', icon: Atom }] : []),
@@ -170,6 +172,7 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const isNavActive = (path: string) => {
     if (path === '/') return location.pathname === '/'
     if (path === '/timeline') return location.pathname === '/timeline'
+    if (path === '/events') return location.pathname === '/events' || location.pathname.startsWith('/events/')
     if (path === '/settings')
       return location.pathname === '/settings' || location.pathname === '/sources'
     if (path === '/score-lab') return location.pathname === '/score-lab'
@@ -304,13 +307,13 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
         {annotationsEnabled ? (
           <div className="sticky top-0 z-50 flex min-h-9 items-center justify-between gap-3 border-b border-amber-200/70 bg-amber-50/95 px-4 py-1.5 text-[11px] font-semibold text-amber-900 backdrop-blur-md sm:px-7">
             <span>Development Profile · 消费中标注已开启</span>
-            {(annotationStats?.pending || annotationStats?.needs_adjudication) ? (
+            {annotationStats?.central_review ? (
               <Link
                 to="/review"
                 className="inline-flex items-center gap-1.5 rounded-full border border-amber-300/70 bg-white/80 px-2.5 py-1 hover:bg-white"
               >
                 <ClipboardCheck size={12} />
-                必须集中处理 {Number(annotationStats?.pending || 0) + Number(annotationStats?.needs_adjudication || 0)}
+                待集中裁决 {annotationStats.central_review}
               </Link>
             ) : null}
           </div>

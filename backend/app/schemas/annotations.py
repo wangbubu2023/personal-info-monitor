@@ -53,6 +53,8 @@ class AnnotationTaskItem(BaseModel):
     context_snapshot: dict[str, Any] = Field(default_factory=dict)
     prediction_snapshot: dict[str, Any] = Field(default_factory=dict)
     source_dataset: str | None = None
+    review_bucket: str | None = None
+    labels: list[AnnotationLabelItem] = Field(default_factory=list)
     latest_label: AnnotationLabelItem | None = None
     label_count: int = 0
     created_at: str | None = None
@@ -68,6 +70,7 @@ class TargetAnnotationsResponse(BaseModel):
 class AnnotationReviewQueueResponse(BaseModel):
     items: list[AnnotationTaskItem] = Field(default_factory=list)
     total: int
+    bucket_counts: dict[str, int] = Field(default_factory=dict)
 
 
 class AnnotationAdjudicationCreate(BaseModel):
@@ -95,3 +98,6 @@ class AnnotationStatsResponse(BaseModel):
     retracted: int = 0
     total: int = 0
     by_task_type: dict[str, int] = Field(default_factory=dict)
+    central_review: int = 0
+    taxonomy_migration: int = 0
+    deferred: int = 0

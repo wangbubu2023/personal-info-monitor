@@ -35,6 +35,12 @@ class TodayHighlightsResponse(BaseModel):
     items: list[TodayHighlightEvent] = Field(default_factory=list)
 
 
+class EventFeedResponse(BaseModel):
+    items: list[TodayHighlightEvent] = Field(default_factory=list)
+    total: int = 0
+    hours: int = 168
+
+
 class EventTimelineItem(BaseModel):
     content_id: str
     title: str

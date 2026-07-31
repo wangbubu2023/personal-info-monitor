@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import pytest
 
+from app.models import AnnotationTask
+
 
 def _label(value: str, *, independent: bool = False) -> dict:
     return {
@@ -101,3 +103,66 @@ async def test_content_format_quality_uses_three_level_scale(client, monkeypatch
     assert (await client.post("/api/annotations/labels", json=payload)).status_code == 200
     payload["label_payload"] = {"value": "unclear"}
     assert (await client.post("/api/annotations/labels", json=payload)).status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_review_queue_separates_central_migration_and_deferred(client, db_session, monkeypatch):
+    monkeypatch.setenv("PIM_RUNTIME_PROFILE", "development")
+    db_session.add_all(
+        [
+            AnnotationTask(
+                task_type="content_lane",
+                target_type="content",
+                target_id="legacy-lane-sample",
+                target_fingerprint="a" * 64,
+                schema_version="v1",
+                status="pending",
+                priority=50,
+                reason="new taxonomy split requires a direct 13-class label",
+                context_snapshot={},
+                prediction_snapshot={},
+                source_dataset="lane_eval_v0_1_needs_review.jsonl",
+            ),
+            AnnotationTask(
+                task_type="event_correctness",
+                target_type="event",
+                target_id="unclear-event-sample",
+                target_fingerprint="b" * 64,
+                schema_version="v1",
+                status="pending",
+                priority=40,
+                reason="unclear",
+                context_snapshot={},
+                prediction_snapshot={},
+                source_dataset="event_card_correctness_v0_1_needs_review.jsonl",
+            ),
+            AnnotationTask(
+                task_type="event_correctness",
+                target_type="event",
+                target_id="unlabeled-event-sample",
+                target_fingerprint="c" * 64,
+                schema_version="v1",
+                status="pending",
+                priority=40,
+                reason="unlabeled",
+                context_snapshot={},
+                prediction_snapshot={},
+                source_dataset="event_card_correctness_v0_1_needs_review.jsonl",
+            ),
+        ]
+    )
+    await db_session.commit()
+
+    central = (await client.get("/api/annotations/review-queue")).json()
+    migration = (await client.get("/api/annotations/review-queue", params={"bucket": "migration"})).json()
+    deferred = (await client.get("/api/annotations/review-queue", params={"bucket": "deferred"})).json()
+    stats = (await client.get("/api/annotations/stats")).json()
+
+    assert central["total"] == 1
+    assert central["items"][0]["target_id"] == "unlabeled-event-sample"
+    assert central["bucket_counts"] == {"central": 1, "migration": 1, "deferred": 1}
+    assert migration["total"] == 1
+    assert deferred["total"] == 1
+    assert stats["central_review"] == 1
+    assert stats["taxonomy_migration"] == 1
+    assert stats["deferred"] == 1

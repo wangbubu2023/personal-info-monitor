@@ -1,4 +1,4 @@
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from uuid import uuid4
 
 import pytest
@@ -8,6 +8,7 @@ from app.domains.enrich.hourly.repository import build_hourly_digest_event_brief
 from app.domains.events.repository import stable_event_id
 from app.models import Content, ContentEvent, ContentEventMembership, ContentEventSnapshot, HourlyDigest, Source, UserRule
 from app.models.source import SourceType
+from app.utils.datetime import utcnow_naive
 
 
 def _add_highlight_event(
@@ -132,6 +133,38 @@ async def test_today_highlights_use_persisted_events_from_rolling_48_hours(clien
     assert item["section"] == "need_to_know"
     assert item["independent_source_count"] == 2
     assert item["why_matters"] == "已有多个独立来源互相确认，优先级上升。"
+
+
+@pytest.mark.asyncio
+async def test_event_feed_includes_recent_single_source_events(client, db_session):
+    now = utcnow_naive()
+    recent = _add_highlight_event(
+        db_session,
+        event_key="event:single-source:visible",
+        title="单一来源事件也可在事件流查看",
+        importance_score=45,
+        independent_source_count=1,
+        updated_at=now - timedelta(hours=1),
+        source_names=["Original Source"],
+    )
+    _add_highlight_event(
+        db_session,
+        event_key="event:single-source:expired",
+        title="时间窗口外事件",
+        importance_score=90,
+        independent_source_count=3,
+        updated_at=now - timedelta(hours=30),
+    )
+    await db_session.commit()
+
+    response = await client.get("/api/events/feed", params={"hours": 24})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["hours"] == 24
+    assert payload["total"] == 1
+    assert payload["items"][0]["event_id"] == recent.event_id
+    assert payload["items"][0]["independent_source_count"] == 1
 
 
 @pytest.mark.asyncio

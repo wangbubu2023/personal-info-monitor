@@ -1314,6 +1314,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/events/feed": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Event Feed
+         * @description Expose recent persisted events, including single-source watch events.
+         */
+        get: operations["get_event_feed_api_events_feed_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/events/operations/merge": {
         parameters: {
             query?: never;
@@ -2928,6 +2948,10 @@ export interface components {
         };
         /** AnnotationReviewQueueResponse */
         AnnotationReviewQueueResponse: {
+            /** Bucket Counts */
+            bucket_counts?: {
+                [key: string]: number;
+            };
             /** Items */
             items?: components["schemas"]["AnnotationTaskItem"][];
             /** Total */
@@ -2944,6 +2968,16 @@ export interface components {
             by_task_type?: {
                 [key: string]: number;
             };
+            /**
+             * Central Review
+             * @default 0
+             */
+            central_review: number;
+            /**
+             * Deferred
+             * @default 0
+             */
+            deferred: number;
             /**
              * Labeled
              * @default 0
@@ -2965,6 +2999,11 @@ export interface components {
              */
             retracted: number;
             /**
+             * Taxonomy Migration
+             * @default 0
+             */
+            taxonomy_migration: number;
+            /**
              * Total
              * @default 0
              */
@@ -2985,6 +3024,8 @@ export interface components {
              * @default 0
              */
             label_count: number;
+            /** Labels */
+            labels?: components["schemas"]["AnnotationLabelItem"][];
             latest_label?: components["schemas"]["AnnotationLabelItem"] | null;
             /** Prediction Snapshot */
             prediction_snapshot?: {
@@ -2994,6 +3035,8 @@ export interface components {
             priority: number;
             /** Reason */
             reason?: string | null;
+            /** Review Bucket */
+            review_bucket?: string | null;
             /** Schema Version */
             schema_version: string;
             /** Secondary Target Id */
@@ -3862,6 +3905,21 @@ export interface components {
             key: string;
             /** Title */
             title: string;
+        };
+        /** EventFeedResponse */
+        EventFeedResponse: {
+            /**
+             * Hours
+             * @default 168
+             */
+            hours: number;
+            /** Items */
+            items?: components["schemas"]["TodayHighlightEvent"][];
+            /**
+             * Total
+             * @default 0
+             */
+            total: number;
         };
         /** EventFeedbackCreate */
         EventFeedbackCreate: {
@@ -5378,6 +5436,7 @@ export interface operations {
         parameters: {
             query?: {
                 status?: string;
+                bucket?: string;
                 task_type?: string | null;
                 limit?: number;
                 offset?: number;
@@ -7750,6 +7809,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_event_feed_api_events_feed_get: {
+        parameters: {
+            query?: {
+                hours?: number;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventFeedResponse"];
                 };
             };
             /** @description Validation Error */
