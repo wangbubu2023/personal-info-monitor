@@ -101,8 +101,10 @@ describe('EventDetailPage', () => {
     expect(screen.getByRole('button', { name: /^收藏$/ })).toBeTruthy()
     expect(screen.getByText('独立验证')).toBeTruthy()
     expect(screen.getByText('观点 / 关联讨论')).toBeTruthy()
-    expect(screen.getByRole('button', { name: /误合/ })).toBeTruthy()
-    expect(screen.getByRole('button', { name: /漏合/ })).toBeTruthy()
+    expect(screen.getByText(/先评价事件结论/)).toBeTruthy()
+    expect(screen.getByText('报道归类有问题？')).toBeTruthy()
+    expect(screen.getByRole('button', { name: '有无关报道（误合）' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: '缺少同一事件报道（漏合）' })).toBeTruthy()
   })
 
   it('loads the full timeline only after an explicit user action', async () => {

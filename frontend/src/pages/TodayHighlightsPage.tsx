@@ -120,7 +120,7 @@ const TodayHighlightsPage: React.FC = () => {
           </div>
         ) : (
           <div className="rounded-3xl border border-[rgba(88,100,118,0.1)] bg-white/92 py-20 shadow-[0_18px_50px_-24px_rgba(41,56,89,0.16)]">
-            <Empty description="所选 48 小时窗口内暂无达到聚合与热度标准的事件。你仍可在全部动态查看 RSS、X 和网站信息流。" />
+            <Empty description="所选 48 小时窗口内暂无由至少两个独立信源聚合形成的事件。你仍可在全部动态查看 RSS、X 和网站信息流。" />
             <div className="mt-5 flex justify-center">
               <Link
                 to="/timeline"

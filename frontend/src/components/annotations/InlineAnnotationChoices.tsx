@@ -22,6 +22,7 @@ interface InlineAnnotationChoicesProps {
   prediction?: Record<string, unknown>
   compact?: boolean
   loadExisting?: boolean
+  ignoreExistingReasons?: string[]
 }
 
 const InlineAnnotationChoices: React.FC<InlineAnnotationChoicesProps> = ({
@@ -34,6 +35,7 @@ const InlineAnnotationChoices: React.FC<InlineAnnotationChoicesProps> = ({
   prediction = {},
   compact = false,
   loadExisting = true,
+  ignoreExistingReasons = [],
 }) => {
   const features = useRuntimeFeatures()
   const enabled = Boolean(features?.inline_annotations_enabled)
@@ -47,7 +49,9 @@ const InlineAnnotationChoices: React.FC<InlineAnnotationChoicesProps> = ({
     let active = true
     void annotationsApi.getTarget(targetType, targetId)
       .then((tasks) => {
-        const value = tasks.find((task) => task.task_type === taskType)?.latest_label?.label_payload.value
+        const value = tasks.find(
+          (task) => task.task_type === taskType && !ignoreExistingReasons.includes(task.reason || ''),
+        )?.latest_label?.label_payload.value
         if (active && typeof value === 'string' && choiceValues.has(value)) setSelected(value)
       })
       .catch(() => {
@@ -56,7 +60,7 @@ const InlineAnnotationChoices: React.FC<InlineAnnotationChoicesProps> = ({
     return () => {
       active = false
     }
-  }, [choiceValues, enabled, loadExisting, targetId, targetType, taskType])
+  }, [choiceValues, enabled, ignoreExistingReasons, loadExisting, targetId, targetType, taskType])
 
   if (!enabled) return null
 

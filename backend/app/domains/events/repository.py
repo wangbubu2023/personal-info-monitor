@@ -20,7 +20,6 @@ from sqlalchemy.orm.session import Session
 
 from app.domains.events.personal_state import get_event_read_state, get_or_create_item_state
 from app.domains.events.presentation import (
-    NEED_TO_KNOW_IMPORTANCE_THRESHOLD,
     TODAY_HIGHLIGHT_MIN_INDEPENDENT_SOURCES,
     TODAY_HIGHLIGHT_WINDOW_HOURS,
     event_name_from_cluster,
@@ -329,7 +328,13 @@ def _rolling_highlight_window(target_date: date) -> tuple[datetime, datetime]:
 
 
 async def list_today_highlights(db: AsyncSession, target_date: date, *, limit: int = 50) -> list[dict[str, Any]]:
-    """Return hot, sufficiently corroborated persisted Events from a rolling 48-hour window."""
+    """Return corroborated persisted Events from a rolling 48-hour window.
+
+    Today Highlights is now the reader-facing event surface.  Corroboration,
+    rather than an additional score cutoff, determines whether a cluster is an
+    event: a verified two-source event must not disappear merely because its
+    ranking score falls below the old "must see" threshold.
+    """
 
     from app.domains.events.config import event_config, event_v1_today_read_enabled
 
@@ -347,7 +352,6 @@ async def list_today_highlights(db: AsyncSession, target_date: date, *, limit: i
             ContentEvent.status.in_(["active", "cooling", "reopened"]),
             activity_at >= window_start,
             activity_at < window_end,
-            ContentEvent.importance_score >= NEED_TO_KNOW_IMPORTANCE_THRESHOLD,
             ContentEvent.independent_source_count >= TODAY_HIGHLIGHT_MIN_INDEPENDENT_SOURCES,
         )
         .order_by(

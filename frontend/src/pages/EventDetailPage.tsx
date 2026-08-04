@@ -91,27 +91,6 @@ const EventDetailPage: React.FC = () => {
               </div>
             </div>
             <p className="text-[15px] leading-relaxed text-[#293859]">{data.current_conclusion}</p>
-            <div className="rounded-2xl border border-[#49A8C9]/15 bg-[#f7fbfd] px-4 py-3">
-              <InlineAnnotationChoices
-                taskType="event_correctness"
-                targetType="event"
-                targetId={data.event_id}
-                label="这张事件卡准确吗"
-                compact
-                context={{
-                  title: data.title,
-                  summary: data.current_conclusion,
-                  source_names: data.source_names,
-                  member_ids: data.timeline.map((item) => item.content_id),
-                }}
-                choices={[
-                  { value: 'correct', label: '准确' },
-                  { value: 'partial', label: '部分准确' },
-                  { value: 'incorrect', label: '错误' },
-                  { value: 'unclear', label: '不确定' },
-                ]}
-              />
-            </div>
             {data.why_matters ? (
               <p className="rounded-2xl border border-[#8C866A]/18 bg-[#8C866A]/8 p-4 text-[14px] leading-relaxed text-[#6f684f]">
                 <strong>为什么重要：</strong>{data.why_matters}
@@ -209,29 +188,60 @@ const EventDetailPage: React.FC = () => {
 
               <section className="rounded-2xl border border-[rgba(88,100,118,0.1)] bg-[#fbfdff] p-4">
                 <h2 className="mb-3 flex items-center gap-2 text-[15px] font-semibold text-[#293859]">
-                  <MessageSquareWarning size={15} className="text-[#8C866A]" /> 反馈误合/漏合
+                  <MessageSquareWarning size={15} className="text-[#8C866A]" /> 反馈这个事件
                 </h2>
-                <textarea
-                  value={note}
-                  onChange={(event) => setNote(event.target.value)}
-                  placeholder="可选：说明哪条报道误合或漏合"
-                  className="min-h-20 w-full rounded-xl border border-[rgba(88,100,118,0.12)] bg-white px-3 py-2 text-[13px] text-[#293859] outline-none focus:border-[#49A8C9]/40"
-                />
-                <div className="mt-3 flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    onClick={() => feedbackMutation.mutate('event_wrong_merge')}
-                    className="inline-flex items-center gap-1 rounded-full border border-red-200 bg-red-50 px-3 py-1.5 text-[12px] font-semibold text-red-700 hover:bg-red-100"
-                  >
-                    <AlertTriangle size={13} /> 误合
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => feedbackMutation.mutate('event_missing_merge')}
-                    className="inline-flex items-center gap-1 rounded-full border border-[#49A8C9]/18 bg-[#49A8C9]/8 px-3 py-1.5 text-[12px] font-semibold text-[#3a8da9] hover:bg-[#49A8C9]/12"
-                  >
-                    <CheckCircle2 size={13} /> 漏合
-                  </button>
+                <p className="mb-3 text-[12px] leading-relaxed text-[#5f6f82]">
+                  先评价事件结论；只有报道被错误归类时，才使用下方的“误合 / 漏合”。
+                </p>
+                <div className="rounded-xl border border-[#49A8C9]/15 bg-[#f7fbfd] px-3 py-2.5">
+                  <InlineAnnotationChoices
+                    taskType="event_correctness"
+                    targetType="event"
+                    targetId={data.event_id}
+                    label="结论是否准确？"
+                    compact
+                    ignoreExistingReasons={['product-action']}
+                    context={{
+                      title: data.title,
+                      summary: data.current_conclusion,
+                      source_names: data.source_names,
+                      member_ids: data.timeline.map((item) => item.content_id),
+                    }}
+                    choices={[
+                      { value: 'correct', label: '准确' },
+                      { value: 'partial', label: '部分准确' },
+                      { value: 'incorrect', label: '结论有误' },
+                      { value: 'unclear', label: '不确定' },
+                    ]}
+                  />
+                </div>
+                <div className="mt-4 border-t border-[rgba(88,100,118,0.1)] pt-4">
+                  <p className="text-[13px] font-semibold text-[#293859]">报道归类有问题？</p>
+                  <p className="mt-1 text-[12px] leading-relaxed text-[#5f6f82]">
+                    误合＝时间线混入无关报道；漏合＝另一篇同一事件的报道没有被收进来。
+                  </p>
+                  <textarea
+                    value={note}
+                    onChange={(event) => setNote(event.target.value)}
+                    placeholder="可选：指出具体报道，或说明应与哪个事件合并"
+                    className="mt-3 min-h-20 w-full rounded-xl border border-[rgba(88,100,118,0.12)] bg-white px-3 py-2 text-[13px] text-[#293859] outline-none focus:border-[#49A8C9]/40"
+                  />
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => feedbackMutation.mutate('event_wrong_merge')}
+                      className="inline-flex items-center gap-1 rounded-full border border-red-200 bg-red-50 px-3 py-1.5 text-[12px] font-semibold text-red-700 hover:bg-red-100"
+                    >
+                      <AlertTriangle size={13} /> 有无关报道（误合）
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => feedbackMutation.mutate('event_missing_merge')}
+                      className="inline-flex items-center gap-1 rounded-full border border-[#49A8C9]/18 bg-[#49A8C9]/8 px-3 py-1.5 text-[12px] font-semibold text-[#3a8da9] hover:bg-[#49A8C9]/12"
+                    >
+                      <CheckCircle2 size={13} /> 缺少同一事件报道（漏合）
+                    </button>
+                  </div>
                 </div>
                 {data.feedback.length ? (
                   <div className="mt-4 space-y-2 text-[12px] text-[#5f6f82]">

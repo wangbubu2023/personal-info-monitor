@@ -99,6 +99,11 @@ async def record_annotation_label(
             task.context_snapshot = context_snapshot
         if prediction_snapshot and not task.prediction_snapshot:
             task.prediction_snapshot = prediction_snapshot
+        # A legacy product action may have created this task before a user uses
+        # the dedicated inline control.  Let the latter become the task's
+        # canonical purpose so consumers can distinguish stale action records.
+        if task.reason == "product-action" and reason != "product-action":
+            task.reason = reason
         task.updated_at = now
 
     label = AnnotationLabel(

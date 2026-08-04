@@ -4,7 +4,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import InlineAnnotationChoices from './InlineAnnotationChoices'
 
-const { mockSubmitLabel } = vi.hoisted(() => ({
+const { mockGetTarget, mockSubmitLabel } = vi.hoisted(() => ({
+  mockGetTarget: vi.fn(),
   mockSubmitLabel: vi.fn(),
 }))
 
@@ -19,7 +20,7 @@ vi.mock('../../hooks/useRuntimeFeatures', () => ({
 vi.mock('../../services/annotations', () => ({
   annotationsApi: {
     submitLabel: mockSubmitLabel,
-    getTarget: vi.fn().mockResolvedValue([]),
+    getTarget: mockGetTarget,
   },
 }))
 
@@ -27,6 +28,7 @@ describe('InlineAnnotationChoices', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockSubmitLabel.mockResolvedValue({ id: 'label-1' })
+    mockGetTarget.mockResolvedValue([])
   })
 
   it('saves a choice without leaving the consumption flow', async () => {
@@ -55,5 +57,28 @@ describe('InlineAnnotationChoices', () => {
       label_payload: { value: 'must_see' },
     }))
     expect(screen.getByRole('button', { name: '顺手标：必看' }).getAttribute('aria-pressed')).toBe('true')
+  })
+
+  it('does not show a legacy product-action label as a conclusion rating', async () => {
+    mockGetTarget.mockResolvedValue([
+      {
+        task_type: 'event_correctness',
+        reason: 'product-action',
+        latest_label: { label_payload: { value: 'incorrect' } },
+      },
+    ])
+
+    render(
+      <InlineAnnotationChoices
+        taskType="event_correctness"
+        targetType="event"
+        targetId="event-1"
+        label="结论是否准确？"
+        ignoreExistingReasons={['product-action']}
+        choices={[{ value: 'incorrect', label: '结论有误' }]}
+      />,
+    )
+
+    expect((await screen.findByRole('button', { name: '结论是否准确？：结论有误' })).getAttribute('aria-pressed')).toBe('false')
   })
 })

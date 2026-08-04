@@ -57,7 +57,7 @@ def _add_highlight_event(
 
 
 @pytest.mark.asyncio
-async def test_today_highlights_use_persisted_events_from_rolling_48_hours(client, db_session):
+async def test_today_highlights_show_all_corroborated_events_from_rolling_48_hours(client, db_session):
     event_key = "event:policy:update"
     qualifying = _add_highlight_event(
         db_session,
@@ -68,7 +68,7 @@ async def test_today_highlights_use_persisted_events_from_rolling_48_hours(clien
         updated_at=datetime(2026, 7, 10, 8, 0),
         why_matters="已有多个独立来源互相确认，优先级上升。",
     )
-    _add_highlight_event(
+    lower_ranked = _add_highlight_event(
         db_session,
         event_key="event:low-heat",
         title="热度不足的聚合事件",
@@ -127,8 +127,8 @@ async def test_today_highlights_use_persisted_events_from_rolling_48_hours(clien
     assert response.status_code == 200
     payload = response.json()
     assert payload["date"] == "2026-07-11"
-    assert [item["event_id"] for item in payload["items"]] == [qualifying.event_id]
-    assert len(payload["items"]) == 1
+    assert [item["event_id"] for item in payload["items"]] == [qualifying.event_id, lower_ranked.event_id]
+    assert len(payload["items"]) == 2
     item = payload["items"][0]
     assert item["section"] == "need_to_know"
     assert item["independent_source_count"] == 2
@@ -292,12 +292,10 @@ async def test_event_detail_returns_timeline_snapshots_and_feedback(client, db_s
     assert feedback_response.status_code == 200
     annotation_response = await client.get(f"/api/annotations/targets/event/{event_id}")
     assert annotation_response.status_code == 200
-    correctness = next(
-        item
+    assert all(
+        item["task_type"] != "event_correctness"
         for item in annotation_response.json()["items"]
-        if item["task_type"] == "event_correctness"
     )
-    assert correctness["latest_label"]["label_payload"] == {"value": "incorrect"}
 
     detail_response = await client.get(f"/api/events/{event_id}")
 

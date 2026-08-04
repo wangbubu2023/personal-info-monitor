@@ -11,12 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app import features
 from app.database import get_async_db
-from app.domains.eval.annotation_recording import (
-    AnnotationTaskImmutableError,
-    record_annotation_label,
-)
 from app.domains.events.personal_state import mark_event_seen, update_event_state
 from app.domains.events.repository import build_event_detail, list_recent_events, list_today_highlights
 from app.domains.score.feedback import (
@@ -535,7 +530,6 @@ async def create_event_feedback(
     if feedback_type not in _VALID_EVENT_FEEDBACK:
         raise HTTPException(status_code=400, detail="Invalid event feedback type")
     content = None
-    detail = None
     if body.content_id:
         content = (
             await db.execute(
@@ -562,34 +556,6 @@ async def create_event_feedback(
         note=(body.note or "").strip() or None,
         snapshot=content_feedback_snapshot(content, {"event_id": event_id.strip(), "source": "events.feedback"}),
     )
-    if features.inline_annotations_enabled():
-        if detail is None:
-            detail = await build_event_detail(db, event_id.strip())
-        timeline = (detail or {}).get("timeline") or []
-        try:
-            await record_annotation_label(
-                db,
-                task_type="event_correctness",
-                target_type="event",
-                target_id=event_id.strip(),
-                label_payload={
-                    "value": "incorrect" if feedback_type == "event_wrong_merge" else "partial"
-                },
-                note=body.note,
-                context_snapshot={
-                    "title": (detail or {}).get("title"),
-                    "summary": (detail or {}).get("current_conclusion"),
-                    "source_names": (detail or {}).get("source_names") or [],
-                    "member_ids": [
-                        item.get("content_id")
-                        for item in timeline
-                        if isinstance(item, dict) and item.get("content_id")
-                    ],
-                },
-                reason="product-action",
-            )
-        except AnnotationTaskImmutableError:
-            pass
     await db.commit()
     await db.refresh(row)
     from app.platform.observability.metrics import event_metrics
