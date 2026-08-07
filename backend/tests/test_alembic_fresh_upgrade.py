@@ -85,7 +85,7 @@ def test_fresh_sqlite_database_can_upgrade_to_head(tmp_path):
     finally:
         conn.close()
 
-    assert revision == ("20260730_0040",)
+    assert revision == ("20260807_0045",)
     assert {
         "annotation_tasks",
         "annotation_labels",
@@ -118,6 +118,19 @@ def test_fresh_sqlite_database_can_upgrade_to_head(tmp_path):
         "topic_event_associations",
         "brief_snapshots",
         "modality_audit_logs",
+        "source_health_snapshots",
+        "source_fetch_state",
+        "source_discovery_stats",
+        "source_session_state",
+        "source_policy",
+        "websub_subscriptions",
+        "websub_deliveries",
+        "webhook_subscriptions",
+        "identity_users",
+        "identity_devices",
+        "identity_sessions",
+        "service_principals",
+        "audit_actors",
     } <= tables
 
 

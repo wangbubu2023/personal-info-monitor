@@ -113,6 +113,13 @@ def get_metrics() -> Dict[str, Any]:
     return payload
 
 
+@router.get("/slo")
+def get_slo_status() -> Dict[str, Any]:
+    from app.platform.observability.slo import slo_ledger
+
+    return slo_ledger.snapshot()
+
+
 @router.post("/score-vocab/reload")
 def reload_score_vocab_runtime() -> Dict[str, Any]:
     """Reload YAML-backed score vocabulary without restarting PIM."""

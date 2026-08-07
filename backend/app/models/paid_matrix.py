@@ -55,9 +55,12 @@ class LocalCaptureAudit(Base):
     id = Column(UUIDString, primary_key=True, default=lambda: str(uuid.uuid4()))
     device_id = Column(String(100), nullable=False)
     task_token_hash = Column(String(100), nullable=False)
+    source_id = Column(UUIDString, ForeignKey("sources.id", ondelete="SET NULL"), nullable=True)
+    content_id = Column(UUIDString, ForeignKey("contents.id", ondelete="SET NULL"), nullable=True)
     origin_url = Column(Text, nullable=False)
     reader_doc_checksum = Column(String(100), nullable=False)
     body_length = Column(Integer, default=0, nullable=False)
+    ingest_status = Column(String(32), default="captured", nullable=False)
     created_at = Column(DateTime, default=utcnow_naive, nullable=False)
 
 
@@ -75,6 +78,28 @@ class DailyCanaryRun(Base):
     paywall_residual_detected = Column(Boolean, default=False, nullable=False)
     error_message = Column(Text, nullable=True)
     created_at = Column(DateTime, default=utcnow_naive, nullable=False)
+
+    source = relationship("Source")
+
+
+class SourceHealthSnapshot(Base):
+    """Time-series health observation for paid-source Canary and operations."""
+
+    __tablename__ = "source_health_snapshots"
+    __table_args__ = (Index("idx_source_health_source_observed", "source_id", "observed_at"),)
+
+    id = Column(UUIDString, primary_key=True, default=lambda: str(uuid.uuid4()))
+    source_id = Column(UUIDString, ForeignKey("sources.id", ondelete="CASCADE"), nullable=False)
+    check_type = Column(String(32), nullable=False, default="daily_canary")
+    status = Column(String(20), nullable=False)
+    http_status = Column(Integer, nullable=True)
+    body_length = Column(Integer, nullable=False, default=0)
+    login_required = Column(Boolean, nullable=False, default=False)
+    paywall_residual_detected = Column(Boolean, nullable=False, default=False)
+    selector_quality = Column(Float, nullable=True)
+    error_message = Column(Text, nullable=True)
+    metadata_ = Column("metadata", JSON, nullable=False, default=dict)
+    observed_at = Column(DateTime, nullable=False, default=utcnow_naive)
 
     source = relationship("Source")
 

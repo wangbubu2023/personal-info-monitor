@@ -1,0 +1,28 @@
+{
+  "schema_version": "architecture-manifest/v1",
+  "layers": {
+    "interfaces": "app/interfaces/http",
+    "domains": "app/domains",
+    "platform": "app/platform",
+    "models": "app/models"
+  },
+  "entrypoints": [
+    {"path": "app/main.py", "owner": "platform", "layer": "composition", "command": "uvicorn app.main:app"},
+    {"path": "app/scheduler.py", "owner": "platform", "layer": "scheduler", "command": "setup_scheduler"},
+    {"path": "app/tasks/fetch_tasks.py", "owner": "fetch", "layer": "domain", "command": "fetch_source"},
+    {"path": "app/domains/ingest/finish.py", "owner": "ingest", "layer": "domain", "command": "finish_content"}
+  ],
+  "shared_contracts": [
+    "app/domains/fetch/site_rules/contracts.py",
+    "app/domains/fetch/connectors/contracts.py",
+    "app/domains/ingest/storage.py",
+    "app/platform/notifications/outbox.py"
+  ],
+  "required_release_checks": [
+    "migration_upgrade_downgrade",
+    "backend_unit_integration",
+    "frontend_build_and_tests",
+    "security_and_dependency_scan",
+    "real_data_shadow_canary"
+  ]
+}

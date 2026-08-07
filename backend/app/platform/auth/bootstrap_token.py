@@ -18,6 +18,7 @@ from app.platform.auth.web_session import (
     rotate_web_session,
     validate_web_session,
 )
+from app.platform.auth.csrf import CSRF_COOKIE_NAME, issue_csrf_token
 from app.platform.config.settings import effective_cors_origins, get_settings
 from app.platform.observability.logger import get_logger
 
@@ -43,6 +44,15 @@ def _set_session_cookie(response: Response, token: str) -> None:
         SESSION_COOKIE_NAME,
         token,
         httponly=True,
+        secure=True,
+        samesite="strict",
+        max_age=7 * 24 * 60 * 60,
+        path="/",
+    )
+    response.set_cookie(
+        CSRF_COOKIE_NAME,
+        issue_csrf_token(),
+        httponly=False,
         secure=True,
         samesite="strict",
         max_age=7 * 24 * 60 * 60,
@@ -76,12 +86,16 @@ async def rotate_session(request: Request, response: Response):
 
 
 @bootstrap_router.get("/bootstrap/session")
-async def session_status(request: Request):
+async def session_status(request: Request, response: Response = None):  # type: ignore[assignment]
     if not getattr(get_settings(), "pim_web_auth_required", True):
+        if response is not None:
+            response.set_cookie(CSRF_COOKIE_NAME, issue_csrf_token(), httponly=False, secure=True, samesite="strict", max_age=7 * 24 * 60 * 60, path="/")
         return {"status": "not_required", "actor": "same-origin-browser"}
     actor = validate_web_session(request.cookies.get(SESSION_COOKIE_NAME, ""))
     if actor is None:
         raise HTTPException(status_code=401, detail="Invalid or expired session")
+    if response is not None and not request.cookies.get(CSRF_COOKIE_NAME):
+        response.set_cookie(CSRF_COOKIE_NAME, issue_csrf_token(), httponly=False, secure=True, samesite="strict", max_age=7 * 24 * 60 * 60, path="/")
     return {"status": "authenticated", "actor": actor}
 
 

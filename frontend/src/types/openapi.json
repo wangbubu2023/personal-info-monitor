@@ -116,6 +116,19 @@
         "title": "APIConfigUpdate",
         "type": "object"
       },
+      "ActiveWebhookRequest": {
+        "properties": {
+          "active": {
+            "title": "Active",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "active"
+        ],
+        "title": "ActiveWebhookRequest",
+        "type": "object"
+      },
       "AnnotationAdjudicationCreate": {
         "properties": {
           "adjudicator": {
@@ -2240,6 +2253,61 @@
         "title": "CreateTopicRequest",
         "type": "object"
       },
+      "CreateWebSubRequest": {
+        "properties": {
+          "hub_url": {
+            "title": "Hub Url",
+            "type": "string"
+          },
+          "source_id": {
+            "title": "Source Id",
+            "type": "string"
+          },
+          "topic_url": {
+            "title": "Topic Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_id",
+          "hub_url",
+          "topic_url"
+        ],
+        "title": "CreateWebSubRequest",
+        "type": "object"
+      },
+      "CreateWebhookRequest": {
+        "properties": {
+          "event_filters": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 32,
+            "title": "Event Filters",
+            "type": "array"
+          },
+          "secret": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Secret"
+          },
+          "target_url": {
+            "title": "Target Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "target_url"
+        ],
+        "title": "CreateWebhookRequest",
+        "type": "object"
+      },
       "DailyCanaryRequest": {
         "properties": {
           "run_date_str": {
@@ -2373,6 +2441,44 @@
         ],
         "title": "DataSourceType",
         "type": "string"
+      },
+      "DeviceRequest": {
+        "properties": {
+          "device_name": {
+            "default": "local",
+            "title": "Device Name",
+            "type": "string"
+          },
+          "email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
+          "subject": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Subject",
+            "type": "string"
+          },
+          "tenant_id": {
+            "default": "default",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Tenant Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "subject"
+        ],
+        "title": "DeviceRequest",
+        "type": "object"
       },
       "DigestCategory": {
         "description": "Schema for a category in the digest.",
@@ -3248,6 +3354,45 @@
         "title": "FavoriteBody",
         "type": "object"
       },
+      "GenerateBriefRequest": {
+        "properties": {
+          "brief_type": {
+            "title": "Brief Type",
+            "type": "string"
+          },
+          "generator_version": {
+            "default": "brief-rules-v1",
+            "title": "Generator Version",
+            "type": "string"
+          },
+          "period_key": {
+            "title": "Period Key",
+            "type": "string"
+          },
+          "regenerate": {
+            "default": false,
+            "title": "Regenerate",
+            "type": "boolean"
+          },
+          "topic_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Topic Id"
+          }
+        },
+        "required": [
+          "period_key",
+          "brief_type"
+        ],
+        "title": "GenerateBriefRequest",
+        "type": "object"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -3799,6 +3944,32 @@
         ],
         "title": "Intensity",
         "type": "string"
+      },
+      "IssueSessionRequest": {
+        "properties": {
+          "device_id": {
+            "title": "Device Id",
+            "type": "string"
+          },
+          "scopes": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 64,
+            "title": "Scopes",
+            "type": "array"
+          },
+          "user_id": {
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_id",
+          "device_id"
+        ],
+        "title": "IssueSessionRequest",
+        "type": "object"
       },
       "KeywordBatchCreate": {
         "description": "Schema for batch-creating keywords with shared settings.",
@@ -5429,6 +5600,33 @@
         "title": "Role",
         "type": "string"
       },
+      "RotateRequest": {
+        "properties": {
+          "refresh_token": {
+            "maxLength": 512,
+            "minLength": 16,
+            "title": "Refresh Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "refresh_token"
+        ],
+        "title": "RotateRequest",
+        "type": "object"
+      },
+      "RuleLifecycleRequest": {
+        "properties": {
+          "status": {
+            "$ref": "#/components/schemas/SiteRuleStatus"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "RuleLifecycleRequest",
+        "type": "object"
+      },
       "ScoreExplainResponse": {
         "properties": {
           "explain": {
@@ -5819,6 +6017,19 @@
         ],
         "title": "SessionTriggerRequest",
         "type": "object"
+      },
+      "SiteRuleStatus": {
+        "enum": [
+          "draft",
+          "validated",
+          "shadow",
+          "canary",
+          "active",
+          "degraded",
+          "retired"
+        ],
+        "title": "SiteRuleStatus",
+        "type": "string"
       },
       "SourceBulkImport": {
         "description": "Schema for bulk importing sources.",
@@ -6287,6 +6498,68 @@
         ],
         "title": "Unit",
         "type": "string"
+      },
+      "UpdateTopicRequest": {
+        "properties": {
+          "creation_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Creation Type"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "rule_spec": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rule Spec"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          }
+        },
+        "title": "UpdateTopicRequest",
+        "type": "object"
       },
       "UserRuleCreate": {
         "properties": {
@@ -8471,6 +8744,72 @@
       }
     },
     "/api/briefs": {
+      "get": {
+        "operationId": "api_list_briefs_api_briefs_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "brief_type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Brief Type"
+            }
+          },
+          {
+            "in": "query",
+            "name": "period_key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Period Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Api List Briefs",
+        "tags": [
+          "briefs"
+        ]
+      },
       "post": {
         "operationId": "api_create_brief_api_briefs_post",
         "requestBody": {
@@ -8509,6 +8848,95 @@
           }
         ],
         "summary": "Api Create Brief",
+        "tags": [
+          "briefs"
+        ]
+      }
+    },
+    "/api/briefs/generate": {
+      "post": {
+        "operationId": "api_generate_brief_api_briefs_generate_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GenerateBriefRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Api Generate Brief",
+        "tags": [
+          "briefs"
+        ]
+      }
+    },
+    "/api/briefs/{brief_id}": {
+      "get": {
+        "operationId": "api_get_brief_api_briefs__brief_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "brief_id",
+            "required": true,
+            "schema": {
+              "title": "Brief Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Api Get Brief",
         "tags": [
           "briefs"
         ]
@@ -9450,6 +9878,75 @@
         "summary": "Update System Settings",
         "tags": [
           "configs"
+        ]
+      }
+    },
+    "/api/connectors": {
+      "get": {
+        "operationId": "list_connectors_api_connectors_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "List Connectors",
+        "tags": [
+          "connectors"
+        ]
+      }
+    },
+    "/api/connectors/{connector_id}": {
+      "get": {
+        "operationId": "get_connector_api_connectors__connector_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "connector_id",
+            "required": true,
+            "schema": {
+              "title": "Connector Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Get Connector",
+        "tags": [
+          "connectors"
         ]
       }
     },
@@ -10866,7 +11363,7 @@
     },
     "/api/events/feed": {
       "get": {
-        "description": "Expose recent persisted events, including single-source watch events.",
+        "description": "Expose recent corroborated events; provisional watch items stay internal.",
         "operationId": "get_event_feed_api_events_feed_get",
         "parameters": [
           {
@@ -11758,6 +12255,314 @@
         ]
       }
     },
+    "/api/identity/devices": {
+      "post": {
+        "operationId": "api_create_identity_device_api_identity_devices_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeviceRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Api Create Identity Device",
+        "tags": [
+          "identity"
+        ]
+      }
+    },
+    "/api/identity/devices/{device_id}/revoke": {
+      "post": {
+        "operationId": "api_revoke_identity_device_api_identity_devices__device_id__revoke_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "device_id",
+            "required": true,
+            "schema": {
+              "title": "Device Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "tenant_id",
+            "required": false,
+            "schema": {
+              "default": "default",
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Api Revoke Identity Device",
+        "tags": [
+          "identity"
+        ]
+      }
+    },
+    "/api/identity/sessions": {
+      "post": {
+        "operationId": "api_issue_identity_session_api_identity_sessions_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IssueSessionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Api Issue Identity Session",
+        "tags": [
+          "identity"
+        ]
+      }
+    },
+    "/api/identity/sessions/rotate": {
+      "post": {
+        "operationId": "api_rotate_identity_session_api_identity_sessions_rotate_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RotateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Api Rotate Identity Session",
+        "tags": [
+          "identity"
+        ]
+      }
+    },
+    "/api/integrations/webhooks": {
+      "get": {
+        "operationId": "api_list_webhooks_api_integrations_webhooks_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Api List Webhooks",
+        "tags": [
+          "webhooks"
+        ]
+      },
+      "post": {
+        "operationId": "api_create_webhook_api_integrations_webhooks_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateWebhookRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Api Create Webhook",
+        "tags": [
+          "webhooks"
+        ]
+      }
+    },
+    "/api/integrations/webhooks/{subscription_id}": {
+      "patch": {
+        "operationId": "api_set_webhook_active_api_integrations_webhooks__subscription_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "subscription_id",
+            "required": true,
+            "schema": {
+              "title": "Subscription Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ActiveWebhookRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Api Set Webhook Active",
+        "tags": [
+          "webhooks"
+        ]
+      }
+    },
     "/api/keywords": {
       "get": {
         "description": "List all keywords.\n\n不使用进程内 TTL 缓存：多 worker / 多进程下缓存无法跨进程失效，会导致 PATCH 已更新等价词\n但 GET 列表仍返回旧数据。",
@@ -12267,6 +13072,61 @@
           }
         ],
         "summary": "Api Extract Archive",
+        "tags": [
+          "paid-matrix"
+        ]
+      }
+    },
+    "/api/paid-matrix/health/{source_id}": {
+      "get": {
+        "operationId": "api_source_health_api_paid_matrix_health__source_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "source_id",
+            "required": true,
+            "schema": {
+              "title": "Source Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "days",
+            "required": false,
+            "schema": {
+              "default": 7,
+              "title": "Days",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Api Source Health",
         "tags": [
           "paid-matrix"
         ]
@@ -13265,6 +14125,185 @@
         ]
       }
     },
+    "/api/site-rules": {
+      "get": {
+        "operationId": "list_site_rules_api_site_rules_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "List Site Rules",
+        "tags": [
+          "site-rules"
+        ]
+      }
+    },
+    "/api/site-rules/validate": {
+      "post": {
+        "operationId": "validate_site_rule_api_site_rules_validate_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": true,
+                "title": "Payload",
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Validate Site Rule",
+        "tags": [
+          "site-rules"
+        ]
+      }
+    },
+    "/api/site-rules/{rule_id}": {
+      "get": {
+        "operationId": "get_site_rule_api_site_rules__rule_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "rule_id",
+            "required": true,
+            "schema": {
+              "title": "Rule Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Get Site Rule",
+        "tags": [
+          "site-rules"
+        ]
+      }
+    },
+    "/api/site-rules/{rule_id}/{revision}/lifecycle": {
+      "post": {
+        "operationId": "update_site_rule_lifecycle_api_site_rules__rule_id___revision__lifecycle_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "rule_id",
+            "required": true,
+            "schema": {
+              "title": "Rule Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "revision",
+            "required": true,
+            "schema": {
+              "title": "Revision",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RuleLifecycleRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Update Site Rule Lifecycle",
+        "tags": [
+          "site-rules"
+        ]
+      }
+    },
     "/api/sources": {
       "get": {
         "operationId": "list_sources_api_sources_get",
@@ -13652,6 +14691,30 @@
         ]
       }
     },
+    "/api/sources/state/backfill": {
+      "post": {
+        "operationId": "backfill_source_state_api_sources_state_backfill_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Backfill Source State",
+        "tags": [
+          "sources"
+        ]
+      }
+    },
     "/api/sources/{source_id}": {
       "delete": {
         "operationId": "delete_source_api_sources__source_id__delete",
@@ -13942,6 +15005,52 @@
           }
         ],
         "summary": "Probe Source",
+        "tags": [
+          "sources"
+        ]
+      }
+    },
+    "/api/sources/{source_id}/state": {
+      "get": {
+        "operationId": "get_source_state_api_sources__source_id__state_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "source_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Source Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Get Source State",
         "tags": [
           "sources"
         ]
@@ -14535,6 +15644,34 @@
         ]
       }
     },
+    "/api/system/slo": {
+      "get": {
+        "operationId": "get_slo_status_api_system_slo_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Slo Status Api System Slo Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Get Slo Status",
+        "tags": [
+          "system"
+        ]
+      }
+    },
     "/api/system/source-types": {
       "get": {
         "description": "Return the canonical source-type catalog.\n\nSingle source of truth for UI dropdowns / tabs / prompt lists — clients\nshould call this at startup and reuse the bundled copy as a fallback.",
@@ -14747,6 +15884,89 @@
       }
     },
     "/api/topics": {
+      "get": {
+        "operationId": "api_list_topics_api_topics_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": "active",
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "creation_type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Creation Type"
+            }
+          },
+          {
+            "in": "query",
+            "name": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Query"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Api List Topics",
+        "tags": [
+          "topics"
+        ]
+      },
       "post": {
         "operationId": "api_create_topic_api_topics_post",
         "requestBody": {
@@ -14791,6 +16011,49 @@
       }
     },
     "/api/topics/{topic_id}": {
+      "delete": {
+        "operationId": "api_archive_topic_api_topics__topic_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "topic_id",
+            "required": true,
+            "schema": {
+              "title": "Topic Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Api Archive Topic",
+        "tags": [
+          "topics"
+        ]
+      },
       "get": {
         "operationId": "api_get_topic_details_api_topics__topic_id__get",
         "parameters": [
@@ -14830,6 +16093,59 @@
           }
         ],
         "summary": "Api Get Topic Details",
+        "tags": [
+          "topics"
+        ]
+      },
+      "patch": {
+        "operationId": "api_update_topic_api_topics__topic_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "topic_id",
+            "required": true,
+            "schema": {
+              "title": "Topic Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateTopicRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Api Update Topic",
         "tags": [
           "topics"
         ]
@@ -14887,6 +16203,176 @@
         "summary": "Api Associate Events",
         "tags": [
           "topics"
+        ]
+      }
+    },
+    "/api/websub/callback/{subscription_id}": {
+      "get": {
+        "operationId": "api_websub_verify_api_websub_callback__subscription_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "subscription_id",
+            "required": true,
+            "schema": {
+              "title": "Subscription Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "mode",
+            "required": true,
+            "schema": {
+              "title": "Mode",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "topic",
+            "required": true,
+            "schema": {
+              "title": "Topic",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "challenge",
+            "required": true,
+            "schema": {
+              "title": "Challenge",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "verify_token",
+            "required": true,
+            "schema": {
+              "title": "Verify Token",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "lease_seconds",
+            "required": false,
+            "schema": {
+              "default": 86400,
+              "title": "Lease Seconds",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Api Websub Verify",
+        "tags": [
+          "websub"
+        ]
+      },
+      "post": {
+        "operationId": "api_websub_callback_api_websub_callback__subscription_id__post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "subscription_id",
+            "required": true,
+            "schema": {
+              "title": "Subscription Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Api Websub Callback",
+        "tags": [
+          "websub"
+        ]
+      }
+    },
+    "/api/websub/subscriptions": {
+      "post": {
+        "operationId": "api_create_websub_api_websub_subscriptions_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateWebSubRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Api Create Websub",
+        "tags": [
+          "websub"
         ]
       }
     },

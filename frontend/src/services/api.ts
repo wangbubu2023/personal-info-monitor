@@ -137,6 +137,12 @@ function getRecoveryPromise(): Promise<string | null> | null {
   return typeof window !== 'undefined' ? (window.__PIM_API_KEY_RECOVERY_PROMISE__ ?? null) : null
 }
 
+function readCsrfCookie(): string | null {
+  if (typeof document === 'undefined') return null
+  const match = document.cookie.split(';').map(part => part.trim()).find(part => part.startsWith('pim_csrf='))
+  return match ? decodeURIComponent(match.slice('pim_csrf='.length)) : null
+}
+
 function setRecoveryPromise(value: Promise<string | null> | null): void {
   if (typeof window !== 'undefined') {
     window.__PIM_API_KEY_RECOVERY_PROMISE__ = value
@@ -329,6 +335,11 @@ api.interceptors.request.use(
       return config
     }
     await ensureApiKey()
+    const method = String(config.method || 'get').toUpperCase()
+    const csrf = readCsrfCookie()
+    if (csrf && ['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)) {
+      config.headers.set?.('X-PIM-CSRF', csrf)
+    }
     return config
   },
   (error) => {

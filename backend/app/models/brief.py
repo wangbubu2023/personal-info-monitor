@@ -41,11 +41,14 @@ class BriefSnapshot(Base):
     """周报/月报不可变 Brief 快照实体。"""
 
     __tablename__ = "brief_snapshots"
-    __table_args__ = (Index("idx_brief_period_type_unique", "period_key", "brief_type", unique=True),)
+    __table_args__ = (
+        Index("idx_brief_period_type_version_unique", "period_key", "brief_type", "version", unique=True),
+    )
 
     id = Column(UUIDString, primary_key=True, default=lambda: str(uuid.uuid4()))
     period_key = Column(String(50), nullable=False)  # 例如 "2026-W30" 或 "2026-07"
     brief_type = Column(String(20), nullable=False)  # "weekly" 或 "monthly"
+    version = Column(Integer, nullable=False, default=1)
     title = Column(String(255), nullable=False)
     summary_content = Column(Text, nullable=False)
 

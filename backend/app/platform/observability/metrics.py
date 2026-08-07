@@ -124,13 +124,19 @@ class RequestMetrics:
                 if total_requests
                 else 0.0
             )
+            top_routes = dict(self._by_route.most_common(20))
+            # Keep liveness/readiness probes visible even when a busy process
+            # has more than twenty other routes competing for the top list.
+            for route in ("GET /livez", "GET /readyz", "GET /health"):
+                if route in self._by_route:
+                    top_routes[route] = self._by_route[route]
             return {
                 "http": {
                     "total_requests": total_requests,
                     "avg_latency_ms": avg_latency_ms,
                     "max_latency_ms": round(self._max_latency_ms, 2),
                     "status_buckets": dict(self._by_status),
-                    "top_routes": dict(self._by_route.most_common(20)),
+                    "top_routes": top_routes,
                 }
             }
 

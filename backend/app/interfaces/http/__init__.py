@@ -17,6 +17,8 @@ from app.interfaces.http import (
     atoms,
     briefs,
     configs,
+    connectors,
+    identity,
     contents,
     dashboard,
     digest,
@@ -27,8 +29,10 @@ from app.interfaces.http import (
     reliability,
     score_lab,
     sources,
+    site_rules,
     system,
     topics,
+    webhooks,
 )
 from app.platform.auth import verify_api_key
 from app.features import KEYWORD_MONITORING_ENABLED, atoms_product_enabled
@@ -69,3 +73,7 @@ api_router.include_router(score_lab.router, prefix="/score-lab", tags=["score-la
 api_router.include_router(paid_matrix.router, prefix="/paid-matrix", tags=["paid-matrix"])
 api_router.include_router(topics.router, prefix="/topics", tags=["topics"])
 api_router.include_router(briefs.router, prefix="/briefs", tags=["briefs"])
+api_router.include_router(site_rules.router, prefix="/site-rules", tags=["site-rules"])
+api_router.include_router(connectors.router, prefix="/connectors", tags=["connectors"])
+api_router.include_router(webhooks.router, prefix="/integrations/webhooks", tags=["webhooks"])
+api_router.include_router(identity.router, prefix="/identity", tags=["identity"])

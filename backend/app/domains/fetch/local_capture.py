@@ -17,11 +17,17 @@ import uuid
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.domains.ingest.storage import StorageStage
+from app.models import Content
 from app.models.auth_assistant import AuthAssistantDevice, AuthAssistantDeviceStatus
 from app.models.paid_matrix import LocalCaptureAudit
 from app.models.source import Source
 from app.platform.config.settings import get_settings
+from app.utils.logger import get_logger
 from app.utils.datetime import utcnow_naive
+from app.utils.text import strip_html_tags
+
+logger = get_logger(__name__)
 
 TASK_TOKEN_TTL_SECONDS = 300
 TASK_TOKEN_FUTURE_SKEW_SECONDS = 30
@@ -161,6 +167,23 @@ def _require_active_device(db: Session, device_id: str) -> AuthAssistantDevice:
     return device
 
 
+def _capture_source(db: Session, origin_url: str) -> Source:
+    candidates = db.query(Source).filter(Source.enabled.is_(True)).all()
+    allowed = _allowed_capture_hosts(db)
+    for source in candidates:
+        if not source.auth_required:
+            metadata = source.metadata_ if isinstance(source.metadata_, dict) else {}
+            paid = metadata.get("paid_source") if isinstance(metadata.get("paid_source"), dict) else {}
+            if not bool(paid.get("enabled")):
+                continue
+        if verify_origin_allowlist(origin_url, allowed) and verify_origin_allowlist(
+            origin_url,
+            [urlsplit(str(source.url)).hostname or ""],
+        ):
+            return source
+    raise ValueError("Origin URL is not bound to an enabled capture source")
+
+
 def issue_local_capture_task_token(db: Session, device_id: str, origin_url: str) -> str:
     """Issue a token only for a server-configured capture origin."""
 
@@ -178,10 +201,12 @@ def process_local_capture(
     reader_doc_title: str,
     reader_doc_body: str,
 ) -> LocalCaptureAudit:
-    """Validate and audit a purified ReaderDocument submission.
+    """Validate, persist, audit, and enqueue a purified ReaderDocument.
 
-    This function deliberately records only the security/audit envelope.  The
-    browser worker/content-ingest integration remains a separate product step.
+    The browser remains the only place that can read local cookies.  The
+    server receives the user-authorized ReaderDocument body, stores it through
+    the normal StorageStage, and creates a durable finish job after the
+    transaction commits.
     """
 
     _require_active_device(db, device_id)
@@ -190,6 +215,9 @@ def process_local_capture(
         raise ValueError("Origin URL is not configured for Local Capture")
     if not verify_task_token(task_token, device_id, origin_url):
         raise ValueError("Invalid or expired task token for local capture")
+    token_hash = hashlib.sha256(task_token.encode("utf-8")).hexdigest()
+    if db.query(LocalCaptureAudit).filter(LocalCaptureAudit.task_token_hash == token_hash).first() is not None:
+        raise ValueError("Local Capture task token has already been consumed")
 
     raw_title = str(reader_doc_title or "")
     raw_body = str(reader_doc_body or "")
@@ -202,23 +230,56 @@ def process_local_capture(
             f"ReaderDocument body exceeds {MAX_READER_DOC_BODY_CHARS} characters"
         )
     title = raw_title.strip()
-    body = raw_body.strip()
+    body = strip_html_tags(raw_body).strip()
     if not title or not body:
         raise ValueError("ReaderDocument title and body are required")
 
     canonical_origin = _canonical_origin(origin_url)
+    source = _capture_source(db, origin_url)
     content_digest = hashlib.sha256()
     for part in (canonical_origin, "\n", title, "\n", body):
         content_digest.update(part.encode("utf-8"))
     checksum = content_digest.hexdigest()
-    token_hash = hashlib.sha256(task_token.encode("utf-8")).hexdigest()
+    content = Content(
+        id=str(uuid.uuid4()),
+        source_id=str(source.id),
+        external_id=f"local-capture:{checksum}",
+        title=title,
+        summary=body[:2_000],
+        original_url=str(origin_url).strip(),
+        full_content=body,
+        content_type="website",
+        fetched_at=utcnow_naive(),
+        metadata_={
+            "capture_mode": "local_reader_document",
+            "capture_device_id": str(device_id).strip(),
+            "capture_origin": canonical_origin,
+            "reader_doc_checksum": checksum,
+            "fetch_acceptance": "accepted",
+            "fulltext_status": "full",
+            "article_fulltext": True,
+        },
+    )
+    storage_result = StorageStage.execute(db, [content])
+    if storage_result.failed_count:
+        db.rollback()
+        raise ValueError(storage_result.failed_items[0].message)
+    content_id = storage_result.saved_ids[0] if storage_result.saved_ids else (
+        storage_result.updated_ids[0] if storage_result.updated_ids else None
+    )
+    if not content_id:
+        db.rollback()
+        raise ValueError("Local Capture content was not persisted")
     audit = LocalCaptureAudit(
         id=str(uuid.uuid4()),
         device_id=str(device_id).strip(),
         task_token_hash=token_hash,
+        source_id=str(source.id),
+        content_id=str(content_id),
         origin_url=canonical_origin,
         reader_doc_checksum=checksum,
         body_length=len(body),
+        ingest_status="stored",
         created_at=utcnow_naive(),
     )
     db.add(audit)
@@ -228,4 +289,14 @@ def process_local_capture(
         db.rollback()
         raise ValueError("Local Capture task token has already been consumed") from exc
     db.refresh(audit)
+    try:
+        from app.platform.workers.postprocess_jobs import ensure_postprocess_jobs
+
+        ensure_postprocess_jobs([(str(content_id), "local-capture")])
+    except Exception as exc:  # noqa: BLE001 - durable audit/content already committed
+        # The regular startup sweep can recover this enqueue failure. Keep the
+        # capture visible and truthful instead of losing the user's document.
+        audit.ingest_status = "stored_enqueue_deferred"
+        db.commit()
+        logger.warning("Local Capture postprocess enqueue deferred for %s: %s", content_id, exc)
     return audit

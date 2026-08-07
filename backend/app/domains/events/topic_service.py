@@ -15,6 +15,14 @@ from app.utils.datetime import utcnow_naive
 _VALID_CREATION_TYPES = {"rule", "entity", "manual"}
 
 
+def _topic_summary(db: Session, topic: Topic) -> dict:
+    details = get_topic_details_with_coverage(db, topic_id=topic.id)
+    details["description"] = topic.description
+    details["creation_type"] = topic.creation_type
+    details["status"] = topic.status
+    return details
+
+
 def create_topic(
     db: Session,
     title: str,
@@ -97,6 +105,77 @@ def associate_events_to_topic(
         associations.append(association)
     db.commit()
     return associations
+
+
+def list_topics(
+    db: Session,
+    *,
+    status: str | None = "active",
+    creation_type: str | None = None,
+    query: str | None = None,
+) -> list[dict]:
+    """List first-class Topics with explicit event/source coverage."""
+
+    statement = db.query(Topic)
+    if status:
+        statement = statement.filter(Topic.status == status)
+    if creation_type:
+        if creation_type not in _VALID_CREATION_TYPES:
+            raise ValueError(f"creation_type must be one of {sorted(_VALID_CREATION_TYPES)}")
+        statement = statement.filter(Topic.creation_type == creation_type)
+    normalized_query = str(query or "").strip()
+    if normalized_query:
+        statement = statement.filter(Topic.title.ilike(f"%{normalized_query}%"))
+    topics = statement.order_by(Topic.updated_at.desc(), Topic.created_at.desc()).all()
+    return [_topic_summary(db, topic) for topic in topics]
+
+
+def update_topic(
+    db: Session,
+    topic_id: str,
+    *,
+    title: str | None = None,
+    description: str | None = None,
+    creation_type: str | None = None,
+    rule_spec: dict | None = None,
+    status: str | None = None,
+) -> Topic:
+    topic = db.query(Topic).filter(Topic.id == topic_id).first()
+    if not topic:
+        raise ValueError(f"Topic {topic_id} not found")
+    if title is not None:
+        clean_title = str(title).strip()
+        if not clean_title:
+            raise ValueError("Topic title is required")
+        topic.title = clean_title
+    if description is not None:
+        topic.description = str(description).strip() or None
+    if creation_type is not None:
+        kind = str(creation_type).strip()
+        if kind not in _VALID_CREATION_TYPES:
+            raise ValueError(f"creation_type must be one of {sorted(_VALID_CREATION_TYPES)}")
+        if kind in {"rule", "entity"} and rule_spec is None and not isinstance(topic.rule_spec, dict):
+            raise ValueError(f"rule_spec is required for creation_type={kind}")
+        topic.creation_type = kind
+    if rule_spec is not None:
+        if not isinstance(rule_spec, dict):
+            raise ValueError("rule_spec must be an object")
+        topic.rule_spec = rule_spec
+    if status is not None:
+        normalized_status = str(status).strip()
+        if normalized_status not in {"active", "archived"}:
+            raise ValueError("status must be active or archived")
+        topic.status = normalized_status
+    topic.updated_at = utcnow_naive()
+    db.commit()
+    db.refresh(topic)
+    return topic
+
+
+def archive_topic(db: Session, topic_id: str) -> Topic:
+    """Archive instead of hard-deleting a user-facing Topic and its audit trail."""
+
+    return update_topic(db, topic_id, status="archived")
 
 
 def get_topic_details_with_coverage(db: Session, topic_id: str) -> dict:

@@ -69,6 +69,7 @@ def setup_scheduler():
         run_event_rebalance_deep,
         run_event_rebalance_light,
     )
+    from app.domains.fetch.daily_canary import run_daily_paid_source_canaries
 
     # Core: check sources every 5 minutes (fetch priority)
     _add_durable_job(
@@ -201,6 +202,13 @@ def setup_scheduler():
         CronTrigger(hour=3, minute=20),
         id="event_assignment_log_retention",
         name="Event assignment diagnostic retention",
+    )
+
+    _add_durable_job(
+        run_daily_paid_source_canaries,
+        CronTrigger(hour=3, minute=10),
+        id="daily_paid_source_canaries",
+        name="Daily paid-source Canary",
     )
 
     logger.info(f"Scheduler configured with {len(scheduler.get_jobs())} jobs")

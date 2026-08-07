@@ -3,6 +3,10 @@
 from __future__ import annotations
 
 import os
+import hashlib
+import hmac
+import json
+import time
 from time import perf_counter
 from datetime import timedelta
 import uuid
@@ -16,9 +20,53 @@ from app.platform.observability.logger import get_logger
 from app.platform.observability.metrics import reliability_metrics
 from app.platform.persistence.database import SessionLocal
 from app.platform.persistence.lineage import add_lineage_edge
+from app.platform.security.encryption import decrypt_string
 from app.utils.datetime import utcnow_naive
 
 logger = get_logger(__name__)
+
+
+async def _send_webhook_direct(payload: dict) -> tuple[bool, str | None, int | None]:
+    """Deliver one signed webhook without persisting plaintext secrets."""
+
+    import httpx
+
+    target_url = str(payload.get("target_url") or "").strip()
+    encrypted_secret = str(payload.get("secret_encrypted") or "").strip()
+    if not target_url or not encrypted_secret:
+        return False, "webhook_payload_missing_target_or_secret", None
+    body = json.dumps(
+        {
+            "schema_version": 1,
+            "event_type": payload.get("event_type"),
+            "aggregate": payload.get("aggregate"),
+            "data": payload.get("data") if isinstance(payload.get("data"), dict) else {},
+        },
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    timestamp = str(int(time.time()))
+    nonce = uuid.uuid4().hex
+    secret = decrypt_string(encrypted_secret).encode("utf-8")
+    signature = hmac.new(secret, f"{timestamp}.{nonce}.".encode() + body, hashlib.sha256).hexdigest()
+    headers = {
+        "Content-Type": "application/json",
+        "X-PIM-Event": str(payload.get("event_type") or "integration.webhook"),
+        "X-PIM-Timestamp": timestamp,
+        "X-PIM-Nonce": nonce,
+        "X-PIM-Signature": f"v1={signature}",
+    }
+    from cryptography.fernet import InvalidToken
+
+    try:
+        async with httpx.AsyncClient(timeout=10.0, follow_redirects=False) as client:
+            response = await client.post(target_url, content=body, headers=headers)
+        if 200 <= response.status_code < 300:
+            return True, response.text[:1000], response.status_code
+        return False, f"HTTP_{response.status_code}: {response.text[:500]}", response.status_code
+    except (InvalidToken, ValueError, TypeError, httpx.HTTPError, OSError, TimeoutError) as exc:
+        return False, str(exc)[:1000], None
 
 
 def email_delivery_key(
@@ -126,8 +174,12 @@ def _claim_event(event_id: str | None = None, *, lease_seconds: int = 120) -> tu
         if changed != 1:
             db.rollback()
             return None
+        # ``SessionLocal`` uses SQLAlchemy's default expire-on-commit
+        # behaviour. Capture the primary key before commit so returning from
+        # this claim step never touches a detached ORM instance.
+        claimed_id = str(row.id)
         db.commit()
-        return str(row.id), token
+        return claimed_id, token
     finally:
         db.close()
 
@@ -148,17 +200,24 @@ async def dispatch_outbox_event(event_id: str | None = None) -> bool:
     try:
         event = db.query(OutboxEvent).filter(OutboxEvent.id == claimed_id).one()
         payload = event.payload if isinstance(event.payload, dict) else {}
-        delivery_key = f"{event.idempotency_key}:smtp"
+        # The first session is committed before the provider call and then
+        # closed. Keep scalar event fields, rather than dereferencing the ORM
+        # instance after that session has expired/detached it.
+        event_type = str(event.event_type)
+        aggregate_type = str(event.aggregate_type)
+        aggregate_id = str(event.aggregate_id)
+        is_webhook = event_type == "integration.webhook"
+        delivery_key = f"{event.idempotency_key}:{'webhook' if is_webhook else 'smtp'}"
         delivery = db.query(NotificationDelivery).filter(
             NotificationDelivery.delivery_key == delivery_key
         ).first()
         if delivery is None:
             delivery = NotificationDelivery(
                 outbox_id=event.id,
-                channel="email",
-                recipient_ref=str(payload.get("recipient") or ""),
+                channel="webhook" if is_webhook else "email",
+                recipient_ref=str(payload.get("target_url") or payload.get("recipient") or ""),
                 delivery_key=delivery_key,
-                provider="smtp",
+                provider="http_webhook" if is_webhook else "smtp",
                 state="delivering",
                 attempt=int(event.attempt or 0),
             )
@@ -179,11 +238,19 @@ async def dispatch_outbox_event(event_id: str | None = None) -> bool:
     finally:
         db.close()
 
-    from app.platform.notifications.smtp import _send_email_direct
-
     started = perf_counter()
     error: str | None = None
-    try:
+    response_code: int | None = None
+    if event_type == "integration.webhook":
+        webhook_payload = dict(payload)
+        webhook_payload["aggregate"] = {
+            "type": aggregate_type,
+            "id": aggregate_id,
+        }
+        sent, error, response_code = await _send_webhook_direct(webhook_payload)
+    else:
+        from app.platform.notifications.smtp import _send_email_direct
+
         sent = await _send_email_direct(
             str(payload.get("recipient") or ""),
             str(payload.get("subject") or ""),
@@ -192,9 +259,6 @@ async def dispatch_outbox_event(event_id: str | None = None) -> bool:
         )
         if not sent:
             error = "provider_not_configured_or_failed"
-    except Exception as exc:  # noqa: BLE001 - convert provider failure to ledger state
-        sent = False
-        error = str(exc)
     latency_ms = int((perf_counter() - started) * 1000)
     now = utcnow_naive()
 
@@ -210,6 +274,7 @@ async def dispatch_outbox_event(event_id: str | None = None) -> bool:
             NotificationDelivery.delivery_key == delivery_key
         ).one()
         delivery.latency_ms = latency_ms
+        delivery.response_code = response_code
         reliability_metrics.record("outbox_delivery_latency_ms", latency_ms)
         delivery.response_excerpt = (error or "accepted")[:1000]
         delivery.updated_at = now
@@ -238,8 +303,8 @@ async def dispatch_outbox_event(event_id: str | None = None) -> bool:
         db.commit()
         if sent:
             add_lineage_edge(
-                from_type=event.aggregate_type,
-                from_id=event.aggregate_id,
+                from_type=aggregate_type,
+                from_id=aggregate_id,
                 to_type="outbox",
                 to_id=str(event.id),
                 relation="emitted",

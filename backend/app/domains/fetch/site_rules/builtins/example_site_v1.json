@@ -1,0 +1,30 @@
+{
+  "schema_version": "site-rule/v1",
+  "rule_id": "example_site_v1",
+  "revision": 1,
+  "status": "active",
+  "owner": "platform",
+  "description": "Synthetic fixture rule used for deterministic site-rule conformance tests.",
+  "matches": {
+    "hosts": ["example.com"],
+    "url_prefixes": ["/"]
+  },
+  "compatibility": {},
+  "discovery": {
+    "selectors": ["article a[href]"],
+    "fields": {"title": "text", "url": "href"}
+  },
+  "identity": {
+    "allow_patterns": ["/article/"],
+    "deny_patterns": ["/topics/", "/search"]
+  },
+  "hydration": {"max_concurrency": 2, "min_delay_ms": 250},
+  "extraction": {
+    "selectors": ["article", "main"],
+    "preferred_methods": ["readability", "jsonld"]
+  },
+  "quality": {"min_title_chars": 8, "min_body_chars": 120},
+  "fallback": {"allow_generic": true, "last_known_good": true},
+  "fixtures": [{"name": "synthetic-article", "kind": "safe"}],
+  "limits": {"max_bytes": 512000, "max_string": 2000, "max_arrays": 64, "max_selectors": 64, "max_output": 1000000}
+}

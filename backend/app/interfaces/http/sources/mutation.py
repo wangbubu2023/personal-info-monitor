@@ -31,6 +31,8 @@ from ._helpers import (
     find_duplicate_source_by_normalized_url,
     serialize_source,
 )
+from app.domains.sources.metadata_contract import canonicalize_source_metadata
+from app.domains.sources.state_service import ensure_source_state_async
 
 router = APIRouter()
 
@@ -68,7 +70,7 @@ async def create_source(source_data: SourceCreate, db: AsyncSession = Depends(ge
         raise HTTPException(status_code=409, detail="已存在相同类型和 URL 的监控源")
     await _ensure_source_quota(db, incoming_count=1)
 
-    metadata = dict(source_data.metadata_ or {})
+    metadata = canonicalize_source_metadata(dict(source_data.metadata_ or {}))
     if metadata.get("max_fetch_lag_minutes") is None:
         metadata.pop("max_fetch_lag_minutes", None)
     extra_urls = _normalize_extra_urls(source_data.extra_urls)
@@ -94,6 +96,8 @@ async def create_source(source_data: SourceCreate, db: AsyncSession = Depends(ge
         auth_required=auth_required, auth_config_id=auth_config_id, metadata_=metadata,
     )
     db.add(source)
+    await db.flush()
+    await ensure_source_state_async(db, source)
     await db.commit()
     await db.refresh(source)
     _invalidate_source_cache()
@@ -132,7 +136,7 @@ async def update_source(source_id: UUID, source_data: SourceUpdate, db: AsyncSes
                 merged.pop(k, None)
             else:
                 merged[k] = v
-        source.metadata_ = merged
+        source.metadata_ = canonicalize_source_metadata(merged)
 
     dup = await find_duplicate_source_by_normalized_url(
         db, target_url, target_type, exclude_source_id=source_id
@@ -143,10 +147,12 @@ async def update_source(source_id: UUID, source_data: SourceUpdate, db: AsyncSes
     if extra_urls is not None:
         merged = dict(source.metadata_ or {})
         merged["extra_urls"] = _normalize_extra_urls(extra_urls)
-        source.metadata_ = merged
+        source.metadata_ = canonicalize_source_metadata(merged)
 
     for field, value in update_data.items():
         setattr(source, field, value)
+    await db.flush()
+    await ensure_source_state_async(db, source)
     await db.commit()
     await db.refresh(source)
     _invalidate_source_cache()

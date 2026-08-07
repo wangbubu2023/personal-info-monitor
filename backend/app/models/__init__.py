@@ -11,6 +11,7 @@ from app.models.browser_session import BrowserSession, BrowserSessionMode, Brows
 from app.models.system_setting import SystemSetting
 from app.models.runtime_lock import RuntimeLock
 from app.models.source_fetch_log import SourceFetchLog
+from app.models.source_state import SourceDiscoveryStats, SourceFetchState, SourcePolicy, SourceSessionState
 from app.models.postprocess_job import PostprocessJob
 from app.models.fetch_job import FetchJob
 from app.models.web_session import BootstrapCode, WebSession
@@ -51,9 +52,12 @@ from app.models.paid_matrix import (
     LocalCaptureAudit,
     PaidSourceMatrixAudit,
     SessionRecoveryAudit,
+    SourceHealthSnapshot,
 )
 from app.models.topic import Topic, TopicEventAssociation
 from app.models.brief import BriefSnapshot, ModalityAuditLog, ModalityLevel, MODALITY_SCORE_MAP
+from app.models.integrations import WebSubDelivery, WebSubSubscription, WebhookSubscription
+from app.models.identity import AuditActor, IdentityDevice, IdentitySession, IdentityUser, ServicePrincipal
 
 __all__ = [
     "Source",
@@ -72,6 +76,10 @@ __all__ = [
     "SystemSetting",
     "RuntimeLock",
     "SourceFetchLog",
+    "SourceFetchState",
+    "SourceDiscoveryStats",
+    "SourceSessionState",
+    "SourcePolicy",
     "PostprocessJob",
     "FetchJob",
     "BootstrapCode",
@@ -118,10 +126,19 @@ __all__ = [
     "LocalCaptureAudit",
     "DailyCanaryRun",
     "AuthArchiveExtraction",
+    "SourceHealthSnapshot",
     "Topic",
     "TopicEventAssociation",
     "BriefSnapshot",
     "ModalityAuditLog",
     "ModalityLevel",
     "MODALITY_SCORE_MAP",
+    "WebSubSubscription",
+    "WebSubDelivery",
+    "WebhookSubscription",
+    "IdentityUser",
+    "IdentityDevice",
+    "IdentitySession",
+    "ServicePrincipal",
+    "AuditActor",
 ]

@@ -14,6 +14,8 @@ const EventDetailPage = lazy(() => import('./pages/EventDetailPage'))
 const ScoreLabPage = lazy(() => import('./pages/ScoreLabPage'))
 const AtomsPage = lazy(() => import('./pages/AtomsPage'))
 const AnnotationReviewPage = lazy(() => import('./pages/AnnotationReviewPage'))
+const TopicsPage = lazy(() => import('./pages/TopicsPage'))
+const BriefsPage = lazy(() => import('./pages/BriefsPage'))
 
 const App: React.FC = () => {
   const [isSpotlightOpen, setIsSpotlightOpen] = useState<boolean>(false)
@@ -48,6 +50,8 @@ const App: React.FC = () => {
             <Route path="/" element={<TodayHighlightsPage />} />
             <Route path="/timeline" element={<HomePage />} />
             <Route path="/digest" element={<DigestPage />} />
+            <Route path="/topics" element={<TopicsPage />} />
+            <Route path="/briefs" element={<BriefsPage />} />
             <Route path="/reader/:id" element={<ReaderPage />} />
             <Route path="/events" element={<Navigate to="/" replace />} />
             <Route path="/events/:eventId" element={<EventDetailPage />} />

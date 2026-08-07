@@ -16,8 +16,9 @@ from app.auth import verify_api_key
 from app.config import bootstrap_runtime_environment, effective_cors_origins, get_settings
 from app.middleware.api_rate_limit import APIRateLimitMiddleware
 from app.platform.auth import bootstrap_router
+from app.platform.auth.csrf import csrf_request_is_valid
 from app.platform.health import health_router
-from app.interfaces.http import auth_assistant
+from app.interfaces.http import auth_assistant, websub
 from app.platform.runtime import build_lifespan
 from app.utils.logger import clear_request_id, get_logger, set_request_id
 from app.utils.metrics import request_metrics
@@ -35,9 +36,9 @@ SPA_NO_CACHE_HEADERS = {
     "Expires": "0",
 }
 
-# Security headers applied to every SPA HTML response. We keep CSP lenient enough
-# that Ant Design's runtime-injected <style> tags and Google Fonts continue to
-# work, but block script sources we never legitimately pull from.
+# Security headers applied to every SPA HTML response. Ant Design's runtime
+# injected <style> tags remain supported while external script/font sources are
+# blocked.
 _SPA_SECURITY_HEADERS = {
     "X-Content-Type-Options": "nosniff",
     "Referrer-Policy": "no-referrer",
@@ -45,8 +46,8 @@ _SPA_SECURITY_HEADERS = {
     "Content-Security-Policy": (
         "default-src 'self'; "
         "script-src 'self'; "
-        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
-        "font-src 'self' https://fonts.gstatic.com; "
+        "style-src 'self' 'unsafe-inline'; "
+        "font-src 'self' data:; "
         "img-src 'self' data: blob: https:; "
         "connect-src 'self' http://127.0.0.1:8000 http://localhost:8000; "
         "frame-ancestors 'none'; "
@@ -116,7 +117,7 @@ app.add_middleware(
     allow_origin_regex=r"^tauri://localhost$",
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["Content-Type", "Authorization", "X-API-Key"],
+    allow_headers=["Content-Type", "Authorization", "X-API-Key", "X-PIM-CSRF"],
 )
 
 app.add_middleware(
@@ -128,10 +129,20 @@ app.add_middleware(
 # Include API routes
 app.include_router(api_router, prefix="/api")
 app.include_router(auth_assistant.router, prefix="/api/auth-assistant", tags=["auth-assistant"])
+app.include_router(websub.router, prefix="/api/websub", tags=["websub"])
 # Platform-level health/liveness endpoints (extracted from this module in Phase 5.12).
 app.include_router(health_router)
 # /local-token endpoint + SPA bootstrap-meta helpers (extracted in Phase 5.14).
 app.include_router(bootstrap_router)
+
+
+@app.middleware("http")
+async def csrf_middleware(request: Request, call_next):
+    """Protect cookie-authenticated browser mutations with CSRF + Origin."""
+    if request.url.path.startswith("/api/") and request.cookies.get("pim_session"):
+        if not csrf_request_is_valid(request):
+            return JSONResponse(status_code=403, content={"detail": "CSRF validation failed"})
+    return await call_next(request)
 
 
 @app.middleware("http")

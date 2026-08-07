@@ -13,6 +13,8 @@ import {
   DownloadCloud,
   Atom,
   ClipboardCheck,
+  Tags,
+  FileText,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useQuery } from '@tanstack/react-query';
@@ -162,6 +164,8 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     { to: '/', label: '今日重点', icon: Newspaper },
     { to: '/timeline', label: '全部动态', icon: Clock },
     { to: '/digest', label: '简报', icon: Clock },
+    { to: '/topics', label: 'Topic', icon: Tags },
+    { to: '/briefs', label: '周报 / 月报', icon: FileText },
     ...(scoreLabEnabled ? [{ to: '/score-lab', label: '评分', icon: Gauge }] : []),
     ...(runtimeFeatures?.atoms_surface_enabled ? [{ to: '/atoms', label: '原子库', icon: Atom }] : []),
     { to: '/settings', label: '配置', icon: SlidersHorizontal },
@@ -174,6 +178,8 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
       return location.pathname === '/settings' || location.pathname === '/sources'
     if (path === '/score-lab') return location.pathname === '/score-lab'
     if (path === '/atoms') return location.pathname === '/atoms'
+    if (path === '/topics') return location.pathname.startsWith('/topics')
+    if (path === '/briefs') return location.pathname.startsWith('/briefs')
     return location.pathname === path
   }
 

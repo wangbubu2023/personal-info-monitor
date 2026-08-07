@@ -11,6 +11,7 @@ from urllib.parse import urlparse
 from app.utils.url import normalize_source_url_input
 from app.domains.score.score_utils import normalize_authority_type
 from app.domains.fetch.web_clean.templates import TemplateValidationError, validate_template
+from app.domains.sources.metadata_contract import validate_source_metadata
 
 _MAX_FETCH_LAG_MIN = 1
 _MAX_FETCH_LAG_MAX = 525600  # 365 days
@@ -64,7 +65,7 @@ def _normalize_source_quality_metadata(meta: Optional[Dict[str, Any]]) -> Option
                 "metadata.web_clean_template is invalid: " + "; ".join(exc.errors)
             ) from exc
 
-    return out
+    return validate_source_metadata(out)
 
 
 def _validate_max_fetch_lag_in_metadata(meta: Optional[Dict[str, Any]]) -> None:

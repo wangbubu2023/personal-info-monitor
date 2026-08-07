@@ -5,7 +5,14 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.domains.enrich.brief_service import create_brief_snapshot, override_brief_modality_violation
+from app.domains.enrich.brief_service import (
+    brief_to_dict,
+    create_brief_snapshot,
+    generate_brief_snapshot,
+    get_brief,
+    list_briefs,
+    override_brief_modality_violation,
+)
 
 router = APIRouter()
 
@@ -24,6 +31,47 @@ class CreateBriefRequest(BaseModel):
 class OverrideModalityRequest(BaseModel):
     override_by: str
     override_reason: str
+
+
+class GenerateBriefRequest(BaseModel):
+    period_key: str
+    brief_type: str
+    topic_id: str | None = None
+    regenerate: bool = False
+    generator_version: str = "brief-rules-v1"
+
+
+@router.get("")
+def api_list_briefs(
+    brief_type: str | None = None,
+    period_key: str | None = None,
+    db: Session = Depends(get_db),
+):
+    return {"items": list_briefs(db, brief_type=brief_type, period_key=period_key)}
+
+
+@router.get("/{brief_id}")
+def api_get_brief(brief_id: str, db: Session = Depends(get_db)):
+    brief = get_brief(db, brief_id)
+    if not brief:
+        raise HTTPException(status_code=404, detail="Brief not found")
+    return brief_to_dict(brief)
+
+
+@router.post("/generate")
+def api_generate_brief(req: GenerateBriefRequest, db: Session = Depends(get_db)):
+    try:
+        brief, audit = generate_brief_snapshot(
+            db,
+            period_key=req.period_key,
+            brief_type=req.brief_type,
+            topic_id=req.topic_id,
+            regenerate=req.regenerate,
+            generator_version=req.generator_version,
+        )
+    except ValueError as err:
+        raise HTTPException(status_code=400, detail=str(err)) from err
+    return {"status": brief.publication_status, "violation_detected": audit is not None, **brief_to_dict(brief)}
 
 
 @router.post("")
@@ -48,6 +96,7 @@ def api_create_brief(req: CreateBriefRequest, db: Session = Depends(get_db)):
             "publication_status": brief.publication_status,
             "modality_violation_count": brief.modality_violation_count,
             "violation_detected": (audit is not None),
+            "version": int(brief.version or 1),
         }
     except ValueError as err:
         raise HTTPException(status_code=400, detail=str(err)) from err

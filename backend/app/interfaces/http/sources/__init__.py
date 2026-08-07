@@ -18,6 +18,7 @@ from .mutation import router as mutation_router, create_source, update_source, d
 from .probe import router as probe_router
 from .fetch_import import router as fetch_import_router
 from .dry_run import router as dry_run_router
+from .state import router as state_router
 
 router = APIRouter()
 
@@ -27,6 +28,7 @@ router = APIRouter()
 router.include_router(probe_router)          # /probe, /probe-all, /{id}/probe
 router.include_router(fetch_import_router)   # /bulk-import, /fetch-all, /{id}/fetch
 router.include_router(dry_run_router)        # /{id}/dry-run
+router.include_router(state_router)           # /{id}/state + /state/backfill
 
 # query sub-router: register "" routes directly, delegate the rest via include_router
 router.add_api_route("", list_sources, methods=["GET"])

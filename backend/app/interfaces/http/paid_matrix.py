@@ -19,6 +19,7 @@ from app.domains.fetch.paid_matrix import (
     run_daily_canary_for_source,
     trigger_session_expiration,
 )
+from app.domains.fetch.daily_canary import source_health_history
 
 router = APIRouter()
 
@@ -55,7 +56,7 @@ class DailyCanaryRequest(BaseModel):
     run_date_str: str | None = None
 
 
-@router.post("/record")
+@router.post("/record")  # noqa: V103
 def api_record_paid_source(req: PaidSourceRecordRequest, db: Session = Depends(get_db)):
     audit = record_paid_source_result(
         db,
@@ -75,13 +76,13 @@ def api_record_paid_source(req: PaidSourceRecordRequest, db: Session = Depends(g
     }
 
 
-@router.post("/trigger-recovery-drill")
+@router.post("/trigger-recovery-drill")  # noqa: V103
 def api_trigger_recovery(req: SessionTriggerRequest, db: Session = Depends(get_db)):
     audit = trigger_session_expiration(db, auth_config_id=req.auth_config_id, root_cause=req.root_cause)
     return {"status": "triggered", "audit_id": audit.id, "detected_at": audit.detected_at.isoformat()}
 
 
-@router.post("/ack-recovery/{audit_id}")
+@router.post("/ack-recovery/{audit_id}")  # noqa: V103
 def api_ack_recovery(audit_id: str, db: Session = Depends(get_db)):
     audit = ack_session_recovery(db, audit_id=audit_id)
     if not audit:
@@ -89,7 +90,7 @@ def api_ack_recovery(audit_id: str, db: Session = Depends(get_db)):
     return {"status": "acked", "acked_at": audit.acked_at.isoformat() if audit.acked_at else None}
 
 
-@router.post("/complete-recovery/{audit_id}")
+@router.post("/complete-recovery/{audit_id}")  # noqa: V103
 def api_complete_recovery(audit_id: str, db: Session = Depends(get_db)):
     audit = complete_session_recovery(db, audit_id=audit_id)
     if not audit:
@@ -101,7 +102,7 @@ def api_complete_recovery(audit_id: str, db: Session = Depends(get_db)):
     }
 
 
-@router.post("/local-capture/task-token")
+@router.post("/local-capture/task-token")  # noqa: V103
 def api_issue_local_capture_token(req: LocalCaptureTokenRequest, db: Session = Depends(get_db)):
     try:
         token = issue_local_capture_task_token(db, req.device_id, req.origin_url)
@@ -110,7 +111,7 @@ def api_issue_local_capture_token(req: LocalCaptureTokenRequest, db: Session = D
     return {"task_token": token, "expires_in_seconds": 300}
 
 
-@router.post("/local-capture")
+@router.post("/local-capture")  # noqa: V103
 def api_local_capture(req: LocalCaptureRequest, db: Session = Depends(get_db)):
     try:
         audit = process_local_capture(
@@ -121,13 +122,18 @@ def api_local_capture(req: LocalCaptureRequest, db: Session = Depends(get_db)):
             reader_doc_title=req.reader_doc_title,
             reader_doc_body=req.reader_doc_body,
         )
-        return {"status": "captured", "audit_id": audit.id, "checksum": audit.reader_doc_checksum}
+        return {
+            "status": audit.ingest_status,
+            "audit_id": audit.id,
+            "content_id": audit.content_id,
+            "checksum": audit.reader_doc_checksum,
+        }
     except ValueError as err:
         raise HTTPException(status_code=400, detail=str(err)) from err
 
 
-@router.post("/daily-canary")
-def api_daily_canary(req: DailyCanaryRequest, db: Session = Depends(get_db)):
+@router.post("/daily-canary")  # noqa: V103
+def api_daily_canary(req: DailyCanaryRequest, db: Session = Depends(get_db)):  # noqa: V103
     try:
         canary = run_daily_canary_for_source(
             db,
@@ -144,6 +150,11 @@ def api_daily_canary(req: DailyCanaryRequest, db: Session = Depends(get_db)):
     }
 
 
+@router.get("/health/{source_id}")  # noqa: V103
+def api_source_health(source_id: str, days: int = 7, db: Session = Depends(get_db)):  # noqa: V103
+    return {"source_id": source_id, "days": max(1, min(days, 90)), "items": source_health_history(db, source_id, days=days)}
+
+
 async def _validate_upload_size(file: UploadFile, max_bytes: int) -> int:
     await file.seek(0)
     total = 0
@@ -158,7 +169,7 @@ async def _validate_upload_size(file: UploadFile, max_bytes: int) -> int:
     return total
 
 
-@router.post("/extract-archive")
+@router.post("/extract-archive")  # noqa: V103
 async def api_extract_archive(file: UploadFile = File(...), db: Session = Depends(get_db)):
     await _validate_upload_size(file, MAX_COMPRESSED_ARCHIVE_BYTES)
     extraction = extract_auth_archive_safely(

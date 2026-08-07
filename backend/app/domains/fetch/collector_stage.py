@@ -21,6 +21,7 @@ from app.domains.fetch.auth import (
     try_parse_auth_credentials,
 )
 from app.domains.fetch.collectors import get_collector
+from app.domains.fetch.site_rules import compile_site_rule, resolve_site_rule
 from app.domains.fetch.session_alerts import session_health_warning_entry
 from app.domains.sources.status import merge_warning_messages
 from app.models import AuthConfig, Source
@@ -204,6 +205,20 @@ class CollectorStage:
 
         collector = get_collector(source_type)
 
+        site_rule_resolution = None
+        if str(source_type).lower() == "website":
+            site_rule_resolution = resolve_site_rule(
+                source.url,
+                source.metadata_ if isinstance(source.metadata_, dict) else {},
+            )
+            if site_rule_resolution.rule is not None:
+                # Compilation is intentionally side-effect free.  Collectors can
+                # opt into the bounded config while generic fallback remains
+                # available for unmatched sources.
+                setattr(source, "_site_rule_runtime", compile_site_rule(site_rule_resolution.rule))
+            else:
+                setattr(source, "_site_rule_runtime", None)
+
         source_urls = get_source_urls(source)
         raw_contents = []
         fetch_success_count = 0
@@ -218,6 +233,12 @@ class CollectorStage:
                 fetched = await fetch_at_ephemeral_source_url(collector, source, fetch_url)
                 fetch_success_count += 1
                 if fetched:
+                    if site_rule_resolution is not None:
+                        for item in fetched:
+                            metadata = item.get("metadata") if isinstance(item.get("metadata"), dict) else {}
+                            metadata = dict(metadata)
+                            metadata["site_rule"] = site_rule_resolution.metadata
+                            item["metadata"] = metadata
                     raw_contents.extend(fetched)
             except Exception as e:  # noqa: BLE001 - one URL can fail while another succeeds
                 fetch_error_count += 1
