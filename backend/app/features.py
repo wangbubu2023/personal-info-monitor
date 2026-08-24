@@ -11,7 +11,7 @@ PODCAST_SOURCES_ENABLED = False
 KEYWORD_MONITORING_ENABLED = True
 # Product-level switch. The main branch can freeze the atoms surface without
 # deleting the domain implementation or its database schema.
-ATOMS_PRODUCT_ENABLED = False
+ATOMS_PRODUCT_ENABLED = True
 
 PODCAST_DISABLED_DETAIL = "播客监控功能已暂时下线"
 KEYWORD_DISABLED_DETAIL = "关键词过滤功能未启用"

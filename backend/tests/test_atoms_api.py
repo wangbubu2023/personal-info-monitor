@@ -76,7 +76,7 @@ def seeded_atoms(atoms_api_env):
 
 @pytest.mark.asyncio
 async def test_atoms_list_requires_flag(client, monkeypatch):
-    monkeypatch.delenv("ATOMS_ENABLED", raising=False)
+    monkeypatch.setenv("ATOMS_ENABLED", "false")
     response = await client.get("/api/atoms")
     assert response.status_code == 404
 

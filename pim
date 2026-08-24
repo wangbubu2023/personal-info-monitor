@@ -358,10 +358,10 @@ def _print_atom_feature_status() -> None:
     if feature_source.exists() and "ATOMS_PRODUCT_ENABLED = False" in feature_source.read_text(encoding="utf-8"):
         print("  atoms: frozen (main)   relations: frozen")
         return
-    atoms_on = _parse_env_bool(_read_env_var("ATOMS_ENABLED"), default=False)
+    atoms_on = _parse_env_bool(_read_env_var("ATOMS_ENABLED"), default=True)
     relations_on = atoms_on and _parse_env_bool(
         _read_env_var("ATOMS_RELATIONS_ENABLED"),
-        default=False,
+        default=True,
     )
     atoms_label = "on" if atoms_on else "off"
     relations_label = "on" if relations_on else "off"
