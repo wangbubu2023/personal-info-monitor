@@ -10,7 +10,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-DEFAULT_SERVER = "http://127.0.0.1:8000"
+_PORT = os.getenv("PIM_PORT") or os.getenv("PORT") or "8000"
+DEFAULT_SERVER = os.getenv("PIM_SERVER") or f"http://127.0.0.1:{_PORT}"
 DEFAULT_PROFILE = "local"
 _RUNTIME_SECRETS_PATH = Path.home() / ".pim" / "data" / "runtime-secrets.json"
 

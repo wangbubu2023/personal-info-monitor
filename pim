@@ -563,30 +563,62 @@ def _service_env() -> dict:
     return env
 
 
-def _wait_for_port_8000(timeout_seconds: float = 12.0) -> bool:
+def _get_pim_port() -> int:
+    """Resolve configured PIM service port (priority: PIM_PORT -> PORT -> .env -> 8000)."""
+    raw = os.environ.get("PIM_PORT") or os.environ.get("PORT")
+    if not raw and ENV_FILE.exists():
+        try:
+            for line in ENV_FILE.read_text(encoding="utf-8").splitlines():
+                line = line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                k, _, v = line.partition("=")
+                k = k.strip()
+                v = v.strip().strip('"').strip("'")
+                if k in ("PIM_PORT", "PORT") and v:
+                    raw = v
+                    break
+        except OSError:
+            pass
+    if raw:
+        try:
+            return int(raw)
+        except ValueError:
+            pass
+    return 8000
+
+
+def _wait_for_port(port: int | None = None, timeout_seconds: float = 12.0) -> bool:
+    target_port = port if port is not None else _get_pim_port()
     deadline = time.time() + timeout_seconds
     while time.time() < deadline:
-        if _is_port_8000_open():
+        if _is_port_open(target_port):
             return True
         time.sleep(0.3)
     return False
 
 
-def _is_livez_healthy() -> bool:
+def _wait_for_port_8000(timeout_seconds: float = 12.0) -> bool:
+    return _wait_for_port(port=8000, timeout_seconds=timeout_seconds)
+
+
+def _is_livez_healthy(port: int | None = None) -> bool:
     import urllib.error
     import urllib.request
 
+    target_port = port if port is not None else _get_pim_port()
     try:
-        with urllib.request.urlopen("http://127.0.0.1:8000/livez", timeout=1.0) as resp:
+        with urllib.request.urlopen(f"http://127.0.0.1:{target_port}/livez", timeout=1.0) as resp:
             return resp.status == 200
     except (OSError, urllib.error.URLError):
         return False
 
 
-def _wait_for_livez(timeout_seconds: float = 15.0) -> bool:
+def _wait_for_livez(port: int | None = None, timeout_seconds: float = 15.0) -> bool:
+    target_port = port if port is not None else _get_pim_port()
     deadline = time.time() + timeout_seconds
     while time.time() < deadline:
-        if _is_livez_healthy():
+        if _is_livez_healthy(target_port):
             return True
         time.sleep(0.3)
     return False
@@ -811,22 +843,28 @@ def _read_pid_command(pid: int) -> str:
         return ""
 
 
-def _is_prod_uvicorn_pid(pid: int) -> bool:
+def _is_prod_uvicorn_pid(pid: int, port: int | None = None) -> bool:
     if not _is_pid_alive(pid):
         return False
     cmd = _read_pid_command(pid)
     if not cmd:
         return False
-    return "uvicorn" in cmd and "app.main:app" in cmd and "--port 8000" in cmd
+    target_port = port or _get_pim_port()
+    return "uvicorn" in cmd and "app.main:app" in cmd and f"--port {target_port}" in cmd
 
 
-def _is_port_8000_open() -> bool:
+def _is_port_open(port: int | None = None) -> bool:
+    target_port = port or _get_pim_port()
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.settimeout(0.3)
     try:
-        return sock.connect_ex(("127.0.0.1", 8000)) == 0
+        return sock.connect_ex(("127.0.0.1", target_port)) == 0
     finally:
         sock.close()
+
+
+def _is_port_8000_open() -> bool:
+    return _is_port_open(_get_pim_port())
 
 
 def _terminate_pid(pid: int, timeout_seconds: float = 4.0) -> bool:
@@ -837,6 +875,8 @@ def _terminate_pid(pid: int, timeout_seconds: float = 4.0) -> bool:
         os.kill(pid, signal.SIGTERM)
     except ProcessLookupError:
         return True
+    except PermissionError:
+        return False
 
     started = time.time()
     while time.time() - started < timeout_seconds:
@@ -848,12 +888,15 @@ def _terminate_pid(pid: int, timeout_seconds: float = 4.0) -> bool:
         os.kill(pid, signal.SIGKILL)
     except ProcessLookupError:
         return True
+    except PermissionError:
+        return False
     time.sleep(0.1)
     return not _is_pid_alive(pid)
 
 
-def _find_prod_uvicorn_pids() -> list[int]:
-    pattern = "app.main:app.*--port 8000"
+def _find_prod_uvicorn_pids(port: int | None = None) -> list[int]:
+    target_port = port or _get_pim_port()
+    pattern = f"app.main:app.*--port {target_port}"
     try:
         out = subprocess.check_output(["pgrep", "-f", pattern], text=True).strip()
     except (OSError, subprocess.SubprocessError):
@@ -865,7 +908,7 @@ def _find_prod_uvicorn_pids() -> list[int]:
             continue
         try:
             pid = int(raw)
-            if _is_prod_uvicorn_pid(pid):
+            if _is_prod_uvicorn_pid(pid, port=target_port):
                 pids.append(pid)
         except ValueError:
             continue
@@ -957,11 +1000,12 @@ def cmd_up():
     # plist (macOS) or respawning uvicorn (Linux) is not harmful, but it
     # briefly interrupts an otherwise happy server; idempotent re-runs of
     # `./pim up` should feel like a no-op.
+    port = _get_pim_port()
     already_running_pid = _currently_running_pid()
     if already_running_pid and _is_livez_healthy():
         print(f"  Already running (PID {already_running_pid}); no restart needed.")
         if not server_only and (FRONTEND / "dist" / "index.html").exists():
-            print("  Web UI: http://127.0.0.1:8000/  (served by backend from frontend/dist)")
+            print(f"  Web UI: http://127.0.0.1:{port}/  (served by backend from frontend/dist)")
         if api_key:
             print(f"  API Key: {_mask_secret(api_key)}")
         return
@@ -979,12 +1023,12 @@ def cmd_up():
             print(f"  PID: {pid}")
 
     if _wait_for_livez():
-        print("  Backend is healthy on http://127.0.0.1:8000")
+        print(f"  Backend is healthy on http://127.0.0.1:{port}")
     else:
         print("  Warning: /livez did not return HTTP 200 yet; inspect ./pim logs")
 
     if not server_only and (FRONTEND / "dist" / "index.html").exists():
-        print("  Web UI: http://127.0.0.1:8000/  (served by backend from frontend/dist)")
+        print(f"  Web UI: http://127.0.0.1:{port}/  (served by backend from frontend/dist)")
     if api_key:
         print(f"  API Key: {_mask_secret(api_key)}")
 
@@ -992,35 +1036,36 @@ def cmd_up():
         print("  Note: no process supervisor installed; after reboot rerun ./pim up.")
 
 
-def _launch_detached_backend() -> int | None:
+def _launch_detached_backend(port: int | None = None) -> int | None:
     """Spawn uvicorn as a detached background process and write the PID file.
 
     Returns the new PID, or None when the server was already running /
-    another process holds :8000. Callers are responsible for printing
+    another process holds the port. Callers are responsible for printing
     human-readable context around this low-level primitive.
     """
+    target_port = port or _get_pim_port()
     LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
     _rotate_log_file_if_needed()
 
     for pid_file in _pid_file_candidates():
         if pid_file.exists():
             existing_pid = _read_pid_file(pid_file)
-            if existing_pid and _is_prod_uvicorn_pid(existing_pid):
+            if existing_pid and _is_prod_uvicorn_pid(existing_pid, port=target_port):
                 if pid_file != PID_FILE:
                     _write_pid_file(existing_pid)
                 print(f"  Already running (PID {existing_pid})")
                 return None
             pid_file.unlink(missing_ok=True)
 
-    existing_pids = _find_prod_uvicorn_pids()
+    existing_pids = _find_prod_uvicorn_pids(port=target_port)
     if existing_pids:
         print(f"  Detected existing unmanaged server PID(s): {', '.join(str(p) for p in existing_pids)}")
         _write_pid_file(existing_pids[0])
         print(f"  Recovered PID file with PID {existing_pids[0]}")
         return existing_pids[0]
 
-    if _is_port_8000_open():
-        print("  Port 8000 is already in use by another process. Abort start.")
+    if _is_port_open(target_port):
+        print(f"  Port {target_port} is already in use by another process. Abort start.")
         return None
 
     log_handle = open(LOG_FILE, "a", encoding="utf-8")
@@ -1029,7 +1074,7 @@ def _launch_detached_backend() -> int | None:
             _uvicorn(),
             "app.main:app",
             "--host", "127.0.0.1",
-            "--port", "8000",
+            "--port", str(target_port),
         ],
         cwd=str(BACKEND),
         env=_service_env(),
@@ -1067,12 +1112,13 @@ def cmd_ensure():
 
     Designed for no-systemd containers where a heartbeat/cron runner invokes
     this command repeatedly. It repairs stale PID files, restarts unhealthy PIM
-    uvicorn processes, and refuses to take over :8000 when a foreign process is
+    uvicorn processes, and refuses to take over the port when a foreign process is
     listening there.
     """
     args = sys.argv[2:]
     server_only = any(flag in args for flag in ("--server", "--no-frontend"))
     rebuild = "--rebuild" in args
+    port = _get_pim_port()
 
     print("=== PIM ensure ===")
     api_key = _ensure_runtime_ready()
@@ -1091,8 +1137,8 @@ def cmd_ensure():
     if running_pid:
         print(f"  Existing PIM process is not healthy (PID {running_pid}); restarting.")
         _stop_by_pid()
-    elif _is_port_8000_open():
-        print("  Port 8000 is already in use by another process. Abort ensure.", file=sys.stderr)
+    elif _is_port_open() or _is_port_8000_open():
+        print(f"  Port {port} is already in use by another process. Abort ensure.", file=sys.stderr)
         sys.exit(1)
 
     if sys.platform == "darwin":
@@ -1108,7 +1154,7 @@ def cmd_ensure():
         print("  Failed: /livez did not return HTTP 200; inspect ./pim logs", file=sys.stderr)
         sys.exit(1)
 
-    print("  Backend is healthy on http://127.0.0.1:8000")
+    print(f"  Backend is healthy on http://127.0.0.1:{port}")
     if api_key:
         print(f"  API Key: {_mask_secret(api_key)}")
 
@@ -1129,20 +1175,22 @@ def cmd_start():
         sys.exit(1)
 
     api_key = _read_api_key()
+    port = _get_pim_port()
 
     if prod:
         print("Starting PIM (production mode) ...")
-        print("  URL: http://127.0.0.1:8000")
+        print(f"  URL: http://127.0.0.1:{port}")
         if api_key:
             print(f"  API Key: {_mask_secret(api_key)}")
 
-        pid = _launch_detached_backend()
+        pid = _launch_detached_backend(port=port)
         if pid is not None:
             print(f"  PID: {pid}")
             print("  Started in background.")
     else:
+        dev_backend_port = 8000 if port == 3000 else port
         print("Starting PIM (dev mode) ...")
-        print("  Backend: http://127.0.0.1:8000")
+        print(f"  Backend: http://127.0.0.1:{dev_backend_port}")
         print("  Frontend: http://127.0.0.1:3000")
         if api_key:
             print(f"  API Key: {_mask_secret(api_key)}")
@@ -1156,7 +1204,7 @@ def cmd_start():
 
         # Backend
         procs.append(subprocess.Popen(
-            [_uvicorn(), "app.main:app", "--host", "127.0.0.1", "--port", "8000", "--reload"],
+            [_uvicorn(), "app.main:app", "--host", "127.0.0.1", "--port", str(dev_backend_port), "--reload"],
             cwd=str(BACKEND),
             env=env,
         ))
@@ -1231,6 +1279,7 @@ def _stop_by_pid():
 
 
 def cmd_status():
+    port = _get_pim_port()
     # Check launchd-managed state first
     if PLIST_PATH.exists():
         result = subprocess.run(
@@ -1249,7 +1298,7 @@ def cmd_status():
                     break
             if pid_match and pid_match.isdigit():
                 print(f"PIM is running via LaunchAgent (PID {pid_match})")
-                print(f"  URL: http://127.0.0.1:8000")
+                print(f"  URL: http://127.0.0.1:{port}")
                 print(f"  Logs: {LOG_FILE}")
                 _print_atom_feature_status()
             else:
@@ -1265,7 +1314,7 @@ def cmd_status():
     for pid_file in _pid_file_candidates():
         if pid_file.exists():
             pid = _read_pid_file(pid_file)
-            if pid and _is_prod_uvicorn_pid(pid):
+            if pid and _is_prod_uvicorn_pid(pid, port=port):
                 if pid_file != PID_FILE:
                     _write_pid_file(pid)
                 print(f"PIM is running (PID {pid})")
@@ -1273,7 +1322,7 @@ def cmd_status():
                 return
             pid_file.unlink(missing_ok=True)
 
-    discovered = [pid for pid in _find_prod_uvicorn_pids() if _is_prod_uvicorn_pid(pid)]
+    discovered = [pid for pid in _find_prod_uvicorn_pids(port=port) if _is_prod_uvicorn_pid(pid, port=port)]
     if discovered:
         pid = discovered[0]
         _write_pid_file(pid)
@@ -1281,8 +1330,8 @@ def cmd_status():
         _print_atom_feature_status()
         return
 
-    if _is_port_8000_open():
-        print("Port 8000 is in use, but PIM process is not managed by current PID file.")
+    if _is_port_open(port):
+        print(f"Port {port} is in use, but PIM process is not managed by current PID file.")
         _print_atom_feature_status()
         return
     print("PIM is not running.")
@@ -1292,10 +1341,11 @@ def cmd_status():
 def cmd_fetch():
     """Trigger a full fetch via API."""
     api_key = _read_api_key()
+    port = _get_pim_port()
     import urllib.request
     import urllib.error
 
-    url = "http://127.0.0.1:8000/api/sources/fetch-all"
+    url = f"http://127.0.0.1:{port}/api/sources/fetch-all"
     req = urllib.request.Request(url, method="POST")
     if api_key:
         req.add_header("X-API-Key", api_key)
@@ -1458,6 +1508,7 @@ def cmd_service_run():
             if k and v:
                 env.setdefault(k, v)
 
+    port = _get_pim_port()
     LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
     os.chdir(str(BACKEND))
     uvicorn_bin = str(_uvicorn())
@@ -1466,7 +1517,7 @@ def cmd_service_run():
         uvicorn_bin,
         "app.main:app",
         "--host", "127.0.0.1",
-        "--port", "8000",
+        "--port", str(port),
     ], env)
 
 

@@ -26,7 +26,7 @@ from app.utils.metrics import request_metrics
 bootstrap_runtime_environment()
 settings = get_settings()
 logger = get_logger(__name__)
-DEFAULT_API_PORT = 8000
+DEFAULT_API_PORT = int(os.getenv("PIM_PORT") or os.getenv("PORT") or 8000)
 DEV_FRONTEND_URL = os.getenv("PIM_DEV_FRONTEND_URL", "http://127.0.0.1:3000").strip() or "http://127.0.0.1:3000"
 DEV_SERVER_MODE = os.getenv("PIM_DEV_SERVER", "").strip().lower() in {"1", "true", "yes"}
 APP_VERSION = current_version()
@@ -49,7 +49,7 @@ _SPA_SECURITY_HEADERS = {
         "style-src 'self' 'unsafe-inline'; "
         "font-src 'self' data:; "
         "img-src 'self' data: blob: https:; "
-        "connect-src 'self' http://127.0.0.1:8000 http://localhost:8000; "
+        f"connect-src 'self' http://127.0.0.1:{DEFAULT_API_PORT} http://localhost:{DEFAULT_API_PORT} http://127.0.0.1:8000 http://localhost:8000 http://127.0.0.1:3000 http://localhost:3000; "
         "frame-ancestors 'none'; "
         "base-uri 'self'; "
         "form-action 'self'"
